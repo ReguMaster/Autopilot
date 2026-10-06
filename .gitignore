@@ -1,0 +1,8 @@
+# 기본
+/.vscode/
+__pycache__/
+
+# Autopilot
+/autopilot/progress/
+/autopilot/recycle_bin/
+/autopilot/AUTOPILOT_TODO.md
