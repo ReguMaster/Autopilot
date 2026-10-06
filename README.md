@@ -1,11 +1,24 @@
-# AutoPilot
+<p align="center">
+  <img src="assets/logo.png" alt="AutoPilot" width="640">
+</p>
 
-Claude Code로 프로젝트를 **무인 자율 개발**시키는 실행 키트입니다.
-정해 둔 종료 시각까지 Claude가 스스로 개선점을 찾고, 구현·검증·commit까지 반복합니다.
+Claude Code로 프로젝트를 무인 자율 개발시키는 실행 키트입니다.
+정해 둔 종료 시각까지 Claude가 스스로 개선점을 찾아 구현하고, 검증한 뒤 commit하는 과정을 반복합니다.
 
 ## 동작 방식
 
-`autopilot_loop.ps1`이 `claude -p`를 **회차마다 새로 실행**합니다.
+`autopilot_loop.ps1`이 `claude -p`를 회차마다 새로 실행합니다.
+
+```mermaid
+flowchart LR
+    A([시작]) --> B{남은 시간<br/>20분 이상?}
+    B -- 예 --> C[claude -p<br/>새 컨텍스트]
+    C --> D[작업 최대 2건<br/>구현 · 검증 · commit]
+    D --> E[(AUTOPILOT_PROGRESS.md)]
+    E --> B
+    B -- 아니오 --> F([종료])
+    C -. 연속 3회 실패 .-> F
+```
 
 - 매 회차가 새 컨텍스트로 시작하므로 auto-compact 누적 비용이 없습니다.
 - 회차 간 인수인계는 `AUTOPILOT_PROGRESS.md`가 맡습니다.
@@ -15,7 +28,7 @@ Claude Code로 프로젝트를 **무인 자율 개발**시키는 실행 키트�
 
 ## 구성
 
-```
+```text
 <프로젝트 루트>/
 └─ autopilot/                      ← 이 저장소를 이 이름의 폴더로 둔다
    ├─ start_autopilot_PERSONAL.bat   실행 진입점 (집 PC용)
@@ -45,7 +58,8 @@ start_autopilot_PERSONAL.bat 07:00        :: 종료 시각 지정
 start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 ```
 
-`claude`는 `--dangerously-skip-permissions`로 실행되므로 **신뢰할 수 있는 프로젝트에서만** 사용하세요.
+> **주의**: `claude`는 `--dangerously-skip-permissions`로 실행되므로 **신뢰할 수 있는 프로젝트에서만** 사용하세요.
+
 설정 폴더는 `%USERPROFILE%\.claude`이고, 모델은 Opus(실패 시 Sonnet), effort는 `xhigh`입니다.
 
 ## AUTOPILOT_TODO.md
@@ -76,7 +90,11 @@ start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 | `자율개선` | Tasks를 마친 뒤에도 스스로 개선점을 찾아 종료 시각까지 계속 |
 | `지시개선` | Tasks만 처리하고, 끝나면 시간이 남아도 즉시 종료 (`progress/<날짜>/TODO_COMPLETE` 생성으로 신호) |
 
-## 안전 정책 요약
+### 작업 우선순위 (자율개선)
+
+버그 → 안정성 → 데이터 손상 가능성 → 성능 → 기능 완성도 → 유지보수성 → UX → 코드 정리
+
+## 안전 정책
 
 자세한 내용은 [core/AUTOPILOT_POLICY.md](core/AUTOPILOT_POLICY.md)를 보세요.
 
@@ -86,10 +104,6 @@ start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 - `git reset --hard` · `git clean` · force push · history 재작성 · stash drop 금지.
 - 운영 서버·DB 조작, 인증정보 변경, 새 외부 서비스·dependency 추가 금지.
 - commit은 검증을 마친 작업 단위로, 메시지에 `[ap]` 접두어를 붙입니다. 예: `[ap] fix: 상태 손실 방지`
-
-## 작업 우선순위 (자율개선)
-
-버그 → 안정성 → 데이터 손상 가능성 → 성능 → 기능 완성도 → 유지보수성 → UX → 코드 정리
 
 ## 참고
 
