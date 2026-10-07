@@ -29,6 +29,7 @@ $ProjectDir       = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent   # au
 $MaxTasksPerRound = 2      # 한 회차가 다룰 작업 수 상한 (규모가 크면 1건만 해도 정상)
 $MinMinutes       = 20     # 남은 시간이 이보다 적으면 새 회차를 시작하지 않는다
 $MaxRounds        = 60
+$MaxIdleRounds    = 2      # 새 commit 없이 끝난 회차가 연속 이만큼이면 남은 작업이 없는 것으로 보고 끝낸다
 $AutoCompact      = 150000
 
 $env:CLAUDE_CONFIG_DIR = Join-Path $env:USERPROFILE $ConfigDir
@@ -129,8 +130,10 @@ if ($Policy -eq '지시개선') {
 
 $round = 0
 $fails = 0
+$idle = 0
 $aborted = $false
 $todoDone = $false
+$idleStop = $false
 
 while ($true) {
     if ($round -ge $MaxRounds) { break }
@@ -147,6 +150,8 @@ while ($true) {
     $prompt = @"
 CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOPILOT.md의 작업 지침에 따라 자율 개발을 수행하라. 중요사항!: autopilot/core/AUTOPILOT_POLICY.md의 모든 금지사항과 안전정책을 반드시 최우선으로 준수하라. 작업을 고르기 전에 autopilot/AUTOPILOT_TODO.md 를 먼저 읽고 소유자가 예약한 작업이 있으면 작성된 순서대로 그것을 우선 처리하며, ${progressMdRelPath} 를 읽어 이전 회차가 남긴 상태와 다음 작업을 이어받아라(파일이 없으면 새로 생성하라). ${policyPrompt} 이 세션은 AutoPilot ${round}회차이고 전체 종료 예정 시각은 $($deadline.ToString('yyyy-MM-dd HH:mm')), 남은 시간은 약 ${remain}분이다. 이번 세션의 작업량은 작업 범위를 보고 스스로 정하되 최대 ${MaxTasksPerRound}건을 넘기지 말고, 규모가 큰 작업이면 1건만 처리하라. 작업을 완료·검증·commit 하고 ${progressMdRelPath} 를 갱신한 뒤 세션을 끝내라. 실행 스크립트가 새 컨텍스트로 다음 회차를 자동 실행하므로 여기서 끝내는 것이 정상이며, 남은 작업이 있다는 이유로 세션을 붙잡지 말 것. 반대로 남은 시간이 한 작업을 안전하게 마치기에 부족하면 새 작업을 시작하지 말고 진행 중인 것만 정리·기록하고 즉시 종료하라.
 "@
+
+    $headBefore = & git rev-parse HEAD 2>$null
 
     # --fallback-model 은 -p 에서만 동작한다 (대화형 세션에서는 무효)
     $out = & claude `
@@ -165,12 +170,19 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
         Write-Output "[${round}회차] 비정상 종료 (exit ${exitCode}) - 연속 실패 ${fails}회"
     } else {
         $fails = 0
+        # 진행 기록만 고친 commit 은 작업으로 치지 않는다
+        $changed = & git diff --name-only $headBefore HEAD -- . ':(exclude)autopilot/AUTOPILOT_PROGRESS.md' 2>$null
+        if (-not $headBefore -or $changed) { $idle = 0 } else {
+            $idle++
+            Write-Output "[${round}회차] 새 commit 없음 (연속 ${idle}/${MaxIdleRounds})"
+        }
     }
 
     if ($out) { $out | Select-Object -Last 15 | ForEach-Object { Write-Output $_ } }
     Write-Output ''
 
     if ($Policy -eq '지시개선' -and (Test-Path $todoDoneMarker)) { $todoDone = $true; break }
+    if ($idle -ge $MaxIdleRounds) { $idleStop = $true; break }
 
     if ($fails -ge 3) { $aborted = $true; break }
 }
@@ -181,6 +193,8 @@ if ($aborted) {
     Write-Output "  연속 3회 실패로 중단 (${round}회차)"
 } elseif ($todoDone) {
     Write-Output "  AutoPilot 종료 - 지시개선 정책: 예약 작업 완료 (${round}회차)"
+} elseif ($idleStop) {
+    Write-Output "  AutoPilot 종료 - ${MaxIdleRounds}회차 연속 새 commit 없음 (${round}회차)"
 } elseif ($round -ge $MaxRounds) {
     Write-Output "  AutoPilot 종료 - 회차 상한 ${MaxRounds}회 도달"
 } else {

@@ -45,6 +45,7 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - **인수인계**: `autopilot/AUTOPILOT_PROGRESS.md` 한 파일(날짜별로 나누지 않는다 - 새 날짜 첫 회차가 이전 상태를 못 읽게 됨).
 - **지시개선 완료 신호**: 세션이 빈 파일 `autopilot/progress/<시작 날짜>/TODO_COMPLETE`를 만들면 루프 종료. 스크립트 시작 시 삭제한다.
 - **실패**: `claude` exit code ≠ 0 이 연속 3회면 중단.
+- **할 일 없음**: 성공 회차인데 새 commit이 없으면(진행 기록만 고친 commit 포함) idle로 센다. 연속 2회면 종료. 회차 전후 `git diff --name-only`로 판정한다.
 - 회차 프롬프트(`$prompt`, `$policyPrompt`)에 정책·남은 시간·작업 수 상한이 주입된다. 세션은 이 값을 스스로 추측하지 않는다.
 
 ### AUTOPILOT_TODO.md 파싱 규칙
@@ -57,7 +58,7 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 
 다음 값은 `autopilot_loop.ps1`, `AUTOPILOT.md`, `README.md`, bat 주석에 함께 적혀 있다. 하나를 바꾸면 모두 갱신한다.
 
-종료 시각 기본값 `07:00` · 정책 값/기본값 · 최소 남은 시간 20분 · 최대 60회차 · 연속 실패 3회 · 회차당 작업 2건 · `TODO_COMPLETE` 경로 · commit 접두어 `[ap]` · 작업 브랜치 `ai/autopilot`
+종료 시각 기본값 `07:00` · 정책 값/기본값 · 최소 남은 시간 20분 · 최대 60회차 · 연속 실패 3회 · 연속 idle 2회 · 회차당 작업 2건 · `TODO_COMPLETE` 경로 · commit 접두어 `[ap]` · 작업 브랜치 `ai/autopilot`
 
 ## 인코딩 (중요)
 
