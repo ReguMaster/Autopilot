@@ -50,7 +50,7 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - **인수인계**: `autopilot/AUTOPILOT_PROGRESS.md` 한 파일(날짜별로 나누지 않는다 - 새 날짜 첫 회차가 이전 상태를 못 읽게 됨).
 - **지시개선 완료 신호**: 세션이 빈 파일 `autopilot/progress/<시작 날짜>/TODO_COMPLETE`를 만들면 루프 종료. 스크립트 시작 시 삭제한다.
 - **실패**: `claude` exit code ≠ 0 이면 `$RetryWaitMinutes`(5·15·30분) 간격으로 재시도하고, 그 횟수를 넘겨 연속 실패하면 중단.
-- **시한**: 회차는 `min(남은 시간, $MaxRoundMinutes)`에 `taskkill /T /F`로 트리째 종료되고 실패로 센다. 프롬프트는 인자가 아니라 stdin으로 넘긴다(`claude.cmd` 설치본에서 cmd가 특수문자를 해석하지 않게).
+- **시한**: 회차는 `min(남은 시간, $MaxRoundMinutes)`에 `taskkill /T /F`로 트리째 종료되고 실패로 센다. 프롬프트는 인자가 아니라 stdin으로 넘긴다(`claude.cmd` 설치본에서 cmd가 특수문자를 해석하지 않게). `WorkingDirectory`는 반드시 `$ProjectDir`로 지정한다 - `Set-Location`은 .NET 프로세스의 cwd를 바꾸지 않는다.
 - **할 일 없음**: 성공 회차인데 새 commit이 없으면(진행 기록만 고친 commit 포함) idle로 센다. 연속 2회면 종료. 회차 전후 `git diff --name-only`로 판정한다.
 - **출력**: `--output-format stream-json --verbose`를 한 줄씩 읽어 `Write-StreamEvent`가 요약해 콘솔과 로그에 남긴다. text 형식은 세션이 끝나야 한꺼번에 나와 진행을 볼 수 없다. `{"type":"user"`로 시작하는 줄(도구 결과)은 파싱하지 않는다(PS 5.1 `ConvertFrom-Json`은 2MB를 넘으면 실패).
 - 반환값이 있는 함수 안에서는 `Write-Output` 대신 `Write-Log`/`Write-Host`를 쓴다. `Write-Output`은 반환값에 섞인다.
@@ -73,3 +73,4 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - **`.bat`은 ASCII만.** 시스템 ACP가 949라 CMD가 한글 바이트를 깨뜨려 명령 구분자로 해석한다. 한글이 필요한 로직은 ps1에 둔다.
 - **`autopilot_loop.ps1`은 UTF-8 BOM 필수.** BOM이 없으면 Windows PowerShell 5.1이 소스를 949로 읽어 한글 리터럴이 파싱 단계에서 깨진다. 파일을 다시 쓴 뒤에는 위의 BOM 확인 명령으로 검증한다.
 - 콘솔/로그 인코딩은 스크립트 상단에서 UTF-8로 고정한다. 이 블록을 제거하지 않는다.
+- 줄바꿈이 파일마다 다르다: `core/*.md` · `.gitignore` · `AUTOPILOT_PROGRESS.md`는 CRLF, 나머지는 LF. 스크립트로 문자열 치환할 때 대상 파일의 줄바꿈에 맞춘다.
