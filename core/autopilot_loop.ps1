@@ -29,6 +29,7 @@ $ProjectDir       = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent   # au
 $MaxTasksPerRound = 2      # 한 회차가 다룰 작업 수 상한 (규모가 크면 1건만 해도 정상)
 $MinMinutes       = 20     # 남은 시간이 이보다 적으면 새 회차를 시작하지 않는다
 $MaxRounds        = 60
+$RetryWaitMinutes = 5, 15, 30   # 실패 회차 뒤 재시도 전 대기. 이 횟수를 넘겨 연속 실패하면 중단한다
 $MaxIdleRounds    = 2      # 새 commit 없이 끝난 회차가 연속 이만큼이면 남은 작업이 없는 것으로 보고 끝낸다
 $AutoCompact      = 150000
 
@@ -184,13 +185,19 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
     if ($Policy -eq '지시개선' -and (Test-Path $todoDoneMarker)) { $todoDone = $true; break }
     if ($idle -ge $MaxIdleRounds) { $idleStop = $true; break }
 
-    if ($fails -ge 3) { $aborted = $true; break }
+    if ($fails -gt $RetryWaitMinutes.Count) { $aborted = $true; break }
+    if ($fails -gt 0) {
+        $wait = $RetryWaitMinutes[$fails - 1]
+        if (($deadline - (Get-Date)).TotalMinutes - $wait -lt $MinMinutes) { break }
+        Write-Output "[${round}회차] ${wait}분 후 재시도"
+        Start-Sleep -Seconds ($wait * 60)
+    }
 }
 
 Write-Output ''
 Write-Output '=========================================='
 if ($aborted) {
-    Write-Output "  연속 3회 실패로 중단 (${round}회차)"
+    Write-Output "  연속 ${fails}회 실패로 중단 (${round}회차)"
 } elseif ($todoDone) {
     Write-Output "  AutoPilot 종료 - 지시개선 정책: 예약 작업 완료 (${round}회차)"
 } elseif ($idleStop) {
