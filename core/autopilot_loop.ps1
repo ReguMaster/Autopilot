@@ -46,6 +46,7 @@ function Invoke-Claude([string]$Prompt, [datetime]$KillAt) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo $claudeExe
     # --fallback-model 은 -p 에서만 동작한다 (대화형 세션에서는 무효)
     $psi.Arguments = "--model opus --effort $Effort --fallback-model sonnet --autocompact $AutoCompact --dangerously-skip-permissions -p"
+    $psi.WorkingDirectory = $ProjectDir   # Set-Location 은 .NET 프로세스의 현재 디렉터리를 바꾸지 않는다
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
@@ -186,7 +187,7 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
 
     $headBefore = & git rev-parse HEAD 2>$null
 
-    $killAt = (Get-Date).AddMinutes([Math]::Min($remain, $MaxRoundMinutes))
+    $killAt = (Get-Date).AddMinutes([Math]::Min([double]$remain, $MaxRoundMinutes))   # [double] 없으면 Min(int,int) 로 잘린다
     $r = Invoke-Claude $prompt $killAt
     $out = $r.Output
     $exitCode = $r.ExitCode
