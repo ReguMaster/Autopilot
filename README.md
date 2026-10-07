@@ -126,4 +126,5 @@ start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 
 - `.bat`은 시스템 ACP(949)에서 한글이 깨지므로 **ASCII만** 유지하고, 로직은 PowerShell에 둡니다.
 - `autopilot_loop.ps1`은 **UTF-8 BOM**으로 저장해야 합니다. BOM이 없으면 Windows PowerShell 5.1이 한글 리터럴을 잘못 읽습니다.
-- 로그는 `autopilot/progress/<날짜>/autopilot_<HHmmss>.log`에 쌓입니다.
+- 회차 진행(세션 ID · 사용한 도구 · 결과 요약과 비용 · stderr)이 콘솔에 실시간으로 표시되고 `autopilot/progress/<날짜>/autopilot_<HHmmss>.log`에도 쌓입니다.
+- 회차의 전체 대화는 대상 프로젝트 루트에서 `claude --resume <세션 ID>`로 열어 볼 수 있습니다.

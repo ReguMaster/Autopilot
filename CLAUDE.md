@@ -25,6 +25,8 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 
 루프 동작 검증은 실제 세션 대신 가짜 `claude.cmd`를 PATH 맨 앞에 두고 한다(스크립트가 `Get-Command claude`로 PATH 순서대로 찾는다).
 이때 대상 프로젝트 역할을 할 임시 git 저장소에 키트를 `autopilot/`으로 복사하고, 복사본의 `$MinMinutes` · `$MaxRoundMinutes` · `$RetryWaitMinutes`를 초 단위로 줄여 돌린다.
+가짜가 git을 건드린다면 **이 저장소가 아닌 cwd에서** 실행하고, 가짜 안에서도 cwd를 확인해 대상 폴더가 아니면 바로 종료시킨다.
+가짜 출력은 실제처럼 공백 없는 JSON(`{"type":"assistant",...}`)이어야 `user` 이벤트 건너뛰기 경로가 검증된다.
 
 ## 구조
 
@@ -50,6 +52,8 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - **실패**: `claude` exit code ≠ 0 이면 `$RetryWaitMinutes`(5·15·30분) 간격으로 재시도하고, 그 횟수를 넘겨 연속 실패하면 중단.
 - **시한**: 회차는 `min(남은 시간, $MaxRoundMinutes)`에 `taskkill /T /F`로 트리째 종료되고 실패로 센다. 프롬프트는 인자가 아니라 stdin으로 넘긴다(`claude.cmd` 설치본에서 cmd가 특수문자를 해석하지 않게).
 - **할 일 없음**: 성공 회차인데 새 commit이 없으면(진행 기록만 고친 commit 포함) idle로 센다. 연속 2회면 종료. 회차 전후 `git diff --name-only`로 판정한다.
+- **출력**: `--output-format stream-json --verbose`를 한 줄씩 읽어 `Write-StreamEvent`가 요약해 콘솔과 로그에 남긴다. text 형식은 세션이 끝나야 한꺼번에 나와 진행을 볼 수 없다. `{"type":"user"`로 시작하는 줄(도구 결과)은 파싱하지 않는다(PS 5.1 `ConvertFrom-Json`은 2MB를 넘으면 실패).
+- 반환값이 있는 함수 안에서는 `Write-Output` 대신 `Write-Log`/`Write-Host`를 쓴다. `Write-Output`은 반환값에 섞인다.
 - 회차 프롬프트(`$prompt`, `$policyPrompt`)에 작업 범위(`$ProjectDir`)·정책·남은 시간·작업 수 상한이 주입된다. 세션은 이 값을 스스로 추측하지 않는다.
 
 ### AUTOPILOT_TODO.md 파싱 규칙

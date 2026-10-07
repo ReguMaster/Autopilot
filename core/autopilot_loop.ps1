@@ -40,33 +40,82 @@ Set-Location $ProjectDir
 $claudeExe = (Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 if (-not $claudeExe) { Write-Output 'PATH 에서 claude 를 찾지 못했습니다.'; exit 1 }
 
+function Write-Log([string]$Text) {
+    Write-Host $Text
+    $Text | Add-Content -LiteralPath $log -Encoding UTF8
+}
+
+# stream-json 한 줄을 사람이 읽을 형태로 줄여 콘솔과 로그에 남긴다.
+# 도구 결과(user)와 거대한 줄은 파싱하지 않는다 - PowerShell 5.1 의 ConvertFrom-Json 은 2MB 를 넘으면 실패한다.
+function Write-StreamEvent([string]$Line) {
+    if ($Line.StartsWith('{"type":"user"') -or $Line.Length -gt 1000000) { return }
+    try { $e = $Line | ConvertFrom-Json } catch { return }
+    if ($e.parent_tool_use_id) { return }   # 서브에이전트 내부 진행은 생략
+    $now = Get-Date -Format 'HH:mm:ss'
+    switch ($e.type) {
+        'system' {
+            if ($e.subtype -eq 'init') { Write-Log "$now [세션] $($e.session_id) (claude --resume 으로 전체 기록 확인)" }
+        }
+        'assistant' {
+            foreach ($c in $e.message.content) {
+                if ($c.type -eq 'text' -and $c.text.Trim()) {
+                    Write-Log "$now $($c.text.Trim())"
+                } elseif ($c.type -eq 'tool_use') {
+                    $i = $c.input
+                    $arg = @($i.command, $i.file_path, $i.pattern, $i.description, $i.url, $i.path) | Where-Object { $_ } | Select-Object -First 1
+                    if ($arg) {
+                        $arg = ([string]$arg -split '\r?\n')[0]
+                        if ($arg.Length -gt 120) { $arg = $arg.Substring(0, 120) + '...' }
+                    }
+                    Write-Log "$now   > $($c.name) $arg"
+                }
+            }
+        }
+        'result' {
+            $min = [Math]::Round($e.duration_ms / 60000, 1)
+            Write-Log ("$now [결과] {0} · {1}턴 · {2}분 · `${3:N2}" -f $e.subtype, $e.num_turns, $min, $e.total_cost_usd)
+        }
+    }
+}
+
 # & claude 로 부르면 멈춘 회차(watch 모드 테스트, 끝나지 않는 dev server 등)를 끊을 수 없어 Process 로 띄운다.
 # 프롬프트는 stdin 으로 넘긴다 - npm 설치본(claude.cmd)은 인자가 cmd 를 거치며 특수문자가 해석된다.
 function Invoke-Claude([string]$Prompt, [datetime]$KillAt) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo $claudeExe
     # --fallback-model 은 -p 에서만 동작한다 (대화형 세션에서는 무효)
-    $psi.Arguments = "--model opus --effort $Effort --fallback-model sonnet --autocompact $AutoCompact --dangerously-skip-permissions -p"
+    # text 출력은 세션이 끝나야 한꺼번에 나오므로 진행 상황을 보려면 stream-json 이어야 한다 (--verbose 필수)
+    $psi.Arguments = "--model opus --effort $Effort --fallback-model sonnet --autocompact $AutoCompact --dangerously-skip-permissions --output-format stream-json --verbose -p"
     $psi.WorkingDirectory = $ProjectDir   # Set-Location 은 .NET 프로세스의 현재 디렉터리를 바꾸지 않는다
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
     $psi.StandardOutputEncoding = $utf8NoBom
+    $psi.StandardErrorEncoding = $utf8NoBom
     $p = [System.Diagnostics.Process]::Start($psi)
     $bytes = $utf8NoBom.GetBytes($Prompt)
     $p.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
     $p.StandardInput.Close()
-    $stdout = $p.StandardOutput.ReadToEndAsync()
+    $stderr = $p.StandardError.ReadToEndAsync()
 
-    $ms = [Math]::Max(0, ($KillAt - (Get-Date)).TotalMilliseconds)
-    $timedOut = -not $p.WaitForExit([int]$ms)
-    if ($timedOut) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; [void]$p.WaitForExit(30000) }
-    # 손자 프로세스가 파이프를 물고 있으면 EOF 가 오지 않으므로 무한정 기다리지 않는다
-    $text = if ($stdout.Wait(10000)) { $stdout.Result } else { '' }
-    @{
-        Output   = $text -split '\r?\n'
-        ExitCode = $(if ($p.HasExited) { $p.ExitCode } else { -1 })
-        TimedOut = $timedOut
+    $timedOut = $false
+    $read = $p.StandardOutput.ReadLineAsync()
+    while ($true) {
+        if (-not $read.Wait(1000)) {
+            # 손자 프로세스가 파이프를 물고 있으면 EOF 가 오지 않으므로 claude 가 끝났으면 더 기다리지 않는다
+            if ($p.HasExited) { break }
+            if ((Get-Date) -lt $KillAt) { continue }
+            $timedOut = $true
+            & taskkill /PID $p.Id /T /F 2>&1 | Out-Null
+            break
+        }
+        if ($null -eq $read.Result) { break }
+        Write-StreamEvent $read.Result
+        $read = $p.StandardOutput.ReadLineAsync()
     }
+    [void]$p.WaitForExit(30000)
+    if ($stderr.Wait(5000) -and $stderr.Result.Trim()) { Write-Log "[stderr] $($stderr.Result.Trim())" }
+    @{ ExitCode = $(if ($p.HasExited) { $p.ExitCode } else { -1 }); TimedOut = $timedOut }
 }
 
 $runDate = Get-Date -Format 'yyyy-MM-dd'
@@ -189,26 +238,22 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
 
     $killAt = (Get-Date).AddMinutes([Math]::Min([double]$remain, $MaxRoundMinutes))   # [double] 없으면 Min(int,int) 로 잘린다
     $r = Invoke-Claude $prompt $killAt
-    $out = $r.Output
     $exitCode = $r.ExitCode
-    if ($r.TimedOut) { Write-Output "[${round}회차] 시한 $($killAt.ToString('HH:mm')) 초과로 강제 종료" }
-
-    $out | Add-Content -LiteralPath $log -Encoding UTF8
+    if ($r.TimedOut) { Write-Log "[${round}회차] 시한 $($killAt.ToString('HH:mm')) 초과로 강제 종료" }
 
     if ($exitCode -ne 0) {
         $fails++
-        Write-Output "[${round}회차] 비정상 종료 (exit ${exitCode}) - 연속 실패 ${fails}회"
+        Write-Log "[${round}회차] 비정상 종료 (exit ${exitCode}) - 연속 실패 ${fails}회"
     } else {
         $fails = 0
         # 진행 기록만 고친 commit 은 작업으로 치지 않는다
         $changed = & git diff --name-only $headBefore HEAD -- . ':(exclude)autopilot/AUTOPILOT_PROGRESS.md' 2>$null
         if (-not $headBefore -or $changed) { $idle = 0 } else {
             $idle++
-            Write-Output "[${round}회차] 새 commit 없음 (연속 ${idle}/${MaxIdleRounds})"
+            Write-Log "[${round}회차] 새 commit 없음 (연속 ${idle}/${MaxIdleRounds})"
         }
     }
 
-    if ($out) { $out | Select-Object -Last 15 | ForEach-Object { Write-Output $_ } }
     Write-Output ''
 
     if ($Policy -eq '지시개선' -and (Test-Path $todoDoneMarker)) { $todoDone = $true; break }
@@ -218,7 +263,7 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
     if ($fails -gt 0) {
         $wait = $RetryWaitMinutes[$fails - 1]
         if (($deadline - (Get-Date)).TotalMinutes - $wait -lt $MinMinutes) { break }
-        Write-Output "[${round}회차] ${wait}분 후 재시도"
+        Write-Log "[${round}회차] ${wait}분 후 재시도"
         Start-Sleep -Seconds ($wait * 60)
     }
 }
