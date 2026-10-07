@@ -121,6 +121,7 @@ start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 - `git reset --hard` · `git clean` · force push · history 재작성 · stash drop 금지.
 - 운영 서버·DB 조작, 인증정보 변경, 새 외부 서비스·dependency 추가 금지.
 - commit은 검증을 마친 작업 단위로, 메시지에 `[ap]` 접두어를 붙입니다. 예: `[ap] fix: 상태 손실 방지`
+- 프로젝트 고유의 보호 대상 데이터나 금지 사항은 키트 정책이 아니라 대상 프로젝트의 `CLAUDE.md`에 적습니다.
 
 ## 참고
 
