@@ -29,12 +29,44 @@ $ProjectDir       = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent   # au
 $MaxTasksPerRound = 2      # 한 회차가 다룰 작업 수 상한 (규모가 크면 1건만 해도 정상)
 $MinMinutes       = 20     # 남은 시간이 이보다 적으면 새 회차를 시작하지 않는다
 $MaxRounds        = 60
+$MaxRoundMinutes  = 120    # 회차 강제 종료 시한. 종료 시각이 더 가까우면 종료 시각에 끊는다
 $RetryWaitMinutes = 5, 15, 30   # 실패 회차 뒤 재시도 전 대기. 이 횟수를 넘겨 연속 실패하면 중단한다
 $MaxIdleRounds    = 2      # 새 commit 없이 끝난 회차가 연속 이만큼이면 남은 작업이 없는 것으로 보고 끝낸다
 $AutoCompact      = 150000
 
 $env:CLAUDE_CONFIG_DIR = Join-Path $env:USERPROFILE $ConfigDir
 Set-Location $ProjectDir
+
+$claudeExe = (Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+if (-not $claudeExe) { Write-Output 'PATH 에서 claude 를 찾지 못했습니다.'; exit 1 }
+
+# & claude 로 부르면 멈춘 회차(watch 모드 테스트, 끝나지 않는 dev server 등)를 끊을 수 없어 Process 로 띄운다.
+# 프롬프트는 stdin 으로 넘긴다 - npm 설치본(claude.cmd)은 인자가 cmd 를 거치며 특수문자가 해석된다.
+function Invoke-Claude([string]$Prompt, [datetime]$KillAt) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo $claudeExe
+    # --fallback-model 은 -p 에서만 동작한다 (대화형 세션에서는 무효)
+    $psi.Arguments = "--model opus --effort $Effort --fallback-model sonnet --autocompact $AutoCompact --dangerously-skip-permissions -p"
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.StandardOutputEncoding = $utf8NoBom
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $bytes = $utf8NoBom.GetBytes($Prompt)
+    $p.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $p.StandardInput.Close()
+    $stdout = $p.StandardOutput.ReadToEndAsync()
+
+    $ms = [Math]::Max(0, ($KillAt - (Get-Date)).TotalMilliseconds)
+    $timedOut = -not $p.WaitForExit([int]$ms)
+    if ($timedOut) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; [void]$p.WaitForExit(30000) }
+    # 손자 프로세스가 파이프를 물고 있으면 EOF 가 오지 않으므로 무한정 기다리지 않는다
+    $text = if ($stdout.Wait(10000)) { $stdout.Result } else { '' }
+    @{
+        Output   = $text -split '\r?\n'
+        ExitCode = $(if ($p.HasExited) { $p.ExitCode } else { -1 })
+        TimedOut = $timedOut
+    }
+}
 
 $runDate = Get-Date -Format 'yyyy-MM-dd'
 $progressDir = Join-Path $ProjectDir ('autopilot\progress\' + $runDate)
@@ -154,15 +186,11 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
 
     $headBefore = & git rev-parse HEAD 2>$null
 
-    # --fallback-model 은 -p 에서만 동작한다 (대화형 세션에서는 무효)
-    $out = & claude `
-        --model opus `
-        --effort $Effort `
-        --fallback-model sonnet `
-        --autocompact $AutoCompact `
-        --dangerously-skip-permissions `
-        -p $prompt
-    $exitCode = $LASTEXITCODE
+    $killAt = (Get-Date).AddMinutes([Math]::Min($remain, $MaxRoundMinutes))
+    $r = Invoke-Claude $prompt $killAt
+    $out = $r.Output
+    $exitCode = $r.ExitCode
+    if ($r.TimedOut) { Write-Output "[${round}회차] 시한 $($killAt.ToString('HH:mm')) 초과로 강제 종료" }
 
     $out | Add-Content -LiteralPath $log -Encoding UTF8
 
