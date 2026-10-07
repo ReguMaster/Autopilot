@@ -17,6 +17,10 @@ AutoPilot은 `C:\LOCATION` 내부의 파일만 생성, 수정, 이동, 이름 �
 Git 상태 확인, diff 확인처럼 변경하지 않는 조회는 프로젝트 전체를 대상으로 해도 된다.
 허용 범위 외부의 변경이 필요하다고 판단되면 임의로 수행하지 않고 그 작업을 건너뛴다.
 
+`autopilot/` 폴더는 AutoPilot 키트 자체이므로 허용 범위 안에 있어도 작업 대상이 아니다.
+이 안에서는 `autopilot/AUTOPILOT_PROGRESS.md` 갱신, `autopilot/progress/` 기록, `autopilot/recycle_bin/`으로의 이동만 한다.
+지침 · 정책 · 실행 스크립트(`autopilot/core/` 등)와 `autopilot/AUTOPILOT_TODO.md`는 읽기만 하고 수정 · 이동 · 삭제하지 않는다.
+
 ## 기본 원칙
 
 - 기존 프로젝트 구조와 기능을 최대한 유지한다.
@@ -32,6 +36,7 @@ Git 상태 확인, diff 확인처럼 변경하지 않는 조회는 프로젝트 
 - API Key, Token, Password 등 인증정보 변경 및 코드 하드코딩
 - 프로젝트 전체 재작성, 전체 구조 변경, Framework 변경 또는 대규모 migration
 - 알 수 없는 외부 서비스 추가
+- AutoPilot 지침 · 정책 · 실행 스크립트 수정 (`autopilot/core/` 등, 위 `작업 범위` 참고)
 
 ## 파일 삭제 정책
 

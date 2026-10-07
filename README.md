@@ -112,6 +112,7 @@ start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 
 - 모든 작업은 `ai/autopilot` 브랜치에서만 합니다. 없으면 `main`에서 분기합니다.
 - 허용 범위 밖의 파일은 수정하지 않습니다.
+- `autopilot/` 키트 자체(지침 · 정책 · 스크립트 · TODO)는 수정하지 않습니다. 진행 기록 · 로그 · `recycle_bin`만 씁니다.
 - 파일을 삭제하지 않고 `autopilot/recycle_bin`으로 옮깁니다.
 - `git reset --hard` · `git clean` · force push · history 재작성 · stash drop 금지.
 - 운영 서버·DB 조작, 인증정보 변경, 새 외부 서비스·dependency 추가 금지.
