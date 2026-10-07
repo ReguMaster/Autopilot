@@ -50,6 +50,7 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - **인수인계**: `autopilot/AUTOPILOT_PROGRESS.md` 한 파일(날짜별로 나누지 않는다 - 새 날짜 첫 회차가 이전 상태를 못 읽게 됨).
 - **지시개선 완료 신호**: 세션이 빈 파일 `autopilot/progress/<시작 날짜>/TODO_COMPLETE`를 만들면 루프 종료. 스크립트 시작 시 삭제한다.
 - **실패**: `claude` exit code ≠ 0 이면 `$RetryWaitMinutes`(5·15·30분) 간격으로 재시도하고, 그 횟수를 넘겨 연속 실패하면 중단.
+- **사용량 한도**: `rate_limit_event`는 허용 상태에서도 오므로 `resetsAt`은 늘 갱신하고, `status`가 `allowed*`가 아니면 한도 도달로 본다. 한도 도달 + 회차 실패(exit ≠ 0 또는 `is_error`)일 때만 리셋 1분 뒤까지 대기하고 실패로 세지 않는다. 실제 한도 도달 시의 `status` 값(`rejected`로 추정)은 아직 실측하지 못했다.
 - **시한**: 회차는 `min(남은 시간, $MaxRoundMinutes)`에 `taskkill /T /F`로 트리째 종료되고 실패로 센다. 프롬프트는 인자가 아니라 stdin으로 넘긴다(`claude.cmd` 설치본에서 cmd가 특수문자를 해석하지 않게). `WorkingDirectory`는 반드시 `$ProjectDir`로 지정한다 - `Set-Location`은 .NET 프로세스의 cwd를 바꾸지 않는다.
 - **할 일 없음**: 성공 회차인데 새 commit이 없으면(진행 기록만 고친 commit 포함) idle로 센다. 연속 2회면 종료. 회차 전후 `git diff --name-only`로 판정한다.
 - **출력**: `--output-format stream-json --verbose`를 한 줄씩 읽어 `Write-StreamEvent`가 요약해 콘솔과 로그에 남긴다. text 형식은 세션이 끝나야 한꺼번에 나와 진행을 볼 수 없다. `{"type":"user"`로 시작하는 줄(도구 결과)은 파싱하지 않는다(PS 5.1 `ConvertFrom-Json`은 2MB를 넘으면 실패).

@@ -71,7 +71,17 @@ function Write-StreamEvent([string]$Line) {
                 }
             }
         }
+        'rate_limit_event' {
+            # 허용 상태에서도 매번 오므로 리셋 시각은 항상 갱신하고, allowed* 가 아닐 때만 한도 도달로 본다
+            $info = $e.rate_limit_info
+            if ($info.resetsAt) { $script:stat.ResetAt = [DateTimeOffset]::FromUnixTimeSeconds([long]$info.resetsAt).LocalDateTime }
+            if ($info.status -notlike 'allowed*') {
+                $script:stat.LimitHit = $true
+                Write-Log ("$now [사용량 한도] {0} {1} · {2:HH:mm} 리셋" -f $info.rateLimitType, $info.status, $script:stat.ResetAt)
+            }
+        }
         'result' {
+            $script:stat.IsError = [bool]$e.is_error
             $min = [Math]::Round($e.duration_ms / 60000, 1)
             Write-Log ("$now [결과] {0} · {1}턴 · {2}분 · `${3:N2}" -f $e.subtype, $e.num_turns, $min, $e.total_cost_usd)
         }
@@ -217,6 +227,7 @@ $idle = 0
 $aborted = $false
 $todoDone = $false
 $idleStop = $false
+$limitStop = $false
 
 while ($true) {
     if ($round -ge $MaxRounds) { break }
@@ -237,9 +248,24 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
     $headBefore = & git rev-parse HEAD 2>$null
 
     $killAt = (Get-Date).AddMinutes([Math]::Min([double]$remain, $MaxRoundMinutes))   # [double] 없으면 Min(int,int) 로 잘린다
+    $script:stat = @{ LimitHit = $false; ResetAt = $null; IsError = $false }
     $r = Invoke-Claude $prompt $killAt
     $exitCode = $r.ExitCode
     if ($r.TimedOut) { Write-Log "[${round}회차] 시한 $($killAt.ToString('HH:mm')) 초과로 강제 종료" }
+
+    # 사용량 한도는 장애가 아니라 리셋까지 기다리면 풀리므로 실패로 세지 않는다.
+    # 초과 사용(overage)으로 회차가 계속 진행됐다면 기다리지 않는다.
+    if ($stat.LimitHit -and ($exitCode -ne 0 -or $stat.IsError) -and $stat.ResetAt -gt (Get-Date)) {
+        if (($deadline - $stat.ResetAt).TotalMinutes -lt $MinMinutes) {
+            Write-Log ("[${round}회차] 사용량 한도 - 리셋 {0:HH:mm} 이 종료 시각에 걸려 종료" -f $stat.ResetAt)
+            $limitStop = $true
+            break
+        }
+        Write-Log ("[${round}회차] 사용량 한도 - {0:HH:mm} 리셋까지 대기 (실패로 세지 않음)" -f $stat.ResetAt)
+        Start-Sleep -Seconds ([int]($stat.ResetAt - (Get-Date)).TotalSeconds + 60)
+        Write-Output ''
+        continue
+    }
 
     if ($exitCode -ne 0) {
         $fails++
@@ -276,6 +302,8 @@ if ($aborted) {
     Write-Output "  AutoPilot 종료 - 지시개선 정책: 예약 작업 완료 (${round}회차)"
 } elseif ($idleStop) {
     Write-Output "  AutoPilot 종료 - ${MaxIdleRounds}회차 연속 새 commit 없음 (${round}회차)"
+} elseif ($limitStop) {
+    Write-Output "  AutoPilot 종료 - 사용량 한도 리셋이 종료 시각 이후 (${round}회차)"
 } elseif ($round -ge $MaxRounds) {
     Write-Output "  AutoPilot 종료 - 회차 상한 ${MaxRounds}회 도달"
 } else {
