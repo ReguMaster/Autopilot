@@ -16,6 +16,6 @@ REM ==========================================
 
 setlocal
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0core\autopilot_loop.ps1" -ConfigDir ".claude" -Effort "xhigh" -EndTime "%~1" -Policy "%~2"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0core\autopilot_loop.ps1" -ConfigDir ".claude" -Effort "high" -EndTime "%~1" -Policy "%~2"
 
 if errorlevel 1 pause

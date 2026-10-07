@@ -115,8 +115,13 @@ function Invoke-Claude([string]$Prompt, [datetime]$KillAt) {
     $stderr = $p.StandardError.ReadToEndAsync()
 
     $timedOut = $false
+    $nextReport = [datetime]::MinValue
     $read = $p.StandardOutput.ReadLineAsync()
     while ($true) {
+        if ((Get-Date) -ge $nextReport) {
+            Write-Report "${round}회차 진행 중 · $($roundStart.ToString('HH:mm')) 시작 · 시한 $($KillAt.ToString('HH:mm'))" -Live
+            $nextReport = (Get-Date).AddSeconds(30)
+        }
         if (-not $read.Wait(1000)) {
             # 손자 프로세스가 파이프를 물고 있으면 EOF 가 오지 않으므로 claude 가 끝났으면 더 기다리지 않는다
             if ($p.HasExited) { break }
@@ -154,8 +159,9 @@ function Add-RoundRecord([string]$Outcome) {
 
 function Escape-Html([string]$Text) { [System.Net.WebUtility]::HtmlEncode($Text) }
 
-# 더블클릭 실행은 성공하면 콘솔 창이 닫히므로, 아침에 볼 결과를 HTML 한 장으로 남긴다
-function Write-Report([string]$EndReason, [bool]$Bad) {
+# 더블클릭 실행은 성공하면 콘솔 창이 닫히므로, 아침에 볼 결과를 HTML 한 장으로 남긴다.
+# -Live 는 실행 중 갱신본이다. 시작할 때 연 브라우저 탭이 30초마다 다시 읽어 진행 상황을 보여 준다.
+function Write-Report([string]$Status, [bool]$Bad, [switch]$Live) {
     $css = @'
 :root{--bg:#f7f7f5;--card:#fff;--fg:#1d1d1f;--muted:#6b6b70;--line:#e2e2de;--ok:#1f7a4d;--warn:#8f5d00;--bad:#b3261e;--chip:#efefeb}
 @media (prefers-color-scheme:dark){:root{--bg:#161618;--card:#1f1f22;--fg:#ececee;--muted:#9a9aa2;--line:#303035;--ok:#5cc28f;--warn:#e0b04a;--bad:#f2827a;--chip:#2a2a2e;color-scheme:dark}}
@@ -173,14 +179,13 @@ h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:28px 0 10px}
 ul{margin:8px 0 0;padding-left:18px}
 code,pre{font:12.5px/1.5 ui-monospace,Consolas,monospace}
 details{margin-top:8px}summary{cursor:pointer;color:var(--muted);font-size:12px}
-pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:10px;margin:6px 0 0}
+pre{white-space:pre-wrap;word-break:break-word;color:var(--fg);background:var(--bg);border-radius:6px;padding:10px;margin:6px 0 0}
 '@
     $commitCount = ($rounds | ForEach-Object { $_.Commits.Count } | Measure-Object -Sum).Sum
     $costSum = ($rounds | Where-Object { $null -ne $_.Cost } | Measure-Object Cost -Sum).Sum
     $span = (Get-Date) - $runStart
     $elapsed = if ($span.TotalHours -ge 1) { '{0}시간 {1}분' -f [int][Math]::Floor($span.TotalHours), $span.Minutes } else { '{0}분' -f [int]$span.TotalMinutes }
     $branch = & git rev-parse --abbrev-ref HEAD 2>$null
-    $dirty = & git -c core.quotepath=false status --short 2>$null
 
     $cards = foreach ($x in $rounds) {
         $cls = switch -Wildcard ($x.Outcome) { '완료' { 'ok' } '사용량 한도' { 'warn' } 'commit 없음' { '' } default { 'bad' } }
@@ -198,15 +203,27 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radiu
     }
     if (-not $cards) { $cards = '<p class="meta">실행된 회차가 없습니다.</p>' }
 
-    $treeNote = if ($dirty) { '<p class="warn">commit되지 않은 변경이 남아 있습니다.</p><pre>' + (Escape-Html ($dirty -join "`n")) + '</pre>' } else { '<p class="meta">깨끗합니다.</p>' }
+    $reload = $liveNote = $tree = ''
+    if ($Live) {
+        # 새로고침 스크립트를 head 맨 앞에 둬서 반쯤 쓰인 파일을 읽어도 다음 주기에 복구된다. 펼친 details 가 있으면 미룬다
+        $reload = '<script>setTimeout(function r(){document.querySelector("details[open]")?setTimeout(r,3e4):location.reload()},3e4)</script>'
+        $liveNote = '<p class="meta">종료 예정 {0:HH:mm} · 남은 {1}분</p>' -f $deadline, [int]($deadline - (Get-Date)).TotalMinutes
+        $liveNote += if (Test-Path $stopFile) { '<p class="warn">중단 요청됨 - 이번 회차를 마치면 종료합니다.</p>' } else { '<p class="meta">이번 회차를 마치고 멈추려면 autopilot/stop_autopilot.bat 을 실행하세요.</p>' }
+        $tail = Get-Content -LiteralPath $log -Tail 15 -Encoding UTF8 -ErrorAction SilentlyContinue
+        if ($tail) { $liveNote += '<pre>' + (Escape-Html ($tail -join "`n")) + '</pre>' }
+    } else {
+        # 진행 중에는 부르지 않는다 - git status 는 index.lock 을 잡아 세션의 git 명령과 부딪힐 수 있다
+        $dirty = & git -c core.quotepath=false status --short 2>$null
+        $tree = '<h2>작업 트리</h2>' + $(if ($dirty) { '<p class="warn">commit되지 않은 변경이 남아 있습니다.</p><pre>' + (Escape-Html ($dirty -join "`n")) + '</pre>' } else { '<p class="meta">깨끗합니다.</p>' })
+    }
     $html = @"
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AutoPilot 리포트 $($runStart.ToString('yyyy-MM-dd HH:mm'))</title><style>$css</style></head>
+<html lang="ko"><head><meta charset="utf-8">$reload<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoPilot $(if ($Live) { '진행 중' } else { '리포트' }) $($runStart.ToString('yyyy-MM-dd HH:mm'))</title><style>$css</style></head>
 <body><main>
 <h1>AutoPilot 리포트</h1>
 <p class="sub">$(Escape-Html $ProjectDir) · $($runStart.ToString('MM-dd HH:mm')) → $((Get-Date).ToString('MM-dd HH:mm')) · $Policy · 브랜치 $(Escape-Html $branch)</p>
-<div class="box $(if ($Bad) { 'bad' })">$(Escape-Html $EndReason)</div>
+<div class="box $(if ($Bad) { 'bad' })">$(Escape-Html $Status)$liveNote</div>
 <div class="tiles">
 <div class="box"><b>$($rounds.Count)</b><span class="meta">회차</span></div>
 <div class="box"><b>$([int]$commitCount)</b><span class="meta">commit</span></div>
@@ -215,12 +232,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radiu
 </div>
 <h2>회차</h2>
 $($cards -join "`n")
-<h2>작업 트리</h2>
-$treeNote
+$tree
 <p class="meta">전체 로그: $(Escape-Html $log)</p>
 </main></body></html>
 "@
-    [System.IO.File]::WriteAllText($report, $html, $utf8NoBom)
+    # 브라우저가 읽는 순간과 겹쳐 실패한 진행 중 갱신은 다음 주기에 다시 쓴다
+    try { [System.IO.File]::WriteAllText($report, $html, $utf8NoBom) } catch { if (-not $Live) { throw } }
 }
 
 $runDate = Get-Date -Format 'yyyy-MM-dd'
@@ -236,6 +253,11 @@ $progressMdRelPath = 'autopilot/AUTOPILOT_PROGRESS.md'
 $todoDoneMarker = Join-Path $progressDir 'TODO_COMPLETE'
 $todoDoneRelPath = "autopilot/progress/$runDate/TODO_COMPLETE"
 if (Test-Path $todoDoneMarker) { Remove-Item -LiteralPath $todoDoneMarker -Force }
+
+# 소유자가 stop_autopilot.bat 으로 남기는 "이번 회차까지만" 신호. 창을 닫으면 회차가 중간에 끊기므로 이쪽을 쓴다.
+# 날짜 폴더가 아닌 이유: bat 의 %date% 형식이 로캘마다 다르다.
+$stopFile = Join-Path $ProjectDir 'autopilot\progress\STOP'
+if (Test-Path $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
 
 $todoPath = Join-Path $ProjectDir 'autopilot\AUTOPILOT_TODO.md'
 $todoText = if (Test-Path $todoPath) { [System.IO.File]::ReadAllText($todoPath) } else { '' }
@@ -310,6 +332,8 @@ Write-Output "Deadline : $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (출처: $
 Write-Output "Policy   : $Policy (출처: $policySource)"
 Write-Output "Tasks    : 회차당 최대 ${MaxTasksPerRound}건"
 Write-Output "Log      : $log"
+Write-Output "Report   : $report"
+Write-Output 'Stop     : autopilot\stop_autopilot.bat (현재 회차를 마치고 종료)'
 Write-Output ''
 
 if ($Policy -eq '지시개선') {
@@ -325,9 +349,14 @@ $aborted = $false
 $todoDone = $false
 $idleStop = $false
 $limitStop = $false
+$stopRequested = $false
+
+Write-Report '시작 중' -Live
+try { Start-Process -FilePath $report } catch { }
 
 while ($true) {
     if ($round -ge $MaxRounds) { break }
+    if (Test-Path $stopFile) { $stopRequested = $true; break }
 
     $remain = [int]($deadline - (Get-Date)).TotalMinutes
     if ($remain -lt $MinMinutes) { break }
@@ -361,6 +390,7 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
             break
         }
         Write-Log ("[${round}회차] 사용량 한도 - {0:HH:mm} 리셋까지 대기 (실패로 세지 않음)" -f $stat.ResetAt)
+        Write-Report ("사용량 한도 - {0:HH:mm} 리셋까지 대기 · 지금 창을 닫아도 안전합니다" -f $stat.ResetAt) -Live
         Start-Sleep -Seconds ([int]($stat.ResetAt - (Get-Date)).TotalSeconds + 60)
         Write-Output ''
         continue
@@ -386,16 +416,20 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
     if ($idle -ge $MaxIdleRounds) { $idleStop = $true; break }
 
     if ($fails -gt $RetryWaitMinutes.Count) { $aborted = $true; break }
+    if (Test-Path $stopFile) { $stopRequested = $true; break }
     if ($fails -gt 0) {
         $wait = $RetryWaitMinutes[$fails - 1]
         if (($deadline - (Get-Date)).TotalMinutes - $wait -lt $MinMinutes) { break }
         Write-Log "[${round}회차] ${wait}분 후 재시도"
+        Write-Report ("${round}회차 실패 - {0:HH:mm} 재시도 예정 · 지금 창을 닫아도 안전합니다" -f (Get-Date).AddMinutes($wait)) $true -Live
         Start-Sleep -Seconds ($wait * 60)
     }
 }
 
 $endReason = if ($aborted) {
     "연속 ${fails}회 실패로 중단 (${round}회차)"
+} elseif ($stopRequested) {
+    "AutoPilot 종료 - 중단 요청 (${round}회차)"
 } elseif ($todoDone) {
     "AutoPilot 종료 - 지시개선 정책: 예약 작업 완료 (${round}회차)"
 } elseif ($idleStop) {
@@ -431,7 +465,6 @@ Write-Report $endReason $aborted
 Write-Output ''
 Write-Output "전체 로그: $log"
 Write-Output "리포트  : $report"
-try { Start-Process -FilePath $report } catch { }
 
 if ($aborted) { exit 1 }
 exit 0

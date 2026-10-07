@@ -15,6 +15,7 @@ Claude Code를 무인으로 반복 실행해 대상 프로젝트를 자율 개�
 ```bash
 # 실행 (실제 claude 세션을 --dangerously-skip-permissions 로 띄우므로 주의)
 start_autopilot_PERSONAL.bat [HH:mm] [auto|todo]
+stop_autopilot.bat   # progress/STOP 을 만들어 현재 회차를 마치고 종료시킨다
 
 # 구문 검사 - 테스트가 없으므로 ps1 수정 후 최소 검증 수단
 powershell -NoProfile -Command '$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "core\autopilot_loop.ps1"), [ref]$null, [ref]$e); if ($e) { $e } else { "OK" }'
@@ -27,15 +28,16 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 이때 대상 프로젝트 역할을 할 임시 git 저장소에 키트를 `autopilot/`으로 복사하고, 복사본의 `$MinMinutes` · `$MaxRoundMinutes` · `$RetryWaitMinutes`를 초 단위로 줄여 돌린다.
 가짜가 git을 건드린다면 **이 저장소가 아닌 cwd에서** 실행하고, 가짜 안에서도 cwd를 확인해 대상 폴더가 아니면 바로 종료시킨다.
 가짜 출력은 실제처럼 공백 없는 JSON(`{"type":"assistant",...}`)이어야 `user` 이벤트 건너뛰기 경로가 검증된다.
-테스트 복사본에서는 리포트 자동 열기(`Start-Process -FilePath $report`) 줄을 지운다. 리포트 화면은 Edge headless `--screenshot`으로 확인하되, 창 폭이 약 500px 아래로 줄지 않으므로 좁은 화면은 400px iframe에 넣어 찍는다.
+테스트 복사본에서는 리포트 자동 열기(`Start-Process -FilePath $report`) 줄을 지운다. 진행 중 화면은 가짜 안에서 `Start-Sleep`으로 회차를 늘려 그 사이에 찍는다. 리포트 화면은 Edge headless `--screenshot`으로 확인하되, 창 폭이 약 500px 아래로 줄지 않으므로 좁은 화면은 400px iframe에 넣어 찍는다.
 
 ## 구조
 
 실행 흐름: `start_autopilot_PERSONAL.bat` → `core/autopilot_loop.ps1` → 회차마다 `claude -p` → 세션이 `core/AUTOPILOT.md` · `core/AUTOPILOT_POLICY.md`를 읽고 작업.
 
-- **bat**: 인자 전달만 한다(`-ConfigDir`, `-Effort`, `-EndTime`, `-Policy`). 로직을 넣지 않는다.
+- **bat**: 인자 전달만 한다(`-ConfigDir`, `-Effort`, `-EndTime`, `-Policy`). 로직을 넣지 않는다. `stop_autopilot.bat`은 `progress/STOP`만 만든다.
 - **ps1**: 종료 시각·정책 결정, 회차 루프, 프롬프트 조립, 실패 카운트, 로그, 아침 리포트. 전체 종료 판정은 스크립트만 한다.
-  리포트는 회차마다 `Add-RoundRecord`로 쌓고 종료 시 `Write-Report`가 단일 HTML로 쓴다. 회차 commit은 `--since <회차 시작>` + 이미 본 hash 제외로 고른다(`headBefore..HEAD`는 브랜치 전환 시 지난 실행 commit이 섞인다).
+  `autopilot/progress/STOP`이 있으면 회차 사이(루프 맨 앞, 재시도 대기 전)에서 종료한다. 시작 시 삭제하며 세션과는 무관한 신호다.
+  리포트는 회차마다 `Add-RoundRecord`로 쌓고 `Write-Report`가 단일 HTML로 쓴다. 시작 시 브라우저로 열고, 회차 중 30초마다와 대기 진입 시 `-Live`로 다시 써서 페이지가 스스로 새로고침한다. `-Live`에서는 `git status`를 부르지 않는다(index.lock이 세션의 git과 부딪힌다). 회차 commit은 `--since <회차 시작>` + 이미 본 hash 제외로 고른다(`headBefore..HEAD`는 브랜치 전환 시 지난 실행 commit이 섞인다).
 - **AUTOPILOT.md**: 세션이 따르는 작업 절차. **AUTOPILOT_POLICY.md**: 안전 정책, 모든 절차보다 우선.
 
 ### 경로 모델
@@ -69,7 +71,7 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 
 다음 값은 `autopilot_loop.ps1`, `AUTOPILOT.md`, `README.md`, bat 주석에 함께 적혀 있다. 하나를 바꾸면 모두 갱신한다.
 
-종료 시각 기본값 `07:00` · 정책 값/기본값 · 최소 남은 시간 20분 · 최대 60회차 · 회차 시한 120분 · 재시도 대기 5·15·30분 · 연속 idle 2회 · 회차당 작업 2건 · `TODO_COMPLETE` 경로 · commit 접두어 `[ap]` · 작업 브랜치 `ai/autopilot`
+종료 시각 기본값 `07:00` · 정책 값/기본값 · 최소 남은 시간 20분 · 최대 60회차 · 회차 시한 120분 · 재시도 대기 5·15·30분 · 연속 idle 2회 · 회차당 작업 2건 · `TODO_COMPLETE` 경로 · `STOP` 경로 · commit 접두어 `[ap]` · 작업 브랜치 `ai/autopilot`
 
 ## 인코딩 (중요)
 

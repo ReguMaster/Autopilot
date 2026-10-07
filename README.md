@@ -48,6 +48,7 @@ flowchart LR
 └─ autopilot/                      ← 이 저장소를 이 이름의 폴더로 복사한다
    ├─ .gitignore                     progress/ · recycle_bin/ · TODO를 git에서 제외
    ├─ start_autopilot_PERSONAL.bat   실행 진입점 (집 PC용)
+   ├─ stop_autopilot.bat             현재 회차를 마치고 종료 요청
    ├─ AUTOPILOT_TODO.md              소유자가 작성하는 오늘의 작업·실행시간·정책 (git 제외)
    ├─ AUTOPILOT_PROGRESS.md          세션 간 인수인계 문서 (AutoPilot이 갱신)
    ├─ progress/                      회차 로그 · 아침 리포트 (git 제외)
@@ -74,6 +75,9 @@ start_autopilot_PERSONAL.bat              :: TODO 파일의 설정을 따른다
 start_autopilot_PERSONAL.bat 07:00        :: 종료 시각 지정
 start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 ```
+
+중간에 멈추려면 `stop_autopilot.bat`을 실행합니다. 진행 중인 회차를 마친 뒤 리포트를 쓰고 종료합니다.
+콘솔 창을 닫으면 회차가 중간에 끊겨 commit 전 변경이 남습니다(재시도 · 한도 대기 중에는 닫아도 안전합니다).
 
 > **주의**: `claude`는 `--dangerously-skip-permissions`로 실행되므로 **신뢰할 수 있는 프로젝트에서만** 사용하세요.
 
@@ -130,4 +134,4 @@ start_autopilot_PERSONAL.bat 07:00 todo   :: 종료 시각 + 정책 지정
 - `autopilot_loop.ps1`은 **UTF-8 BOM**으로 저장해야 합니다. BOM이 없으면 Windows PowerShell 5.1이 한글 리터럴을 잘못 읽습니다.
 - 회차 진행(세션 ID · 사용한 도구 · 결과 요약과 비용 · stderr)이 콘솔에 실시간으로 표시되고 `autopilot/progress/<날짜>/autopilot_<HHmmss>.log`에도 쌓입니다.
 - 회차의 전체 대화는 대상 프로젝트 루트에서 `claude --resume <세션 ID>`로 열어 볼 수 있습니다.
-- 실행이 끝나면 `autopilot/progress/<날짜>/report_<HHmmss>.html` 리포트를 만들고 브라우저로 엽니다. 회차별 결과 · 소요 시간 · 비용(API 환산) · commit과 변경 규모 · 세션 요약 · stderr, 남은 미commit 변경을 한 장에 보여 줍니다.
+- 실행을 시작하면 `autopilot/progress/<날짜>/report_<HHmmss>.html` 리포트를 브라우저로 엽니다. 진행 중에는 현재 회차 · 남은 시간 · 최근 로그를 30초마다 갱신하고, 끝나면 회차별 결과 · 소요 시간 · 비용(API 환산) · commit과 변경 규모 · 세션 요약 · stderr, 남은 미commit 변경을 한 장에 담은 최종본이 됩니다.
