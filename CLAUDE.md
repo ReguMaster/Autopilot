@@ -27,13 +27,15 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 이때 대상 프로젝트 역할을 할 임시 git 저장소에 키트를 `autopilot/`으로 복사하고, 복사본의 `$MinMinutes` · `$MaxRoundMinutes` · `$RetryWaitMinutes`를 초 단위로 줄여 돌린다.
 가짜가 git을 건드린다면 **이 저장소가 아닌 cwd에서** 실행하고, 가짜 안에서도 cwd를 확인해 대상 폴더가 아니면 바로 종료시킨다.
 가짜 출력은 실제처럼 공백 없는 JSON(`{"type":"assistant",...}`)이어야 `user` 이벤트 건너뛰기 경로가 검증된다.
+테스트 복사본에서는 리포트 자동 열기(`Start-Process -FilePath $report`) 줄을 지운다. 리포트 화면은 Edge headless `--screenshot`으로 확인하되, 창 폭이 약 500px 아래로 줄지 않으므로 좁은 화면은 400px iframe에 넣어 찍는다.
 
 ## 구조
 
 실행 흐름: `start_autopilot_PERSONAL.bat` → `core/autopilot_loop.ps1` → 회차마다 `claude -p` → 세션이 `core/AUTOPILOT.md` · `core/AUTOPILOT_POLICY.md`를 읽고 작업.
 
 - **bat**: 인자 전달만 한다(`-ConfigDir`, `-Effort`, `-EndTime`, `-Policy`). 로직을 넣지 않는다.
-- **ps1**: 종료 시각·정책 결정, 회차 루프, 프롬프트 조립, 실패 카운트, 로그. 전체 종료 판정은 스크립트만 한다.
+- **ps1**: 종료 시각·정책 결정, 회차 루프, 프롬프트 조립, 실패 카운트, 로그, 아침 리포트. 전체 종료 판정은 스크립트만 한다.
+  리포트는 회차마다 `Add-RoundRecord`로 쌓고 종료 시 `Write-Report`가 단일 HTML로 쓴다. 회차 commit은 `--since <회차 시작>` + 이미 본 hash 제외로 고른다(`headBefore..HEAD`는 브랜치 전환 시 지난 실행 commit이 섞인다).
 - **AUTOPILOT.md**: 세션이 따르는 작업 절차. **AUTOPILOT_POLICY.md**: 안전 정책, 모든 절차보다 우선.
 
 ### 경로 모델

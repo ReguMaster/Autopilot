@@ -54,7 +54,10 @@ function Write-StreamEvent([string]$Line) {
     $now = Get-Date -Format 'HH:mm:ss'
     switch ($e.type) {
         'system' {
-            if ($e.subtype -eq 'init') { Write-Log "$now [세션] $($e.session_id) (claude --resume 으로 전체 기록 확인)" }
+            if ($e.subtype -eq 'init') {
+                $script:stat.Session = $e.session_id
+                Write-Log "$now [세션] $($e.session_id) (claude --resume 으로 전체 기록 확인)"
+            }
         }
         'assistant' {
             foreach ($c in $e.message.content) {
@@ -82,6 +85,9 @@ function Write-StreamEvent([string]$Line) {
         }
         'result' {
             $script:stat.IsError = [bool]$e.is_error
+            $script:stat.Turns = $e.num_turns
+            $script:stat.Cost = $e.total_cost_usd
+            $script:stat.Summary = $e.result
             $min = [Math]::Round($e.duration_ms / 60000, 1)
             Write-Log ("$now [결과] {0} · {1}턴 · {2}분 · `${3:N2}" -f $e.subtype, $e.num_turns, $min, $e.total_cost_usd)
         }
@@ -124,14 +130,105 @@ function Invoke-Claude([string]$Prompt, [datetime]$KillAt) {
         $read = $p.StandardOutput.ReadLineAsync()
     }
     [void]$p.WaitForExit(30000)
-    if ($stderr.Wait(5000) -and $stderr.Result.Trim()) { Write-Log "[stderr] $($stderr.Result.Trim())" }
-    @{ ExitCode = $(if ($p.HasExited) { $p.ExitCode } else { -1 }); TimedOut = $timedOut }
+    $err = if ($stderr.Wait(5000)) { $stderr.Result.Trim() } else { '' }
+    if ($err) { Write-Log "[stderr] $err" }
+    @{ ExitCode = $(if ($p.HasExited) { $p.ExitCode } else { -1 }); TimedOut = $timedOut; Stderr = $err }
+}
+
+# 리포트용 회차 기록. commit 은 회차 시작 이후 시각으로 고른다 - 회차 중 ai/autopilot 으로
+# 전환하면 HEAD 범위(headBefore..HEAD)에는 지난 실행의 commit 까지 섞인다.
+# --since 는 초 단위라 경계가 겹칠 수 있어 이미 기록한 commit 은 건너뛴다.
+$rounds = New-Object System.Collections.Generic.List[object]
+$seenCommits = New-Object System.Collections.Generic.HashSet[string]
+function Add-RoundRecord([string]$Outcome) {
+    $commits = @(& git -c core.quotepath=false log "--since=$($roundStart.ToString('s'))" --format='%h%x09%s' HEAD 2>$null | Where-Object { $seenCommits.Add(($_ -split "`t")[0]) } | ForEach-Object {
+        $hash, $subject = $_ -split "`t", 2
+        [pscustomobject]@{ Hash = $hash; Subject = $subject; Stat = ((& git show --shortstat --format= $hash 2>$null) -join ' ').Trim() }
+    })
+    $rounds.Add([pscustomobject]@{
+        Round = $round; Start = $roundStart; Minutes = [Math]::Round(((Get-Date) - $roundStart).TotalMinutes, 1)
+        Outcome = $Outcome; Session = $stat.Session; Turns = $stat.Turns; Cost = $stat.Cost
+        Summary = $stat.Summary; Stderr = $r.Stderr; Commits = $commits
+    })
+}
+
+function Escape-Html([string]$Text) { [System.Net.WebUtility]::HtmlEncode($Text) }
+
+# 더블클릭 실행은 성공하면 콘솔 창이 닫히므로, 아침에 볼 결과를 HTML 한 장으로 남긴다
+function Write-Report([string]$EndReason, [bool]$Bad) {
+    $css = @'
+:root{--bg:#f7f7f5;--card:#fff;--fg:#1d1d1f;--muted:#6b6b70;--line:#e2e2de;--ok:#1f7a4d;--warn:#8f5d00;--bad:#b3261e;--chip:#efefeb}
+@media (prefers-color-scheme:dark){:root{--bg:#161618;--card:#1f1f22;--fg:#ececee;--muted:#9a9aa2;--line:#303035;--ok:#5cc28f;--warn:#e0b04a;--bad:#f2827a;--chip:#2a2a2e;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 system-ui,"Segoe UI","Malgun Gothic",sans-serif}
+main{max-width:880px;margin:0 auto;padding:32px 16px 64px;overflow-wrap:anywhere}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:28px 0 10px}
+.sub,.meta{color:var(--muted)}.meta{font-size:12px;font-variant-numeric:tabular-nums}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.box p{margin:8px 0 0}.box.bad{border-color:var(--bad)}.box.warn{border-color:var(--warn)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.tiles .box{margin:0}
+.tiles b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+.badge{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--chip)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+ul{margin:8px 0 0;padding-left:18px}
+code,pre{font:12.5px/1.5 ui-monospace,Consolas,monospace}
+details{margin-top:8px}summary{cursor:pointer;color:var(--muted);font-size:12px}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:10px;margin:6px 0 0}
+'@
+    $commitCount = ($rounds | ForEach-Object { $_.Commits.Count } | Measure-Object -Sum).Sum
+    $costSum = ($rounds | Where-Object { $null -ne $_.Cost } | Measure-Object Cost -Sum).Sum
+    $span = (Get-Date) - $runStart
+    $elapsed = if ($span.TotalHours -ge 1) { '{0}시간 {1}분' -f [int][Math]::Floor($span.TotalHours), $span.Minutes } else { '{0}분' -f [int]$span.TotalMinutes }
+    $branch = & git rev-parse --abbrev-ref HEAD 2>$null
+    $dirty = & git -c core.quotepath=false status --short 2>$null
+
+    $cards = foreach ($x in $rounds) {
+        $cls = switch -Wildcard ($x.Outcome) { '완료' { 'ok' } '사용량 한도' { 'warn' } 'commit 없음' { '' } default { 'bad' } }
+        $meta = @($x.Start.ToString('HH:mm'), "$($x.Minutes)분")
+        if ($null -ne $x.Turns) { $meta += "$($x.Turns)턴" }
+        if ($null -ne $x.Cost) { $meta += ('${0:N2}' -f $x.Cost) }
+        $html = "<section class=`"box`"><div class=`"head`"><strong>$($x.Round)회차</strong><span class=`"badge $cls`">$(Escape-Html $x.Outcome)</span><span class=`"meta`">$($meta -join ' · ')</span></div>"
+        if ($x.Commits.Count) {
+            $html += '<ul>' + (($x.Commits | ForEach-Object { "<li><code>$($_.Hash)</code> $(Escape-Html $_.Subject) <span class=`"meta`">$(Escape-Html $_.Stat)</span></li>" }) -join '') + '</ul>'
+        }
+        if ($x.Summary) { $html += "<details><summary>세션 요약</summary><pre>$(Escape-Html $x.Summary)</pre></details>" }
+        if ($x.Stderr) { $html += "<details><summary>stderr</summary><pre>$(Escape-Html $x.Stderr)</pre></details>" }
+        if ($x.Session) { $html += "<p class=`"meta`">claude --resume $(Escape-Html $x.Session)</p>" }
+        $html + '</section>'
+    }
+    if (-not $cards) { $cards = '<p class="meta">실행된 회차가 없습니다.</p>' }
+
+    $treeNote = if ($dirty) { '<p class="warn">commit되지 않은 변경이 남아 있습니다.</p><pre>' + (Escape-Html ($dirty -join "`n")) + '</pre>' } else { '<p class="meta">깨끗합니다.</p>' }
+    $html = @"
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoPilot 리포트 $($runStart.ToString('yyyy-MM-dd HH:mm'))</title><style>$css</style></head>
+<body><main>
+<h1>AutoPilot 리포트</h1>
+<p class="sub">$(Escape-Html $ProjectDir) · $($runStart.ToString('MM-dd HH:mm')) → $((Get-Date).ToString('MM-dd HH:mm')) · $Policy · 브랜치 $(Escape-Html $branch)</p>
+<div class="box $(if ($Bad) { 'bad' })">$(Escape-Html $EndReason)</div>
+<div class="tiles">
+<div class="box"><b>$($rounds.Count)</b><span class="meta">회차</span></div>
+<div class="box"><b>$([int]$commitCount)</b><span class="meta">commit</span></div>
+<div class="box"><b>$elapsed</b><span class="meta">소요 시간</span></div>
+<div class="box"><b>$('${0:N2}' -f [double]$costSum)</b><span class="meta">비용 (API 환산)</span></div>
+</div>
+<h2>회차</h2>
+$($cards -join "`n")
+<h2>작업 트리</h2>
+$treeNote
+<p class="meta">전체 로그: $(Escape-Html $log)</p>
+</main></body></html>
+"@
+    [System.IO.File]::WriteAllText($report, $html, $utf8NoBom)
 }
 
 $runDate = Get-Date -Format 'yyyy-MM-dd'
 $progressDir = Join-Path $ProjectDir ('autopilot\progress\' + $runDate)
 if (-not (Test-Path $progressDir)) { New-Item -ItemType Directory -Path $progressDir | Out-Null }
-$log = Join-Path $progressDir ('autopilot_' + (Get-Date -Format 'HHmmss') + '.log')
+$runStart = Get-Date
+$log = Join-Path $progressDir ('autopilot_' + $runStart.ToString('HHmmss') + '.log')
+$report = Join-Path $progressDir ('report_' + $runStart.ToString('HHmmss') + '.html')
 $progressMdRelPath = 'autopilot/AUTOPILOT_PROGRESS.md'
 
 # 지시개선 정책에서 세션이 "예약 작업 전부 완료"를 알리는 신호. 같은 날 재실행하면
@@ -249,6 +346,7 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
 
     $killAt = (Get-Date).AddMinutes([Math]::Min([double]$remain, $MaxRoundMinutes))   # [double] 없으면 Min(int,int) 로 잘린다
     $script:stat = @{ LimitHit = $false; ResetAt = $null; IsError = $false }
+    $roundStart = Get-Date
     $r = Invoke-Claude $prompt $killAt
     $exitCode = $r.ExitCode
     if ($r.TimedOut) { Write-Log "[${round}회차] 시한 $($killAt.ToString('HH:mm')) 초과로 강제 종료" }
@@ -256,6 +354,7 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
     # 사용량 한도는 장애가 아니라 리셋까지 기다리면 풀리므로 실패로 세지 않는다.
     # 초과 사용(overage)으로 회차가 계속 진행됐다면 기다리지 않는다.
     if ($stat.LimitHit -and ($exitCode -ne 0 -or $stat.IsError) -and $stat.ResetAt -gt (Get-Date)) {
+        Add-RoundRecord '사용량 한도'
         if (($deadline - $stat.ResetAt).TotalMinutes -lt $MinMinutes) {
             Write-Log ("[${round}회차] 사용량 한도 - 리셋 {0:HH:mm} 이 종료 시각에 걸려 종료" -f $stat.ResetAt)
             $limitStop = $true
@@ -279,6 +378,7 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
             Write-Log "[${round}회차] 새 commit 없음 (연속 ${idle}/${MaxIdleRounds})"
         }
     }
+    Add-RoundRecord $(if ($r.TimedOut) { '시한 초과' } elseif ($exitCode -ne 0) { "실패 (exit $exitCode)" } elseif ($idle -gt 0) { 'commit 없음' } else { '완료' })
 
     Write-Output ''
 
@@ -294,21 +394,22 @@ CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOP
     }
 }
 
+$endReason = if ($aborted) {
+    "연속 ${fails}회 실패로 중단 (${round}회차)"
+} elseif ($todoDone) {
+    "AutoPilot 종료 - 지시개선 정책: 예약 작업 완료 (${round}회차)"
+} elseif ($idleStop) {
+    "AutoPilot 종료 - ${MaxIdleRounds}회차 연속 새 commit 없음 (${round}회차)"
+} elseif ($limitStop) {
+    "AutoPilot 종료 - 사용량 한도 리셋이 종료 시각 이후 (${round}회차)"
+} elseif ($round -ge $MaxRounds) {
+    "AutoPilot 종료 - 회차 상한 ${MaxRounds}회 도달"
+} else {
+    "AutoPilot 종료 - 예정 시각 $($deadline.ToString('yyyy-MM-dd HH:mm')) 도달"
+}
 Write-Output ''
 Write-Output '=========================================='
-if ($aborted) {
-    Write-Output "  연속 ${fails}회 실패로 중단 (${round}회차)"
-} elseif ($todoDone) {
-    Write-Output "  AutoPilot 종료 - 지시개선 정책: 예약 작업 완료 (${round}회차)"
-} elseif ($idleStop) {
-    Write-Output "  AutoPilot 종료 - ${MaxIdleRounds}회차 연속 새 commit 없음 (${round}회차)"
-} elseif ($limitStop) {
-    Write-Output "  AutoPilot 종료 - 사용량 한도 리셋이 종료 시각 이후 (${round}회차)"
-} elseif ($round -ge $MaxRounds) {
-    Write-Output "  AutoPilot 종료 - 회차 상한 ${MaxRounds}회 도달"
-} else {
-    Write-Output "  AutoPilot 종료 - 예정 시각 $($deadline.ToString('yyyy-MM-dd HH:mm')) 도달"
-}
+Write-Output "  $endReason"
 Write-Output '=========================================='
 Write-Output ''
 Write-Output '--- 이번 실행 중 쌓인 commit ---'
@@ -326,8 +427,11 @@ $summary += ''
 $summary += $gitStatus
 $summary | Add-Content -LiteralPath $log -Encoding UTF8
 
+Write-Report $endReason $aborted
 Write-Output ''
 Write-Output "전체 로그: $log"
+Write-Output "리포트  : $report"
+try { Start-Process -FilePath $report } catch { }
 
 if ($aborted) { exit 1 }
 exit 0
