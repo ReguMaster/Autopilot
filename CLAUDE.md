@@ -39,7 +39,6 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - `$ProjectDir`는 `core/`의 두 단계 위(= 대상 프로젝트 루트)이고 `claude`는 거기서 실행된다. 대상 프로젝트의 `CLAUDE.md`가 세션의 기본 지침이 된다.
 - 그래서 문서·프롬프트 속 경로는 모두 **대상 루트 기준**(`autopilot/AUTOPILOT_TODO.md`, `autopilot/progress/...`)으로 쓴다. 이 저장소 루트의 파일을 가리킬 때도 `autopilot/` 접두어를 붙인다.
 - `.gitignore`의 `/autopilot/...` 패턴도 대상 루트 기준이라 이 저장소 안에서는 매칭되지 않는다.
-- `AUTOPILOT_POLICY.md`의 `C:\LOCATION`은 설치 시 사용자가 바꾸는 placeholder다. 키트에서는 그대로 둔다.
 
 ### 스크립트 ↔ 세션 계약
 
@@ -50,7 +49,7 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 - **실패**: `claude` exit code ≠ 0 이면 `$RetryWaitMinutes`(5·15·30분) 간격으로 재시도하고, 그 횟수를 넘겨 연속 실패하면 중단.
 - **시한**: 회차는 `min(남은 시간, $MaxRoundMinutes)`에 `taskkill /T /F`로 트리째 종료되고 실패로 센다. 프롬프트는 인자가 아니라 stdin으로 넘긴다(`claude.cmd` 설치본에서 cmd가 특수문자를 해석하지 않게).
 - **할 일 없음**: 성공 회차인데 새 commit이 없으면(진행 기록만 고친 commit 포함) idle로 센다. 연속 2회면 종료. 회차 전후 `git diff --name-only`로 판정한다.
-- 회차 프롬프트(`$prompt`, `$policyPrompt`)에 정책·남은 시간·작업 수 상한이 주입된다. 세션은 이 값을 스스로 추측하지 않는다.
+- 회차 프롬프트(`$prompt`, `$policyPrompt`)에 작업 범위(`$ProjectDir`)·정책·남은 시간·작업 수 상한이 주입된다. 세션은 이 값을 스스로 추측하지 않는다.
 
 ### AUTOPILOT_TODO.md 파싱 규칙
 

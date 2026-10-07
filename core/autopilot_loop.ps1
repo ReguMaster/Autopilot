@@ -181,7 +181,7 @@ while ($true) {
     $header | Add-Content -LiteralPath $log -Encoding UTF8
 
     $prompt = @"
-CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOPILOT.md의 작업 지침에 따라 자율 개발을 수행하라. 중요사항!: autopilot/core/AUTOPILOT_POLICY.md의 모든 금지사항과 안전정책을 반드시 최우선으로 준수하라. 작업을 고르기 전에 autopilot/AUTOPILOT_TODO.md 를 먼저 읽고 소유자가 예약한 작업이 있으면 작성된 순서대로 그것을 우선 처리하며, ${progressMdRelPath} 를 읽어 이전 회차가 남긴 상태와 다음 작업을 이어받아라(파일이 없으면 새로 생성하라). ${policyPrompt} 이 세션은 AutoPilot ${round}회차이고 전체 종료 예정 시각은 $($deadline.ToString('yyyy-MM-dd HH:mm')), 남은 시간은 약 ${remain}분이다. 이번 세션의 작업량은 작업 범위를 보고 스스로 정하되 최대 ${MaxTasksPerRound}건을 넘기지 말고, 규모가 큰 작업이면 1건만 처리하라. 작업을 완료·검증·commit 하고 ${progressMdRelPath} 를 갱신한 뒤 세션을 끝내라. 실행 스크립트가 새 컨텍스트로 다음 회차를 자동 실행하므로 여기서 끝내는 것이 정상이며, 남은 작업이 있다는 이유로 세션을 붙잡지 말 것. 반대로 남은 시간이 한 작업을 안전하게 마치기에 부족하면 새 작업을 시작하지 말고 진행 중인 것만 정리·기록하고 즉시 종료하라.
+CLAUDE.md를 기본 프로젝트 지침으로 사용하고, autopilot/core/AUTOPILOT.md의 작업 지침에 따라 자율 개발을 수행하라. 중요사항!: autopilot/core/AUTOPILOT_POLICY.md의 모든 금지사항과 안전정책을 반드시 최우선으로 준수하라. 정책의 작업 범위인 프로젝트 루트는 ${ProjectDir} 이다. 작업을 고르기 전에 autopilot/AUTOPILOT_TODO.md 를 먼저 읽고 소유자가 예약한 작업이 있으면 작성된 순서대로 그것을 우선 처리하며, ${progressMdRelPath} 를 읽어 이전 회차가 남긴 상태와 다음 작업을 이어받아라(파일이 없으면 새로 생성하라). ${policyPrompt} 이 세션은 AutoPilot ${round}회차이고 전체 종료 예정 시각은 $($deadline.ToString('yyyy-MM-dd HH:mm')), 남은 시간은 약 ${remain}분이다. 이번 세션의 작업량은 작업 범위를 보고 스스로 정하되 최대 ${MaxTasksPerRound}건을 넘기지 말고, 규모가 큰 작업이면 1건만 처리하라. 작업을 완료·검증·commit 하고 ${progressMdRelPath} 를 갱신한 뒤 세션을 끝내라. 실행 스크립트가 새 컨텍스트로 다음 회차를 자동 실행하므로 여기서 끝내는 것이 정상이며, 남은 작업이 있다는 이유로 세션을 붙잡지 말 것. 반대로 남은 시간이 한 작업을 안전하게 마치기에 부족하면 새 작업을 시작하지 말고 진행 중인 것만 정리·기록하고 즉시 종료하라.
 "@
 
     $headBefore = & git rev-parse HEAD 2>$null

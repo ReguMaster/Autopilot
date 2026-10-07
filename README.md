@@ -62,9 +62,8 @@ flowchart LR
 ## 사용법
 
 1. 이 저장소를 대상 프로젝트의 `autopilot/` 폴더로 둡니다.
-2. [core/AUTOPILOT_POLICY.md](core/AUTOPILOT_POLICY.md)의 작업 범위(`C:\LOCATION`)를 실제 프로젝트 경로로 바꿉니다.
-3. `AUTOPILOT_TODO.md`에 작업·실행시간·정책을 적습니다.
-4. 실행합니다.
+2. `AUTOPILOT_TODO.md`에 작업·실행시간·정책을 적습니다.
+3. 실행합니다. 작업 범위(프로젝트 루트)는 스크립트가 회차마다 알려주므로 따로 설정하지 않습니다.
 
 ```bat
 start_autopilot_PERSONAL.bat              :: TODO 파일의 설정을 따른다
