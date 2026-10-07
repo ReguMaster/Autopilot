@@ -38,7 +38,8 @@ head -c 3 core/autopilot_loop.ps1 | od -An -tx1
 
 - `$ProjectDir`는 `core/`의 두 단계 위(= 대상 프로젝트 루트)이고 `claude`는 거기서 실행된다. 대상 프로젝트의 `CLAUDE.md`가 세션의 기본 지침이 된다.
 - 그래서 문서·프롬프트 속 경로는 모두 **대상 루트 기준**(`autopilot/AUTOPILOT_TODO.md`, `autopilot/progress/...`)으로 쓴다. 이 저장소 루트의 파일을 가리킬 때도 `autopilot/` 접두어를 붙인다.
-- `.gitignore`의 `/autopilot/...` 패턴도 대상 루트 기준이라 이 저장소 안에서는 매칭되지 않는다.
+- 키트는 대상 프로젝트에 **복사**해 쓴다. 중첩 저장소로 두면 대상 프로젝트의 `git add`가 `autopilot/` 안의 파일을 오류 없이 무시한다.
+- `.gitignore`는 자기 폴더 기준 패턴(`/progress/` 등)이라 복사된 `autopilot/` 안에서 그대로 동작한다. 이 저장소에서는 `AUTOPILOT_TODO.md`가 템플릿으로 이미 추적되고 있어 무시되지 않는다.
 
 ### 스크립트 ↔ 세션 계약
 

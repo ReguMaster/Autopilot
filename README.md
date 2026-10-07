@@ -44,7 +44,8 @@ flowchart LR
 
 ```text
 <프로젝트 루트>/
-└─ autopilot/                      ← 이 저장소를 이 이름의 폴더로 둔다
+└─ autopilot/                      ← 이 저장소를 이 이름의 폴더로 복사한다
+   ├─ .gitignore                     progress/ · recycle_bin/ · TODO를 git에서 제외
    ├─ start_autopilot_PERSONAL.bat   실행 진입점 (집 PC용)
    ├─ AUTOPILOT_TODO.md              소유자가 작성하는 오늘의 작업·실행시간·정책 (git 제외)
    ├─ AUTOPILOT_PROGRESS.md          세션 간 인수인계 문서 (AutoPilot이 갱신)
@@ -61,7 +62,9 @@ flowchart LR
 
 ## 사용법
 
-1. 이 저장소를 대상 프로젝트의 `autopilot/` 폴더로 둡니다.
+1. 이 저장소를 대상 프로젝트 루트에 `autopilot/` 폴더로 **복사**합니다. clone했다면 `autopilot/.git`을 지웁니다.
+   중첩 Git 저장소로 두면 대상 프로젝트의 `git add`가 `autopilot/` 안의 파일을 오류 없이 무시해서, `AUTOPILOT_PROGRESS.md`가 commit되지 않습니다.
+   `autopilot/.gitignore`가 `progress/` · `recycle_bin/` · `AUTOPILOT_TODO.md`를 대상 프로젝트 Git에서 제외합니다.
 2. `AUTOPILOT_TODO.md`에 작업·실행시간·정책을 적습니다.
 3. 실행합니다. 작업 범위(프로젝트 루트)는 스크립트가 회차마다 알려주므로 따로 설정하지 않습니다.
 

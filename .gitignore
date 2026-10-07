@@ -2,7 +2,7 @@
 /.vscode/
 __pycache__/
 
-# Autopilot
-/autopilot/progress/
-/autopilot/recycle_bin/
-/autopilot/AUTOPILOT_TODO.md
+# Autopilot - 대상 프로젝트에 복사된 autopilot/ 폴더 기준으로 동작한다
+/progress/
+/recycle_bin/
+/AUTOPILOT_TODO.md
