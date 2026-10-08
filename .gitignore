@@ -1,8 +1,5 @@
-# 기본
 /.vscode/
+/node_modules/
+/dist/
+/npm-debug.log*
 __pycache__/
-
-# Autopilot - 대상 프로젝트에 복사된 autopilot/ 폴더 기준으로 동작한다
-/progress/
-/recycle_bin/
-/AUTOPILOT_TODO.md

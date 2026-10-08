@@ -1,0 +1,49 @@
+{
+    "name": "autopilot-desktop",
+    "version": "0.1.0",
+    "private": true,
+    "description": "AutoPilot desktop interface",
+    "author": "AutoPilot",
+    "main": "desktop/main.cjs",
+    "scripts": {
+        "start": "electron .",
+        "dev": "electron . --dev",
+        "check": "node --check desktop/main.cjs",
+        "test": "npm run check && electron . --smoke-test",
+        "build": "npm run check && electron-builder --win --x64 --dir",
+        "dist": "npm run check && electron-builder --win portable --x64",
+        "check:cli": "node --check autopilot/core/autopilot_loop.js && node --check tests/checkAutopilot.js && node --check tools/buildCli.js",
+        "test:cli": "npm run check:cli && node tests/checkAutopilot.js",
+        "build:cli": "npm run check:cli && node tools/buildCli.js",
+        "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js tools/buildCli.js \"autopilot/src/**/*.js\"",
+        "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js tools/buildCli.js \"autopilot/src/**/*.js\""
+    },
+    "devDependencies": {
+        "electron": "^44.6.0",
+        "electron-builder": "26.15.3",
+        "postject": "1.0.0-alpha.6",
+        "prettier": "^3.9.6",
+        "esbuild": "^0.25.0"
+    },
+    "build": {
+        "appId": "com.autopilot.desktop",
+        "productName": "AutoPilot",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "desktop/**/*",
+            "docs/logo.png",
+            "package.json"
+        ],
+        "win": {
+            "target": "portable",
+            "signAndEditExecutable": false
+        },
+        "artifactName": "AutoPilot-${version}-${arch}.${ext}"
+    },
+    "type": "module",
+    "engines": {
+        "node": ">=22.12.0"
+    }
+}

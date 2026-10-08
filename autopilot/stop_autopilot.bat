@@ -7,9 +7,8 @@ REM        Creates progress\STOP. The loop finishes the current round,
 REM        then ends normally and writes the final report. Closing the
 REM        console instead cuts the round off mid-work.
 REM
-REM Keep this file ASCII-only (see start_autopilot_PERSONAL.bat).
+REM Keep this file ASCII-only (see start_autopilot.bat).
 REM ==========================================
 
-type nul > "%~dp0progress\STOP"
-echo AutoPilot will stop after the current round.
+node "%~dp0core\autopilot_loop.js" stop
 pause
