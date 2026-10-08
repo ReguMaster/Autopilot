@@ -4,12 +4,17 @@ import path from "node:path";
 import { isSea } from "node:sea";
 import {
     DEFAULT_EFFORT,
+    DEFAULT_MODEL,
+    EFFORT_LEVELS,
     EXIT_CODE_FAILED,
     EXIT_CODE_INTERRUPTED,
     EXIT_CODE_SUCCESS,
+    FALLBACK_MODEL,
     KIT_DIR_NAME,
     LOCK_FILE_NAME,
+    MODEL_CHOICES,
     PROGRESS_DIR_NAME,
+    ROUND_OPTIONS_FILE_NAME,
     ROUND_OUTCOME_COMPLETE,
     ROUND_OUTCOME_IDLE,
     ROUND_OUTCOME_INTERRUPTED,
@@ -49,6 +54,14 @@ const getLockFile = (kitDir) => {
     return path.join(kitDir, PROGRESS_DIR_NAME, LOCK_FILE_NAME);
 };
 
+const getRoundOptionsFile = (kitDir) => {
+    return path.join(kitDir, PROGRESS_DIR_NAME, ROUND_OPTIONS_FILE_NAME);
+};
+
+const isRunLockActive = (lockFile) => {
+    return processUtil.isProcessRunning(Number(fileUtil.readTextFile(lockFile).trim()));
+};
+
 // 실행 중인 pid를 기록해 같은 프로젝트의 동시 실행을 막는다. 살아 있는 프로세스가 없는 낡은 잠금은 덮어쓴다. 해제 함수를 반환한다.
 const acquireRunLock = (lockFile) => {
     fs.mkdirSync(path.dirname(lockFile), { recursive: true });
@@ -82,8 +95,49 @@ const getRunEnv = (options) => {
     return { ...process.env, ...options.env, CLAUDE_CONFIG_DIR: path.resolve(os.homedir(), options.configDir || ".claude") };
 };
 
-const getClaudeArgs = (effort = DEFAULT_EFFORT) => {
-    return ["--model", "opus", "--effort", effort, "--fallback-model", "sonnet", "--autocompact", "150000", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"];
+// 회차마다 읽는 model·effort 변경 파일. 허용된 값만 돌려주고, JSON이 깨져 있으면 예외를 던진다.
+const readRoundOptions = (roundOptionsFile) => {
+    const text = fileUtil.readTextFile(roundOptionsFile);
+
+    if (!text.trim()) {
+        return {};
+    }
+
+    const savedOptions = JSON.parse(text);
+
+    return {
+        ...(MODEL_CHOICES.includes(savedOptions?.model) ? { model: savedOptions.model } : {}),
+        ...(EFFORT_LEVELS.includes(savedOptions?.effort) ? { effort: savedOptions.effort } : {})
+    };
+};
+
+// 읽는 쪽이 쓰다 만 파일을 보지 않도록 임시 파일에 쓴 뒤 교체한다. 깨진 기존 파일은 덮어쓴다.
+const writeRoundOptions = (roundOptionsFile, roundOptions) => {
+    let savedOptions = {};
+
+    try {
+        savedOptions = readRoundOptions(roundOptionsFile);
+    } catch {}
+
+    const nextOptions = { ...savedOptions, ...roundOptions };
+    const tempFile = `${roundOptionsFile}.${process.pid}.tmp`;
+
+    fs.mkdirSync(path.dirname(roundOptionsFile), { recursive: true });
+    fs.writeFileSync(tempFile, JSON.stringify(nextOptions), "utf8");
+    fs.renameSync(tempFile, roundOptionsFile);
+
+    return nextOptions;
+};
+
+// 우선순위: 실행 중 변경 파일 > 실행 인자 > 기본값
+const getRoundOptions = (startOptions, savedOptions) => {
+    return { model: savedOptions.model || startOptions.model || DEFAULT_MODEL, effort: savedOptions.effort || startOptions.effort || DEFAULT_EFFORT };
+};
+
+const getClaudeArgs = ({ model = DEFAULT_MODEL, effort = DEFAULT_EFFORT } = {}) => {
+    const fallbackArgs = model === FALLBACK_MODEL ? [] : ["--fallback-model", FALLBACK_MODEL];
+
+    return ["--model", model, "--effort", effort, ...fallbackArgs, "--autocompact", "150000", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"];
 };
 
 const getRoundOutcome = ({ isInterrupted, isRateLimited, timedOut, isFailed, exitCode, isError, idleCount }) => {
@@ -114,4 +168,19 @@ const getExitCode = (isAborted, isInterrupted) => {
     return isInterrupted ? EXIT_CODE_INTERRUPTED : EXIT_CODE_SUCCESS;
 };
 
-export default { getKitDir, assertKitDir, getStopFile, getLockFile, acquireRunLock, getRunEnv, getClaudeArgs, getRoundOutcome, getExitCode };
+export default {
+    getKitDir,
+    assertKitDir,
+    getStopFile,
+    getLockFile,
+    getRoundOptionsFile,
+    isRunLockActive,
+    acquireRunLock,
+    getRunEnv,
+    readRoundOptions,
+    writeRoundOptions,
+    getRoundOptions,
+    getClaudeArgs,
+    getRoundOutcome,
+    getExitCode
+};

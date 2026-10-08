@@ -16,6 +16,7 @@ import {
     PROGRESS_DIR_NAME,
     TODO_COMPLETE_FILE_NAME,
     STOP_REASON_REQUESTED,
+    ROUND_OPTIONS_FILE_NAME,
     AUTOPILOT_DEFAULTS
 } from "../utils/config.js";
 
@@ -77,6 +78,7 @@ const prepareRun = (options) => {
         runGitCommand: runGitCommand,
         rounds: [],
         stopFile: autopilotUtil.getStopFile(kitDir),
+        roundOptionsFile: autopilotUtil.getRoundOptionsFile(kitDir),
         logFile: path.join(progressDir, `autopilot_${runId}.log`),
         reportFile: path.join(progressDir, `report_${runId}.html`),
         todoDoneRelPath: `${KIT_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${TODO_COMPLETE_FILE_NAME}`
@@ -84,8 +86,8 @@ const prepareRun = (options) => {
     const todoDoneFile = path.join(projectDir, runState.todoDoneRelPath);
     const writeLog = log.createFileLogger(runState.logFile);
 
-    // 이전 실행의 완료·중단 신호가 이번 실행에 영향을 주지 않도록 지운다.
-    fileUtil.removeFiles([todoDoneFile, runState.stopFile]);
+    // 이전 실행의 완료·중단 신호와 model·effort 변경이 이번 실행에 영향을 주지 않도록 지운다.
+    fileUtil.removeFiles([todoDoneFile, runState.stopFile, runState.roundOptionsFile]);
 
     const context = {
         options: options,
@@ -144,7 +146,7 @@ const waitUntil = async (context, loopState, until) => {
 };
 
 // 세션이 실행되는 동안 리포트를 주기적으로 갱신한다.
-const executeSession = async (context, loopState, { round, prompt, roundDeadline, sessionStats }) => {
+const executeSession = async (context, loopState, { round, prompt, roundDeadline, sessionStats, roundOptions }) => {
     const { options, command, env, runState, writeLog } = context;
     const updateLiveReport = () => {
         reportUtil.writeRunReport(runState, `${round}회차 진행 중 · 시한 ${dateUtil.getTimeString(new Date(roundDeadline))}`, true);
@@ -155,7 +157,7 @@ const executeSession = async (context, loopState, { round, prompt, roundDeadline
     const reportTimer = setInterval(updateLiveReport, REPORT_REFRESH_MS);
 
     try {
-        return await processUtil.runClaudeSession(command, options.commandArgs || autopilotUtil.getClaudeArgs(options.effort), prompt, {
+        return await processUtil.runClaudeSession(command, options.commandArgs || autopilotUtil.getClaudeArgs(roundOptions), prompt, {
             projectDir: runState.projectDir,
             processEnv: env,
             roundDeadline: roundDeadline,
@@ -168,6 +170,19 @@ const executeSession = async (context, loopState, { round, prompt, roundDeadline
     } finally {
         clearInterval(reportTimer);
     }
+};
+
+// 회차를 시작할 때마다 실행 중 변경 파일을 읽어 이번 회차의 model·effort를 정한다.
+const getRoundOptions = (context) => {
+    let savedOptions = {};
+
+    try {
+        savedOptions = autopilotUtil.readRoundOptions(context.runState.roundOptionsFile);
+    } catch (error) {
+        context.writeLog(`[설정] ${ROUND_OPTIONS_FILE_NAME}을 해석하지 못해 무시합니다: ${error.message}`);
+    }
+
+    return autopilotUtil.getRoundOptions(context.options, savedOptions);
 };
 
 // 사용량 한도 대기는 실패로 세지 않는다.
@@ -192,10 +207,11 @@ const runRound = async (context, loopState, remainingMinutes) => {
     const roundDeadline = Math.min(+runState.deadline, Date.now() + runConfig.maxRoundMinutes * MINUTE_MS);
     const sessionStats = { limitHit: false, isError: false };
     const prompt = promptUtil.getRoundPrompt(runState, round, Math.floor(remainingMinutes), progressCleanupPrompt, runConfig.maxTasks);
+    const roundOptions = getRoundOptions(context);
 
-    writeLog(`[${round}회차] 시작 - 남은 시간 ${Math.floor(remainingMinutes)}분`);
+    writeLog(`[${round}회차] 시작 - 남은 시간 ${Math.floor(remainingMinutes)}분 (model ${roundOptions.model}, effort ${roundOptions.effort})`);
 
-    const sessionResult = await executeSession(context, loopState, { round: round, prompt: prompt, roundDeadline: roundDeadline, sessionStats: sessionStats });
+    const sessionResult = await executeSession(context, loopState, { round: round, prompt: prompt, roundDeadline: roundDeadline, sessionStats: sessionStats, roundOptions: roundOptions });
     const isFailed = sessionResult.exitCode !== EXIT_CODE_SUCCESS || sessionStats.isError;
     const isRateLimited = !loopState.isInterrupted && !sessionResult.timedOut && sessionStats.limitHit && isFailed && sessionStats.resetAt > Date.now();
 
@@ -220,6 +236,8 @@ const runRound = async (context, loopState, remainingMinutes) => {
     runState.rounds.push({
         round: round,
         start: roundStart,
+        model: roundOptions.model,
+        effort: roundOptions.effort,
         minutes: dateUtil.getMinutesFromMs(Date.now() - roundStart),
         ...sessionStats,
         ...sessionResult,
@@ -425,4 +443,23 @@ const requestStop = (options = {}) => {
     }
 };
 
-export { runAutopilot, requestStop };
+// 실행 중인 AutoPilot이 다음 회차부터 쓸 model·effort를 기록한다. 진행 중인 회차에는 영향이 없다.
+const requestRoundOptions = (roundOptions, options = {}) => {
+    try {
+        const kitDir = autopilotUtil.getKitDir(options.kitDir);
+
+        if (!autopilotUtil.isRunLockActive(autopilotUtil.getLockFile(kitDir))) {
+            throw new Error("실행 중인 AutoPilot이 없습니다.");
+        }
+
+        const savedOptions = autopilotUtil.writeRoundOptions(autopilotUtil.getRoundOptionsFile(kitDir), roundOptions);
+
+        return { status: STATUS_OK, data: { roundOptions: savedOptions } };
+    } catch (error) {
+        log.error(util.formatError(error));
+
+        return { status: STATUS_FAILED, error: { code: error.code || ERROR_CODE_AUTOPILOT_ERROR, msg: error.message || String(error) } };
+    }
+};
+
+export { runAutopilot, requestStop, requestRoundOptions };

@@ -1,15 +1,16 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createRunner, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 
 const KIT_DIR_NAME = "autopilot";
 const CLI_OPTION_FLAGS = [
     ["endTime", "--end-time"],
     ["policy", "--policy"],
+    ["model", "--model"],
     ["effort", "--effort"]
 ];
-const DEFAULT_SETTINGS = { exePath: "", endTime: "", policy: "", effort: "" };
+const DEFAULT_SETTINGS = { exePath: "", endTime: "", policy: "", model: "opus", effort: "high" };
 
 const getSettingsFile = () => {
     return path.join(app.getPath("userData"), "settings.json");
@@ -19,7 +20,7 @@ const readSettings = () => {
     try {
         const saved = JSON.parse(fs.readFileSync(getSettingsFile(), "utf8"));
 
-        return Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map((key) => [key, typeof saved[key] === "string" ? saved[key] : ""]));
+        return Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map((key) => [key, typeof saved[key] === "string" ? saved[key] : DEFAULT_SETTINGS[key]]));
     } catch {
         return { ...DEFAULT_SETTINGS };
     }
@@ -45,6 +46,10 @@ const getExecutableError = (exePath) => {
     }
 
     return "";
+};
+
+const isValidRoundOptions = ({ model, effort }) => {
+    return MODEL_CHOICES.includes(model) && EFFORT_CHOICES.includes(effort);
 };
 
 const getCliArgs = (options) => {
@@ -82,9 +87,28 @@ const handleStart = (event, options = {}) => {
         return createFailure("INVALID_EXECUTABLE", exeError);
     }
 
-    writeSettings({ ...settings, endTime: String(options.endTime || ""), policy: String(options.policy || ""), effort: String(options.effort || "") });
+    if (!isValidRoundOptions(options)) {
+        return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
+    }
 
-    return runner.start({ command: settings.exePath, args: getCliArgs(options) });
+    writeSettings({ ...settings, endTime: String(options.endTime || ""), policy: String(options.policy || ""), model: options.model, effort: options.effort });
+
+    return runner.start({ command: settings.exePath, args: getCliArgs(options), roundOptions: { model: options.model, effort: options.effort } });
+};
+
+// 실행 중인 엔진에 다음 회차부터 쓸 model·effort를 전달하고, 성공하면 다음 시작의 기본값으로도 저장한다.
+const handleSetOptions = async (event, options = {}) => {
+    if (!isValidRoundOptions(options)) {
+        return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
+    }
+
+    const result = await runner.setRoundOptions({ model: options.model, effort: options.effort });
+
+    if (result.status === STATUS_OK) {
+        writeSettings({ ...readSettings(), model: options.model, effort: options.effort });
+    }
+
+    return result;
 };
 
 const handleSelectExecutable = async (event) => {
@@ -151,6 +175,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:select-exe", handleSelectExecutable);
     ipcMain.handle("autopilot:start", handleStart);
     ipcMain.handle("autopilot:stop", () => runner.stop());
+    ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:kill", handleKill);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
 };

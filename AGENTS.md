@@ -9,7 +9,7 @@
 - 런타임에 생기는 autopilot/progress/, autopilot/recycle_bin/, autopilot/AUTOPILOT_TODO.md는 autopilot/.gitignore가 제외한다.
 - CLI 진입점: autopilot/core/autopilot_loop.js (Node.js 22.12 이상, ESM, 런타임 외부 의존성 없음).
 - 실행 서비스: autopilot/src/services/autopilotService.js(runAutopilot, requestStop). 공통 로직은 autopilot/src/utils/의 라이브러리로 분리한다. 설정 해석 settingsUtil, CLI 인자 cliUtil, 프롬프트 promptUtil, 지침·정책 본문 guideText.js, 진행 기록 보관 progressUtil, HTML 리포트 reportUtil, git gitUtil, 프로세스 실행·종료 processUtil, stream-json 해석 streamUtil, 날짜·파일·로그·공통 함수 dateUtil·fileUtil·logUtil·util, 키트 경로·회차 결과 autopilotUtil, 상수 config.js. 검증은 tests/checkAutopilot.js, 빌드는 tools/buildCli.js.
-- 실행: node autopilot/core/autopilot_loop.js [HH:mm] [auto|todo]. 중단 요청: 같은 명령에 stop 전달.
+- 실행: node autopilot/core/autopilot_loop.js [HH:mm] [auto|todo]. 중단 요청: 같은 명령에 stop 전달. 실행 중 model·effort 변경: set --model <m> --effort <e> 전달.
 - 시작 배치와 sh는 인자 전달만 한다. 실제 세션은 claude -p로 실행한다.
 - kitDir는 core/의 상위 폴더, projectDir는 kitDir의 상위 폴더다. 키트는 대상 Git 루트의 autopilot/으로 복사한다. 중첩 .git은 두지 않는다.
 - 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·정책·남은 시간·작업 수 상한을 명시하고, AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
@@ -36,7 +36,7 @@ build:cli는 현재 OS·CPU용 Node SEA를 생성한다. Node.js 24로 빌드하
 
 - desktop/은 엔진 코드를 import하지 않는다. 빌드한 autopilot 실행 파일을 자식 프로세스로 띄우며, CLI 계약(인자·stdout 로그 줄 형식·exit code·stop)이 UI와의 인터페이스다. 로그 줄 형식을 바꾸면 desktop/autopilotRunner.cjs의 파서와 tests/checkDesktopRunner.js를 함께 고친다.
 - 구성: autopilotRunner.cjs(실행·종료 신호·강제 종료·로그 해석), autopilotIpc.cjs(설정 저장·대화상자·IPC), preload.cjs(window.autopilot 노출), renderer.js·index.html·styles.css(대시보드). 렌더러에는 Node 권한을 주지 않는다.
-- 엔진 파일은 대화상자로 고르고 autopilot/ 폴더 안의 파일만 허용한다. 경로와 마지막 실행 옵션은 userData/settings.json에 저장한다. 시작은 --no-open과 종료 시각·정책·effort 인자, 종료 신호는 같은 실행 파일의 stop, 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다.
+- 엔진 파일은 대화상자로 고르고 autopilot/ 폴더 안의 파일만 허용한다. 경로와 마지막 실행 옵션은 userData/settings.json에 저장한다. 시작은 --no-open과 종료 시각·정책·model·effort 인자, 종료 신호는 같은 실행 파일의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다. 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 보고 둘이 다르면 적용 대기로 표시한다. 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·EFFORT_CHOICES와 index.html 라디오이며 config.js와 함께 바꾼다.
 - 실행 중에 창을 닫으면 확인 후 강제 종료한다. 앱을 다시 켜면 이미 실행 중인 엔진에 다시 붙지 않는다. 로그는 메인 프로세스가 최근 3000줄만 보관한다.
 - 검증은 npm run test:desktop(가짜 CLI로 러너 확인)과 npm test(창·preload 스모크)다. VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 electron을 실행한다.
 
@@ -46,6 +46,7 @@ build:cli는 현재 OS·CPU용 Node SEA를 생성한다. Node.js 24로 빌드하
 - 진행 기록이 200줄을 초과하면 원본을 autopilot/progress/<시작 날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md에 보관한다. 보관 성공 시에만 정리를 지시하며 현재 상태·미완료·주의사항·다음 작업과 최근 완료 5건을 유지한다. 보관 실패 시 원본을 유지한다.
 - TODO_COMPLETE는 autopilot/progress/<실행 시작 날짜>/TODO_COMPLETE다. 시작 시 이전 마커를 지우고, 성공한 지시개선 회차 뒤에만 완료 신호로 인정한다.
 - STOP은 autopilot/progress/STOP이다. 시작 시 지우고, 현재 회차 후 종료한다. 대기 중에도 감지한다.
+- ROUND_OPTIONS는 autopilot/progress/ROUND_OPTIONS.json이다. set은 RUNNING 잠금의 pid가 살아 있을 때만 model·effort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES·EFFORT_LEVELS이고 깨진 파일·허용되지 않은 값은 무시한다. 회차 시작 로그는 [N회차] 시작 - 남은 시간 N분 (model X, effort Y) 형식이다.
 - RUNNING은 autopilot/progress/RUNNING이다. 실행 중인 pid를 적어 같은 키트의 동시 실행을 막는다. 잠금을 얻기 전에는 STOP·완료 신호를 지우지 않고 종료 때 지운다. 기록된 pid가 살아 있지 않으면 낡은 잠금으로 보고 덮어쓴다.
 - exit code가 0이 아니거나 result.is_error가 true이면 실패다. 5·15·30분 후 재시도하고 연속 4회 실패 시 exit 1로 중단한다.
 - rate_limit_event의 allowed* 상태는 정상이다. 한도 도달과 회차 실패가 함께 있고 미래 resetsAt이 있을 때만 실패로 세지 않고 리셋 1분 뒤까지 대기한다. 대기 후 작업 시간이 부족하면 종료한다.
@@ -57,7 +58,7 @@ build:cli는 현재 OS·CPU용 Node SEA를 생성한다. Node.js 24로 빌드하
 
 ## 설정과 중복된 기본값
 
-우선순위는 실행 인자 > TODO 섹션 > 기본값이다. 종료 시각은 07:00, 정책은 자율개선, 최소 남은 시간은 20분, 최대 60회차, 회차 시한 120분, 재시도 5·15·30분, 연속 idle 2회, 회차당 작업 최대 2건이다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다. 값 변경 시 README·지침·검증을 함께 맞춘다.
+우선순위는 실행 인자 > TODO 섹션 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값). 종료 시각은 07:00, 정책은 자율개선, model은 opus(fable·opus·sonnet·haiku, fallback은 sonnet이며 같은 모델이면 생략), effort는 high, 최소 남은 시간은 20분, 최대 60회차, 회차 시한 120분, 재시도 5·15·30분, 연속 idle 2회, 회차당 작업 최대 2건이다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다. 값 변경 시 README·지침·검증을 함께 맞춘다.
 
 실행시간 섹션은 오전/오후 N시 M분 또는 HH:mm을 읽는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 정책 섹션의 첫 유효 줄이 정확히 자율개선/지시개선일 때만 인정한다. 실행 인자는 auto/self/todo/directed 별칭도 지원한다.
 

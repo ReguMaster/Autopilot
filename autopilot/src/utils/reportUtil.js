@@ -36,7 +36,7 @@ const getCommitItemHtml = (commitInfo) => {
 };
 
 const getRoundCardHtml = (roundInfo) => {
-    const meta = `${dateUtil.getTimeString(roundInfo.start)} · ${roundInfo.minutes}분 · ${roundInfo.turns ?? 0}턴 · $${util.formatCost(roundInfo.cost)}`;
+    const meta = `${dateUtil.getTimeString(roundInfo.start)} · ${roundInfo.minutes}분 · ${roundInfo.turns ?? 0}턴 · $${util.formatCost(roundInfo.cost)} · ${roundInfo.model} ${roundInfo.effort}`;
     const commitItems = roundInfo.commits.map(getCommitItemHtml).join("");
     const sessionHtml = roundInfo.session ? `<p class="meta">claude --resume ${escapeHtml(roundInfo.session)}</p>` : "";
     const summaryHtml = roundInfo.summary ? getDetailsHtml("세션 요약", roundInfo.summary) : "";

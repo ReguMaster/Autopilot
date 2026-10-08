@@ -5,109 +5,127 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>AutoPilot</title>
+  <link rel="icon" type="image/png" href="../docs/icon.png">
   <link rel="stylesheet" href="styles.css">
   <script src="renderer.js" defer></script>
 </head>
 <body>
-  <aside>
-    <div class="brand"><img src="../docs/logo.png" alt=""><strong>AutoPilot</strong></div>
-    <p class="section-label">WORKSPACE</p>
-    <nav aria-label="주 메뉴"><span class="selected" aria-current="page">대시보드</span></nav>
-    <div class="sidebar-footer">DESKTOP · 0.1.0</div>
-  </aside>
-  <main>
-    <header class="topbar">
-      <span>워크스페이스 / 대시보드</span>
-      <span class="badge" id="status-badge" data-tone="muted">엔진 미연결</span>
-    </header>
+  <header class="topbar">
+    <img class="logo" src="../docs/logo.png" alt="AutoPilot">
+    <div class="engine">
+      <span class="engine-label">엔진</span>
+      <span id="engine-path" class="engine-path">연결된 autopilot 실행 파일이 없어요.</span>
+      <button type="button" id="select-exe" class="btn small">엔진 선택</button>
+    </div>
+    <span class="badge" id="status-badge" data-tone="muted">엔진 미연결</span>
+  </header>
 
-    <div class="content">
-      <section class="page-title">
-        <h1>대시보드</h1>
-        <p class="engine-line"><span class="muted">엔진</span> <span id="engine-path" class="engine-path">연결된 autopilot 실행 파일이 없어요.</span></p>
-        <button type="button" id="select-exe" class="small">엔진 선택</button>
-      </section>
+  <main class="content">
+    <p id="notice" class="notice" role="alert" hidden></p>
 
-      <section class="panel" aria-label="실행 제어">
-        <form id="run-form" class="control-body">
-          <label class="field">
-            <span>종료 시각 <small>비우면 TODO 설정 또는 07:00</small></span>
-            <input type="time" id="end-time">
-          </label>
-          <label class="field">
-            <span>개선 정책 <small>지시개선은 Tasks 후 종료</small></span>
-            <select id="policy">
-              <option value="">TODO 파일 설정 따름</option>
-              <option value="auto">자율개선</option>
-              <option value="todo">지시개선</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Effort <small>회차 추론 강도</small></span>
-            <select id="effort">
-              <option value="">기본값 (high)</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh</option>
-              <option value="max">max</option>
-            </select>
-          </label>
+    <div class="controls">
+      <section class="card" aria-labelledby="run-title">
+        <h2 id="run-title">실행</h2>
+        <form id="run-form" class="run-form">
           <div class="actions">
-            <button type="submit" id="start" class="primary">시작</button>
-            <button type="button" id="stop" title="현재 회차를 마친 뒤 종료해요">종료 신호</button>
-            <button type="button" id="kill" class="danger" title="즉시 중단해요. commit 전 변경은 남아요">강제 종료</button>
+            <button type="submit" id="start" class="btn primary">시작</button>
+            <button type="button" id="stop" class="btn" title="현재 회차를 마친 뒤 종료해요">종료 신호</button>
+            <button type="button" id="kill" class="btn danger" title="즉시 중단해요. commit 전 변경은 남아요">강제 종료</button>
+          </div>
+          <div class="fields">
+            <label class="field">
+              <span>종료 시각</span>
+              <input type="time" id="end-time">
+              <small>비우면 TODO 설정 또는 07:00</small>
+            </label>
+            <label class="field">
+              <span>개선 정책</span>
+              <select id="policy">
+                <option value="">TODO 파일 설정 따름</option>
+                <option value="auto">자율개선</option>
+                <option value="todo">지시개선</option>
+              </select>
+              <small>지시개선은 Tasks를 마치면 종료</small>
+            </label>
           </div>
         </form>
-        <p id="notice" class="notice" role="alert" hidden></p>
       </section>
 
-      <section class="stats" aria-label="실행 현황">
-        <article class="stat">
-          <p class="stat-label">상태</p>
-          <p class="stat-value" id="stat-status">대기 중</p>
-          <p class="stat-sub" id="stat-phase">시작하면 여기에 진행 단계가 표시돼요.</p>
-        </article>
-        <article class="stat">
-          <p class="stat-label">회차</p>
-          <p class="stat-value num" id="stat-round">0</p>
-          <p class="stat-sub" id="stat-round-sub">아직 시작한 회차가 없어요.</p>
-        </article>
-        <article class="stat">
-          <p class="stat-label">남은 시간</p>
-          <p class="stat-value num" id="stat-remaining">--:--:--</p>
-          <progress id="stat-progress" max="100" value="0" aria-label="종료 시각까지 진행률"></progress>
-          <p class="stat-sub" id="stat-deadline">종료 예정 시각 없음</p>
-        </article>
-        <article class="stat">
-          <p class="stat-label">경과 시간</p>
-          <p class="stat-value num" id="stat-elapsed">--:--:--</p>
-          <p class="stat-sub" id="stat-policy">정책 없음</p>
-        </article>
-      </section>
-
-      <div class="board">
-        <section class="panel board-panel" aria-labelledby="log-title">
-          <div class="panel-header">
-            <h2 id="log-title">실시간 로그</h2>
-            <div class="panel-tools">
-              <span class="muted num" id="log-count">0줄</span>
-              <label class="check"><input type="checkbox" id="follow" checked>따라가기</label>
-              <button type="button" id="clear-log" class="small">지우기</button>
-              <button type="button" id="open-report" class="small">리포트 열기</button>
+      <section class="card" id="options-card" aria-labelledby="options-title">
+        <div class="card-title"><h2 id="options-title">모델과 Effort</h2><p class="hint" id="options-hint"></p></div>
+        <div class="seg-row">
+          <fieldset class="seg-field">
+            <legend>모델</legend>
+            <div class="seg">
+              <label><input type="radio" name="model" value="fable"><span>Fable</span></label>
+              <label><input type="radio" name="model" value="opus" checked><span>Opus</span></label>
+              <label><input type="radio" name="model" value="sonnet"><span>Sonnet</span></label>
+              <label><input type="radio" name="model" value="haiku"><span>Haiku</span></label>
             </div>
-          </div>
-          <div id="log" class="log" role="log" aria-live="off" tabindex="0">
-            <p class="empty-note" id="log-empty">아직 로그가 없어요. 엔진을 연결하고 시작하면 출력이 여기에 실시간으로 쌓여요.</p>
-          </div>
-        </section>
+          </fieldset>
+          <fieldset class="seg-field">
+            <legend>Effort</legend>
+            <div class="seg">
+              <label><input type="radio" name="effort" value="low"><span>low</span></label>
+              <label><input type="radio" name="effort" value="medium"><span>medium</span></label>
+              <label><input type="radio" name="effort" value="high" checked><span>high</span></label>
+              <label><input type="radio" name="effort" value="xhigh"><span>xhigh</span></label>
+              <label><input type="radio" name="effort" value="max"><span>max</span></label>
+            </div>
+          </fieldset>
+        </div>
+        <dl class="applied" aria-live="polite">
+          <div class="applied-row"><dt>적용 중</dt><dd id="applied-now">실행 전</dd></div>
+          <div class="applied-row"><dt id="applied-next-label">시작할 때</dt><dd><span id="applied-next">Opus · high</span><span class="tag" id="applied-tag" data-tone="run" hidden>적용 대기</span></dd></div>
+        </dl>
+      </section>
+    </div>
 
-        <section class="panel board-panel" aria-labelledby="rounds-title">
-          <div class="panel-header"><h2 id="rounds-title">회차 기록</h2><span class="muted num" id="round-count">0회</span></div>
-          <ol id="rounds" class="rounds"></ol>
-          <p class="empty-note" id="rounds-empty">회차가 끝날 때마다 결과가 여기에 기록돼요.</p>
-        </section>
-      </div>
+    <section class="kpis" aria-label="실행 현황">
+      <article class="kpi">
+        <p class="kpi-label">상태</p>
+        <p class="kpi-value" id="stat-status">대기 중</p>
+        <p class="kpi-sub" id="stat-phase">시작하면 진행 단계가 표시돼요.</p>
+      </article>
+      <article class="kpi">
+        <p class="kpi-label">회차</p>
+        <p class="kpi-value num" id="stat-round">0</p>
+        <p class="kpi-sub" id="stat-round-sub">아직 시작한 회차가 없어요.</p>
+      </article>
+      <article class="kpi">
+        <p class="kpi-label">남은 시간</p>
+        <p class="kpi-value num" id="stat-remaining">--:--:--</p>
+        <progress id="stat-progress" max="100" value="0" aria-label="종료 시각까지 진행률"></progress>
+        <p class="kpi-sub" id="stat-deadline">종료 예정 시각 없음</p>
+      </article>
+      <article class="kpi">
+        <p class="kpi-label">경과 시간</p>
+        <p class="kpi-value num" id="stat-elapsed">--:--:--</p>
+        <p class="kpi-sub" id="stat-policy">정책 없음</p>
+      </article>
+    </section>
+
+    <div class="board">
+      <section class="card board-card" aria-labelledby="log-title">
+        <div class="card-head">
+          <h2 id="log-title">실시간 로그</h2>
+          <div class="tools">
+            <span class="muted num" id="log-count">0줄</span>
+            <label class="check"><input type="checkbox" id="follow" checked>따라가기</label>
+            <button type="button" id="clear-log" class="btn small">지우기</button>
+            <button type="button" id="open-report" class="btn small">리포트 열기</button>
+          </div>
+        </div>
+        <div id="log" class="log" role="log" aria-live="off" tabindex="0">
+          <p class="empty-note" id="log-empty">아직 로그가 없어요. 엔진을 연결하고 시작하면 출력이 여기에 실시간으로 쌓여요.</p>
+        </div>
+      </section>
+
+      <section class="card board-card" aria-labelledby="rounds-title">
+        <div class="card-head"><h2 id="rounds-title">회차 기록</h2><span class="muted num" id="round-count">0회</span></div>
+        <ol id="rounds" class="rounds"></ol>
+        <p class="empty-note" id="rounds-empty">회차가 끝날 때마다 결과가 여기에 기록돼요.</p>
+      </section>
     </div>
   </main>
 </body>

@@ -25,6 +25,9 @@ const POLICY_ALIASES = {
 };
 
 const DEFAULT_END_TIME = "07:00";
+const DEFAULT_MODEL = "opus";
+const FALLBACK_MODEL = "sonnet";
+const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
 const DEFAULT_EFFORT = "high";
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
@@ -33,6 +36,7 @@ const TODO_FILE_NAME = "AUTOPILOT_TODO.md";
 const PROGRESS_FILE_NAME = "AUTOPILOT_PROGRESS.md";
 const PROGRESS_DIR_NAME = "progress";
 const STOP_FILE_NAME = "STOP";
+const ROUND_OPTIONS_FILE_NAME = "ROUND_OPTIONS.json";
 const LOCK_FILE_NAME = "RUNNING";
 const TODO_COMPLETE_FILE_NAME = "TODO_COMPLETE";
 const PROGRESS_RELATIVE_PATH = `${KIT_DIR_NAME}/${PROGRESS_FILE_NAME}`;
@@ -75,6 +79,9 @@ export {
     POLICY_TODO,
     POLICY_ALIASES,
     DEFAULT_END_TIME,
+    DEFAULT_MODEL,
+    FALLBACK_MODEL,
+    MODEL_CHOICES,
     DEFAULT_EFFORT,
     EFFORT_LEVELS,
     KIT_DIR_NAME,
@@ -82,6 +89,7 @@ export {
     PROGRESS_FILE_NAME,
     PROGRESS_DIR_NAME,
     STOP_FILE_NAME,
+    ROUND_OPTIONS_FILE_NAME,
     LOCK_FILE_NAME,
     TODO_COMPLETE_FILE_NAME,
     PROGRESS_RELATIVE_PATH,

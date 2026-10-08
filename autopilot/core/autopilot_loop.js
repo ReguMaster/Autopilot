@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { STATUS_OK, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED } from "../src/utils/config.js";
-import { runAutopilot, requestStop } from "../src/services/autopilotService.js";
+import { runAutopilot, requestStop, requestRoundOptions } from "../src/services/autopilotService.js";
 
 import log from "../src/utils/logUtil.js";
 import cliUtil from "../src/utils/cliUtil.js";
@@ -25,6 +25,20 @@ const runCli = async (args = process.argv.slice(2)) => {
         }
 
         log.info("AutoPilot will stop after the current round.");
+
+        return EXIT_CODE_SUCCESS;
+    }
+
+    if (args[0] === "set") {
+        const requestRoundOptionsResult = requestRoundOptions(cliUtil.parseSetArgs(args.slice(1)));
+
+        if (requestRoundOptionsResult.status !== STATUS_OK) {
+            return EXIT_CODE_FAILED;
+        }
+
+        const { model, effort } = requestRoundOptionsResult.data.roundOptions;
+
+        log.info(`AutoPilot will use model ${model ?? "(default)"}, effort ${effort ?? "(default)"} from the next round.`);
 
         return EXIT_CODE_SUCCESS;
     }

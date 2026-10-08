@@ -23,12 +23,23 @@ const main = async () => {
         return 0;
     }
 
+    if (process.argv[2] === "set") {
+        if (process.argv.includes("gpt")) {
+            console.error("잘못된 model 값입니다.");
+            return 1;
+        }
+
+        fs.writeFileSync(path.join(dir, "OPTIONS"), process.argv.slice(3).join(" "));
+        console.log("AutoPilot will use model sonnet, effort low from the next round.");
+        return 0;
+    }
+
     const mode = process.env.AP_MODE;
 
     process.stdout.write("Project : C:\\work\\demo\nDeadline : 2026-10-08 07:00:00 (실행 인자)\nPolicy : 자율");
     await sleep(50);
     console.log("개선 (기본값)\nReport : C:\\work\\demo\\report.html");
-    console.log("[1회차] 시작 - 남은 시간 300분");
+    console.log("[1회차] 시작 - 남은 시간 300분 (model opus, effort high)");
 
     if (mode === "hang") {
         const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
@@ -39,12 +50,21 @@ const main = async () => {
     }
 
     if (mode === "wait") {
+        const optionsFile = path.join(dir, "OPTIONS");
+        let round = 1;
+
         while (!fs.existsSync(stopFile)) {
+            if (round === 1 && fs.existsSync(optionsFile)) {
+                console.log("[1회차] 완료");
+                console.log("[2회차] 시작 - 남은 시간 299분 (model sonnet, effort low)");
+                round = 2;
+            }
+
             await sleep(20);
         }
 
-        console.log("[1회차] 중단됨");
-        console.log("AutoPilot 종료 - 중단 요청 (1회차)");
+        console.log("[" + round + "회차] 중단됨");
+        console.log("AutoPilot 종료 - 중단 요청 (" + round + "회차)");
         return 130;
     }
 
@@ -136,20 +156,42 @@ const checkFinishedRun = async (testDir) => {
 const checkStopSignal = async (testDir) => {
     const { runner, launch } = createTestRunner(testDir, "wait");
 
-    runner.start(launch);
+    runner.start({ ...launch, roundOptions: { model: "opus", effort: "high" } });
 
     await waitFor(() => runner.getState().round === 1, "1회차 시작");
 
     assert.equal(runner.getState().status, "running");
+    assert.deepEqual(runner.getState().requested, { model: "opus", effort: "high" });
+    assert.equal(runner.getState().model, "opus");
+
+    // 변경은 요청 값만 바꾸고, 다음 회차 로그가 올 때 적용 값이 바뀐다.
+    const failedSet = await runner.setRoundOptions({ model: "gpt", effort: "low" });
+
+    assert.equal(failedSet.error.code, "SET_OPTIONS_FAILED");
+    assert.deepEqual(runner.getState().requested, { model: "opus", effort: "high" });
+    assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low" })).status, STATUS_OK);
+    assert.deepEqual(runner.getState().requested, { model: "sonnet", effort: "low" });
+    assert(fs.readFileSync(path.join(testDir, "OPTIONS"), "utf8").includes("--model sonnet --effort low"));
+
+    await waitFor(() => runner.getState().round === 2, "2회차 시작");
+
+    assert.deepEqual([runner.getState().model, runner.getState().effort], ["sonnet", "low"]);
+    assert.equal(runner.getState().rounds[0].model, "opus");
+    assert.equal(runner.getState().rounds[1].model, "sonnet");
     assert.equal((await runner.stop()).status, STATUS_OK);
     assert.equal(runner.getState().status, "stopping");
     assert.equal((await runner.stop()).status, STATUS_FAILED);
+    assert.equal((await runner.setRoundOptions({ model: "opus", effort: "high" })).error.code, "NOT_RUNNING");
 
     await waitFor(() => runner.getState().status === "idle", "종료 신호 후 종료");
 
     assert.equal(runner.getState().exitCode, 130);
     assert.equal(runner.getState().reason, "중단 요청");
-    assert.equal(runner.getState().rounds[0].outcome, "중단됨");
+    assert.deepEqual(
+        runner.getState().rounds.map((round) => round.outcome),
+        ["완료", "중단됨"]
+    );
+    assert.equal((await runner.setRoundOptions({ model: "opus", effort: "high" })).error.code, "NOT_RUNNING");
 };
 
 const checkForceKill = async (testDir) => {

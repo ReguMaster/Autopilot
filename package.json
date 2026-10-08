@@ -37,11 +37,13 @@
         "files": [
             "desktop/**/*",
             "docs/logo.png",
+            "docs/icon.png",
             "package.json"
         ],
         "win": {
             "target": "portable",
-            "signAndEditExecutable": false
+            "icon": "docs/icon.png",
+            "signAndEditExecutable": true
         },
         "artifactName": "AutoPilot-${version}-${arch}.${ext}"
     },

@@ -6,20 +6,33 @@ const EMPTY_CLOCK = "--:--:--";
 
 const STATUS_OK = "OK";
 
+const MODEL_LABELS = { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };
+
+const OPTIONS_HINTS = {
+    idle: "시작할 때 이 값으로 실행해요. 실행 중에 바꾸면 다음 회차부터 적용돼요.",
+    running: "바꾸면 바로 전달돼요. 진행 중인 회차는 그대로 끝나고 다음 회차부터 적용돼요.",
+    stopping: "종료 요청 후에는 변경할 수 없어요."
+};
+
 const byId = (id) => document.getElementById(id);
 
 const elements = {
     badge: byId("status-badge"),
     enginePath: byId("engine-path"),
     selectExe: byId("select-exe"),
+    notice: byId("notice"),
     form: byId("run-form"),
     endTime: byId("end-time"),
     policy: byId("policy"),
-    effort: byId("effort"),
     start: byId("start"),
     stop: byId("stop"),
     kill: byId("kill"),
-    notice: byId("notice"),
+    optionsCard: byId("options-card"),
+    appliedNow: byId("applied-now"),
+    appliedNextLabel: byId("applied-next-label"),
+    appliedNext: byId("applied-next"),
+    appliedTag: byId("applied-tag"),
+    optionsHint: byId("options-hint"),
     statStatus: byId("stat-status"),
     statPhase: byId("stat-phase"),
     statRound: byId("stat-round"),
@@ -44,6 +57,8 @@ let currentState = null;
 let pendingEntries = [];
 let isFlushScheduled = false;
 let renderedRoundsKey = "";
+let isApplying = false;
+let isApplyQueued = false;
 
 const padNumber = (number) => {
     return String(number).padStart(2, "0");
@@ -66,6 +81,12 @@ const formatDeadline = (ms) => {
 
     return `${date.getMonth() + 1}월 ${date.getDate()}일 ${formatClock(ms)}`;
 };
+
+const formatOptions = (model, effort) => {
+    return model ? `${MODEL_LABELS[model] || model} · ${effort}` : "-";
+};
+
+/* 로그 */
 
 const getLineKind = ({ stream, text }) => {
     if (stream === "err" || text.startsWith("[stderr]")) {
@@ -162,6 +183,14 @@ const clearLog = () => {
     updateLogCount();
 };
 
+const handleFollowByScroll = () => {
+    const { scrollHeight, scrollTop, clientHeight } = elements.log;
+
+    elements.follow.checked = scrollHeight - scrollTop - clientHeight < FOLLOW_THRESHOLD_PX;
+};
+
+/* 상태 표시 */
+
 const getRunPhase = (state) => {
     if (state.status === "running") {
         return { label: "실행 중", tone: "run" };
@@ -211,7 +240,8 @@ const createRoundItem = (round) => {
     const number = document.createElement("span");
     const body = document.createElement("div");
     const title = document.createElement("strong");
-    const detail = document.createElement("small");
+    const time = document.createElement("small");
+    const options = document.createElement("small");
     const tag = document.createElement("span");
     const minutes = round.endedAt ? ((round.endedAt - round.startedAt) / 60000).toFixed(1) : "";
 
@@ -220,13 +250,14 @@ const createRoundItem = (round) => {
     number.textContent = round.round;
     body.className = "round-body";
     title.textContent = `${round.round}회차`;
-    detail.className = "num";
-    detail.textContent = round.endedAt ? `${formatClock(round.startedAt)} 시작 · ${minutes}분` : `${formatClock(round.startedAt)} 시작`;
+    time.className = "num";
+    time.textContent = round.endedAt ? `${formatClock(round.startedAt)} 시작, ${minutes}분` : `${formatClock(round.startedAt)} 시작`;
+    options.textContent = formatOptions(round.model, round.effort);
     tag.className = "tag";
     tag.dataset.tone = getRoundTone(round.outcome);
     tag.textContent = round.outcome || "진행 중";
 
-    body.append(title, detail);
+    body.append(title, time, options);
     item.append(number, body, tag);
 
     return item;
@@ -279,12 +310,102 @@ const showNotice = (message) => {
     elements.notice.hidden = !message;
 };
 
+const showFailure = (result) => {
+    showNotice(result.status === STATUS_OK ? "" : result.error.msg);
+};
+
 const renderSettings = () => {
     const hasEngine = Boolean(settings.exePath);
 
     elements.enginePath.textContent = hasEngine ? settings.exePath : "연결된 autopilot 실행 파일이 없어요.";
+    elements.enginePath.title = settings.exePath;
     elements.selectExe.textContent = hasEngine ? "엔진 변경" : "엔진 선택";
 };
+
+/* 모델·Effort */
+
+const getOptionInputs = () => {
+    return elements.optionsCard.querySelectorAll("input[type=radio]");
+};
+
+const getSelectedOptions = () => {
+    return {
+        model: elements.optionsCard.querySelector("input[name=model]:checked")?.value || "",
+        effort: elements.optionsCard.querySelector("input[name=effort]:checked")?.value || ""
+    };
+};
+
+const setSelectedOptions = ({ model, effort }) => {
+    for (const input of getOptionInputs()) {
+        input.checked = input.value === (input.name === "model" ? model : effort);
+    }
+};
+
+// 실행 중에는 엔진에 전달된 값을 기준으로 선택을 맞춘다. 전달 중인 값은 덮어쓰지 않는다.
+const renderOptions = (state) => {
+    const isIdle = state.status === "idle";
+
+    if (!isIdle && !isApplying && state.requested.model) {
+        setSelectedOptions(state.requested);
+    }
+
+    const selected = getSelectedOptions();
+    const isPending = !isIdle && (state.requested.model !== state.model || state.requested.effort !== state.effort);
+
+    for (const input of getOptionInputs()) {
+        input.disabled = state.status === "stopping";
+    }
+
+    if (isIdle) {
+        elements.appliedNow.textContent = state.startedAt ? `마지막 ${formatOptions(state.model, state.effort)}` : "실행 전";
+        elements.appliedNextLabel.textContent = "시작할 때";
+        elements.appliedNext.textContent = formatOptions(selected.model, selected.effort);
+    } else {
+        elements.appliedNow.textContent = `${formatOptions(state.model, state.effort)} (${state.round ? `${state.round}회차` : "시작 중"})`;
+        elements.appliedNextLabel.textContent = "다음 회차부터";
+        elements.appliedNext.textContent = isPending ? formatOptions(state.requested.model, state.requested.effort) : "변경 없음";
+    }
+
+    elements.appliedTag.hidden = !isPending;
+    elements.optionsHint.textContent = OPTIONS_HINTS[state.status];
+};
+
+// 변경은 즉시 전달한다. 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다.
+const applyRoundOptions = async () => {
+    if (isApplying) {
+        isApplyQueued = true;
+
+        return;
+    }
+
+    isApplying = true;
+
+    do {
+        isApplyQueued = false;
+
+        const result = await window.autopilot.setOptions(getSelectedOptions());
+
+        showFailure(result);
+
+        if (result.status !== STATUS_OK) {
+            isApplyQueued = false;
+        }
+    } while (isApplyQueued);
+
+    isApplying = false;
+
+    renderOptions(currentState);
+};
+
+const handleOptionChange = () => {
+    if (currentState.status === "running") {
+        applyRoundOptions();
+    } else {
+        renderOptions(currentState);
+    }
+};
+
+/* 전체 렌더링과 이벤트 */
 
 const renderState = (state) => {
     currentState = state;
@@ -299,7 +420,7 @@ const renderState = (state) => {
     elements.badge.dataset.tone = phase.tone;
 
     elements.statStatus.textContent = phase.label;
-    elements.statPhase.textContent = state.reason && isIdle && state.endedAt ? state.reason : state.phase || "시작하면 여기에 진행 단계가 표시돼요.";
+    elements.statPhase.textContent = state.reason && isIdle && state.endedAt ? state.reason : state.phase || "시작하면 진행 단계가 표시돼요.";
     elements.statRound.textContent = state.round;
     elements.statRoundSub.textContent = lastRound ? `완료 ${finishedCount}회, 최근 결과 ${lastRound.outcome || "진행 중"}` : "아직 시작한 회차가 없어요.";
     elements.statDeadline.textContent = state.deadlineAt ? `종료 예정 ${formatDeadline(state.deadlineAt)}` : "종료 예정 시각 없음";
@@ -310,27 +431,18 @@ const renderState = (state) => {
     elements.stop.disabled = state.status !== "running";
     elements.kill.disabled = isIdle;
     elements.openReport.disabled = !state.reportFile;
+    elements.endTime.disabled = !isIdle;
+    elements.policy.disabled = !isIdle;
 
-    for (const control of [elements.endTime, elements.policy, elements.effort]) {
-        control.disabled = !isIdle;
-    }
-
+    renderOptions(state);
     renderRounds(state);
     renderClock();
-};
-
-const getRunOptions = () => {
-    return { endTime: elements.endTime.value, policy: elements.policy.value, effort: elements.effort.value };
-};
-
-const showFailure = (result) => {
-    showNotice(result.status === STATUS_OK ? "" : result.error.msg);
 };
 
 const handleStart = async (event) => {
     event.preventDefault();
 
-    showFailure(await window.autopilot.start(getRunOptions()));
+    showFailure(await window.autopilot.start({ endTime: elements.endTime.value, policy: elements.policy.value, ...getSelectedOptions() }));
 };
 
 const handleStop = async () => {
@@ -358,12 +470,6 @@ const handleSelectExecutable = async () => {
     }
 };
 
-const handleFollowByScroll = () => {
-    const { scrollHeight, scrollTop, clientHeight } = elements.log;
-
-    elements.follow.checked = scrollHeight - scrollTop - clientHeight < FOLLOW_THRESHOLD_PX;
-};
-
 const initialize = async () => {
     const snapshot = await window.autopilot.getState();
 
@@ -371,8 +477,8 @@ const initialize = async () => {
 
     elements.endTime.value = settings.endTime;
     elements.policy.value = settings.policy;
-    elements.effort.value = settings.effort;
 
+    setSelectedOptions(settings);
     renderSettings();
     renderState(snapshot.state);
     appendLogEntries(snapshot.logs);
@@ -387,6 +493,7 @@ const initialize = async () => {
     elements.openReport.addEventListener("click", handleOpenReport);
     elements.clearLog.addEventListener("click", clearLog);
     elements.log.addEventListener("scroll", handleFollowByScroll);
+    elements.optionsCard.addEventListener("change", handleOptionChange);
 
     setInterval(renderClock, CLOCK_INTERVAL_MS);
 };

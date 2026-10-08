@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { STATUS_OK, STATUS_FAILED } from "../autopilot/src/utils/config.js";
-import { runAutopilot } from "../autopilot/src/services/autopilotService.js";
+import { runAutopilot, requestRoundOptions } from "../autopilot/src/services/autopilotService.js";
 
 import settingsUtil from "../autopilot/src/utils/settingsUtil.js";
 import cliUtil from "../autopilot/src/utils/cliUtil.js";
@@ -56,6 +56,7 @@ process.stdin.on('end', () => {
     const marker = prompt.match(/빈 파일 (autopilot\/progress\/[^ ]+\/TODO_COMPLETE)/)[1];
     fs.writeFileSync(marker, '');
   } else if (mode === 'stop') fs.writeFileSync('autopilot/progress/STOP', '');
+  else if (mode === 'options') fs.writeFileSync('autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ model: 'sonnet', effort: 'low' }));
   if (mode === 'failure') process.exitCode = 1;
   if (mode !== 'limit') emit({ type: 'result', subtype: 'success', is_error: mode === 'is-error', num_turns: 1, duration_ms: 10, total_cost_usd: 0.25, result: '검증 <script>' });
   console.error('fake stderr 한글');
@@ -152,6 +153,31 @@ const checkCommandArgs = () => {
     assert.throws(() => parseCommandArgs(["23:00", "todo", "extra"]));
     assert.equal(parseCommandArgs(["constructor"]).endTime, "constructor");
     assert.equal(parseCommandArgs(["23:00", "todo", "--no-open"]).open, false);
+    assert.equal(parseCommandArgs(["--model", "sonnet", "--effort", "max"]).model, "sonnet");
+    assert.throws(() => parseCommandArgs(["--model", "gpt"]), /model/);
+    assert.throws(() => parseCommandArgs(["--model"]));
+
+    const { parseSetArgs } = cliUtil;
+
+    assert.deepEqual(parseSetArgs(["--model", "haiku", "--effort", "low"]), { model: "haiku", effort: "low" });
+    assert.deepEqual(parseSetArgs(["--effort", "xhigh"]), { effort: "xhigh" });
+
+    for (const invalidArgs of [[], ["--no-open"], ["23:00"], ["--model", "gpt"], ["--effort", "extreme"], ["--model"]]) {
+        assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
+    }
+};
+
+const checkClaudeArgs = () => {
+    const { getClaudeArgs } = autopilotUtil;
+    const getValue = (args, flag) => args[args.indexOf(flag) + 1];
+
+    assert.equal(getValue(getClaudeArgs(), "--model"), "opus");
+    assert.equal(getValue(getClaudeArgs(), "--effort"), "high");
+    assert.equal(getValue(getClaudeArgs(), "--fallback-model"), "sonnet");
+    assert.equal(getValue(getClaudeArgs({ model: "haiku", effort: "max" }), "--effort"), "max");
+
+    // 같은 모델로는 fallback을 지정하지 않는다.
+    assert(!getClaudeArgs({ model: "sonnet", effort: "low" }).includes("--fallback-model"));
 };
 
 const checkProgressArchive = (context) => {
@@ -215,7 +241,7 @@ const createScenarioRunner = (context, fakeCliFile) => {
         return path.join(context.testDir, `project ${scenarioCount + 1} 한글`);
     };
 
-    const runScenario = async (mode, { progressContent = "initial\n", ...testOptions } = {}) => {
+    const runScenario = async (mode, { progressContent = "initial\n", roundOptionsContent = "", ...testOptions } = {}) => {
         const projectDir = getNextProjectDir();
         const kitDir = path.join(projectDir, "autopilot");
 
@@ -224,6 +250,11 @@ const createScenarioRunner = (context, fakeCliFile) => {
         fs.mkdirSync(kitDir, { recursive: true });
         fs.writeFileSync(path.join(kitDir, "AUTOPILOT_PROGRESS.md"), progressContent);
         fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+
+        if (roundOptionsContent) {
+            fs.mkdirSync(path.join(kitDir, "progress"), { recursive: true });
+            fs.writeFileSync(path.join(kitDir, "progress", "ROUND_OPTIONS.json"), roundOptionsContent);
+        }
 
         commitInitialProject(context, projectDir);
 
@@ -276,6 +307,73 @@ const checkRoundOutcomes = async (runScenario) => {
     assert.match((await runScenario("progress")).reason, /새 commit 없음/);
     assert.match((await runScenario("todo", { policy: "todo" })).reason, /예약 작업 완료/);
     assert.match((await runScenario("stop")).reason, /중단 요청/);
+};
+
+// 실행 중에 바꾼 model·effort는 다음 회차부터 적용하고, 이전 실행의 변경 파일은 시작할 때 지운다.
+const checkRoundOptions = async (runScenario, context) => {
+    const readStartLines = (runData) => {
+        return fs
+            .readFileSync(runData.logFile, "utf8")
+            .split("\n")
+            .filter((line) => /^\[\d+회차\] 시작/.test(line));
+    };
+    const optionsRunData = await runScenario("options", { model: "haiku" });
+    const startLines = readStartLines(optionsRunData);
+
+    assert.match(startLines[0], /^\[1회차\] 시작 - 남은 시간 \d+분 \(model haiku, effort high\)/);
+    assert.match(startLines[1], /^\[2회차\] 시작 - 남은 시간 \d+분 \(model sonnet, effort low\)/);
+    assert.deepEqual(
+        optionsRunData.rounds.map((round) => [round.model, round.effort]),
+        [
+            ["haiku", "high"],
+            ["sonnet", "low"]
+        ]
+    );
+    assert.match(fs.readFileSync(optionsRunData.reportFile, "utf8"), /sonnet low/);
+
+    const staleRunData = await runScenario("idle", { roundOptionsContent: JSON.stringify({ model: "sonnet", effort: "max" }) });
+
+    assert.match(readStartLines(staleRunData)[0], /\(model opus, effort high\)/);
+
+    const brokenRunData = await runScenario("idle", { roundOptionsContent: "{broken" });
+
+    assert.match(readStartLines(brokenRunData)[0], /\(model opus, effort high\)/);
+
+    const { readRoundOptions, writeRoundOptions, getRoundOptionsFile } = autopilotUtil;
+    const optionsKitDir = path.join(context.testDir, "options project", "autopilot");
+    const roundOptionsFile = getRoundOptionsFile(optionsKitDir);
+
+    assert.deepEqual(readRoundOptions(roundOptionsFile), {});
+    assert.deepEqual(writeRoundOptions(roundOptionsFile, { model: "sonnet" }), { model: "sonnet" });
+    assert.deepEqual(writeRoundOptions(roundOptionsFile, { effort: "max" }), { model: "sonnet", effort: "max" });
+
+    // 허용되지 않은 값은 걸러내고, 깨진 파일은 읽을 때 예외, 쓸 때 덮어쓰기다.
+    fs.writeFileSync(roundOptionsFile, JSON.stringify({ model: "gpt", effort: "max", extra: 1 }));
+
+    assert.deepEqual(readRoundOptions(roundOptionsFile), { effort: "max" });
+
+    fs.writeFileSync(roundOptionsFile, "{broken");
+
+    assert.throws(() => readRoundOptions(roundOptionsFile));
+    assert.deepEqual(writeRoundOptions(roundOptionsFile, { model: "opus" }), { model: "opus" });
+
+    // 실행 중인 AutoPilot이 있을 때만 변경을 받는다.
+    fs.rmSync(roundOptionsFile);
+
+    const missingResult = requestRoundOptions({ model: "sonnet" }, { kitDir: optionsKitDir });
+
+    assert.equal(missingResult.status, STATUS_FAILED);
+    assert.match(missingResult.error.msg, /실행 중인 AutoPilot이 없습니다/);
+    assert(!fs.existsSync(roundOptionsFile));
+
+    const releaseLock = autopilotUtil.acquireRunLock(autopilotUtil.getLockFile(optionsKitDir));
+    const requestedResult = requestRoundOptions({ effort: "low" }, { kitDir: optionsKitDir });
+
+    releaseLock();
+
+    assert.equal(requestedResult.status, STATUS_OK);
+    assert.deepEqual(requestedResult.data.roundOptions, { effort: "low" });
+    assert.deepEqual(readRoundOptions(roundOptionsFile), { effort: "low" });
 };
 
 // 정리 지시는 성공한 회차 전까지만 반복하고, 성공한 뒤에는 다시 넣지 않는다.
@@ -478,6 +576,13 @@ const checkBinary = (context, fakeCliFile, binaryPath) => {
     assert.match(result.stdout, /예약 작업 완료/);
     assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
 
+    // 실행 중이 아닐 때 set은 실패하고, 잘못된 값은 거부한다.
+    const idleSetResult = spawnSync(executable, ["set", "--model", "sonnet"], { cwd: context.testDir, env: binaryEnv, encoding: "utf8", windowsHide: true });
+
+    assert.equal(idleSetResult.status, 1);
+    assert.match(idleSetResult.stderr, /실행 중인 AutoPilot이 없습니다/);
+    assert.equal(spawnSync(executable, ["set", "--model", "gpt"], { cwd: context.testDir, env: binaryEnv, windowsHide: true }).status, 1);
+
     execFileSync(executable, ["stop"], { cwd: context.testDir, env: binaryEnv });
 
     assert(fs.existsSync(path.join(kitDir, "progress", "STOP")));
@@ -498,6 +603,7 @@ const checkAutopilot = async () => {
 
         checkRunSettings();
         checkCommandArgs();
+        checkClaudeArgs();
         checkProgressArchive(context);
         checkStreamEvent();
 
@@ -508,6 +614,7 @@ const checkAutopilot = async () => {
         const scenarioRunner = createScenarioRunner(context, fakeCliFile);
 
         await checkRoundOutcomes(scenarioRunner.runScenario);
+        await checkRoundOptions(scenarioRunner.runScenario, context);
         await checkRetriesAndRateLimit(scenarioRunner.runScenario);
         await checkTimeout(scenarioRunner.runScenario);
         await checkProgressCleanupPrompt(scenarioRunner.runScenario);
@@ -522,7 +629,7 @@ const checkAutopilot = async () => {
         }
 
         originalConsoleLog(
-            "OK: parsing, archive, UTF-8, commits/idle, progress-only, TODO, STOP, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, run lock, linked path entry, inherited pipes, CLI launch"
+            "OK: parsing, archive, UTF-8, commits/idle, progress-only, TODO, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, run lock, linked path entry, inherited pipes, CLI launch"
         );
     } finally {
         console.log = originalConsoleLog;

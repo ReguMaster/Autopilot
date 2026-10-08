@@ -8,11 +8,11 @@ function createWindow() {
   const window = new BrowserWindow({
     title: 'AutoPilot',
     width: 1280,
-    height: 820,
+    height: 880,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#f5f6f8',
-    icon: path.join(__dirname, '../docs/logo.png'),
+    backgroundColor: '#ffffff',
+    icon: path.join(__dirname, '../docs/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

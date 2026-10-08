@@ -58,7 +58,7 @@ flowchart LR
 │  ├─ stop_autopilot.sh              macOS/Linux 중단 요청
 │  ├─ AUTOPILOT_TODO.md              소유자가 작성하는 오늘의 작업·실행시간·정책 (git 제외)
 │  ├─ AUTOPILOT_PROGRESS.md          세션 간 인수인계 문서 (AutoPilot이 갱신)
-│  ├─ progress/                      실행하면 생김: 회차 로그 · 아침 리포트 · 실행 잠금 (git 제외)
+│  ├─ progress/                      실행하면 생김: 회차 로그 · 아침 리포트 · 실행 잠금 · model/effort 변경 (git 제외)
 │  ├─ recycle_bin/                   실행하면 생김: 삭제 대신 이동된 파일 (git 제외)
 │  ├─ package.json                   ESM 선언. 대상 프로젝트의 module 설정과 분리한다
 │  └─ .gitignore                     progress/ · recycle_bin/ · TODO를 git에서 제외
@@ -95,7 +95,9 @@ sh autopilot/start_autopilot.sh 07:00 todo
 sh autopilot/stop_autopilot.sh
 ```
 
-공통 명령은 `node autopilot/core/autopilot_loop.js [HH:mm] [auto|todo]`이며, 중단은 `node autopilot/core/autopilot_loop.js stop`입니다. `--no-open`은 리포트 자동 열기를 끄고, `--config-dir`, `--effort`, `--end-time`, `--policy`도 지원합니다.
+공통 명령은 `node autopilot/core/autopilot_loop.js [HH:mm] [auto|todo]`이며, 중단은 `node autopilot/core/autopilot_loop.js stop`입니다. `--no-open`은 리포트 자동 열기를 끄고, `--config-dir`, `--model`, `--effort`, `--end-time`, `--policy`도 지원합니다.
+
+실행 중에 model·effort를 바꾸려면 `node autopilot/core/autopilot_loop.js set --model sonnet --effort low`(단독 실행 파일은 `autopilot set ...`)를 실행합니다. 진행 중인 회차는 그대로 끝나고 **다음 회차부터** 적용되며, 회차 시작 로그에 `(model sonnet, effort low)`로 남습니다. 실행 중인 AutoPilot이 없으면 실패합니다.
 
 단독 실행 파일은 배포 폴더 전체를 프로젝트의 `autopilot/`으로 복사한 뒤 Windows에서는 `.\autopilot\autopilot.exe 07:00 todo`, macOS/Linux에서는 `./autopilot/autopilot 07:00 todo`로 실행합니다. 중단은 같은 실행 파일에 `stop`을 전달합니다. 작업 지침과 안전 정책은 코드에 포함되어 있어 별도 파일이 필요 없습니다. 수정하려면 `autopilot/src/utils/guideText.js`를 고쳐 다시 빌드합니다.
 
@@ -104,7 +106,7 @@ sh autopilot/stop_autopilot.sh
 
 > **주의**: `claude`는 `--dangerously-skip-permissions`로 실행되므로 **신뢰할 수 있는 프로젝트에서만** 사용하세요.
 
-설정 폴더는 사용자 홈의 `.claude`이고, 모델은 Opus(실패 시 Sonnet), 기본 effort는 기존 실행 배치와 동일한 `high`입니다.
+설정 폴더는 사용자 홈의 `.claude`입니다. 모델은 기본 Opus이고 `--model`로 `fable` · `opus` · `sonnet` · `haiku`를 고를 수 있습니다. 실패 시 Sonnet으로 넘어가며, Sonnet을 직접 고르면 fallback은 쓰지 않습니다. 기본 effort는 기존 실행 배치와 동일한 `high`입니다.
 
 ## AUTOPILOT_TODO.md
 

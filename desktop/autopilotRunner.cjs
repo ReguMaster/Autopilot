@@ -3,13 +3,15 @@ const { spawn, spawnSync, execFile } = require("node:child_process");
 const STATUS_OK = "OK";
 const STATUS_FAILED = "FAILED";
 
+const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
+const EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"];
 const MAX_LOG_LINES = 3000;
 const STOP_TIMEOUT_MS = 10000;
 
 const HEADER_PATTERN = /^(Project|Deadline|Policy|Log|Report) : (.+)$/;
 const DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/;
 const ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
-const ROUND_START_PATTERN = /^시작 - 남은 시간/;
+const ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \(model (\S+), effort (\S+)\))?/;
 const RETRY_PATTERN = /^(\d+)분 후 재시도/;
 const LIMIT_PATTERN = /^\[사용량 한도\] (.+)까지 대기/;
 const FINISH_PATTERN = /^AutoPilot 종료 - (.+) \(\d+회차\)$/;
@@ -25,6 +27,9 @@ const createInitialState = () => {
         phase: "",
         round: 0,
         rounds: [],
+        model: "",
+        effort: "",
+        requested: { model: "", effort: "" },
         project: "",
         deadlineAt: 0,
         policy: "",
@@ -76,10 +81,14 @@ const applyHeader = (state, key, value) => {
 };
 
 const applyRound = (state, round, text) => {
-    if (ROUND_START_PATTERN.test(text)) {
+    const roundStart = text.match(ROUND_START_PATTERN);
+
+    if (roundStart) {
         state.round = round;
         state.phase = `${round}회차 진행 중`;
-        state.rounds.push({ round: round, startedAt: Date.now(), endedAt: 0, outcome: "" });
+        state.model = roundStart[1] || state.model;
+        state.effort = roundStart[2] || state.effort;
+        state.rounds.push({ round: round, startedAt: Date.now(), endedAt: 0, outcome: "", model: state.model, effort: state.effort });
 
         return;
     }
@@ -202,7 +211,8 @@ const createRunner = ({ onLog, onState }) => {
         addLines("app", [`[앱] 엔진이 종료됐어요 (exit ${exitCode}) - ${state.reason}`]);
     };
 
-    const start = ({ command, prefixArgs = [], args = [] }) => {
+    // roundOptions는 시작 인자로 넘기는 model·effort다. 첫 회차 로그가 올 때까지 화면에 이 값을 보여준다.
+    const start = ({ command, prefixArgs = [], args = [], roundOptions = {} }) => {
         if (child) {
             return createFailure("ALREADY_RUNNING", "이미 실행 중이에요.");
         }
@@ -210,7 +220,9 @@ const createRunner = ({ onLog, onState }) => {
         launch = { command: command, prefixArgs: prefixArgs };
         isKilled = false;
 
-        Object.assign(state, createInitialState(), { status: "running", startedAt: Date.now(), phase: "시작 중" });
+        const { model = "", effort = "" } = roundOptions;
+
+        Object.assign(state, createInitialState(), { status: "running", startedAt: Date.now(), phase: "시작 중", model: model, effort: effort, requested: { model: model, effort: effort } });
 
         const childProcess = spawn(command, [...prefixArgs, ...args], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
         const outReader = createLineReader((lines) => addLines("out", lines));
@@ -258,9 +270,41 @@ const createRunner = ({ onLog, onState }) => {
                     state.phase = "현재 회차 후 종료 예정";
                 }
 
-                addLines("app", [`[앱] 종료 신호를 보냈어요. ${stdout.trim()}`]);
+                addLines("app", ["[앱] 종료 신호를 보냈어요. 현재 회차를 마친 뒤 종료돼요."]);
                 resolve({ status: STATUS_OK });
             });
+        });
+    };
+
+    // 같은 실행 파일에 set을 전달한다. 진행 중인 회차에는 영향이 없고 다음 회차부터 적용된다.
+    const setRoundOptions = ({ model, effort }) => {
+        return new Promise((resolve) => {
+            if (!child || state.status !== "running") {
+                resolve(createFailure("NOT_RUNNING", "실행 중일 때만 변경할 수 있어요."));
+
+                return;
+            }
+
+            execFile(
+                launch.command,
+                [...launch.prefixArgs, "set", "--model", model, "--effort", effort],
+                { windowsHide: true, timeout: STOP_TIMEOUT_MS, encoding: "utf8" },
+                (error, stdout, stderr) => {
+                    if (error) {
+                        const message = (stderr || error.message).trim();
+
+                        addLines("err", [`[앱] 모델·effort 변경 실패: ${message}`]);
+                        resolve(createFailure("SET_OPTIONS_FAILED", message));
+
+                        return;
+                    }
+
+                    state.requested = { model: model, effort: effort };
+
+                    addLines("app", [`[앱] 다음 회차부터 model ${model}, effort ${effort}을(를) 적용해요.`]);
+                    resolve({ status: STATUS_OK });
+                }
+            );
         });
     };
 
@@ -289,6 +333,7 @@ const createRunner = ({ onLog, onState }) => {
     return {
         start: start,
         stop: stop,
+        setRoundOptions: setRoundOptions,
         kill: kill,
         isRunning: () => child !== null,
         getState: () => state,
@@ -296,4 +341,4 @@ const createRunner = ({ onLog, onState }) => {
     };
 };
 
-module.exports = { createRunner, STATUS_OK, STATUS_FAILED };
+module.exports = { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED };
