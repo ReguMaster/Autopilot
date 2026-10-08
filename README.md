@@ -62,7 +62,7 @@ flowchart LR
 │  ├─ recycle_bin/                   실행하면 생김: 삭제 대신 이동된 파일 (git 제외)
 │  ├─ package.json                   ESM 선언. 대상 프로젝트의 module 설정과 분리한다
 │  └─ .gitignore                     progress/ · recycle_bin/ · TODO를 git에서 제외
-├─ desktop/                        Electron UI
+├─ desktop/                        Electron 대시보드 (autopilot 실행 파일을 시작·종료·로그 표시)
 ├─ tests/                          임시 프로젝트 통합 검증
 ├─ tools/                          단독 실행 파일 빌드 스크립트
 ├─ docs/                           README · 앱에서 쓰는 로고
@@ -161,7 +161,7 @@ sh autopilot/stop_autopilot.sh
 
 ## 개발 · 검증 · 실행 파일 빌드
 
-실행 엔진은 Node.js 내장 모듈만 사용합니다. 패키지 설치는 개발·패키징에만 필요합니다. 기존 Electron UI는 별도이며, 이번 엔진 이식으로 실행 버튼을 연결하지는 않습니다.
+실행 엔진은 Node.js 내장 모듈만 사용합니다. 패키지 설치는 개발·패키징에만 필요합니다. Electron 대시보드(`desktop/`)는 엔진을 import하지 않고 빌드한 `autopilot` 실행 파일을 자식 프로세스로 실행합니다. 사용법은 `desktop/README.md`를 참고하세요.
 
 ```sh
 npm ci
@@ -169,6 +169,7 @@ npm run test:cli
 npm run format:cli
 npm run format:check:cli
 npm run build:cli
+npm run test:desktop
 ```
 
 - `.prettierrc`는 `29commerce_backend`에서 복사했습니다. ESM, 4칸 들여쓰기, 큰따옴표, 세미콜론, trailing comma 없음으로 통일합니다. 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용합니다. 공개 서비스는 try/catch와 오류 로그를 갖추고 `{ status: STATUS_OK, data }` 또는 `{ status: STATUS_FAILED, error: { code, msg } }`를 반환합니다. 실패한 실행의 보고서 데이터는 `data`에 함께 유지합니다. 포맷터는 수정한 JS 파일만 지정합니다.

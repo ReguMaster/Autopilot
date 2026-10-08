@@ -13,7 +13,7 @@
 - 시작 배치와 sh는 인자 전달만 한다. 실제 세션은 claude -p로 실행한다.
 - kitDir는 core/의 상위 폴더, projectDir는 kitDir의 상위 폴더다. 키트는 대상 Git 루트의 autopilot/으로 복사한다. 중첩 .git은 두지 않는다.
 - 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·정책·남은 시간·작업 수 상한을 명시하고, AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
-- Electron UI는 desktop/에 별도로 있다. CLI 이식은 UI와 실행 엔진 연결을 의미하지 않는다.
+- Electron UI는 desktop/에 있고, 빌드한 autopilot 실행 파일을 자식 프로세스로 실행한다(아래 Electron 연동).
 - 기존 PowerShell 구현(autopilot_loop.ps1, check_progress_archive.ps1)은 기록 관리용으로 legacy/ 폴더에 압축해 두었다. 새 실행 경로에서 사용하지 않으며 수정하지 않는다. 다른 레거시 소스도 legacy/에 압축해 보관한다.
 
 ## 개발 명령
@@ -24,11 +24,21 @@ npm run test:cli
 npm run format:cli
 npm run format:check:cli
 npm run build:cli
+npm run test:desktop
+npm run format:desktop
 ```
 
 검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다. 검증 시간 단축은 runAutopilot()의 limits 옵션으로만 하며, 사용자 CLI에 테스트 설정을 노출하지 않는다.
 
 build:cli는 현재 OS·CPU용 Node SEA를 생성한다. Node.js 24로 빌드하며, esbuild로 ESM을 CJS 한 파일로 묶은 뒤 postject로 런타임에 삽입한다. 지침 본문이 번들에 포함되므로 배포 폴더에 core/가 없다. 빌드는 시작할 때 출력 폴더를 비운다. tar로 실행 권한과 .gitignore를 보존한 tar.gz도 생성한다. .github/workflows/cli.yml은 Windows·Linux·macOS Intel/Apple Silicon에서 각각 검증·빌드한다.
+
+## Electron 연동
+
+- desktop/은 엔진 코드를 import하지 않는다. 빌드한 autopilot 실행 파일을 자식 프로세스로 띄우며, CLI 계약(인자·stdout 로그 줄 형식·exit code·stop)이 UI와의 인터페이스다. 로그 줄 형식을 바꾸면 desktop/autopilotRunner.cjs의 파서와 tests/checkDesktopRunner.js를 함께 고친다.
+- 구성: autopilotRunner.cjs(실행·종료 신호·강제 종료·로그 해석), autopilotIpc.cjs(설정 저장·대화상자·IPC), preload.cjs(window.autopilot 노출), renderer.js·index.html·styles.css(대시보드). 렌더러에는 Node 권한을 주지 않는다.
+- 엔진 파일은 대화상자로 고르고 autopilot/ 폴더 안의 파일만 허용한다. 경로와 마지막 실행 옵션은 userData/settings.json에 저장한다. 시작은 --no-open과 종료 시각·정책·effort 인자, 종료 신호는 같은 실행 파일의 stop, 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다.
+- 실행 중에 창을 닫으면 확인 후 강제 종료한다. 앱을 다시 켜면 이미 실행 중인 엔진에 다시 붙지 않는다. 로그는 메인 프로세스가 최근 3000줄만 보관한다.
+- 검증은 npm run test:desktop(가짜 CLI로 러너 확인)과 npm test(창·preload 스모크)다. VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 electron을 실행한다.
 
 ## 스크립트와 세션 계약
 
