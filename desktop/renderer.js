@@ -9,32 +9,39 @@ const STATUS_OK = "OK";
 const MODEL_LABELS = { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };
 
 const OPTIONS_HINTS = {
-    idle: "시작할 때 이 값으로 실행해요. 실행 중에 바꾸면 다음 회차부터 적용돼요.",
-    running: "바꾸면 바로 전달돼요. 진행 중인 회차는 그대로 끝나고 다음 회차부터 적용돼요.",
-    stopping: "종료 요청 후에는 변경할 수 없어요."
+    idle: "실행 중에 바꾸면 다음 회차부터 적용돼요.",
+    running: "바꾸면 바로 전달돼요. 진행 중인 회차는 그대로 끝나요.",
+    stopping: "종료 요청 후에는 바꿀 수 없어요."
 };
 
 const byId = (id) => document.getElementById(id);
 
 const elements = {
+    version: byId("version"),
+    navItems: document.querySelectorAll(".nav-item"),
+    views: document.querySelectorAll(".view"),
     badge: byId("status-badge"),
-    enginePath: byId("engine-path"),
-    selectExe: byId("select-exe"),
+    statPhase: byId("stat-phase"),
     notice: byId("notice"),
+    engineBanner: byId("engine-banner"),
+    openSettings: byId("open-settings"),
+    engineNotice: byId("engine-notice"),
+    enginePath: byId("engine-path"),
+    findExe: byId("find-exe"),
+    selectExe: byId("select-exe"),
     form: byId("run-form"),
     endTime: byId("end-time"),
     policy: byId("policy"),
+    model: byId("model"),
+    effort: byId("effort"),
     start: byId("start"),
     stop: byId("stop"),
     kill: byId("kill"),
-    optionsCard: byId("options-card"),
     appliedNow: byId("applied-now"),
     appliedNextLabel: byId("applied-next-label"),
     appliedNext: byId("applied-next"),
     appliedTag: byId("applied-tag"),
     optionsHint: byId("options-hint"),
-    statStatus: byId("stat-status"),
-    statPhase: byId("stat-phase"),
     statRound: byId("stat-round"),
     statRoundSub: byId("stat-round-sub"),
     statRemaining: byId("stat-remaining"),
@@ -57,6 +64,7 @@ let currentState = null;
 let pendingEntries = [];
 let isFlushScheduled = false;
 let renderedRoundsKey = "";
+let lineNumber = 0;
 let isApplying = false;
 let isApplyQueued = false;
 
@@ -84,6 +92,22 @@ const formatDeadline = (ms) => {
 
 const formatOptions = (model, effort) => {
     return model ? `${MODEL_LABELS[model] || model} · ${effort}` : "-";
+};
+
+/* 화면 전환 */
+
+const showView = (name) => {
+    for (const view of elements.views) {
+        view.hidden = view.id !== `view-${name}`;
+    }
+
+    for (const item of elements.navItems) {
+        if (item.dataset.view === name) {
+            item.setAttribute("aria-current", "page");
+        } else {
+            item.removeAttribute("aria-current");
+        }
+    }
 };
 
 /* 로그 */
@@ -116,7 +140,26 @@ const getLineKind = ({ stream, text }) => {
     return "";
 };
 
-// 안내 문구(첫 자식)를 제외한 줄 수
+const createLogLine = (entry) => {
+    const line = document.createElement("div");
+    const number = document.createElement("span");
+    const text = document.createElement("span");
+
+    lineNumber++;
+
+    line.className = "line";
+    line.dataset.kind = getLineKind(entry);
+    number.className = "ln";
+    number.textContent = lineNumber;
+    text.className = "tx";
+    text.textContent = entry.text;
+
+    line.append(number, text);
+
+    return line;
+};
+
+// 안내 줄(첫 자식)을 제외한 줄 수
 const getLineCount = () => {
     return elements.log.childElementCount - 1;
 };
@@ -130,15 +173,12 @@ const flushLogEntries = () => {
     isFlushScheduled = false;
 
     const fragment = document.createDocumentFragment();
+    const entries = pendingEntries.slice(-MAX_LOG_LINES);
 
-    for (const entry of pendingEntries.slice(-MAX_LOG_LINES)) {
-        const line = document.createElement("div");
+    lineNumber += pendingEntries.length - entries.length;
 
-        line.className = "line";
-        line.dataset.kind = getLineKind(entry);
-        line.textContent = entry.text;
-
-        fragment.append(line);
+    for (const entry of entries) {
+        fragment.append(createLogLine(entry));
     }
 
     pendingEntries = [];
@@ -173,8 +213,9 @@ const appendLogEntries = (entries) => {
 
 const clearLog = () => {
     pendingEntries = [];
+    lineNumber = 0;
 
-    for (const line of elements.log.querySelectorAll(".line")) {
+    for (const line of elements.log.querySelectorAll(".line:not(.empty)")) {
         line.remove();
     }
 
@@ -305,40 +346,30 @@ const renderClock = () => {
     }
 };
 
-const showNotice = (message) => {
-    elements.notice.textContent = message;
-    elements.notice.hidden = !message;
+const showNotice = (message, target = elements.notice) => {
+    target.textContent = message;
+    target.hidden = !message;
 };
 
-const showFailure = (result) => {
-    showNotice(result.status === STATUS_OK ? "" : result.error.msg);
+const showFailure = (result, target) => {
+    showNotice(result.status === STATUS_OK ? "" : result.error.msg, target);
 };
 
 const renderSettings = () => {
-    const hasEngine = Boolean(settings.exePath);
-
-    elements.enginePath.textContent = hasEngine ? settings.exePath : "연결된 autopilot 실행 파일이 없어요.";
-    elements.enginePath.title = settings.exePath;
-    elements.selectExe.textContent = hasEngine ? "엔진 변경" : "엔진 선택";
+    elements.enginePath.textContent = settings.exePath || "연결된 autopilot 실행 파일이 없어요.";
+    elements.selectExe.textContent = settings.exePath ? "파일 변경" : "파일 선택";
+    elements.engineBanner.hidden = Boolean(settings.exePath);
 };
 
 /* 모델·Effort */
 
-const getOptionInputs = () => {
-    return elements.optionsCard.querySelectorAll("input[type=radio]");
-};
-
 const getSelectedOptions = () => {
-    return {
-        model: elements.optionsCard.querySelector("input[name=model]:checked")?.value || "",
-        effort: elements.optionsCard.querySelector("input[name=effort]:checked")?.value || ""
-    };
+    return { model: elements.model.value, effort: elements.effort.value };
 };
 
 const setSelectedOptions = ({ model, effort }) => {
-    for (const input of getOptionInputs()) {
-        input.checked = input.value === (input.name === "model" ? model : effort);
-    }
+    elements.model.value = model;
+    elements.effort.value = effort;
 };
 
 // 실행 중에는 엔진에 전달된 값을 기준으로 선택을 맞춘다. 전달 중인 값은 덮어쓰지 않는다.
@@ -352,9 +383,8 @@ const renderOptions = (state) => {
     const selected = getSelectedOptions();
     const isPending = !isIdle && (state.requested.model !== state.model || state.requested.effort !== state.effort);
 
-    for (const input of getOptionInputs()) {
-        input.disabled = state.status === "stopping";
-    }
+    elements.model.disabled = state.status === "stopping";
+    elements.effort.disabled = state.status === "stopping";
 
     if (isIdle) {
         elements.appliedNow.textContent = state.startedAt ? `마지막 ${formatOptions(state.model, state.effort)}` : "실행 전";
@@ -418,14 +448,12 @@ const renderState = (state) => {
 
     elements.badge.textContent = phase.label;
     elements.badge.dataset.tone = phase.tone;
-
-    elements.statStatus.textContent = phase.label;
     elements.statPhase.textContent = state.reason && isIdle && state.endedAt ? state.reason : state.phase || "시작하면 진행 단계가 표시돼요.";
+
     elements.statRound.textContent = state.round;
     elements.statRoundSub.textContent = lastRound ? `완료 ${finishedCount}회, 최근 결과 ${lastRound.outcome || "진행 중"}` : "아직 시작한 회차가 없어요.";
     elements.statDeadline.textContent = state.deadlineAt ? `종료 예정 ${formatDeadline(state.deadlineAt)}` : "종료 예정 시각 없음";
     elements.statPolicy.textContent = state.policy ? `정책 ${state.policy.replace(/ \(.+\)$/, "")}` : "정책 없음";
-    elements.statPolicy.title = state.policy;
 
     elements.start.disabled = !hasEngine || !isIdle;
     elements.stop.disabled = state.status !== "running";
@@ -433,6 +461,8 @@ const renderState = (state) => {
     elements.openReport.disabled = !state.reportFile;
     elements.endTime.disabled = !isIdle;
     elements.policy.disabled = !isIdle;
+    elements.selectExe.disabled = !isIdle;
+    elements.findExe.disabled = !isIdle;
 
     renderOptions(state);
     renderRounds(state);
@@ -457,10 +487,8 @@ const handleOpenReport = async () => {
     showFailure(await window.autopilot.openReport());
 };
 
-const handleSelectExecutable = async () => {
-    const result = await window.autopilot.selectExecutable();
-
-    showFailure(result);
+const applyEngineResult = (result) => {
+    showFailure(result, elements.engineNotice);
 
     if (result.status === STATUS_OK) {
         settings = result.data.settings;
@@ -470,11 +498,20 @@ const handleSelectExecutable = async () => {
     }
 };
 
+const handleSelectExecutable = async () => {
+    applyEngineResult(await window.autopilot.selectExecutable());
+};
+
+const handleFindExecutable = async () => {
+    applyEngineResult(await window.autopilot.findExecutable());
+};
+
 const initialize = async () => {
     const snapshot = await window.autopilot.getState();
 
     settings = snapshot.settings;
 
+    elements.version.textContent = `v${snapshot.version}`;
     elements.endTime.value = settings.endTime;
     elements.policy.value = settings.policy;
 
@@ -486,14 +523,21 @@ const initialize = async () => {
     window.autopilot.onLog(appendLogEntries);
     window.autopilot.onState(renderState);
 
+    for (const item of elements.navItems) {
+        item.addEventListener("click", () => showView(item.dataset.view));
+    }
+
+    elements.openSettings.addEventListener("click", () => showView("settings"));
     elements.form.addEventListener("submit", handleStart);
     elements.stop.addEventListener("click", handleStop);
     elements.kill.addEventListener("click", handleKill);
     elements.selectExe.addEventListener("click", handleSelectExecutable);
+    elements.findExe.addEventListener("click", handleFindExecutable);
     elements.openReport.addEventListener("click", handleOpenReport);
     elements.clearLog.addEventListener("click", clearLog);
     elements.log.addEventListener("scroll", handleFollowByScroll);
-    elements.optionsCard.addEventListener("change", handleOptionChange);
+    elements.model.addEventListener("change", handleOptionChange);
+    elements.effort.addEventListener("change", handleOptionChange);
 
     setInterval(renderClock, CLOCK_INTERVAL_MS);
 };

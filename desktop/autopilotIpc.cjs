@@ -2,8 +2,8 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { KIT_DIR_NAME, findEngineExecutable } = require("./engineFinder.cjs");
 
-const KIT_DIR_NAME = "autopilot";
 const CLI_OPTION_FLAGS = [
     ["endTime", "--end-time"],
     ["policy", "--policy"],
@@ -46,6 +46,22 @@ const getExecutableError = (exePath) => {
     }
 
     return "";
+};
+
+// 포터블 실행 파일 위치, 앱 실행 파일 위치, 작업 폴더 순으로 찾아 연결하고 저장한다. 못 찾으면 null.
+const connectFoundExecutable = (settings) => {
+    const startDirs = [process.env.PORTABLE_EXECUTABLE_DIR, path.dirname(process.execPath), process.cwd()].filter(Boolean);
+    const exePath = findEngineExecutable(startDirs);
+
+    if (!exePath) {
+        return null;
+    }
+
+    const nextSettings = { ...settings, exePath: exePath };
+
+    writeSettings(nextSettings);
+
+    return nextSettings;
 };
 
 const isValidRoundOptions = ({ model, effort }) => {
@@ -139,6 +155,27 @@ const handleSelectExecutable = async (event) => {
     return { status: STATUS_OK, data: { settings: nextSettings } };
 };
 
+const handleFindExecutable = () => {
+    const settings = connectFoundExecutable(readSettings());
+
+    if (!settings) {
+        return createFailure("ENGINE_NOT_FOUND", "autopilot 실행 파일을 자동으로 찾지 못했어요. 직접 선택해 주세요.");
+    }
+
+    return { status: STATUS_OK, data: { settings: settings } };
+};
+
+// 저장된 경로가 없거나 더 이상 유효하지 않을 때만 자동으로 연결한다.
+const handleGetState = () => {
+    let settings = readSettings();
+
+    if (getExecutableError(settings.exePath)) {
+        settings = connectFoundExecutable(settings) || settings;
+    }
+
+    return { version: app.getVersion(), settings: settings, state: runner.getState(), logs: runner.getLogs() };
+};
+
 const handleKill = async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const { response } = await dialog.showMessageBox(window, {
@@ -171,8 +208,9 @@ const handleOpenReport = async () => {
 };
 
 const registerIpc = () => {
-    ipcMain.handle("autopilot:get-state", () => ({ settings: readSettings(), state: runner.getState(), logs: runner.getLogs() }));
+    ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-exe", handleSelectExecutable);
+    ipcMain.handle("autopilot:find-exe", handleFindExecutable);
     ipcMain.handle("autopilot:start", handleStart);
     ipcMain.handle("autopilot:stop", () => runner.stop());
     ipcMain.handle("autopilot:set-options", handleSetOptions);

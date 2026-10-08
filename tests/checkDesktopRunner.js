@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { createRunner, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
+const { findEngineExecutable } = require("../desktop/engineFinder.cjs");
 
 // autopilot.exe 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -224,6 +225,30 @@ const checkSpawnFailure = async (testDir) => {
     assert(runner.getState().reason.includes("ENOENT"));
 };
 
+const checkEngineFinder = (testDir) => {
+    const exeName = process.platform === "win32" ? "autopilot.exe" : "autopilot";
+    const nestedDir = path.join(testDir, "project", "src", "deep");
+    const kitDir = path.join(testDir, "project", "autopilot");
+    const repoDir = path.join(testDir, "repo", "desktop");
+    const buildDir = path.join(testDir, "repo", "dist", `cli-${process.platform}-${process.arch}`, "autopilot");
+
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.mkdirSync(path.join(kitDir, exeName), { recursive: true });
+    fs.mkdirSync(repoDir, { recursive: true });
+
+    assert.equal(findEngineExecutable([nestedDir, repoDir]), "");
+
+    fs.rmSync(path.join(kitDir, exeName), { recursive: true });
+    fs.writeFileSync(path.join(kitDir, exeName), "");
+
+    assert.equal(findEngineExecutable([nestedDir]), path.join(kitDir, exeName));
+
+    fs.mkdirSync(buildDir, { recursive: true });
+    fs.writeFileSync(path.join(buildDir, exeName), "");
+
+    assert.equal(findEngineExecutable([repoDir, nestedDir]), path.join(buildDir, exeName));
+};
+
 const runChecks = async () => {
     const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-desktop-"));
 
@@ -232,6 +257,8 @@ const runChecks = async () => {
     fs.writeFileSync(path.join(testDir, "fakeCli.cjs"), FAKE_CLI_SOURCE);
 
     try {
+        checkEngineFinder(testDir);
+
         await checkFinishedRun(testDir);
 
         fs.rmSync(path.join(testDir, "STOP"), { force: true });

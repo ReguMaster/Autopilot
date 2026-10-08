@@ -8,7 +8,7 @@
     "scripts": {
         "start": "electron .",
         "dev": "electron . --dev",
-        "check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/autopilotRunner.cjs && node --check desktop/autopilotIpc.cjs && node --check desktop/renderer.js && node --check tests/checkDesktopRunner.js",
+        "check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/autopilotRunner.cjs && node --check desktop/autopilotIpc.cjs && node --check desktop/engineFinder.cjs && node --check desktop/renderer.js && node --check tests/checkDesktopRunner.js",
         "test": "npm run check && electron . --smoke-test",
         "test:desktop": "npm run check && node tests/checkDesktopRunner.js",
         "build": "npm run check && electron-builder --win --x64 --dir",
@@ -18,8 +18,8 @@
         "build:cli": "npm run check:cli && node tools/buildCli.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js tools/buildCli.js \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js tools/buildCli.js \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/renderer.js tests/checkDesktopRunner.js",
-        "format:check:desktop": "prettier --check desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/renderer.js tests/checkDesktopRunner.js"
+        "format:desktop": "prettier --write desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/renderer.js tests/checkDesktopRunner.js",
+        "format:check:desktop": "prettier --check desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/renderer.js tests/checkDesktopRunner.js"
     },
     "devDependencies": {
         "electron": "^44.6.0",

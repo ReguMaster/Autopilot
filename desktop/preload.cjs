@@ -13,6 +13,7 @@ const subscribe = (channel) => {
 contextBridge.exposeInMainWorld("autopilot", {
     getState: () => ipcRenderer.invoke("autopilot:get-state"),
     selectExecutable: () => ipcRenderer.invoke("autopilot:select-exe"),
+    findExecutable: () => ipcRenderer.invoke("autopilot:find-exe"),
     start: (options) => ipcRenderer.invoke("autopilot:start", options),
     stop: () => ipcRenderer.invoke("autopilot:stop"),
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),

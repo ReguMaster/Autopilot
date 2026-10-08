@@ -35,8 +35,8 @@ build:cli는 현재 OS·CPU용 Node SEA를 생성한다. Node.js 24로 빌드하
 ## Electron 연동
 
 - desktop/은 엔진 코드를 import하지 않는다. 빌드한 autopilot 실행 파일을 자식 프로세스로 띄우며, CLI 계약(인자·stdout 로그 줄 형식·exit code·stop)이 UI와의 인터페이스다. 로그 줄 형식을 바꾸면 desktop/autopilotRunner.cjs의 파서와 tests/checkDesktopRunner.js를 함께 고친다.
-- 구성: autopilotRunner.cjs(실행·종료 신호·강제 종료·로그 해석), autopilotIpc.cjs(설정 저장·대화상자·IPC), preload.cjs(window.autopilot 노출), renderer.js·index.html·styles.css(대시보드). 렌더러에는 Node 권한을 주지 않는다.
-- 엔진 파일은 대화상자로 고르고 autopilot/ 폴더 안의 파일만 허용한다. 경로와 마지막 실행 옵션은 userData/settings.json에 저장한다. 시작은 --no-open과 종료 시각·정책·model·effort 인자, 종료 신호는 같은 실행 파일의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다. 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 보고 둘이 다르면 적용 대기로 표시한다. 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·EFFORT_CHOICES와 index.html 라디오이며 config.js와 함께 바꾼다.
+- 구성: autopilotRunner.cjs(실행·종료 신호·강제 종료·로그 해석), autopilotIpc.cjs(설정 저장·대화상자·IPC), engineFinder.cjs(엔진 실행 파일 자동 탐색), preload.cjs(window.autopilot 노출), renderer.js·index.html·styles.css(대시보드·설정 화면). 렌더러에는 Node 권한을 주지 않는다.
+- 엔진 파일은 autopilot/ 폴더 안의 파일만 허용한다. 앱을 켤 때 저장된 경로가 없거나 무효하면 포터블 실행 파일 위치·앱 위치·작업 폴더에서 상위 폴더로 올라가며 autopilot/와 dist/cli-<OS>-<CPU>/autopilot/의 실행 파일을 찾아 자동 연결하고(engineFinder.cjs), 설정의 자동 찾기 버튼이나 대화상자로도 고른다. 경로와 마지막 실행 옵션은 userData/settings.json에 저장한다. 시작은 --no-open과 종료 시각·정책·model·effort 인자, 종료 신호는 같은 실행 파일의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다. 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 보고 둘이 다르면 적용 대기로 표시한다. 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·EFFORT_CHOICES와 index.html의 모델·Effort select이며 config.js와 함께 바꾼다.
 - 실행 중에 창을 닫으면 확인 후 강제 종료한다. 앱을 다시 켜면 이미 실행 중인 엔진에 다시 붙지 않는다. 로그는 메인 프로세스가 최근 3000줄만 보관한다.
 - 검증은 npm run test:desktop(가짜 CLI로 러너 확인)과 npm test(창·preload 스모크)다. VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 electron을 실행한다.
 
