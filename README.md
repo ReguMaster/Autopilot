@@ -41,7 +41,8 @@ flowchart LR
 - 새 commit 없이 끝난 회차가 연속 2회면 남은 작업이 없는 것으로 보고 종료합니다(진행 기록만 고친 commit은 제외).
 - 실패하면 5 · 15 · 30분 간격으로 재시도하고, 연속 4회 실패하면 중단합니다. 대기가 종료 시각에 걸리면 바로 끝냅니다.
 - 사용량 한도로 회차가 실패하면 실패로 세지 않고 리셋 1분 뒤까지 기다립니다. 리셋이 종료 시각에 걸리면 바로 끝냅니다.
-- 같은 프로젝트에서 AutoPilot이 이미 실행 중이면 새 실행을 거부합니다. `progress/RUNNING`에 pid를 기록하고 종료할 때 지우며, 이미 종료된 프로세스의 낡은 잠금은 덮어씁니다.
+- 같은 프로젝트에서 AutoPilot이 이미 실행 중이면 새 실행을 거부합니다. `progress/RUNNING`에 pid · 실행 파일 이름 · 이번 실행의 로그 파일을 기록하고 종료할 때 지웁니다. 강제 종료로 남은 잠금은 프로세스가 없거나 다른 프로그램이 pid를 재사용했으면 낡은 것으로 보고 덮어씁니다. 실행 중인지는 `autopilot status`가 한 줄 JSON(`{"running":true,"pid":1234,"logFile":"..."}`)으로 알려주며, 데스크톱 앱이 이미 실행 중인 엔진에 연결할 때 씁니다.
+- 실행을 시작할 때 30일이 지난 날짜 폴더의 로그와 리포트(`autopilot_*.log` · `report_*.html`)를 지웁니다. 보관한 진행 기록 원본은 지우지 않습니다.
 
 ## 구성
 
@@ -95,7 +96,7 @@ sh autopilot/start_autopilot.sh 07:00 todo
 sh autopilot/stop_autopilot.sh
 ```
 
-공통 명령은 `node autopilot/core/autopilot_loop.js [HH:mm] [auto|todo]`이며, 중단은 `node autopilot/core/autopilot_loop.js stop`입니다. `--no-open`은 리포트 자동 열기를 끄고, `--config-dir`, `--model`, `--effort`, `--end-time`, `--policy`도 지원합니다.
+공통 명령은 `node autopilot/core/autopilot_loop.js [HH:mm] [auto|todo]`이며, 중단은 `node autopilot/core/autopilot_loop.js stop`, 버전 확인은 `--version`입니다. `--no-open`은 리포트 자동 열기를 끄고, `--config-dir`, `--model`, `--effort`, `--end-time`, `--policy`도 지원합니다.
 
 실행 중에 model·effort를 바꾸려면 `node autopilot/core/autopilot_loop.js set --model sonnet --effort low`(단독 실행 파일은 `autopilot set ...`)를 실행합니다. 진행 중인 회차는 그대로 끝나고 **다음 회차부터** 적용되며, 회차 시작 로그에 `(model sonnet, effort low)`로 남습니다. 실행 중인 AutoPilot이 없으면 실패합니다.
 
@@ -156,7 +157,7 @@ sh autopilot/stop_autopilot.sh
 ## 참고
 
 - `.bat`은 ASCII로 유지하고 인자만 전달합니다. JS·Markdown·로그는 UTF-8을 사용하며, 기존 BOM 문서도 읽습니다.
-- 회차 진행(세션 ID · 사용한 도구 · 결과 요약과 비용 · stderr)이 콘솔에 실시간으로 표시되고 `autopilot/progress/<날짜>/autopilot_<HHmmss>_<고유 ID>.log`에도 쌓입니다.
+- 회차 진행(세션 ID · 사용한 도구 · 결과 요약과 비용 · stderr)이 콘솔에 실시간으로 표시되고 `autopilot/progress/<날짜>/autopilot_<HHmmss>_<고유 ID>.log`에도 쌓입니다. 여러 줄 출력의 이어지는 줄은 4칸 들여써서 기록하므로, 줄 맨 앞은 항상 엔진이 직접 남긴 줄입니다.
 - 회차의 전체 대화는 대상 프로젝트 루트에서 `claude --resume <세션 ID>`로 열어 볼 수 있습니다.
 - 실행을 시작하면 `autopilot/progress/<날짜>/report_<HHmmss>_<고유 ID>.html` 리포트를 브라우저로 엽니다. 진행 중에는 현재 회차 · 남은 시간 · 최근 로그를 30초마다 갱신하고, 끝나면 회차별 결과 · 소요 시간 · 비용(API 환산) · commit과 변경 규모 · 세션 요약 · stderr, 남은 미commit 변경을 한 장에 담은 최종본이 됩니다.
 
@@ -175,9 +176,10 @@ npm run test:desktop
 ```
 
 - `.prettierrc`는 `29commerce_backend`에서 복사했습니다. ESM, 4칸 들여쓰기, 큰따옴표, 세미콜론, trailing comma 없음으로 통일합니다. 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용합니다. 공개 서비스는 try/catch와 오류 로그를 갖추고 `{ status: STATUS_OK, data }` 또는 `{ status: STATUS_FAILED, error: { code, msg } }`를 반환합니다. 실패한 실행의 보고서 데이터는 `data`에 함께 유지합니다. 포맷터는 수정한 JS 파일만 지정합니다.
-- 검증은 임시 Git 저장소와 가짜 Claude를 사용합니다. 실제 Claude 세션이나 대상 프로젝트는 실행하지 않습니다. TODO/정책 파싱, 진행 기록 보관, 정상 commit, idle, 재시도, 사용량 한도, STOP/TODO_COMPLETE, UTF-8, 프로세스 트리 종료, SIGINT·SIGHUP 처리, 동시 실행 잠금을 확인합니다. `build:cli`는 패키징한 실행 파일도 임시 프로젝트에서 직접 검증합니다.
+- 검증은 임시 Git 저장소와 가짜 Claude를 사용합니다. 실제 Claude 세션이나 대상 프로젝트는 실행하지 않습니다. TODO/정책 파싱, 진행 기록 보관, 정상 commit, idle, 재시도, 사용량 한도, STOP/TODO_COMPLETE, UTF-8, 프로세스 트리 종료, SIGINT·SIGHUP 처리, 동시 실행 잠금(pid 재사용 포함), 오래된 로그 정리, 데스크톱 앱이 읽는 로그 형식과 위조 줄 차단, `--version`, `status`를 확인합니다. `build:cli`는 패키징한 실행 파일도 임시 프로젝트에서 직접 검증합니다.
 - `build:cli`는 현재 OS·CPU의 Node.js 런타임을 SEA 실행 파일로 패키징합니다. 빌드에는 Node.js 24를 권장합니다. 결과는 `dist/cli-<OS>-<CPU>/autopilot/`과 `dist/autopilot-<OS>-<CPU>.tar.gz`에 생성됩니다. 빌드에는 `tar`도 필요합니다. 압축 파일은 실행 권한과 `.gitignore`를 보존합니다.
-- `.github/workflows/cli.yml`은 Windows x64, Linux x64, macOS arm64·x64에서 검증·빌드하고 배포 폴더를 artifact로 올립니다. 다른 OS용 빌드는 해당 러너에서 수행합니다.
+- `.github/workflows/cli.yml`은 Windows x64, Linux x64, macOS arm64·x64에서 CLI·데스크톱 포맷 검사, 데스크톱 러너 검증, 빌드를 실행하고 배포 폴더를 artifact로 올립니다. 다른 OS용 빌드는 해당 러너에서 수행합니다. 별도 잡이 Windows에서 Electron 스모크 테스트(`npm test`)도 실행합니다.
+- `.github/workflows/release.yml`은 `v<버전>` 태그를 push하면 위 검증과 빌드를 거쳐 4개 플랫폼의 CLI 압축 파일과 Windows 포터블 EXE를 GitHub Release로 올립니다. 태그는 루트와 `autopilot/`의 `package.json` 버전과 같아야 합니다.
 - macOS 결과는 ad-hoc 서명이며, Windows 결과는 게시자 서명이 없습니다. 공개 배포용 인증서 서명·공증은 별도입니다.
 - 시한 초과나 SIGINT/SIGTERM/SIGHUP(터미널 닫힘)에는 Windows에서 `taskkill /T /F`, macOS/Linux에서 회차 프로세스 그룹 종료를 사용합니다. 자식이 별도 세션으로 이탈하는 실행 방식은 추적 대상이 아닙니다. GUI 없는 Linux에서는 리포트 경로만 출력합니다.
 - 진행 기록만 수정한 commit은 idle이며, exit 0이어도 결과의 `is_error`가 true이면 실패로 처리합니다. 완료 마커는 성공한 지시개선 회차에서만 인정합니다.

@@ -290,6 +290,12 @@ h2 {
     color: var(--danger);
 }
 
+.notice[data-tone="warn"] {
+    border-color: var(--warn);
+    background: var(--warn-tint);
+    color: var(--warn);
+}
+
 .banner {
     display: flex;
     align-items: center;

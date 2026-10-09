@@ -1,8 +1,9 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
-const { KIT_DIR_NAME, findEngineExecutable } = require("./engineFinder.cjs");
+const { KIT_DIR_NAME, findEngineExecutable, isKitReportFile } = require("./engineFinder.cjs");
 
 const CLI_OPTION_FLAGS = [
     ["endTime", "--end-time"],
@@ -10,6 +11,8 @@ const CLI_OPTION_FLAGS = [
     ["model", "--model"],
     ["effort", "--effort"]
 ];
+const ENGINE_VERSION_TIMEOUT_MS = 10000;
+const ENGINE_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
 const DEFAULT_SETTINGS = { exePath: "", endTime: "", policy: "", model: "opus", effort: "high" };
 
 const getSettingsFile = () => {
@@ -46,6 +49,23 @@ const getExecutableError = (exePath) => {
     }
 
     return "";
+};
+
+// 엔진 버전을 읽는다. --version을 모르는 이전 버전이거나 실행에 실패하면 빈 문자열이다.
+const readEngineVersion = (exePath) => {
+    return new Promise((resolve) => {
+        if (getExecutableError(exePath)) {
+            resolve("");
+
+            return;
+        }
+
+        execFile(exePath, ["--version"], { windowsHide: true, timeout: ENGINE_VERSION_TIMEOUT_MS, encoding: "utf8" }, (error, stdout) => {
+            const version = error ? "" : stdout.trim();
+
+            resolve(ENGINE_VERSION_PATTERN.test(version) ? version : "");
+        });
+    });
 };
 
 // 포터블 실행 파일 위치, 앱 실행 파일 위치, 작업 폴더 순으로 찾아 연결하고 저장한다. 못 찾으면 null.
@@ -152,28 +172,49 @@ const handleSelectExecutable = async (event) => {
 
     writeSettings(nextSettings);
 
-    return { status: STATUS_OK, data: { settings: nextSettings } };
+    return { status: STATUS_OK, data: { settings: nextSettings, engineVersion: await readEngineVersion(nextSettings.exePath) } };
 };
 
-const handleFindExecutable = () => {
+const handleFindExecutable = async () => {
     const settings = connectFoundExecutable(readSettings());
 
     if (!settings) {
         return createFailure("ENGINE_NOT_FOUND", "autopilot 실행 파일을 자동으로 찾지 못했어요. 직접 선택해 주세요.");
     }
 
-    return { status: STATUS_OK, data: { settings: settings } };
+    return { status: STATUS_OK, data: { settings: settings, engineVersion: await readEngineVersion(settings.exePath) } };
+};
+
+// 앱이 시작하지 않았지만 이미 실행 중인 엔진(예: 시작 배치로 띄운 엔진)이 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
+let isCheckingRunningEngine = false;
+
+const attachRunningEngine = async () => {
+    const { exePath } = readSettings();
+
+    if (isCheckingRunningEngine || runner.isRunning() || getExecutableError(exePath)) {
+        return;
+    }
+
+    isCheckingRunningEngine = true;
+
+    try {
+        await runner.attachIfRunning({ command: exePath });
+    } finally {
+        isCheckingRunningEngine = false;
+    }
 };
 
 // 저장된 경로가 없거나 더 이상 유효하지 않을 때만 자동으로 연결한다.
-const handleGetState = () => {
+const handleGetState = async () => {
     let settings = readSettings();
 
     if (getExecutableError(settings.exePath)) {
         settings = connectFoundExecutable(settings) || settings;
     }
 
-    return { version: app.getVersion(), settings: settings, state: runner.getState(), logs: runner.getLogs() };
+    await attachRunningEngine();
+
+    return { version: app.getVersion(), engineVersion: await readEngineVersion(settings.exePath), settings: settings, state: runner.getState(), logs: runner.getLogs() };
 };
 
 const handleKill = async (event) => {
@@ -202,6 +243,12 @@ const handleOpenReport = async () => {
         return createFailure("NO_REPORT", "열 수 있는 리포트가 아직 없어요.");
     }
 
+    const { exePath } = readSettings();
+
+    if (!isKitReportFile(exePath && path.dirname(exePath), reportFile)) {
+        return createFailure("INVALID_REPORT", "엔진 폴더의 progress 안에 있는 리포트만 열 수 있어요.");
+    }
+
     const openError = await shell.openPath(reportFile);
 
     return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
@@ -218,9 +265,9 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:open-report", handleOpenReport);
 };
 
-// 실행 중에 창을 닫으면 엔진이 끊기므로 확인을 받고 강제 종료한다. 닫아도 되면 true를 반환한다.
+// 앱이 시작한 엔진은 창을 닫으면 출력이 끊기므로 확인을 받고 강제 종료한다. 연결한 엔진은 앱 소유가 아니라 그대로 두고 닫는다. 닫아도 되면 true를 반환한다.
 const confirmClose = (window) => {
-    if (!runner.isRunning()) {
+    if (!runner.isRunning() || runner.isAttached()) {
         return true;
     }
 
@@ -243,4 +290,4 @@ const confirmClose = (window) => {
     return true;
 };
 
-module.exports = { registerIpc, confirmClose };
+module.exports = { registerIpc, confirmClose, attachRunningEngine };

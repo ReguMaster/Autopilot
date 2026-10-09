@@ -115,6 +115,37 @@ const isProcessRunning = (pid) => {
     }
 };
 
+// 실행 파일 이름만 돌려준다. 조회에 실패하면 빈 문자열이다.
+const getProcessName = (pid) => {
+    const queryResult = IS_WINDOWS
+        ? spawnSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { encoding: "utf8", windowsHide: true })
+        : spawnSync("ps", ["-p", String(pid), "-o", "comm="], { encoding: "utf8" });
+
+    if (queryResult.error || queryResult.status !== 0) {
+        return "";
+    }
+
+    const output = queryResult.stdout.trim();
+
+    return IS_WINDOWS ? output.match(/^"([^"]+)"/)?.[1] || "" : path.basename(output);
+};
+
+// 종료된 프로세스의 pid를 다른 프로그램이 재사용한 경우를 걸러낸다. 이름을 알 수 없으면 같은 프로세스로 본다.
+// Linux의 comm은 15자로 잘리므로 실제 이름이 기대 이름의 앞부분이면 같은 것으로 본다.
+const isSameProcess = (pid, expectedName) => {
+    if (!isProcessRunning(pid)) {
+        return false;
+    }
+
+    const actualName = getProcessName(pid);
+
+    if (!expectedName || !actualName) {
+        return true;
+    }
+
+    return expectedName.toLowerCase().startsWith(actualName.toLowerCase());
+};
+
 // 브라우저 등 기본 프로그램으로 파일을 연다. 열지 못해도 실행에는 영향을 주지 않는다.
 const openFile = (file) => {
     if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
@@ -214,4 +245,4 @@ const runClaudeSession = (command, args, prompt, { projectDir, processEnv, round
     });
 };
 
-export default { getExecutablePath, spawnCommand, killProcessTree, isProcessRunning, openFile, runClaudeSession };
+export default { getExecutablePath, spawnCommand, killProcessTree, isProcessRunning, isSameProcess, openFile, runClaudeSession };

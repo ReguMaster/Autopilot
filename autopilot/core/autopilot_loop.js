@@ -1,14 +1,21 @@
 #!/usr/bin/env node
 
 import { STATUS_OK, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED } from "../src/utils/config.js";
-import { runAutopilot, requestStop, requestRoundOptions } from "../src/services/autopilotService.js";
+import { runAutopilot, requestStop, requestRoundOptions, getRunStatus } from "../src/services/autopilotService.js";
 
 import log from "../src/utils/logUtil.js";
 import cliUtil from "../src/utils/cliUtil.js";
+import kitPackage from "../package.json" with { type: "json" };
 
 const runCli = async (args = process.argv.slice(2)) => {
     if (args[0] === "--help") {
         log.info(cliUtil.HELP_TEXT);
+
+        return EXIT_CODE_SUCCESS;
+    }
+
+    if (args[0] === "--version") {
+        log.info(kitPackage.version);
 
         return EXIT_CODE_SUCCESS;
     }
@@ -25,6 +32,22 @@ const runCli = async (args = process.argv.slice(2)) => {
         }
 
         log.info("AutoPilot will stop after the current round.");
+
+        return EXIT_CODE_SUCCESS;
+    }
+
+    if (args[0] === "status") {
+        if (args.length !== 1) {
+            throw new Error(cliUtil.STATUS_USAGE_TEXT);
+        }
+
+        const getRunStatusResult = getRunStatus();
+
+        if (getRunStatusResult.status !== STATUS_OK) {
+            return EXIT_CODE_FAILED;
+        }
+
+        log.info(JSON.stringify(getRunStatusResult.data));
 
         return EXIT_CODE_SUCCESS;
     }

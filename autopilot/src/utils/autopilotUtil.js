@@ -58,17 +58,45 @@ const getRoundOptionsFile = (kitDir) => {
     return path.join(kitDir, PROGRESS_DIR_NAME, ROUND_OPTIONS_FILE_NAME);
 };
 
-const isRunLockActive = (lockFile) => {
-    return processUtil.isProcessRunning(Number(fileUtil.readTextFile(lockFile).trim()));
+// 첫 줄은 pid, 둘째 줄은 실행 파일 이름, 셋째 줄은 이번 실행의 로그 파일이다. 이름이 없는 이전 형식은 pid만 확인한다.
+const readRunLock = (lockFile) => {
+    const [pidText = "", name = "", logFile = ""] = fileUtil.readTextFile(lockFile).split(/\r?\n/);
+
+    return { pid: Number(pidText.trim()), name: name.trim(), logFile: logFile.trim() };
 };
 
-// 실행 중인 pid를 기록해 같은 프로젝트의 동시 실행을 막는다. 살아 있는 프로세스가 없는 낡은 잠금은 덮어쓴다. 해제 함수를 반환한다.
+const formatRunLock = (logFile = "") => {
+    return [process.pid, path.basename(process.execPath), logFile].join("\n").trimEnd();
+};
+
+const isRunLockActive = (lockFile) => {
+    const { pid, name } = readRunLock(lockFile);
+
+    return processUtil.isSameProcess(pid, name);
+};
+
+// 실행 중인 엔진의 상태. 앱이 낡은 잠금과 pid 재사용을 따로 판단하지 않도록 엔진이 판정해 알려준다.
+const getRunStatus = (lockFile) => {
+    const { pid, name, logFile } = readRunLock(lockFile);
+
+    return processUtil.isSameProcess(pid, name) ? { running: true, pid: pid, logFile: logFile } : { running: false };
+};
+
+// 로그 파일은 잠금을 얻은 뒤에 정해지므로 나중에 기록한다. 읽는 쪽이 쓰다 만 파일을 보지 않도록 임시 파일을 교체한다.
+const writeRunLockLogFile = (lockFile, logFile) => {
+    const tempFile = `${lockFile}.${process.pid}.tmp`;
+
+    fs.writeFileSync(tempFile, formatRunLock(logFile), "utf8");
+    fs.renameSync(tempFile, lockFile);
+};
+
+// 실행 중인 pid와 실행 파일 이름을 기록해 같은 프로젝트의 동시 실행을 막는다. pid가 없거나 다른 프로그램이 재사용한 낡은 잠금은 덮어쓴다. 해제 함수를 반환한다.
 const acquireRunLock = (lockFile) => {
     fs.mkdirSync(path.dirname(lockFile), { recursive: true });
 
     for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt++) {
         try {
-            fs.writeFileSync(lockFile, String(process.pid), { flag: "wx" });
+            fs.writeFileSync(lockFile, formatRunLock(), { flag: "wx" });
 
             return () => {
                 fs.rmSync(lockFile, { force: true });
@@ -79,10 +107,10 @@ const acquireRunLock = (lockFile) => {
             }
         }
 
-        const lockPid = Number(fileUtil.readTextFile(lockFile).trim());
+        const { pid, name } = readRunLock(lockFile);
 
-        if (processUtil.isProcessRunning(lockPid)) {
-            throw new Error(`이미 실행 중인 AutoPilot이 있습니다 (PID ${lockPid}). 실행 중이 아니라면 ${lockFile} 파일을 지우세요.`);
+        if (processUtil.isSameProcess(pid, name)) {
+            throw new Error(`이미 실행 중인 AutoPilot이 있습니다 (PID ${pid}). 실행 중이 아니라면 ${lockFile} 파일을 지우세요.`);
         }
 
         fs.rmSync(lockFile, { force: true });
@@ -175,7 +203,9 @@ export default {
     getLockFile,
     getRoundOptionsFile,
     isRunLockActive,
+    getRunStatus,
     acquireRunLock,
+    writeRunLockLogFile,
     getRunEnv,
     readRoundOptions,
     writeRoundOptions,

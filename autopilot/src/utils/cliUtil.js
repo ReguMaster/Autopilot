@@ -1,8 +1,10 @@
 import { EFFORT_LEVELS, MODEL_CHOICES } from "./config.js";
 
-const HELP_TEXT = "AutoPilot [HH:mm] [auto|todo] [--config-dir .claude] [--model opus] [--effort high] [--no-open]\nAutoPilot set [--model opus] [--effort high]\nAutoPilot stop";
+const HELP_TEXT =
+    "AutoPilot [HH:mm] [auto|todo] [--config-dir .claude] [--model opus] [--effort high] [--no-open]\nAutoPilot set [--model opus] [--effort high]\nAutoPilot stop\nAutoPilot status\nAutoPilot --version";
 const USAGE_TEXT = "사용법: autopilot [HH:mm] [auto|todo]";
 const STOP_USAGE_TEXT = "사용법: autopilot stop";
+const STATUS_USAGE_TEXT = "사용법: autopilot status";
 const SET_USAGE_TEXT = "사용법: autopilot set [--model opus] [--effort high]";
 const MAX_POSITIONAL_ARGS = 2;
 
@@ -92,4 +94,4 @@ const parseSetArgs = (args) => {
     return options;
 };
 
-export default { HELP_TEXT, STOP_USAGE_TEXT, parseCommandArgs, parseSetArgs };
+export default { HELP_TEXT, STOP_USAGE_TEXT, STATUS_USAGE_TEXT, parseCommandArgs, parseSetArgs };

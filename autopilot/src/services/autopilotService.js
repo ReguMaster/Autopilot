@@ -36,18 +36,19 @@ const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
 const writeRunHeader = (context) => {
     const { env, runState, writeLog } = context;
+    const headerLines = [
+        "Claude Code AutoPilot",
+        `Project : ${runState.projectDir}`,
+        `Config : ${env.CLAUDE_CONFIG_DIR}`,
+        `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
+        `Policy : ${runState.policy} (${runState.policySource})`,
+        `Log : ${runState.logFile}`,
+        `Report : ${runState.reportFile}`
+    ];
 
-    writeLog(
-        [
-            "Claude Code AutoPilot",
-            `Project : ${runState.projectDir}`,
-            `Config : ${env.CLAUDE_CONFIG_DIR}`,
-            `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
-            `Policy : ${runState.policy} (${runState.policySource})`,
-            `Log : ${runState.logFile}`,
-            `Report : ${runState.reportFile}`
-        ].join("\n")
-    );
+    for (const headerLine of headerLines) {
+        writeLog(headerLine);
+    }
 };
 
 // 실행 전 검증과 폴더·로그 준비를 마치고 회차 실행에 필요한 값을 모아 반환한다.
@@ -86,6 +87,13 @@ const prepareRun = (options) => {
     const todoDoneFile = path.join(projectDir, runState.todoDoneRelPath);
     const writeLog = log.createFileLogger(runState.logFile);
 
+    // 앱이 실행 중인 엔진에 다시 연결할 수 있도록 로그 파일 위치를 잠금에 남긴다. 실패해도 실행에는 영향이 없다.
+    try {
+        autopilotUtil.writeRunLockLogFile(autopilotUtil.getLockFile(kitDir), runState.logFile);
+    } catch (error) {
+        writeLog(`[설정] 잠금에 로그 위치를 기록하지 못했습니다: ${error.message}`);
+    }
+
     // 이전 실행의 완료·중단 신호와 model·effort 변경이 이번 실행에 영향을 주지 않도록 지운다.
     fileUtil.removeFiles([todoDoneFile, runState.stopFile, runState.roundOptionsFile]);
 
@@ -102,6 +110,8 @@ const prepareRun = (options) => {
     };
 
     writeRunHeader(context);
+
+    progressUtil.pruneRunFiles(path.join(kitDir, PROGRESS_DIR_NAME), runDate, runConfig.logRetentionDays, writeLog);
 
     return context;
 };
@@ -462,4 +472,17 @@ const requestRoundOptions = (roundOptions, options = {}) => {
     }
 };
 
-export { runAutopilot, requestStop, requestRoundOptions };
+// 앱이 연결 여부를 판단하도록 실행 중인지와 pid·로그 파일을 알려준다.
+const getRunStatus = (options = {}) => {
+    try {
+        const kitDir = autopilotUtil.getKitDir(options.kitDir);
+
+        return { status: STATUS_OK, data: autopilotUtil.getRunStatus(autopilotUtil.getLockFile(kitDir)) };
+    } catch (error) {
+        log.error(util.formatError(error));
+
+        return { status: STATUS_FAILED, error: { code: error.code || ERROR_CODE_AUTOPILOT_ERROR, msg: error.message || String(error) } };
+    }
+};
+
+export { runAutopilot, requestStop, requestRoundOptions, getRunStatus };

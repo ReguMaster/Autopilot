@@ -6,8 +6,6 @@ const EMPTY_CLOCK = "--:--:--";
 
 const STATUS_OK = "OK";
 
-const MODEL_LABELS = { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };
-
 const OPTIONS_HINTS = {
     idle: "실행 중에 바꾸면 다음 회차부터 적용돼요.",
     running: "바꾸면 바로 전달돼요. 진행 중인 회차는 그대로 끝나요.",
@@ -27,6 +25,8 @@ const elements = {
     openSettings: byId("open-settings"),
     engineNotice: byId("engine-notice"),
     enginePath: byId("engine-path"),
+    engineVersion: byId("engine-version"),
+    engineVersionWarning: byId("engine-version-warning"),
     findExe: byId("find-exe"),
     selectExe: byId("select-exe"),
     form: byId("run-form"),
@@ -60,6 +60,8 @@ const elements = {
 };
 
 let settings = { exePath: "" };
+let appVersion = "";
+let engineVersion = "";
 let currentState = null;
 let pendingEntries = [];
 let isFlushScheduled = false;
@@ -67,32 +69,6 @@ let renderedRoundsKey = "";
 let lineNumber = 0;
 let isApplying = false;
 let isApplyQueued = false;
-
-const padNumber = (number) => {
-    return String(number).padStart(2, "0");
-};
-
-const formatDuration = (ms) => {
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-
-    return `${padNumber(Math.floor(totalSeconds / 3600))}:${padNumber(Math.floor((totalSeconds % 3600) / 60))}:${padNumber(totalSeconds % 60)}`;
-};
-
-const formatClock = (ms) => {
-    const date = new Date(ms);
-
-    return `${padNumber(date.getHours())}:${padNumber(date.getMinutes())}`;
-};
-
-const formatDeadline = (ms) => {
-    const date = new Date(ms);
-
-    return `${date.getMonth() + 1}월 ${date.getDate()}일 ${formatClock(ms)}`;
-};
-
-const formatOptions = (model, effort) => {
-    return model ? `${MODEL_LABELS[model] || model} · ${effort}` : "-";
-};
 
 /* 화면 전환 */
 
@@ -111,34 +87,6 @@ const showView = (name) => {
 };
 
 /* 로그 */
-
-const getLineKind = ({ stream, text }) => {
-    if (stream === "err" || text.startsWith("[stderr]")) {
-        return "err";
-    }
-
-    if (stream === "app") {
-        return "app";
-    }
-
-    if (/^\[\d+회차\]|^AutoPilot 종료/.test(text)) {
-        return "round";
-    }
-
-    if (text.includes("[사용량 한도]")) {
-        return "warn";
-    }
-
-    if (text.includes("[결과]")) {
-        return "ok";
-    }
-
-    if (/^\d{2}:\d{2}:\d{2} {3}> /.test(text)) {
-        return "tool";
-    }
-
-    return "";
-};
 
 const createLogLine = (entry) => {
     const line = document.createElement("div");
@@ -232,50 +180,6 @@ const handleFollowByScroll = () => {
 
 /* 상태 표시 */
 
-const getRunPhase = (state) => {
-    if (state.status === "running") {
-        return { label: "실행 중", tone: "run" };
-    }
-
-    if (state.status === "stopping") {
-        return { label: "종료 요청됨", tone: "warn" };
-    }
-
-    if (!state.endedAt) {
-        return { label: "대기 중", tone: "muted" };
-    }
-
-    if (state.exitCode === 0) {
-        return { label: "정상 종료", tone: "ok" };
-    }
-
-    if (state.reason === "중단 요청" || state.reason === "강제 종료" || state.exitCode === 130) {
-        return { label: "중단됨", tone: "warn" };
-    }
-
-    return { label: "오류 종료", tone: "danger" };
-};
-
-const getRoundTone = (outcome) => {
-    if (!outcome) {
-        return "run";
-    }
-
-    if (outcome === "완료") {
-        return "ok";
-    }
-
-    if (outcome.startsWith("실패") || outcome === "시한 초과") {
-        return "danger";
-    }
-
-    if (outcome === "commit 없음") {
-        return "muted";
-    }
-
-    return "warn";
-};
-
 const createRoundItem = (round) => {
     const item = document.createElement("li");
     const number = document.createElement("span");
@@ -284,7 +188,6 @@ const createRoundItem = (round) => {
     const time = document.createElement("small");
     const options = document.createElement("small");
     const tag = document.createElement("span");
-    const minutes = round.endedAt ? ((round.endedAt - round.startedAt) / 60000).toFixed(1) : "";
 
     item.className = "round";
     number.className = "round-no num";
@@ -292,7 +195,7 @@ const createRoundItem = (round) => {
     body.className = "round-body";
     title.textContent = `${round.round}회차`;
     time.className = "num";
-    time.textContent = round.endedAt ? `${formatClock(round.startedAt)} 시작, ${minutes}분` : `${formatClock(round.startedAt)} 시작`;
+    time.textContent = formatRoundTime(round);
     options.textContent = formatOptions(round.model, round.effort);
     tag.className = "tag";
     tag.dataset.tone = getRoundTone(round.outcome);
@@ -359,6 +262,13 @@ const renderSettings = () => {
     elements.enginePath.textContent = settings.exePath || "연결된 autopilot 실행 파일이 없어요.";
     elements.selectExe.textContent = settings.exePath ? "파일 변경" : "파일 선택";
     elements.engineBanner.hidden = Boolean(settings.exePath);
+
+    const versionNote = settings.exePath ? getEngineVersionNote(appVersion, engineVersion) : { summary: "", warning: "" };
+
+    elements.engineVersion.textContent = versionNote.summary;
+    elements.engineVersion.hidden = !versionNote.summary;
+    elements.engineVersionWarning.textContent = versionNote.warning;
+    elements.engineVersionWarning.hidden = !versionNote.warning;
 };
 
 /* 모델·Effort */
@@ -492,6 +402,7 @@ const applyEngineResult = (result) => {
 
     if (result.status === STATUS_OK) {
         settings = result.data.settings;
+        engineVersion = result.data.engineVersion;
 
         renderSettings();
         renderState(currentState);
@@ -510,6 +421,8 @@ const initialize = async () => {
     const snapshot = await window.autopilot.getState();
 
     settings = snapshot.settings;
+    appVersion = snapshot.version;
+    engineVersion = snapshot.engineVersion;
 
     elements.version.textContent = `v${snapshot.version}`;
     elements.endTime.value = settings.endTime;

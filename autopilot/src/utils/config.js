@@ -60,7 +60,8 @@ const AUTOPILOT_DEFAULTS = {
     retryWaitMinutes: [5, 15, 30],
     maxIdleRounds: 2,
     maxTasks: 2,
-    resetGraceMs: MINUTE_MS
+    resetGraceMs: MINUTE_MS,
+    logRetentionDays: 30
 };
 
 export {
