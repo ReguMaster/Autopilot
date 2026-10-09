@@ -1,164 +1,178 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>AutoPilot</title>
-  <link rel="icon" type="image/png" href="../docs/icon.png">
-  <link rel="stylesheet" href="styles.css">
-  <script src="renderer.js" defer></script>
-</head>
-<body>
-  <aside class="sidebar">
-    <div class="brand"><img src="../docs/icon.png" alt=""><strong>AutoPilot</strong></div>
-    <nav class="nav" aria-label="주 메뉴">
-      <button type="button" class="nav-item" data-view="dashboard" aria-current="page">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
-        <span>대시보드</span>
-      </button>
-    </nav>
-    <div class="sidebar-foot">
-      <button type="button" class="nav-item" data-view="settings">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        <span>설정</span>
-      </button>
-      <p class="version" id="version">v0.1.0</p>
-    </div>
-  </aside>
-
-  <main class="main">
-    <section class="view" id="view-dashboard" aria-labelledby="dashboard-title">
-      <div class="page-head">
-        <div>
-          <h1 id="dashboard-title">대시보드</h1>
-          <p class="page-sub">설정한 목표에 따라 프로젝트를 자동으로 진행합니다.</p>
-        </div>
-        <div class="status">
-          <span class="badge" id="status-badge" data-tone="muted">엔진 미연결</span>
-          <span class="status-phase" id="stat-phase">시작하면 진행 단계가 표시돼요.</span>
-        </div>
-      </div>
-
-      <p id="notice" class="notice" role="alert" hidden></p>
-      <p id="engine-banner" class="banner" hidden>
-        <span>엔진이 연결되지 않았어요. 설정에서 autopilot 실행 파일을 선택해 주세요.</span>
-        <button type="button" id="open-settings" class="btn small">설정 열기</button>
-      </p>
-
-      <form id="run-form" class="panel controls">
-        <div class="control-row">
-          <label class="field" title="비우면 AUTOPILOT_TODO.md 설정 또는 07:00">
-            <span>종료 시각</span>
-            <input type="time" id="end-time">
-          </label>
-          <label class="field" title="지시개선은 Tasks를 마치면 종료해요">
-            <span>개선 정책</span>
-            <span class="select">
-              <select id="policy">
-                <option value="">TODO 설정</option>
-                <option value="auto">자율개선</option>
-                <option value="todo">지시개선</option>
-              </select>
-            </span>
-          </label>
-          <label class="field">
-            <span>모델</span>
-            <span class="select">
-              <select id="model">
-                <option value="fable">Fable</option>
-                <option value="opus">Opus (기본값)</option>
-                <option value="sonnet">Sonnet</option>
-                <option value="haiku">Haiku</option>
-              </select>
-            </span>
-          </label>
-          <label class="field">
-            <span>Effort</span>
-            <span class="select">
-              <select id="effort">
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">기본값 (high)</option>
-                <option value="xhigh">xhigh</option>
-                <option value="max">max</option>
-              </select>
-            </span>
-          </label>
-          <div class="actions">
-            <button type="submit" id="start" class="btn primary">시작</button>
-            <button type="button" id="stop" class="btn" title="현재 회차를 마친 뒤 종료해요">종료 신호</button>
-            <button type="button" id="kill" class="btn danger" title="즉시 중단해요. commit 전 변경은 남아요">강제 종료</button>
-          </div>
-        </div>
-        <div class="apply-note" aria-live="polite">
-          <span class="apply-item"><span class="apply-label">적용 중</span><strong id="applied-now">실행 전</strong></span>
-          <span class="apply-item"><span class="apply-label" id="applied-next-label">시작할 때</span><strong id="applied-next">Opus · high</strong><span class="tag" id="applied-tag" data-tone="run" hidden>적용 대기</span></span>
-          <span class="apply-hint" id="options-hint"></span>
-        </div>
-      </form>
-
-      <section class="metrics" aria-label="실행 현황">
-        <div class="metric">
-          <span class="metric-label">회차</span>
-          <strong class="metric-value num" id="stat-round">0</strong>
-          <span class="metric-meta" id="stat-round-sub">아직 시작한 회차가 없어요.</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">남은 시간</span>
-          <strong class="metric-value num" id="stat-remaining">--:--:--</strong>
-          <span class="metric-meta" id="stat-deadline">종료 예정 시각 없음</span>
-          <progress id="stat-progress" max="100" value="0" aria-label="종료 시각까지 진행률"></progress>
-        </div>
-        <div class="metric">
-          <span class="metric-label">경과 시간</span>
-          <strong class="metric-value num" id="stat-elapsed">--:--:--</strong>
-          <span class="metric-meta" id="stat-policy">정책 없음</span>
-        </div>
-      </section>
-
-      <div class="board">
-        <section class="panel board-panel" aria-labelledby="log-title">
-          <div class="panel-head">
-            <h2 id="log-title">실시간 로그</h2>
-            <div class="tools">
-              <span class="muted num" id="log-count">0줄</span>
-              <label class="check"><input type="checkbox" id="follow" checked>따라가기</label>
-              <button type="button" id="clear-log" class="btn small">지우기</button>
-              <button type="button" id="open-report" class="btn small">리포트 열기</button>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+        <title>AutoPilot</title>
+        <link rel="icon" type="image/png" href="../docs/icon.png" />
+        <link rel="stylesheet" href="styles.css" />
+        <script src="renderer.js" defer></script>
+    </head>
+    <body>
+        <aside class="sidebar">
+            <div class="brand"><img src="../docs/icon.png" alt="" /><strong>AutoPilot</strong></div>
+            <nav class="nav" aria-label="주 메뉴">
+                <button type="button" class="nav-item" data-view="dashboard" aria-current="page">
+                    <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                        <path d="M9 22V12h6v10" />
+                    </svg>
+                    <span>대시보드</span>
+                </button>
+            </nav>
+            <div class="sidebar-foot">
+                <button type="button" class="nav-item" data-view="settings">
+                    <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                        />
+                    </svg>
+                    <span>설정</span>
+                </button>
+                <p class="version" id="version">v0.1.0</p>
             </div>
-          </div>
-          <div id="log" class="log" role="log" aria-live="off" tabindex="0">
-            <div class="line empty" id="log-empty"><span class="ln">1</span><span class="tx">아직 기록된 로그가 없습니다.</span></div>
-          </div>
-        </section>
+        </aside>
 
-        <section class="panel board-panel" aria-labelledby="rounds-title">
-          <div class="panel-head"><h2 id="rounds-title">회차 기록</h2><span class="muted num" id="round-count">0회</span></div>
-          <ol id="rounds" class="rounds"></ol>
-          <p class="empty-note" id="rounds-empty">기록이 없습니다.</p>
-        </section>
-      </div>
-    </section>
+        <main class="main">
+            <section class="view" id="view-dashboard" aria-labelledby="dashboard-title">
+                <div class="page-head">
+                    <div>
+                        <h1 id="dashboard-title">대시보드</h1>
+                        <p class="page-sub">설정한 목표에 따라 프로젝트를 자동으로 진행합니다.</p>
+                    </div>
+                    <div class="status">
+                        <span class="badge" id="status-badge" data-tone="muted">엔진 미연결</span>
+                        <span class="status-phase" id="stat-phase">시작하면 진행 단계가 표시돼요.</span>
+                    </div>
+                </div>
 
-    <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
-      <div class="page-head">
-        <div>
-          <h1 id="settings-title">설정</h1>
-          <p class="page-sub">AutoPilot 엔진 연결을 관리합니다.</p>
-        </div>
-      </div>
-      <section class="panel settings-panel" aria-labelledby="engine-title">
-        <h2 id="engine-title">엔진</h2>
-        <p class="settings-desc">앱을 켜면 대상 프로젝트의 autopilot 폴더 안에 있는 실행 파일을 자동으로 찾아 연결해요. 찾지 못하면 직접 선택해 주세요. 실행 중에는 변경할 수 없어요.</p>
-        <p id="engine-notice" class="notice" role="alert" hidden></p>
-        <div class="engine-row">
-          <span id="engine-path" class="engine-path">연결된 autopilot 실행 파일이 없어요.</span>
-          <button type="button" id="find-exe" class="btn">자동 찾기</button>
-          <button type="button" id="select-exe" class="btn">파일 선택</button>
-        </div>
-      </section>
-    </section>
-  </main>
-</body>
+                <p id="notice" class="notice" role="alert" hidden></p>
+                <p id="engine-banner" class="banner" hidden>
+                    <span>엔진이 연결되지 않았어요. 설정에서 autopilot 실행 파일을 선택해 주세요.</span>
+                    <button type="button" id="open-settings" class="btn small">설정 열기</button>
+                </p>
+
+                <form id="run-form" class="panel controls">
+                    <div class="control-row">
+                        <label class="field" title="비우면 AUTOPILOT_TODO.md 설정 또는 07:00">
+                            <span>종료 시각</span>
+                            <input type="time" id="end-time" />
+                        </label>
+                        <label class="field" title="지시개선은 Tasks를 마치면 종료해요">
+                            <span>개선 정책</span>
+                            <span class="select">
+                                <select id="policy">
+                                    <option value="">TODO 설정</option>
+                                    <option value="auto">자율개선</option>
+                                    <option value="todo">지시개선</option>
+                                </select>
+                            </span>
+                        </label>
+                        <label class="field">
+                            <span>모델</span>
+                            <span class="select">
+                                <select id="model">
+                                    <option value="fable">Fable</option>
+                                    <option value="opus">Opus (기본값)</option>
+                                    <option value="sonnet">Sonnet</option>
+                                    <option value="haiku">Haiku</option>
+                                </select>
+                            </span>
+                        </label>
+                        <label class="field">
+                            <span>Effort</span>
+                            <span class="select">
+                                <select id="effort">
+                                    <option value="low">low</option>
+                                    <option value="medium">medium</option>
+                                    <option value="high">기본값 (high)</option>
+                                    <option value="xhigh">xhigh</option>
+                                    <option value="max">max</option>
+                                </select>
+                            </span>
+                        </label>
+                        <div class="actions">
+                            <button type="submit" id="start" class="btn primary">시작</button>
+                            <button type="button" id="stop" class="btn" title="현재 회차를 마친 뒤 종료해요">종료 신호</button>
+                            <button type="button" id="kill" class="btn danger" title="즉시 중단해요. commit 전 변경은 남아요">강제 종료</button>
+                        </div>
+                    </div>
+                    <div class="apply-note" aria-live="polite">
+                        <span class="apply-item"><span class="apply-label">적용 중</span><strong id="applied-now">실행 전</strong></span>
+                        <span class="apply-item"
+                            ><span class="apply-label" id="applied-next-label">시작할 때</span><strong id="applied-next">Opus · high</strong
+                            ><span class="tag" id="applied-tag" data-tone="run" hidden>적용 대기</span></span
+                        >
+                        <span class="apply-hint" id="options-hint"></span>
+                    </div>
+                </form>
+
+                <section class="metrics" aria-label="실행 현황">
+                    <div class="metric">
+                        <span class="metric-label">회차</span>
+                        <strong class="metric-value num" id="stat-round">0</strong>
+                        <span class="metric-meta" id="stat-round-sub">아직 시작한 회차가 없어요.</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">남은 시간</span>
+                        <strong class="metric-value num" id="stat-remaining">--:--:--</strong>
+                        <span class="metric-meta" id="stat-deadline">종료 예정 시각 없음</span>
+                        <progress id="stat-progress" max="100" value="0" aria-label="종료 시각까지 진행률"></progress>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">경과 시간</span>
+                        <strong class="metric-value num" id="stat-elapsed">--:--:--</strong>
+                        <span class="metric-meta" id="stat-policy">정책 없음</span>
+                    </div>
+                </section>
+
+                <div class="board">
+                    <section class="panel board-panel" aria-labelledby="log-title">
+                        <div class="panel-head">
+                            <h2 id="log-title">실시간 로그</h2>
+                            <div class="tools">
+                                <span class="muted num" id="log-count">0줄</span>
+                                <label class="check"><input type="checkbox" id="follow" checked />따라가기</label>
+                                <button type="button" id="clear-log" class="btn small">지우기</button>
+                                <button type="button" id="open-report" class="btn small">리포트 열기</button>
+                            </div>
+                        </div>
+                        <div id="log" class="log" role="log" aria-live="off" tabindex="0">
+                            <div class="line empty" id="log-empty"><span class="ln">1</span><span class="tx">아직 기록된 로그가 없습니다.</span></div>
+                        </div>
+                    </section>
+
+                    <section class="panel board-panel" aria-labelledby="rounds-title">
+                        <div class="panel-head">
+                            <h2 id="rounds-title">회차 기록</h2>
+                            <span class="muted num" id="round-count">0회</span>
+                        </div>
+                        <ol id="rounds" class="rounds"></ol>
+                        <p class="empty-note" id="rounds-empty">기록이 없습니다.</p>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
+                <div class="page-head">
+                    <div>
+                        <h1 id="settings-title">설정</h1>
+                        <p class="page-sub">AutoPilot 엔진 연결을 관리합니다.</p>
+                    </div>
+                </div>
+                <section class="panel settings-panel" aria-labelledby="engine-title">
+                    <h2 id="engine-title">엔진</h2>
+                    <p class="settings-desc">앱을 켜면 대상 프로젝트의 autopilot 폴더 안에 있는 실행 파일을 자동으로 찾아 연결해요. 찾지 못하면 직접 선택해 주세요. 실행 중에는 변경할 수 없어요.</p>
+                    <p id="engine-notice" class="notice" role="alert" hidden></p>
+                    <div class="engine-row">
+                        <span id="engine-path" class="engine-path">연결된 autopilot 실행 파일이 없어요.</span>
+                        <button type="button" id="find-exe" class="btn">자동 찾기</button>
+                        <button type="button" id="select-exe" class="btn">파일 선택</button>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </body>
 </html>

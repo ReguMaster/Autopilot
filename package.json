@@ -18,8 +18,8 @@
         "build:cli": "npm run check:cli && node tools/buildCli.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js tools/buildCli.js \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js tools/buildCli.js \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/renderer.js tests/checkDesktopRunner.js",
-        "format:check:desktop": "prettier --check desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/renderer.js tests/checkDesktopRunner.js"
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js"
     },
     "devDependencies": {
         "electron": "^44.6.0",

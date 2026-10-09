@@ -567,7 +567,13 @@ progress::-webkit-progress-value {
     min-height: 0;
     overflow: auto;
     padding: 12px 0;
-    background: linear-gradient(to right, var(--panel) var(--gutter-width), var(--border) var(--gutter-width), var(--border) calc(var(--gutter-width) + 1px), transparent calc(var(--gutter-width) + 1px));
+    background: linear-gradient(
+        to right,
+        var(--panel) var(--gutter-width),
+        var(--border) var(--gutter-width),
+        var(--border) calc(var(--gutter-width) + 1px),
+        transparent calc(var(--gutter-width) + 1px)
+    );
     font-family: "Cascadia Mono", Consolas, "Malgun Gothic", monospace;
     font-size: 12px;
     line-height: 1.75;
