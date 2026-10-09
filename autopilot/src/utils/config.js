@@ -31,16 +31,17 @@ const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
 const DEFAULT_EFFORT = "high";
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
-const KIT_DIR_NAME = "autopilot";
-const TODO_FILE_NAME = "AUTOPILOT_TODO.md";
+const WORK_DIR_NAME = "autopilot";
+const APP_DATA_DIR_NAME = "AutoPilot";
+const PROJECTS_DATA_DIR_NAME = "projects";
 const PROGRESS_FILE_NAME = "AUTOPILOT_PROGRESS.md";
 const PROGRESS_DIR_NAME = "progress";
 const STOP_FILE_NAME = "STOP";
 const ROUND_OPTIONS_FILE_NAME = "ROUND_OPTIONS.json";
 const LOCK_FILE_NAME = "RUNNING";
 const TODO_COMPLETE_FILE_NAME = "TODO_COMPLETE";
-const PROGRESS_RELATIVE_PATH = `${KIT_DIR_NAME}/${PROGRESS_FILE_NAME}`;
-const PROGRESS_MAX_LINES = 200;
+const PROGRESS_MAX_LINES = 100;
+const PROGRESS_TARGET_LINES = 60;
 
 const MAX_STREAM_LINE_LENGTH = 1000000;
 const MAX_STDERR_LENGTH = 1000000;
@@ -60,7 +61,8 @@ const AUTOPILOT_DEFAULTS = {
     retryWaitMinutes: [5, 15, 30],
     maxIdleRounds: 2,
     maxTasks: 2,
-    resetGraceMs: MINUTE_MS
+    resetGraceMs: MINUTE_MS,
+    logRetentionDays: 30
 };
 
 export {
@@ -84,16 +86,17 @@ export {
     MODEL_CHOICES,
     DEFAULT_EFFORT,
     EFFORT_LEVELS,
-    KIT_DIR_NAME,
-    TODO_FILE_NAME,
+    WORK_DIR_NAME,
+    APP_DATA_DIR_NAME,
+    PROJECTS_DATA_DIR_NAME,
     PROGRESS_FILE_NAME,
     PROGRESS_DIR_NAME,
     STOP_FILE_NAME,
     ROUND_OPTIONS_FILE_NAME,
     LOCK_FILE_NAME,
     TODO_COMPLETE_FILE_NAME,
-    PROGRESS_RELATIVE_PATH,
     PROGRESS_MAX_LINES,
+    PROGRESS_TARGET_LINES,
     MAX_STREAM_LINE_LENGTH,
     MAX_STDERR_LENGTH,
     ROUND_OUTCOME_COMPLETE,

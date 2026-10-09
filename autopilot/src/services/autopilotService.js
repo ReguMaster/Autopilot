@@ -11,12 +11,12 @@ import {
     REPORT_REFRESH_MS,
     EXIT_CODE_SUCCESS,
     POLICY_TODO,
-    KIT_DIR_NAME,
-    TODO_FILE_NAME,
+    WORK_DIR_NAME,
     PROGRESS_DIR_NAME,
     TODO_COMPLETE_FILE_NAME,
     STOP_REASON_REQUESTED,
     ROUND_OPTIONS_FILE_NAME,
+    PROGRESS_MAX_LINES,
     AUTOPILOT_DEFAULTS
 } from "../utils/config.js";
 
@@ -36,25 +36,32 @@ const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
 const writeRunHeader = (context) => {
     const { env, runState, writeLog } = context;
+    const headerLines = [
+        "Claude Code AutoPilot",
+        `Project : ${runState.projectDir}`,
+        `Config : ${env.CLAUDE_CONFIG_DIR}`,
+        `Progress : ${runState.progressFile}`,
+        `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
+        `Policy : ${runState.policy} (${runState.policySource})`,
+        `Log : ${runState.logFile}`,
+        `Report : ${runState.reportFile}`
+    ];
 
-    writeLog(
-        [
-            "Claude Code AutoPilot",
-            `Project : ${runState.projectDir}`,
-            `Config : ${env.CLAUDE_CONFIG_DIR}`,
-            `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
-            `Policy : ${runState.policy} (${runState.policySource})`,
-            `Log : ${runState.logFile}`,
-            `Report : ${runState.reportFile}`
-        ].join("\n")
-    );
+    for (const headerLine of headerLines) {
+        writeLog(headerLine);
+    }
+};
+
+const getProjectPaths = (options) => {
+    const projectDir = autopilotUtil.getProjectDir(options.projectDir);
+
+    return { projectDir: projectDir, workDir: autopilotUtil.getWorkDir(projectDir) };
 };
 
 // 실행 전 검증과 폴더·로그 준비를 마치고 회차 실행에 필요한 값을 모아 반환한다.
 const prepareRun = (options) => {
     const runConfig = { ...AUTOPILOT_DEFAULTS, ...options.limits };
-    const kitDir = autopilotUtil.getKitDir(options.kitDir);
-    const projectDir = path.dirname(kitDir);
+    const { projectDir, workDir } = getProjectPaths(options);
     const env = autopilotUtil.getRunEnv(options);
     const runGitCommand = gitUtil.createGitRunner(processUtil.getExecutablePath("git", env), projectDir, env);
 
@@ -63,28 +70,46 @@ const prepareRun = (options) => {
     const command = options.command || processUtil.getExecutablePath("claude", env);
     const runStart = new Date();
     const runDate = dateUtil.getDateString(runStart);
-    const todoText = fileUtil.readTextFile(path.join(kitDir, TODO_FILE_NAME));
-    const runSettings = settingsUtil.getRunSettings(todoText, options.endTime, options.policy, runStart);
-    const progressDir = path.join(kitDir, PROGRESS_DIR_NAME, runDate);
+    const tasks = (options.tasks || "").trim();
+    const runSettings = settingsUtil.getRunSettings(options.endTime, options.policy, runStart);
+
+    if (runSettings.policy === POLICY_TODO && !tasks) {
+        throw new Error("지시개선 정책에는 처리할 작업이 필요합니다.");
+    }
+
+    const progressDir = path.join(workDir, PROGRESS_DIR_NAME, runDate);
+    const progressFile = autopilotUtil.getProgressFile(projectDir, options.dataDir);
     const runId = `${dateUtil.getTimeString(runStart).replace(/:/g, "")}_${randomUUID().slice(0, 8)}`;
 
     fs.mkdirSync(progressDir, { recursive: true });
+    progressUtil.ensureProgressRecord(progressFile);
 
     const runState = {
         ...runSettings,
-        kitDir: kitDir,
+        workDir: workDir,
         projectDir: projectDir,
+        tasks: tasks,
+        progressFile: progressFile,
         runStart: runStart,
+        runDate: runDate,
+        progressDir: progressDir,
         runGitCommand: runGitCommand,
         rounds: [],
-        stopFile: autopilotUtil.getStopFile(kitDir),
-        roundOptionsFile: autopilotUtil.getRoundOptionsFile(kitDir),
+        stopFile: autopilotUtil.getStopFile(workDir),
+        roundOptionsFile: autopilotUtil.getRoundOptionsFile(workDir),
         logFile: path.join(progressDir, `autopilot_${runId}.log`),
         reportFile: path.join(progressDir, `report_${runId}.html`),
-        todoDoneRelPath: `${KIT_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${TODO_COMPLETE_FILE_NAME}`
+        todoDoneRelPath: `${WORK_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${TODO_COMPLETE_FILE_NAME}`
     };
     const todoDoneFile = path.join(projectDir, runState.todoDoneRelPath);
     const writeLog = log.createFileLogger(runState.logFile);
+
+    // 앱이 실행 중인 엔진에 다시 연결할 수 있도록 로그 파일 위치를 잠금에 남긴다. 실패해도 실행에는 영향이 없다.
+    try {
+        autopilotUtil.writeRunLockLogFile(autopilotUtil.getLockFile(workDir), runState.logFile);
+    } catch (error) {
+        writeLog(`[설정] 잠금에 로그 위치를 기록하지 못했습니다: ${error.message}`);
+    }
 
     // 이전 실행의 완료·중단 신호와 model·effort 변경이 이번 실행에 영향을 주지 않도록 지운다.
     fileUtil.removeFiles([todoDoneFile, runState.stopFile, runState.roundOptionsFile]);
@@ -97,17 +122,21 @@ const prepareRun = (options) => {
         runState: runState,
         todoDoneFile: todoDoneFile,
         writeLog: writeLog,
-        progressCleanupPrompt: progressUtil.archiveProgressRecord(kitDir, progressDir, runDate, writeLog),
+        progressCleanupPrompt: "",
+        isCleanupRequested: false,
+        isCleanupSkipped: false,
         recordedCommitHashes: new Set(gitUtil.getCommitHashesSince(runGitCommand, runStart))
     };
 
     writeRunHeader(context);
 
+    progressUtil.pruneRunFiles(path.join(workDir, PROGRESS_DIR_NAME), runDate, runConfig.logRetentionDays, writeLog);
+
     return context;
 };
 
 const createLoopState = () => {
-    return { activeProcess: null, isInterrupted: false, isAborted: false, failureCount: 0, idleCount: 0, reason: "" };
+    return { activeProcess: null, isInterrupted: false, isAborted: false, isWorkComplete: false, failureCount: 0, idleCount: 0, reason: "" };
 };
 
 const isStopRequested = (context, loopState) => {
@@ -199,8 +228,39 @@ const updateRoundCounters = (context, loopState, { isFailed, isRateLimited, prev
     loopState.idleCount = gitUtil.hasWorkChanges(context.runState.runGitCommand, previousHead) ? 0 : loopState.idleCount + 1;
 };
 
+// 매 회차를 시작할 때 진행 기록 줄 수를 확인해 상한을 넘었으면 원본을 보관하고 정리를 지시한다. 하루 동안 문서가 계속 커지는 것을 막는다.
+// 정리 지시가 실패한 회차에서는 같은 지시를 이어가고, 지시했는데도 다음 회차에 여전히 넘으면 남겨야 할 정보가 많은 것으로 보고
+// 줄 수가 상한 아래로 내려갈 때까지 다시 지시하지 않는다(회차마다 정리만 반복하지 않도록).
+const getProgressCleanupPrompt = (context) => {
+    const { runState, writeLog } = context;
+
+    if (context.progressCleanupPrompt) {
+        return context.progressCleanupPrompt;
+    }
+
+    const lineCount = progressUtil.countProgressLines(runState.progressFile);
+
+    if (lineCount <= PROGRESS_MAX_LINES) {
+        context.isCleanupSkipped = false;
+    } else if (context.isCleanupRequested && !context.isCleanupSkipped) {
+        context.isCleanupSkipped = true;
+
+        writeLog(`[진행 기록] 정리를 지시했지만 ${lineCount}줄이라, ${PROGRESS_MAX_LINES}줄 아래로 내려갈 때까지 다시 지시하지 않습니다.`);
+    }
+
+    context.isCleanupRequested = false;
+
+    if (lineCount > PROGRESS_MAX_LINES && !context.isCleanupSkipped) {
+        context.progressCleanupPrompt = progressUtil.archiveProgressRecord(runState.progressFile, runState.progressDir, runState.runDate, writeLog);
+        context.isCleanupRequested = Boolean(context.progressCleanupPrompt);
+    }
+
+    return context.progressCleanupPrompt;
+};
+
 const runRound = async (context, loopState, remainingMinutes) => {
-    const { runConfig, runState, writeLog, recordedCommitHashes, progressCleanupPrompt } = context;
+    const { runConfig, runState, writeLog, recordedCommitHashes } = context;
+    const progressCleanupPrompt = getProgressCleanupPrompt(context);
     const round = runState.rounds.length + 1;
     const roundStart = new Date();
     const previousHead = gitUtil.getHeadHash(runState.runGitCommand);
@@ -217,7 +277,7 @@ const runRound = async (context, loopState, remainingMinutes) => {
 
     updateRoundCounters(context, loopState, { isFailed: isFailed, isRateLimited: isRateLimited, previousHead: previousHead });
 
-    // 정리 지시는 성공한 회차에서 한 번만 수행한다. 이후 회차에 반복하면 이미 정리한 기록을 다시 줄인다.
+    // 정리 지시는 성공한 회차에서 끝난다. 다음 회차는 줄 수를 다시 확인해 필요할 때만 지시한다.
     if (!isFailed) {
         context.progressCleanupPrompt = "";
     }
@@ -300,6 +360,7 @@ const handleRoundResult = async (context, loopState, roundResult) => {
 
     if (!roundResult.isFailed && runState.policy === POLICY_TODO && fs.existsSync(todoDoneFile)) {
         loopState.reason = "지시개선 정책: 예약 작업 완료";
+        loopState.isWorkComplete = true;
 
         return true;
     }
@@ -310,6 +371,7 @@ const handleRoundResult = async (context, loopState, roundResult) => {
 
     if (loopState.idleCount >= runConfig.maxIdleRounds) {
         loopState.reason = `${runConfig.maxIdleRounds}회차 연속 새 commit 없음`;
+        loopState.isWorkComplete = true;
 
         return true;
     }
@@ -356,9 +418,22 @@ const runRoundLoop = async (context, loopState) => {
     }
 };
 
+// 작업이 모두 끝난 실행은 이어갈 내용이 없으므로 진행 기록을 보관하고 초기화한다. 시각 도달·회차 상한·실패·중단은 이어가도록 그대로 둔다.
+const resetProgressIfComplete = (context, loopState) => {
+    const { runState, writeLog } = context;
+
+    if (!loopState.isWorkComplete || loopState.isAborted || loopState.isInterrupted) {
+        return;
+    }
+
+    progressUtil.resetProgressRecord(runState.progressFile, runState.progressDir, runState.runDate, writeLog);
+};
+
 const finishRun = (context, loopState) => {
     const { runState, writeLog } = context;
     const { reason, isAborted, isInterrupted } = loopState;
+
+    resetProgressIfComplete(context, loopState);
 
     writeLog(`AutoPilot 종료 - ${reason} (${runState.rounds.length}회차)`);
     writeLog(gitUtil.getRecentLog(runState.runGitCommand));
@@ -394,13 +469,13 @@ const runLockedAutopilot = async (options) => {
     return finishRun(context, loopState);
 };
 
-// 같은 키트의 동시 실행을 막는다. 잠금을 얻기 전에는 STOP·완료 신호 같은 실행 상태를 건드리지 않는다.
+// 같은 프로젝트의 동시 실행을 막는다. 잠금을 얻기 전에는 STOP·완료 신호 같은 실행 상태를 건드리지 않는다.
 const executeAutopilot = async (options) => {
-    const kitDir = autopilotUtil.getKitDir(options.kitDir);
+    const { workDir } = getProjectPaths(options);
 
-    autopilotUtil.assertKitDir(kitDir);
+    autopilotUtil.ensureWorkDir(workDir);
 
-    const releaseRunLock = autopilotUtil.acquireRunLock(autopilotUtil.getLockFile(kitDir));
+    const releaseRunLock = autopilotUtil.acquireRunLock(autopilotUtil.getLockFile(workDir));
 
     try {
         return await runLockedAutopilot(options);
@@ -430,8 +505,10 @@ const runAutopilot = async (options = {}) => {
 // 현재 회차가 끝난 뒤 종료하도록 STOP 파일을 만든다.
 const requestStop = (options = {}) => {
     try {
-        const stopFile = autopilotUtil.getStopFile(autopilotUtil.getKitDir(options.kitDir));
+        const { workDir } = getProjectPaths(options);
+        const stopFile = autopilotUtil.getStopFile(workDir);
 
+        autopilotUtil.ensureWorkDir(workDir);
         fs.mkdirSync(path.dirname(stopFile), { recursive: true });
         fs.writeFileSync(stopFile, "");
 
@@ -446,13 +523,13 @@ const requestStop = (options = {}) => {
 // 실행 중인 AutoPilot이 다음 회차부터 쓸 model·effort를 기록한다. 진행 중인 회차에는 영향이 없다.
 const requestRoundOptions = (roundOptions, options = {}) => {
     try {
-        const kitDir = autopilotUtil.getKitDir(options.kitDir);
+        const { workDir } = getProjectPaths(options);
 
-        if (!autopilotUtil.isRunLockActive(autopilotUtil.getLockFile(kitDir))) {
+        if (!autopilotUtil.isRunLockActive(autopilotUtil.getLockFile(workDir))) {
             throw new Error("실행 중인 AutoPilot이 없습니다.");
         }
 
-        const savedOptions = autopilotUtil.writeRoundOptions(autopilotUtil.getRoundOptionsFile(kitDir), roundOptions);
+        const savedOptions = autopilotUtil.writeRoundOptions(autopilotUtil.getRoundOptionsFile(workDir), roundOptions);
 
         return { status: STATUS_OK, data: { roundOptions: savedOptions } };
     } catch (error) {
@@ -462,4 +539,45 @@ const requestRoundOptions = (roundOptions, options = {}) => {
     }
 };
 
-export { runAutopilot, requestStop, requestRoundOptions };
+// 앱이 연결 여부를 판단하도록 실행 중인지와 pid·로그 파일을 알려준다.
+const getRunStatus = (options = {}) => {
+    try {
+        const { workDir } = getProjectPaths(options);
+
+        return { status: STATUS_OK, data: autopilotUtil.getRunStatus(autopilotUtil.getLockFile(workDir)) };
+    } catch (error) {
+        log.error(util.formatError(error));
+
+        return { status: STATUS_FAILED, error: { code: error.code || ERROR_CODE_AUTOPILOT_ERROR, msg: error.message || String(error) } };
+    }
+};
+
+// 진행 기록을 지금 보관하고 초기화한다. 실행 중에는 세션이 문서를 쓰고 있으므로 거부한다.
+const requestProgressReset = (options = {}) => {
+    try {
+        const { projectDir, workDir } = getProjectPaths(options);
+
+        if (autopilotUtil.isRunLockActive(autopilotUtil.getLockFile(workDir))) {
+            throw new Error("실행 중인 AutoPilot이 있어 진행 기록을 초기화할 수 없습니다.");
+        }
+
+        autopilotUtil.ensureWorkDir(workDir);
+
+        const runDate = dateUtil.getDateString(new Date());
+        const failureMessages = [];
+        const progressDir = path.join(workDir, PROGRESS_DIR_NAME, runDate);
+        const resetResult = progressUtil.resetProgressRecord(autopilotUtil.getProgressFile(projectDir, options.dataDir), progressDir, runDate, (message) => failureMessages.push(message));
+
+        if (!resetResult.isDone) {
+            throw new Error(failureMessages.at(-1) || "진행 기록을 초기화하지 못했습니다.");
+        }
+
+        return { status: STATUS_OK, data: { isReset: Boolean(resetResult.archivePath), archivePath: resetResult.archivePath } };
+    } catch (error) {
+        log.error(util.formatError(error));
+
+        return { status: STATUS_FAILED, error: { code: error.code || ERROR_CODE_AUTOPILOT_ERROR, msg: error.message || String(error) } };
+    }
+};
+
+export { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset };

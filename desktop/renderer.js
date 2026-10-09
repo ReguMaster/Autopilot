@@ -1,4 +1,7 @@
 const MAX_LOG_LINES = 3000;
+const LIVE_LINES = 4;
+const LIVE_FADE_MS = 650;
+const MAX_WORD_DELAY_STEPS = 24;
 const CLOCK_INTERVAL_MS = 1000;
 const FOLLOW_THRESHOLD_PX = 24;
 const LOG_FLUSH_MS = 50;
@@ -6,60 +9,76 @@ const EMPTY_CLOCK = "--:--:--";
 
 const STATUS_OK = "OK";
 
-const MODEL_LABELS = { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };
-
+// 안내 문구는 알려야 할 때만 보인다(적용 대기는 renderOptions가 따로 쓴다).
 const OPTIONS_HINTS = {
-    idle: "실행 중에 바꾸면 다음 회차부터 적용돼요.",
-    running: "바꾸면 바로 전달돼요. 진행 중인 회차는 그대로 끝나요.",
-    stopping: "종료 요청 후에는 바꿀 수 없어요."
+    idle: "",
+    running: "",
+    stopping: "종료 요청 후에는 모델·Effort를 바꿀 수 없어요."
+};
+
+// 상태별 가운데 버튼. 종료 요청 후에 누르면 메인 프로세스가 확인 모달을 띄우고 강제 종료한다.
+const MAIN_ACTIONS = {
+    idle: { action: "start", label: "시작", title: "" },
+    running: { action: "stop", label: "종료 신호", title: "현재 회차를 마친 뒤 종료해요" },
+    stopping: { action: "kill", label: "종료", title: "즉시 중단해요. commit 전 변경은 working tree에 남아요" }
 };
 
 const byId = (id) => document.getElementById(id);
 
 const elements = {
-    version: byId("version"),
-    navItems: document.querySelectorAll(".nav-item"),
-    views: document.querySelectorAll(".view"),
+    titlebar: byId("titlebar"),
+    settingsToggle: byId("settings-toggle"),
+    settings: byId("settings"),
+    windowMinimize: byId("window-minimize"),
+    windowMaximize: byId("window-maximize"),
+    windowClose: byId("window-close"),
+    content: document.querySelector(".content"),
+    hero: document.querySelector(".hero"),
     badge: byId("status-badge"),
+    clock: byId("clock"),
+    clockLabel: byId("clock-label"),
+    clockValue: byId("clock-value"),
     statPhase: byId("stat-phase"),
     notice: byId("notice"),
-    engineBanner: byId("engine-banner"),
-    openSettings: byId("open-settings"),
-    engineNotice: byId("engine-notice"),
-    enginePath: byId("engine-path"),
-    findExe: byId("find-exe"),
-    selectExe: byId("select-exe"),
+    projectBanner: byId("project-banner"),
+    bannerSelectProject: byId("banner-select-project"),
     form: byId("run-form"),
-    endTime: byId("end-time"),
-    policy: byId("policy"),
-    model: byId("model"),
+    mainAction: byId("main-action"),
+    choices: document.querySelectorAll(".choice"),
+    effortControl: byId("effort-control"),
+    effortBars: byId("effort-control").querySelectorAll(".bars i"),
     effort: byId("effort"),
-    start: byId("start"),
-    stop: byId("stop"),
-    kill: byId("kill"),
-    appliedNow: byId("applied-now"),
-    appliedNextLabel: byId("applied-next-label"),
-    appliedNext: byId("applied-next"),
-    appliedTag: byId("applied-tag"),
-    optionsHint: byId("options-hint"),
-    statRound: byId("stat-round"),
-    statRoundSub: byId("stat-round-sub"),
-    statRemaining: byId("stat-remaining"),
-    statProgress: byId("stat-progress"),
-    statDeadline: byId("stat-deadline"),
-    statElapsed: byId("stat-elapsed"),
-    statPolicy: byId("stat-policy"),
+    effortName: byId("effort-name"),
+    effortLevels: byId("effort-levels"),
+    endTime: byId("end-time"),
+    tasks: byId("tasks"),
+    applyNote: byId("apply-note"),
+    livePanel: byId("live-panel"),
+    live: byId("live"),
+    history: byId("history"),
+    historyToggle: byId("history-toggle"),
+    historyClose: byId("history-close"),
     log: byId("log"),
     logEmpty: byId("log-empty"),
     logCount: byId("log-count"),
     follow: byId("follow"),
     clearLog: byId("clear-log"),
-    openReport: byId("open-report"),
     rounds: byId("rounds"),
-    roundCount: byId("round-count")
+    roundCount: byId("round-count"),
+    roundSummary: byId("round-summary"),
+    project: document.querySelector(".project"),
+    projectPath: byId("project-path"),
+    selectProject: byId("select-project"),
+    appVersion: byId("app-version"),
+    resetProgress: byId("reset-progress"),
+    openReport: byId("open-report")
 };
 
-let settings = { exePath: "" };
+// Effort 단계 이름은 index.html의 목록이 기준이다(tests/checkDesktopRunner.js가 엔진 허용 값과 대조한다).
+const EFFORT_LEVELS = [...elements.effortLevels.options].map((option) => option.label);
+
+let settings = { projectDir: "" };
+let appVersion = "";
 let currentState = null;
 let pendingEntries = [];
 let isFlushScheduled = false;
@@ -68,77 +87,51 @@ let lineNumber = 0;
 let isApplying = false;
 let isApplyQueued = false;
 
-const padNumber = (number) => {
-    return String(number).padStart(2, "0");
-};
+/* 화면 움직임 */
 
-const formatDuration = (ms) => {
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-
-    return `${padNumber(Math.floor(totalSeconds / 3600))}:${padNumber(Math.floor((totalSeconds % 3600) / 60))}:${padNumber(totalSeconds % 60)}`;
-};
-
-const formatClock = (ms) => {
-    const date = new Date(ms);
-
-    return `${padNumber(date.getHours())}:${padNumber(date.getMinutes())}`;
-};
-
-const formatDeadline = (ms) => {
-    const date = new Date(ms);
-
-    return `${date.getMonth() + 1}월 ${date.getDate()}일 ${formatClock(ms)}`;
-};
-
-const formatOptions = (model, effort) => {
-    return model ? `${MODEL_LABELS[model] || model} · ${effort}` : "-";
-};
-
-/* 화면 전환 */
-
-const showView = (name) => {
-    for (const view of elements.views) {
-        view.hidden = view.id !== `view-${name}`;
+// 문구가 바뀔 때만 새 문구가 맺히는 전환을 다시 건다.
+const swapText = (element, text) => {
+    if (element.textContent === text) {
+        return;
     }
 
-    for (const item of elements.navItems) {
-        if (item.dataset.view === name) {
-            item.setAttribute("aria-current", "page");
-        } else {
-            item.removeAttribute("aria-current");
+    element.textContent = text;
+    element.classList.remove("swap");
+    void element.offsetWidth;
+    element.classList.add("swap");
+};
+
+// 고른 항목 뒤로 선택 표시를 옮긴다. 이름이 펼쳐지는 동안에도 따라가도록 크기 변화마다 다시 잰다.
+const updateChoicePill = (choice) => {
+    const checked = choice.querySelector("input:checked")?.closest("label");
+
+    if (!checked) {
+        return;
+    }
+
+    choice.style.setProperty("--pill-x", `${checked.offsetLeft}px`);
+    choice.style.setProperty("--pill-w", `${checked.offsetWidth}px`);
+};
+
+const watchChoicePills = () => {
+    const observer = new ResizeObserver(() => elements.choices.forEach(updateChoicePill));
+
+    for (const choice of elements.choices) {
+        for (const label of choice.querySelectorAll("label")) {
+            observer.observe(label);
         }
+
+        choice.addEventListener("change", () => updateChoicePill(choice));
+        updateChoicePill(choice);
     }
 };
 
-/* 로그 */
-
-const getLineKind = ({ stream, text }) => {
-    if (stream === "err" || text.startsWith("[stderr]")) {
-        return "err";
-    }
-
-    if (stream === "app") {
-        return "app";
-    }
-
-    if (/^\[\d+회차\]|^AutoPilot 종료/.test(text)) {
-        return "round";
-    }
-
-    if (text.includes("[사용량 한도]")) {
-        return "warn";
-    }
-
-    if (text.includes("[결과]")) {
-        return "ok";
-    }
-
-    if (/^\d{2}:\d{2}:\d{2} {3}> /.test(text)) {
-        return "tool";
-    }
-
-    return "";
+// 블러는 최근 로그 바로 아래에서 시작한다.
+const updateVeil = () => {
+    document.documentElement.style.setProperty("--veil-top", `${Math.round(elements.livePanel.getBoundingClientRect().bottom)}px`);
 };
+
+/* 전체 기록 로그 */
 
 const createLogLine = (entry) => {
     const line = document.createElement("div");
@@ -168,6 +161,50 @@ const updateLogCount = () => {
     elements.logCount.textContent = `${getLineCount()}줄`;
 };
 
+const scrollLogToEnd = () => {
+    if (elements.follow.checked) {
+        elements.log.scrollTop = elements.log.scrollHeight;
+    }
+};
+
+/* 최근 로그: 단어 단위로 맺히고 오래된 줄은 흐려지며 빠진다 */
+
+const createLiveLine = (entry) => {
+    const item = document.createElement("li");
+
+    item.dataset.kind = getLineKind(entry);
+
+    entry.text.split(/(\s+)/).forEach((part, index) => {
+        const word = document.createElement("span");
+
+        word.className = "word";
+        word.style.setProperty("--word", Math.min(index, MAX_WORD_DELAY_STEPS));
+        word.textContent = part;
+
+        item.append(word);
+    });
+
+    return item;
+};
+
+const fadeOutLiveLine = (item) => {
+    item.classList.add("out");
+
+    setTimeout(() => item.remove(), LIVE_FADE_MS);
+};
+
+const appendLiveLines = (entries) => {
+    const visibleLines = [...elements.live.children].filter((item) => !item.classList.contains("out"));
+    const newLines = entries.slice(-LIVE_LINES).map(createLiveLine);
+    const overflow = visibleLines.length + newLines.length - LIVE_LINES;
+
+    elements.live.append(...newLines);
+
+    for (const item of visibleLines.slice(0, Math.max(0, overflow))) {
+        fadeOutLiveLine(item);
+    }
+};
+
 // 로그는 모아서 한 번에 DOM에 반영한다. 창이 최소화돼도 멈추지 않도록 rAF 대신 타이머를 쓴다. 사용자가 위로 스크롤한 상태면 따라가지 않는다.
 const flushLogEntries = () => {
     isFlushScheduled = false;
@@ -191,10 +228,8 @@ const flushLogEntries = () => {
     }
 
     updateLogCount();
-
-    if (elements.follow.checked) {
-        elements.log.scrollTop = elements.log.scrollHeight;
-    }
+    scrollLogToEnd();
+    appendLiveLines(entries);
 };
 
 const appendLogEntries = (entries) => {
@@ -219,6 +254,7 @@ const clearLog = () => {
         line.remove();
     }
 
+    elements.live.replaceChildren();
     elements.logEmpty.hidden = false;
 
     updateLogCount();
@@ -230,75 +266,79 @@ const handleFollowByScroll = () => {
     elements.follow.checked = scrollHeight - scrollTop - clientHeight < FOLLOW_THRESHOLD_PX;
 };
 
+/* 설정 패널과 전체 기록 */
+
+const setSettingsOpen = (isOpen) => {
+    document.body.classList.toggle("settings-open", isOpen);
+    elements.settings.inert = !isOpen;
+    elements.settingsToggle.setAttribute("aria-expanded", String(isOpen));
+
+    if (isOpen) {
+        elements.choices.forEach(updateChoicePill);
+    }
+};
+
+const setHistoryOpen = (isOpen) => {
+    const label = isOpen ? "전체 기록 닫기" : "전체 기록 보기";
+
+    elements.history.hidden = !isOpen;
+    document.body.classList.toggle("history-open", isOpen);
+    elements.historyToggle.setAttribute("aria-expanded", String(isOpen));
+    elements.historyToggle.textContent = label;
+    elements.livePanel.setAttribute("aria-expanded", String(isOpen));
+
+    if (isOpen) {
+        setSettingsOpen(false);
+        scrollLogToEnd();
+        elements.history.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+        elements.content.scrollTo({ top: 0, behavior: "smooth" });
+    }
+};
+
+const handleLivePanelKey = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setHistoryOpen(elements.history.hidden);
+    }
+};
+
+// 설정이 열린 채로 화면의 다른 곳을 누르거나 Esc를 누르면 닫는다.
+const handleOutsidePointer = (event) => {
+    if (document.body.classList.contains("settings-open") && !elements.settings.contains(event.target) && !elements.settingsToggle.contains(event.target)) {
+        setSettingsOpen(false);
+    }
+};
+
+const handleEscape = (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("settings-open")) {
+        setSettingsOpen(false);
+        elements.settingsToggle.focus();
+    }
+};
+
 /* 상태 표시 */
-
-const getRunPhase = (state) => {
-    if (state.status === "running") {
-        return { label: "실행 중", tone: "run" };
-    }
-
-    if (state.status === "stopping") {
-        return { label: "종료 요청됨", tone: "warn" };
-    }
-
-    if (!state.endedAt) {
-        return { label: "대기 중", tone: "muted" };
-    }
-
-    if (state.exitCode === 0) {
-        return { label: "정상 종료", tone: "ok" };
-    }
-
-    if (state.reason === "중단 요청" || state.reason === "강제 종료" || state.exitCode === 130) {
-        return { label: "중단됨", tone: "warn" };
-    }
-
-    return { label: "오류 종료", tone: "danger" };
-};
-
-const getRoundTone = (outcome) => {
-    if (!outcome) {
-        return "run";
-    }
-
-    if (outcome === "완료") {
-        return "ok";
-    }
-
-    if (outcome.startsWith("실패") || outcome === "시한 초과") {
-        return "danger";
-    }
-
-    if (outcome === "commit 없음") {
-        return "muted";
-    }
-
-    return "warn";
-};
 
 const createRoundItem = (round) => {
     const item = document.createElement("li");
     const number = document.createElement("span");
     const body = document.createElement("div");
-    const title = document.createElement("strong");
-    const time = document.createElement("small");
+    const time = document.createElement("span");
     const options = document.createElement("small");
     const tag = document.createElement("span");
-    const minutes = round.endedAt ? ((round.endedAt - round.startedAt) / 60000).toFixed(1) : "";
 
     item.className = "round";
     number.className = "round-no num";
     number.textContent = round.round;
     body.className = "round-body";
-    title.textContent = `${round.round}회차`;
     time.className = "num";
-    time.textContent = round.endedAt ? `${formatClock(round.startedAt)} 시작, ${minutes}분` : `${formatClock(round.startedAt)} 시작`;
+    time.textContent = formatRoundTime(round);
     options.textContent = formatOptions(round.model, round.effort);
     tag.className = "tag";
     tag.dataset.tone = getRoundTone(round.outcome);
     tag.textContent = round.outcome || "진행 중";
 
-    body.append(title, time, options);
+    body.append(time, options);
     item.append(number, body, tag);
 
     return item;
@@ -306,8 +346,12 @@ const createRoundItem = (round) => {
 
 const renderRounds = (state) => {
     const key = JSON.stringify(state.rounds.map((round) => [round.round, round.startedAt, round.outcome]));
+    const lastRound = state.rounds[state.rounds.length - 1];
+    const finishedCount = state.rounds.filter((round) => round.outcome === "완료").length;
+    const policyText = state.policy ? `, 정책 ${state.policy.replace(/ \(.+\)$/, "")}` : "";
 
     elements.roundCount.textContent = `${state.rounds.length}회`;
+    elements.roundSummary.textContent = lastRound ? `완료 ${finishedCount}회, 최근 결과 ${lastRound.outcome || "진행 중"}${policyText}` : "아직 시작한 회차가 없어요.";
 
     if (key === renderedRoundsKey) {
         return;
@@ -318,58 +362,121 @@ const renderRounds = (state) => {
     elements.rounds.replaceChildren(...state.rounds.map(createRoundItem).reverse());
 };
 
+// 실행 중에는 남은 시간(종료 예정 시각을 모르면 경과 시간), 끝난 뒤에는 실행한 시간을 보여준다. 종료 시각은 옵션 줄에 있으므로 따로 쓰지 않는다.
 const renderClock = () => {
     const state = currentState;
 
     if (!state || !state.startedAt) {
-        elements.statElapsed.textContent = EMPTY_CLOCK;
-        elements.statRemaining.textContent = EMPTY_CLOCK;
-        elements.statProgress.value = 0;
-
-        return;
-    }
-
-    if (state.status === "idle") {
-        elements.statElapsed.textContent = formatDuration(state.endedAt - state.startedAt);
-        elements.statRemaining.textContent = EMPTY_CLOCK;
+        elements.clock.hidden = true;
 
         return;
     }
 
     const now = Date.now();
 
-    elements.statElapsed.textContent = formatDuration(now - state.startedAt);
+    elements.clock.hidden = false;
+
+    if (state.status === "idle") {
+        elements.clockLabel.textContent = "실행 시간";
+        elements.clockValue.textContent = state.endedAt ? formatDuration(state.endedAt - state.startedAt) : EMPTY_CLOCK;
+
+        return;
+    }
 
     if (state.deadlineAt) {
-        elements.statRemaining.textContent = formatDuration(state.deadlineAt - now);
-        elements.statProgress.value = Math.min(100, Math.max(0, ((now - state.startedAt) / (state.deadlineAt - state.startedAt)) * 100));
+        elements.clockLabel.textContent = "남은 시간";
+        elements.clockValue.textContent = formatDuration(state.deadlineAt - now);
+
+        return;
     }
+
+    elements.clockLabel.textContent = "경과";
+    elements.clockValue.textContent = formatDuration(now - state.startedAt);
 };
 
-const showNotice = (message, target = elements.notice) => {
-    target.textContent = message;
-    target.hidden = !message;
+const getStatusText = (state, phase) => {
+    if (state.status === "running" && state.round) {
+        return `${state.round}회차 진행 중`;
+    }
+
+    if (state.status === "stopping" && state.round) {
+        return `${state.round}회차 마무리 중, 종료 요청됨`;
+    }
+
+    return phase.label;
 };
 
-const showFailure = (result, target) => {
-    showNotice(result.status === STATUS_OK ? "" : result.error.msg, target);
+// 진행 단계 줄은 상태 문구와 겹치면 숨기고, 재시도·사용량 한도·회차 결과처럼 따로 알릴 때만 보인다.
+const getPhaseText = (state) => {
+    if (state.status === "idle") {
+        return state.reason && state.endedAt ? state.reason : "";
+    }
+
+    const phase = state.phase === `${state.round}회차 진행 중` ? "" : state.phase;
+
+    if (state.attached) {
+        return phase ? `${phase}, 이전에 시작한 엔진에 다시 연결됨` : "이전에 시작한 엔진에 다시 연결됨";
+    }
+
+    return phase;
+};
+
+const showNotice = (message, tone = "") => {
+    elements.notice.textContent = message;
+    elements.notice.dataset.tone = tone;
+    elements.notice.hidden = !message;
+};
+
+const showFailure = (result) => {
+    showNotice(result.status === STATUS_OK ? "" : result.error.msg);
 };
 
 const renderSettings = () => {
-    elements.enginePath.textContent = settings.exePath || "연결된 autopilot 실행 파일이 없어요.";
-    elements.selectExe.textContent = settings.exePath ? "파일 변경" : "파일 선택";
-    elements.engineBanner.hidden = Boolean(settings.exePath);
+    const hasProject = Boolean(settings.projectDir);
+
+    elements.projectPath.textContent = settings.projectDir || "선택한 폴더가 없어요.";
+    elements.project.toggleAttribute("data-missing", !hasProject);
+    elements.selectProject.textContent = hasProject ? "폴더 변경" : "폴더 선택";
+    elements.projectBanner.hidden = hasProject;
+    elements.appVersion.textContent = `AutoPilot v${appVersion}`;
 };
 
 /* 모델·Effort */
 
+const renderEffort = () => {
+    const level = Number(elements.effort.value);
+
+    elements.effortControl.dataset.level = level;
+    swapText(elements.effortName, EFFORT_LEVELS[level]);
+    elements.effort.setAttribute("aria-valuetext", EFFORT_LEVELS[level]);
+
+    elements.effortBars.forEach((bar, index) => {
+        bar.classList.toggle("on", index <= level);
+    });
+};
+
 const getSelectedOptions = () => {
-    return { model: elements.model.value, effort: elements.effort.value };
+    return { model: elements.form.elements.model.value, effort: EFFORT_LEVELS[Number(elements.effort.value)] };
 };
 
 const setSelectedOptions = ({ model, effort }) => {
-    elements.model.value = model;
-    elements.effort.value = effort;
+    elements.form.elements.model.value = model;
+    elements.effort.value = String(Math.max(0, EFFORT_LEVELS.indexOf(effort)));
+
+    renderEffort();
+    elements.choices.forEach(updateChoicePill);
+};
+
+const setRadiosDisabled = (name, disabled) => {
+    for (const radio of elements.form.elements[name]) {
+        radio.disabled = disabled;
+    }
+};
+
+const showApplyNote = (text, tone) => {
+    elements.applyNote.hidden = !text;
+    elements.applyNote.dataset.tone = tone;
+    swapText(elements.applyNote, text);
 };
 
 // 실행 중에는 엔진에 전달된 값을 기준으로 선택을 맞춘다. 전달 중인 값은 덮어쓰지 않는다.
@@ -380,24 +487,18 @@ const renderOptions = (state) => {
         setSelectedOptions(state.requested);
     }
 
-    const selected = getSelectedOptions();
     const isPending = !isIdle && (state.requested.model !== state.model || state.requested.effort !== state.effort);
 
-    elements.model.disabled = state.status === "stopping";
+    setRadiosDisabled("model", state.status === "stopping");
     elements.effort.disabled = state.status === "stopping";
 
-    if (isIdle) {
-        elements.appliedNow.textContent = state.startedAt ? `마지막 ${formatOptions(state.model, state.effort)}` : "실행 전";
-        elements.appliedNextLabel.textContent = "시작할 때";
-        elements.appliedNext.textContent = formatOptions(selected.model, selected.effort);
-    } else {
-        elements.appliedNow.textContent = `${formatOptions(state.model, state.effort)} (${state.round ? `${state.round}회차` : "시작 중"})`;
-        elements.appliedNextLabel.textContent = "다음 회차부터";
-        elements.appliedNext.textContent = isPending ? formatOptions(state.requested.model, state.requested.effort) : "변경 없음";
+    if (isPending) {
+        showApplyNote(`적용 대기: 다음 회차부터 ${formatOptions(state.requested.model, state.requested.effort)} (지금 ${formatOptions(state.model, state.effort)})`, "warn");
+
+        return;
     }
 
-    elements.appliedTag.hidden = !isPending;
-    elements.optionsHint.textContent = OPTIONS_HINTS[state.status];
+    showApplyNote(OPTIONS_HINTS[state.status], "");
 };
 
 // 변경은 즉시 전달한다. 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다.
@@ -427,6 +528,7 @@ const applyRoundOptions = async () => {
     renderOptions(currentState);
 };
 
+// range는 끄는 동안 input이 계속 오므로 표시만 바꾸고, 엔진 전달은 손을 뗀 뒤(change) 한 번만 한다.
 const handleOptionChange = () => {
     if (currentState.status === "running") {
         applyRoundOptions();
@@ -437,58 +539,66 @@ const handleOptionChange = () => {
 
 /* 전체 렌더링과 이벤트 */
 
+const renderMainAction = (state, hasProject) => {
+    const config = MAIN_ACTIONS[state.status];
+
+    elements.mainAction.dataset.action = config.action;
+    swapText(elements.mainAction, config.label);
+    elements.mainAction.title = config.title;
+    elements.mainAction.disabled = state.status === "idle" && !hasProject;
+};
+
 const renderState = (state) => {
     currentState = state;
 
-    const hasEngine = Boolean(settings.exePath);
+    const hasProject = Boolean(settings.projectDir);
     const isIdle = state.status === "idle";
-    const phase = hasEngine ? getRunPhase(state) : { label: "엔진 미연결", tone: "muted" };
-    const lastRound = state.rounds[state.rounds.length - 1];
-    const finishedCount = state.rounds.filter((round) => round.outcome === "완료").length;
+    const phase = hasProject ? getRunPhase(state) : { label: "프로젝트 미선택", tone: "muted" };
+    const phaseText = getPhaseText(state);
 
-    elements.badge.textContent = phase.label;
+    document.body.dataset.status = state.status;
+    swapText(elements.badge, getStatusText(state, phase));
     elements.badge.dataset.tone = phase.tone;
-    elements.statPhase.textContent = state.reason && isIdle && state.endedAt ? state.reason : state.phase || "시작하면 진행 단계가 표시돼요.";
+    elements.statPhase.hidden = !phaseText;
+    swapText(elements.statPhase, phaseText);
 
-    elements.statRound.textContent = state.round;
-    elements.statRoundSub.textContent = lastRound ? `완료 ${finishedCount}회, 최근 결과 ${lastRound.outcome || "진행 중"}` : "아직 시작한 회차가 없어요.";
-    elements.statDeadline.textContent = state.deadlineAt ? `종료 예정 ${formatDeadline(state.deadlineAt)}` : "종료 예정 시각 없음";
-    elements.statPolicy.textContent = state.policy ? `정책 ${state.policy.replace(/ \(.+\)$/, "")}` : "정책 없음";
+    renderMainAction(state, hasProject);
 
-    elements.start.disabled = !hasEngine || !isIdle;
-    elements.stop.disabled = state.status !== "running";
-    elements.kill.disabled = isIdle;
-    elements.openReport.disabled = !state.reportFile;
     elements.endTime.disabled = !isIdle;
-    elements.policy.disabled = !isIdle;
-    elements.selectExe.disabled = !isIdle;
-    elements.findExe.disabled = !isIdle;
+    elements.tasks.disabled = !isIdle;
+    setRadiosDisabled("policy", !isIdle);
+    elements.openReport.disabled = !state.reportFile;
+    elements.selectProject.disabled = !isIdle;
+    elements.bannerSelectProject.disabled = !isIdle;
+    elements.resetProgress.disabled = !isIdle || !hasProject;
 
     renderOptions(state);
     renderRounds(state);
     renderClock();
 };
 
-const handleStart = async (event) => {
+const handleMainAction = async (event) => {
     event.preventDefault();
 
-    showFailure(await window.autopilot.start({ endTime: elements.endTime.value, policy: elements.policy.value, ...getSelectedOptions() }));
-};
+    const { action } = MAIN_ACTIONS[currentState.status];
 
-const handleStop = async () => {
-    showFailure(await window.autopilot.stop());
-};
-
-const handleKill = async () => {
-    showFailure(await window.autopilot.kill());
+    if (action === "start") {
+        showFailure(await window.autopilot.start({ tasks: elements.tasks.value, endTime: elements.endTime.value, policy: elements.form.elements.policy.value, ...getSelectedOptions() }));
+    } else if (action === "stop") {
+        showFailure(await window.autopilot.stop());
+    } else {
+        showFailure(await window.autopilot.kill());
+    }
 };
 
 const handleOpenReport = async () => {
     showFailure(await window.autopilot.openReport());
 };
 
-const applyEngineResult = (result) => {
-    showFailure(result, elements.engineNotice);
+const handleSelectProject = async () => {
+    const result = await window.autopilot.selectProject();
+
+    showFailure(result);
 
     if (result.status === STATUS_OK) {
         settings = result.data.settings;
@@ -498,46 +608,86 @@ const applyEngineResult = (result) => {
     }
 };
 
-const handleSelectExecutable = async () => {
-    applyEngineResult(await window.autopilot.selectExecutable());
+const handleResetProgress = async () => {
+    const result = await window.autopilot.resetProgress();
+
+    if (result.status !== STATUS_OK) {
+        showFailure(result);
+
+        return;
+    }
+
+    if (!result.data.cancelled) {
+        showNotice(result.data.isReset ? "진행 기록을 초기화했어요. 원본은 autopilot/progress 폴더에 보관했어요." : "이미 초기 상태예요.", "ok");
+    }
 };
 
-const handleFindExecutable = async () => {
-    applyEngineResult(await window.autopilot.findExecutable());
+const renderWindowState = ({ maximized }) => {
+    const label = maximized ? "이전 크기로" : "최대화";
+
+    elements.titlebar.toggleAttribute("data-maximized", maximized);
+    elements.windowMaximize.setAttribute("aria-label", label);
+    elements.windowMaximize.title = label;
+};
+
+const bindWindowControls = () => {
+    elements.settingsToggle.addEventListener("click", () => setSettingsOpen(!document.body.classList.contains("settings-open")));
+    elements.windowMinimize.addEventListener("click", () => window.appWindow.minimize());
+    elements.windowMaximize.addEventListener("click", () => window.appWindow.toggleMaximize());
+    elements.windowClose.addEventListener("click", () => window.appWindow.close());
+
+    window.appWindow.onState(renderWindowState);
+};
+
+const bindLayoutWatchers = () => {
+    const observer = new ResizeObserver(updateVeil);
+
+    observer.observe(elements.hero);
+    window.addEventListener("resize", updateVeil);
+    watchChoicePills();
+    updateVeil();
 };
 
 const initialize = async () => {
+    bindWindowControls();
+
     const snapshot = await window.autopilot.getState();
 
     settings = snapshot.settings;
+    appVersion = snapshot.version;
 
-    elements.version.textContent = `v${snapshot.version}`;
     elements.endTime.value = settings.endTime;
-    elements.policy.value = settings.policy;
+    elements.tasks.value = settings.tasks;
+    elements.form.elements.policy.value = settings.policy;
 
     setSelectedOptions(settings);
     renderSettings();
     renderState(snapshot.state);
     appendLogEntries(snapshot.logs);
+    bindLayoutWatchers();
 
     window.autopilot.onLog(appendLogEntries);
     window.autopilot.onState(renderState);
 
-    for (const item of elements.navItems) {
-        item.addEventListener("click", () => showView(item.dataset.view));
-    }
-
-    elements.openSettings.addEventListener("click", () => showView("settings"));
-    elements.form.addEventListener("submit", handleStart);
-    elements.stop.addEventListener("click", handleStop);
-    elements.kill.addEventListener("click", handleKill);
-    elements.selectExe.addEventListener("click", handleSelectExecutable);
-    elements.findExe.addEventListener("click", handleFindExecutable);
+    elements.form.addEventListener("submit", handleMainAction);
+    elements.selectProject.addEventListener("click", handleSelectProject);
+    elements.bannerSelectProject.addEventListener("click", handleSelectProject);
+    elements.resetProgress.addEventListener("click", handleResetProgress);
     elements.openReport.addEventListener("click", handleOpenReport);
+    elements.historyToggle.addEventListener("click", () => setHistoryOpen(elements.history.hidden));
+    elements.historyClose.addEventListener("click", () => setHistoryOpen(false));
+    elements.livePanel.addEventListener("click", () => setHistoryOpen(elements.history.hidden));
+    elements.livePanel.addEventListener("keydown", handleLivePanelKey);
     elements.clearLog.addEventListener("click", clearLog);
     elements.log.addEventListener("scroll", handleFollowByScroll);
-    elements.model.addEventListener("change", handleOptionChange);
+    elements.effort.addEventListener("input", renderEffort);
     elements.effort.addEventListener("change", handleOptionChange);
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    document.addEventListener("keydown", handleEscape);
+
+    for (const radio of elements.form.elements.model) {
+        radio.addEventListener("change", handleOptionChange);
+    }
 
     setInterval(renderClock, CLOCK_INTERVAL_MS);
 };
