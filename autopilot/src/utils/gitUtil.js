@@ -1,4 +1,4 @@
-import path from "node:path";
+import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { PROGRESS_RELATIVE_PATH } from "./config.js";
 import dateUtil from "./dateUtil.js";
@@ -18,7 +18,7 @@ const createGitRunner = (gitExecutable, projectDir, env) => {
 const assertGitProject = (runGitCommand, projectDir) => {
     const gitRootDir = runGitCommand(["rev-parse", "--show-toplevel"]);
 
-    if (path.resolve(gitRootDir) !== path.resolve(projectDir)) {
+    if (fs.realpathSync.native(gitRootDir) !== fs.realpathSync.native(projectDir)) {
         throw new Error("autopilot/의 상위 폴더가 Git 프로젝트 루트여야 합니다.");
     }
 
