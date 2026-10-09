@@ -1,9 +1,9 @@
 {
-    "name": "autopilot-desktop",
-    "version": "0.1.0",
+    "name": "Autopilot",
+    "version": "1.0.0",
     "private": true,
-    "description": "AutoPilot desktop interface",
-    "author": "AutoPilot",
+    "description": "무인 자율 개발 환경, Autopilot",
+    "author": "ReguMaster",
     "main": "desktop/main.cjs",
     "scripts": {
         "start": "electron .",
