@@ -1,11 +1,24 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
 import { STATUS_OK, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED } from "../src/utils/config.js";
-import { runAutopilot, requestStop, requestRoundOptions, getRunStatus } from "../src/services/autopilotService.js";
+import { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset } from "../src/services/autopilotService.js";
 
 import log from "../src/utils/logUtil.js";
 import cliUtil from "../src/utils/cliUtil.js";
-import kitPackage from "../package.json" with { type: "json" };
+import fileUtil from "../src/utils/fileUtil.js";
+
+const readTasks = (tasksFile) => {
+    if (!tasksFile) {
+        return "";
+    }
+
+    if (!fs.existsSync(tasksFile)) {
+        throw new Error(`작업 파일을 찾지 못했습니다: ${tasksFile}`);
+    }
+
+    return fileUtil.readTextFile(tasksFile);
+};
 
 const runCli = async (args = process.argv.slice(2)) => {
     if (args[0] === "--help") {
@@ -14,18 +27,8 @@ const runCli = async (args = process.argv.slice(2)) => {
         return EXIT_CODE_SUCCESS;
     }
 
-    if (args[0] === "--version") {
-        log.info(kitPackage.version);
-
-        return EXIT_CODE_SUCCESS;
-    }
-
     if (args[0] === "stop") {
-        if (args.length !== 1) {
-            throw new Error(cliUtil.STOP_USAGE_TEXT);
-        }
-
-        const requestStopResult = requestStop();
+        const requestStopResult = requestStop(cliUtil.parseProjectArgs(args.slice(1)));
 
         if (requestStopResult.status !== STATUS_OK) {
             return EXIT_CODE_FAILED;
@@ -37,11 +40,7 @@ const runCli = async (args = process.argv.slice(2)) => {
     }
 
     if (args[0] === "status") {
-        if (args.length !== 1) {
-            throw new Error(cliUtil.STATUS_USAGE_TEXT);
-        }
-
-        const getRunStatusResult = getRunStatus();
+        const getRunStatusResult = getRunStatus(cliUtil.parseProjectArgs(args.slice(1)));
 
         if (getRunStatusResult.status !== STATUS_OK) {
             return EXIT_CODE_FAILED;
@@ -52,8 +51,23 @@ const runCli = async (args = process.argv.slice(2)) => {
         return EXIT_CODE_SUCCESS;
     }
 
+    if (args[0] === "reset-progress") {
+        const requestProgressResetResult = requestProgressReset(cliUtil.parseProjectArgs(args.slice(1)));
+
+        if (requestProgressResetResult.status !== STATUS_OK) {
+            return EXIT_CODE_FAILED;
+        }
+
+        const { isReset, archivePath } = requestProgressResetResult.data;
+
+        log.info(isReset ? `Progress record reset. Original archived: ${archivePath}` : "Progress record is already initial.");
+
+        return EXIT_CODE_SUCCESS;
+    }
+
     if (args[0] === "set") {
-        const requestRoundOptionsResult = requestRoundOptions(cliUtil.parseSetArgs(args.slice(1)));
+        const { projectDir, ...roundOptions } = cliUtil.parseSetArgs(args.slice(1));
+        const requestRoundOptionsResult = requestRoundOptions(roundOptions, { projectDir: projectDir });
 
         if (requestRoundOptionsResult.status !== STATUS_OK) {
             return EXIT_CODE_FAILED;
@@ -66,7 +80,8 @@ const runCli = async (args = process.argv.slice(2)) => {
         return EXIT_CODE_SUCCESS;
     }
 
-    const runAutopilotResult = await runAutopilot(cliUtil.parseCommandArgs(args));
+    const runOptions = cliUtil.parseRunArgs(args);
+    const runAutopilotResult = await runAutopilot({ ...runOptions, tasks: readTasks(runOptions.tasksFile) });
 
     return runAutopilotResult.data?.exitCode ?? EXIT_CODE_FAILED;
 };

@@ -114,18 +114,3 @@ const getRoundTone = (outcome) => {
 
     return "warn";
 };
-
-// 엔진 버전이 비어 있으면 --version을 지원하지 않는 이전 버전 엔진이다.
-const getEngineVersionNote = (appVersion, engineVersion) => {
-    if (!engineVersion) {
-        return { summary: `앱 v${appVersion} · 엔진 버전을 확인하지 못했어요.`, warning: "엔진이 버전을 알려주지 않아요. 이전 버전의 엔진이면 로그 형식이 달라 화면이 정확하지 않을 수 있어요." };
-    }
-
-    const summary = `앱 v${appVersion} · 엔진 v${engineVersion}`;
-
-    if (engineVersion !== appVersion) {
-        return { summary: summary, warning: "앱과 엔진의 버전이 달라요. 로그 형식이 달라 화면이 정확하지 않을 수 있으니 같은 버전의 엔진을 연결해 주세요." };
-    }
-
-    return { summary: summary, warning: "" };
-};

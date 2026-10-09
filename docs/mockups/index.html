@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoPilot 대시보드 시안</title>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="themes1.css">
+  <link rel="stylesheet" href="themes2.css">
+  <script src="mockup.js" defer></script>
+</head>
+<body data-v="1" data-state="idle">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="gFable" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset=".55" stop-color="#ff6ad5"/><stop offset="1" stop-color="#ffd36e"/></linearGradient>
+      <linearGradient id="gOpus" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe29a"/><stop offset=".5" stop-color="#ffab40"/><stop offset="1" stop-color="#e2641a"/></linearGradient>
+      <linearGradient id="gSonnet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3ee8d2"/><stop offset="1" stop-color="#1c7dff"/></linearGradient>
+      <linearGradient id="gHaiku" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f765"/><stop offset="1" stop-color="#1fb97f"/></linearGradient>
+    </defs>
+  </svg>
+
+  <div class="bg"><i></i><i></i><i></i><i></i><pre class="code" id="code"></pre><b class="plane"></b></div>
+  <div id="fx"></div>
+
+  <main class="stage">
+    <section class="hero">
+      <div class="orb">
+        <div class="fx-orb">
+          <i class="ring r1"></i><i class="ring r2"></i><i class="ring r3"></i>
+          <i class="sat s1"></i><i class="sat s2"></i><i class="sat s3"></i>
+          <div class="eq" id="eq"></div>
+          <svg class="ecg" width="4000" height="80" viewBox="0 0 4000 80" aria-hidden="true">
+            <defs><pattern id="beat" width="200" height="80" patternUnits="userSpaceOnUse"><path d="M0 40H60l6-5 6 5h18l6 8 6-34 8 52 6-26h14l8-9 8 9H200" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></pattern></defs>
+            <rect width="4000" height="80" fill="url(#beat)"/>
+          </svg>
+        </div>
+        <div class="logo-wrap">
+          <img class="logo" src="../logo.png" alt="AutoPilot">
+          <i class="sweep"></i>
+        </div>
+      </div>
+
+      <div class="meta">
+        <span class="state"><i class="dot"></i><b id="state">대기 중</b></span>
+        <span class="clock">남은 시간 <b id="clock" class="num">06:30:00</b></span>
+      </div>
+
+      <button id="main" class="main" type="button">시작</button>
+
+      <div class="opts">
+        <button id="chip" class="chip" type="button" aria-haspopup="dialog"></button>
+        <span class="when" id="when">07:00 종료 · 자율개선</span>
+        <u class="pend" id="pend" hidden>다음 회차부터 적용</u>
+      </div>
+    </section>
+
+    <section class="log" aria-label="실시간 로그">
+      <div class="log-head"><i class="ld"></i><span class="t">실시간 로그</span></div>
+      <ol id="lines" class="lines" aria-live="off"></ol>
+    </section>
+  </main>
+
+  <i class="flash"></i>
+
+  <dialog id="modal" aria-labelledby="modalTitle">
+    <form method="dialog">
+      <h2 id="modalTitle">강제 종료할까요?</h2>
+      <p>진행 중인 회차를 바로 중단해요. commit하지 않은 변경은 파일에 그대로 남아요.</p>
+      <div class="btns">
+        <button value="cancel">취소</button>
+        <button value="kill" class="kill">강제 종료</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="optsDialog" class="sheet" aria-labelledby="optsTitle" data-lv="2">
+    <form method="dialog" id="optsForm">
+      <header class="sheet-head">
+        <h2 id="optsTitle">실행 옵션</h2>
+        <p id="optsNote" hidden>실행 중에는 다음 회차부터 적용돼요.</p>
+      </header>
+
+      <fieldset class="models" id="models"><legend>모델</legend></fieldset>
+
+      <section class="effort" aria-labelledby="effLabel">
+        <div class="eff-head"><span id="effLabel">Effort</span><b id="effName">HIGH</b></div>
+        <div class="eff-stage">
+          <div class="eff-track"><div class="eff-fill"></div></div>
+          <div class="sparks" id="sparks" aria-hidden="true"></div>
+          <input type="range" id="effort" name="effort" min="0" max="4" step="1" value="2" aria-labelledby="effLabel">
+        </div>
+        <ol class="eff-ticks" id="ticks"></ol>
+        <p class="eff-desc" id="effDesc"></p>
+      </section>
+
+      <div class="extra">
+        <label>종료 시각 <input type="time" name="time" value="07:00"></label>
+        <div class="seg" role="radiogroup" aria-label="개선 정책">
+          <label><input type="radio" name="policy" value="자율개선" checked><span>자율개선</span></label>
+          <label><input type="radio" name="policy" value="지시개선"><span>지시개선</span></label>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button value="cancel">취소</button>
+        <button value="save" class="primary">적용</button>
+      </div>
+    </form>
+  </dialog>
+
+  <nav class="picker" aria-label="시안 선택"><span id="vname"></span><span id="nums"></span></nav>
+</body>
+</html>

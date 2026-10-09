@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 
-const EXPORTED_NAMES = ["MODEL_LABELS", "formatDuration", "formatClock", "formatDeadline", "formatOptions", "getLineKind", "getRunPhase", "getRoundTone", "formatRoundTime", "getEngineVersionNote"];
+const EXPORTED_NAMES = ["MODEL_LABELS", "formatDuration", "formatClock", "formatDeadline", "formatOptions", "getLineKind", "getRunPhase", "getRoundTone", "formatRoundTime"];
 
 // 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
 const loadViewFormat = () => {
@@ -97,24 +97,6 @@ const checkRoundTime = ({ formatRoundTime }) => {
     assert.equal(formatRoundTime({ timesKnown: false, startedAt: startedAt, endedAt: startedAt }), "시각을 알 수 없어요");
 };
 
-const checkEngineVersionNote = ({ getEngineVersionNote }) => {
-    const same = getEngineVersionNote("0.1.0", "0.1.0");
-
-    assert.equal(same.summary, "앱 v0.1.0 · 엔진 v0.1.0");
-    assert.equal(same.warning, "");
-
-    const different = getEngineVersionNote("0.2.0", "0.1.0");
-
-    assert.equal(different.summary, "앱 v0.2.0 · 엔진 v0.1.0");
-    assert.match(different.warning, /버전이 달라요/);
-
-    // --version을 모르는 이전 엔진은 버전이 비어 있다.
-    const unknown = getEngineVersionNote("0.1.0", "");
-
-    assert.match(unknown.summary, /확인하지 못했어요/);
-    assert.match(unknown.warning, /이전 버전의 엔진/);
-};
-
 const checkViewFormat = () => {
     const viewFormat = loadViewFormat();
 
@@ -122,7 +104,6 @@ const checkViewFormat = () => {
     checkLineKind(viewFormat);
     checkPhases(viewFormat);
     checkRoundTime(viewFormat);
-    checkEngineVersionNote(viewFormat);
 
     console.log("Desktop view checks passed.");
 };

@@ -62,7 +62,7 @@ const getStatusHtml = (runState, status, isLive, hasError) => {
     let guideHtml = "";
 
     if (isLive) {
-        const stopGuide = fs.existsSync(runState.stopFile) ? "중단 요청됨" : "이번 회차 후 중단: autopilot stop";
+        const stopGuide = fs.existsSync(runState.stopFile) ? "중단 요청됨" : "이번 회차 후 중단: 앱의 종료 신호";
 
         guideHtml = `<p class="meta">종료 예정 ${dateUtil.getTimeString(runState.deadline)} · ${stopGuide}</p>`;
     }

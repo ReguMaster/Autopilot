@@ -6,10 +6,6 @@ import processUtil from "../../autopilot/src/utils/processUtil.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const readJsonFile = (relativePath) => {
-    return JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../..", relativePath), "utf8"));
-};
-
 // 실제 Claude 대신 회차마다 실행되는 가짜 CLI. AP_MODE로 동작을 고른다.
 const FAKE_CLI_SOURCE = String.raw`
 import fs from "node:fs";
@@ -42,10 +38,19 @@ process.stdin.on('end', () => {
     emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: Date.now() / 1000 + 0.05 } });
     emit({ type: 'result', is_error: true, result: 'limit' });
     process.exitCode = 1;
-  } else if (mode === 'commit' || mode === 'progress') {
-    const file = mode === 'commit' ? 'work.txt' : 'autopilot/AUTOPILOT_PROGRESS.md';
-    fs.appendFileSync(file, 'work\n');
-    execFileSync(process.env.AP_GIT, ['add', '--', file]);
+  } else if (mode === 'commit') {
+    fs.appendFileSync('work.txt', 'work\n');
+    execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
+    execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] fake']);
+  } else if (mode === 'progress') {
+    // 진행 기록은 저장소 밖에 있으므로 갱신만 하고 commit이 없어 idle이다.
+    fs.appendFileSync(process.env.AP_PROGRESS_FILE, 'work\n');
+  } else if (mode === 'regrow') {
+    // 1회차에는 기록을 줄이고 2회차에는 다시 늘려, 줄 수 확인이 회차마다 이뤄지는지 본다. cleanup.log의 길이가 회차 번호다.
+    const lineCount = fs.readFileSync('cleanup.log', 'utf8').length === 2 ? 150 : 10;
+    fs.writeFileSync(process.env.AP_PROGRESS_FILE, Array.from({ length: lineCount }, (_, index) => index + ' 기록').join('\n') + '\n');
+    fs.appendFileSync('work.txt', 'work\n');
+    execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
     execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] fake']);
   } else if (mode === 'todo') {
     const marker = prompt.match(/빈 파일 (autopilot\/progress\/[^ ]+\/TODO_COMPLETE)/)[1];
@@ -120,4 +125,4 @@ const writeCmdWrapper = (wrapperFile, fakeCliFile) => {
     fs.writeFileSync(wrapperFile, `@echo off\r\n"${process.execPath}" "${fakeCliFile}" %*\r\n`);
 };
 
-export { HOUR_MS, readJsonFile, FAKE_CLI_SOURCE, wait, getEndTime, isProcessStopped, waitForProcessStop, createTestContext, commitInitialProject, writeCmdWrapper };
+export { HOUR_MS, FAKE_CLI_SOURCE, wait, getEndTime, isProcessStopped, waitForProcessStop, createTestContext, commitInitialProject, writeCmdWrapper };

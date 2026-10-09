@@ -8,25 +8,22 @@
     "scripts": {
         "start": "electron .",
         "dev": "electron . --dev",
-        "check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/autopilotRunner.cjs && node --check desktop/autopilotIpc.cjs && node --check desktop/engineFinder.cjs && node --check desktop/viewFormat.js && node --check desktop/renderer.js && node --check tests/checkDesktopRunner.js && node --check tests/checkDesktopView.js",
+        "check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/autopilotRunner.cjs && node --check desktop/autopilotIpc.cjs && node --check desktop/projectFiles.cjs && node --check desktop/viewFormat.js && node --check desktop/sky.js && node --check desktop/renderer.js && node --check tests/checkDesktopRunner.js && node --check tests/checkDesktopView.js",
         "test": "npm run check && electron . --smoke-test",
         "test:desktop": "npm run check && node tests/checkDesktopRunner.js && node tests/checkDesktopView.js",
         "build": "npm run check && electron-builder --win --x64 --dir",
         "dist": "npm run check && electron-builder --win portable --x64",
-        "check:cli": "node --check autopilot/core/autopilot_loop.js && node --check tests/checkAutopilot.js && node --check tests/lib/fixtures.js && node --check tests/lib/unitChecks.js && node --check tests/lib/scenarioChecks.js && node --check tools/buildCli.js",
+        "check:cli": "node --check autopilot/core/autopilot_loop.js && node --check tests/checkAutopilot.js && node --check tests/lib/fixtures.js && node --check tests/lib/unitChecks.js && node --check tests/lib/scenarioChecks.js",
         "test:cli": "npm run check:cli && node tests/checkAutopilot.js",
-        "build:cli": "npm run check:cli && node tools/buildCli.js",
-        "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" tools/buildCli.js \"autopilot/src/**/*.js\"",
-        "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" tools/buildCli.js \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js",
-        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/engineFinder.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js"
+        "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
+        "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/viewFormat.js desktop/sky.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/viewFormat.js desktop/sky.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js"
     },
     "devDependencies": {
         "electron": "^44.6.0",
         "electron-builder": "26.15.3",
-        "postject": "1.0.0-alpha.6",
-        "prettier": "^3.9.6",
-        "esbuild": "^0.25.0"
+        "prettier": "^3.9.6"
     },
     "build": {
         "appId": "com.autopilot.desktop",
@@ -45,7 +42,18 @@
             "icon": "docs/icon.png",
             "signAndEditExecutable": true
         },
-        "artifactName": "AutoPilot-${version}-${arch}.${ext}"
+        "artifactName": "AutoPilot-${version}-${arch}.${ext}",
+        "extraResources": [
+            {
+                "from": "autopilot",
+                "to": "engine",
+                "filter": [
+                    "core/**/*",
+                    "src/**/*",
+                    "package.json"
+                ]
+            }
+        ]
     },
     "type": "module",
     "engines": {

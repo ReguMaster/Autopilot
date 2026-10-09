@@ -2,18 +2,24 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
-const { KIT_DIR_NAME, findEngineExecutable, isKitReportFile } = require("./engineFinder.cjs");
+const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { getProjectError, isProjectReportFile } = require("./projectFiles.cjs");
 
-const CLI_OPTION_FLAGS = [
-    ["endTime", "--end-time"],
-    ["policy", "--policy"],
-    ["model", "--model"],
-    ["effort", "--effort"]
-];
-const ENGINE_VERSION_TIMEOUT_MS = 10000;
-const ENGINE_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
-const DEFAULT_SETTINGS = { exePath: "", endTime: "", policy: "", model: "opus", effort: "high" };
+const POLICY_CHOICES = ["auto", "todo"];
+const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const ENGINE_HELP_TIMEOUT_MS = 10000;
+const TASKS_FILE_NAME = "tasks.md";
+const DEFAULT_SETTINGS = { projectDir: "", tasks: "", endTime: "", policy: "auto", model: "opus", effort: "high" };
+
+// 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
+const SETTING_VALIDATORS = {
+    projectDir: (value) => typeof value === "string",
+    tasks: (value) => typeof value === "string",
+    endTime: (value) => value === "" || END_TIME_PATTERN.test(value),
+    policy: (value) => POLICY_CHOICES.includes(value),
+    model: (value) => MODEL_CHOICES.includes(value),
+    effort: (value) => EFFORT_CHOICES.includes(value)
+};
 
 const getSettingsFile = () => {
     return path.join(app.getPath("userData"), "settings.json");
@@ -23,7 +29,7 @@ const readSettings = () => {
     try {
         const saved = JSON.parse(fs.readFileSync(getSettingsFile(), "utf8"));
 
-        return Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map((key) => [key, typeof saved[key] === "string" ? saved[key] : DEFAULT_SETTINGS[key]]));
+        return Object.fromEntries(Object.entries(SETTING_VALIDATORS).map(([key, isValid]) => [key, isValid(saved[key]) ? saved[key] : DEFAULT_SETTINGS[key]]));
     } catch {
         return { ...DEFAULT_SETTINGS };
     }
@@ -38,65 +44,35 @@ const createFailure = (code, msg) => {
     return { status: STATUS_FAILED, error: { code: code, msg: msg } };
 };
 
-// CLI가 키트 폴더 이름과 위치로 프로젝트 루트를 정하므로 autopilot/ 안의 실행 파일만 받는다.
-const getExecutableError = (exePath) => {
-    if (!exePath || !fs.existsSync(exePath) || !fs.statSync(exePath).isFile()) {
-        return "autopilot 실행 파일을 찾지 못했어요.";
-    }
-
-    if (path.basename(path.dirname(exePath)) !== KIT_DIR_NAME) {
-        return "대상 프로젝트의 autopilot 폴더 안에 있는 실행 파일을 선택해 주세요.";
-    }
-
-    return "";
+const getEngineScript = () => {
+    return app.isPackaged ? path.join(process.resourcesPath, "engine", "core", "autopilot_loop.js") : path.join(__dirname, "..", "autopilot", "core", "autopilot_loop.js");
 };
 
-// 엔진 버전을 읽는다. --version을 모르는 이전 버전이거나 실행에 실패하면 빈 문자열이다.
-const readEngineVersion = (exePath) => {
+// 엔진은 앱 실행 파일을 Node로 실행해(ELECTRON_RUN_AS_NODE) 별도 설치 없이 같은 exe 안에서 돈다.
+const getEngineLaunch = () => {
+    return { command: process.execPath, prefixArgs: [getEngineScript()], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } };
+};
+
+// 엔진이 앱 번들 안에서 실제로 실행되는지 확인한다(스모크 테스트용).
+const checkEngine = () => {
     return new Promise((resolve) => {
-        if (getExecutableError(exePath)) {
-            resolve("");
+        const { command, prefixArgs, env } = getEngineLaunch();
 
-            return;
-        }
-
-        execFile(exePath, ["--version"], { windowsHide: true, timeout: ENGINE_VERSION_TIMEOUT_MS, encoding: "utf8" }, (error, stdout) => {
-            const version = error ? "" : stdout.trim();
-
-            resolve(ENGINE_VERSION_PATTERN.test(version) ? version : "");
+        execFile(command, [...prefixArgs, "--help"], { windowsHide: true, timeout: ENGINE_HELP_TIMEOUT_MS, encoding: "utf8", env: env }, (error, stdout) => {
+            resolve(!error && stdout.includes("AutoPilot --project"));
         });
     });
-};
-
-// 포터블 실행 파일 위치, 앱 실행 파일 위치, 작업 폴더 순으로 찾아 연결하고 저장한다. 못 찾으면 null.
-const connectFoundExecutable = (settings) => {
-    const startDirs = [process.env.PORTABLE_EXECUTABLE_DIR, path.dirname(process.execPath), process.cwd()].filter(Boolean);
-    const exePath = findEngineExecutable(startDirs);
-
-    if (!exePath) {
-        return null;
-    }
-
-    const nextSettings = { ...settings, exePath: exePath };
-
-    writeSettings(nextSettings);
-
-    return nextSettings;
 };
 
 const isValidRoundOptions = ({ model, effort }) => {
     return MODEL_CHOICES.includes(model) && EFFORT_CHOICES.includes(effort);
 };
 
-const getCliArgs = (options) => {
-    const args = ["--no-open"];
+const getCliArgs = ({ projectDir, tasksFile, endTime, policy, model, effort }) => {
+    const args = ["--project", projectDir, "--no-open", "--tasks-file", tasksFile, "--policy", policy, "--model", model, "--effort", effort];
 
-    for (const [key, flag] of CLI_OPTION_FLAGS) {
-        const value = typeof options[key] === "string" ? options[key].trim() : "";
-
-        if (value) {
-            args.push(flag, value);
-        }
+    if (endTime) {
+        args.push("--end-time", endTime);
     }
 
     return args;
@@ -115,21 +91,53 @@ const runner = createRunner({
     onState: (state) => broadcast("autopilot:state", state)
 });
 
+// 시작 인자의 오류를 알려준다. 없으면 null.
+const getStartError = (settings, options) => {
+    const projectError = getProjectError(settings.projectDir);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    if (!isValidRoundOptions(options) || !POLICY_CHOICES.includes(options.policy) || (options.endTime && !END_TIME_PATTERN.test(options.endTime))) {
+        return createFailure("INVALID_OPTIONS", "모델, Effort, 정책, 종료 시각 값이 올바르지 않아요.");
+    }
+
+    if (options.policy === "todo" && !options.tasks.trim()) {
+        return createFailure("TASKS_REQUIRED", "지시개선은 처리할 작업을 입력해야 시작할 수 있어요.");
+    }
+
+    return null;
+};
+
 const handleStart = (event, options = {}) => {
     const settings = readSettings();
-    const exeError = getExecutableError(settings.exePath);
+    const startOptions = {
+        tasks: typeof options.tasks === "string" ? options.tasks : "",
+        endTime: String(options.endTime || ""),
+        policy: options.policy,
+        model: options.model,
+        effort: options.effort
+    };
+    const startError = getStartError(settings, startOptions);
 
-    if (exeError) {
-        return createFailure("INVALID_EXECUTABLE", exeError);
+    if (startError) {
+        return startError;
     }
 
-    if (!isValidRoundOptions(options)) {
-        return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
-    }
+    // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
+    const tasksFile = path.join(app.getPath("userData"), TASKS_FILE_NAME);
 
-    writeSettings({ ...settings, endTime: String(options.endTime || ""), policy: String(options.policy || ""), model: options.model, effort: options.effort });
+    fs.mkdirSync(app.getPath("userData"), { recursive: true });
+    fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
+    writeSettings({ ...settings, ...startOptions });
 
-    return runner.start({ command: settings.exePath, args: getCliArgs(options), roundOptions: { model: options.model, effort: options.effort } });
+    return runner.start({
+        ...getEngineLaunch(),
+        projectDir: settings.projectDir,
+        args: getCliArgs({ ...startOptions, projectDir: settings.projectDir, tasksFile: tasksFile }),
+        roundOptions: { model: startOptions.model, effort: startOptions.effort }
+    });
 };
 
 // 실행 중인 엔진에 다음 회차부터 쓸 model·effort를 전달하고, 성공하면 다음 시작의 기본값으로도 저장한다.
@@ -147,74 +155,61 @@ const handleSetOptions = async (event, options = {}) => {
     return result;
 };
 
-const handleSelectExecutable = async (event) => {
-    const settings = readSettings();
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const filters = process.platform === "win32" ? [{ name: "AutoPilot", extensions: ["exe"] }] : [];
-    const selection = await dialog.showOpenDialog(window, {
-        title: "autopilot 실행 파일 선택",
-        defaultPath: settings.exePath || undefined,
-        properties: ["openFile"],
-        filters: filters
-    });
-
-    if (selection.canceled) {
-        return { status: STATUS_OK, data: { settings: settings } };
-    }
-
-    const exeError = getExecutableError(selection.filePaths[0]);
-
-    if (exeError) {
-        return createFailure("INVALID_EXECUTABLE", exeError);
-    }
-
-    const nextSettings = { ...settings, exePath: selection.filePaths[0] };
-
-    writeSettings(nextSettings);
-
-    return { status: STATUS_OK, data: { settings: nextSettings, engineVersion: await readEngineVersion(nextSettings.exePath) } };
-};
-
-const handleFindExecutable = async () => {
-    const settings = connectFoundExecutable(readSettings());
-
-    if (!settings) {
-        return createFailure("ENGINE_NOT_FOUND", "autopilot 실행 파일을 자동으로 찾지 못했어요. 직접 선택해 주세요.");
-    }
-
-    return { status: STATUS_OK, data: { settings: settings, engineVersion: await readEngineVersion(settings.exePath) } };
-};
-
-// 앱이 시작하지 않았지만 이미 실행 중인 엔진(예: 시작 배치로 띄운 엔진)이 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
+// 앱을 닫았다 켠 사이에 계속 실행된 엔진이 선택한 프로젝트에 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
 let isCheckingRunningEngine = false;
 
 const attachRunningEngine = async () => {
-    const { exePath } = readSettings();
+    const { projectDir } = readSettings();
 
-    if (isCheckingRunningEngine || runner.isRunning() || getExecutableError(exePath)) {
+    if (isCheckingRunningEngine || runner.isRunning() || getProjectError(projectDir)) {
         return;
     }
 
     isCheckingRunningEngine = true;
 
     try {
-        await runner.attachIfRunning({ command: exePath });
+        await runner.attachIfRunning({ ...getEngineLaunch(), projectDir: projectDir });
     } finally {
         isCheckingRunningEngine = false;
     }
 };
 
-// 저장된 경로가 없거나 더 이상 유효하지 않을 때만 자동으로 연결한다.
-const handleGetState = async () => {
-    let settings = readSettings();
-
-    if (getExecutableError(settings.exePath)) {
-        settings = connectFoundExecutable(settings) || settings;
+const handleSelectProject = async (event) => {
+    if (runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
     }
+
+    const settings = readSettings();
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const selection = await dialog.showOpenDialog(window, {
+        title: "대상 프로젝트 폴더 선택",
+        defaultPath: settings.projectDir || undefined,
+        properties: ["openDirectory"]
+    });
+
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: { settings: settings } };
+    }
+
+    const projectError = getProjectError(selection.filePaths[0]);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    const nextSettings = { ...settings, projectDir: selection.filePaths[0] };
+
+    writeSettings(nextSettings);
 
     await attachRunningEngine();
 
-    return { version: app.getVersion(), engineVersion: await readEngineVersion(settings.exePath), settings: settings, state: runner.getState(), logs: runner.getLogs() };
+    return { status: STATUS_OK, data: { settings: nextSettings } };
+};
+
+const handleGetState = async () => {
+    await attachRunningEngine();
+
+    return { version: app.getVersion(), settings: readSettings(), state: runner.getState(), logs: runner.getLogs() };
 };
 
 const handleKill = async (event) => {
@@ -236,6 +231,47 @@ const handleKill = async (event) => {
     return runner.kill();
 };
 
+// 진행 기록을 보관하고 초기화한다. 이어갈 내용이 사라지므로 확인을 받고, 실행 중에는 막는다.
+const handleResetProgress = async (event) => {
+    const { projectDir } = readSettings();
+    const projectError = getProjectError(projectDir);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    if (runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 진행 기록을 초기화할 수 없어요.");
+    }
+
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const { response } = await dialog.showMessageBox(window, {
+        type: "question",
+        title: "AutoPilot",
+        message: "진행 기록을 초기화할까요?",
+        detail: "다음 실행이 이전 작업을 이어받지 않고 빈 기록에서 시작해요. 원본은 프로젝트의 autopilot/progress 폴더에 보관돼요.",
+        buttons: ["취소", "초기화"],
+        defaultId: 0,
+        cancelId: 0
+    });
+
+    if (response === 0) {
+        return { status: STATUS_OK, data: { cancelled: true } };
+    }
+
+    return new Promise((resolve) => {
+        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "reset-progress", [], (error, stdout, stderr) => {
+            if (error) {
+                resolve(createFailure("RESET_FAILED", (stderr || error.message).trim()));
+
+                return;
+            }
+
+            resolve({ status: STATUS_OK, data: { isReset: stdout.includes("Progress record reset") } });
+        });
+    });
+};
+
 const handleOpenReport = async () => {
     const { reportFile } = runner.getState();
 
@@ -243,10 +279,8 @@ const handleOpenReport = async () => {
         return createFailure("NO_REPORT", "열 수 있는 리포트가 아직 없어요.");
     }
 
-    const { exePath } = readSettings();
-
-    if (!isKitReportFile(exePath && path.dirname(exePath), reportFile)) {
-        return createFailure("INVALID_REPORT", "엔진 폴더의 progress 안에 있는 리포트만 열 수 있어요.");
+    if (!isProjectReportFile(runner.getProjectDir(), reportFile)) {
+        return createFailure("INVALID_REPORT", "프로젝트의 autopilot/progress 안에 있는 리포트만 열 수 있어요.");
     }
 
     const openError = await shell.openPath(reportFile);
@@ -256,12 +290,12 @@ const handleOpenReport = async () => {
 
 const registerIpc = () => {
     ipcMain.handle("autopilot:get-state", handleGetState);
-    ipcMain.handle("autopilot:select-exe", handleSelectExecutable);
-    ipcMain.handle("autopilot:find-exe", handleFindExecutable);
+    ipcMain.handle("autopilot:select-project", handleSelectProject);
     ipcMain.handle("autopilot:start", handleStart);
     ipcMain.handle("autopilot:stop", () => runner.stop());
     ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:kill", handleKill);
+    ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
 };
 
@@ -290,4 +324,4 @@ const confirmClose = (window) => {
     return true;
 };
 
-module.exports = { registerIpc, confirmClose, attachRunningEngine };
+module.exports = { registerIpc, confirmClose, attachRunningEngine, checkEngine };

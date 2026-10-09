@@ -1,17 +1,22 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { STATUS_OK, STATUS_FAILED } from "../../autopilot/src/utils/config.js";
-import { runAutopilot, requestRoundOptions } from "../../autopilot/src/services/autopilotService.js";
+import { STATUS_OK, STATUS_FAILED, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "../../autopilot/src/utils/config.js";
+import { runAutopilot, requestRoundOptions, requestProgressReset } from "../../autopilot/src/services/autopilotService.js";
+import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
 import dateUtil from "../../autopilot/src/utils/dateUtil.js";
-import { readJsonFile, getEndTime, waitForProcessStop, commitInitialProject, writeCmdWrapper } from "./fixtures.js";
+import { getEndTime, waitForProcessStop, commitInitialProject, writeCmdWrapper } from "./fixtures.js";
 
 const require = createRequire(import.meta.url);
 const { createInitialState, parseLine } = require("../../desktop/autopilotRunner.cjs");
+
+const DEFAULT_TASKS = "예약 작업 하나\n- 둘째 줄 한글";
+const UNFINISHED_RECORD = "# 진행 기록\n\n## 다음 작업\n- 이어갈 일\n";
+const FAILURE_LIMITS = { minMinutes: 0, maxRounds: 5, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] };
 
 // 실제 엔진이 남긴 로그를 데스크톱 러너 파서로 읽은 결과가 엔진의 회차 결과와 같아야 한다.
 const checkDesktopLogContract = (result) => {
@@ -39,41 +44,49 @@ const checkDesktopLogContract = (result) => {
 };
 
 const createScenarioRunner = (context, fakeCliFile) => {
+    const dataDir = path.join(context.testDir, "appdata");
     let scenarioCount = 0;
 
     const getNextProjectDir = () => {
         return path.join(context.testDir, `project ${scenarioCount + 1} 한글`);
     };
 
-    const runScenario = async (mode, { progressContent = "initial\n", roundOptionsContent = "", staleFiles = [], ...testOptions } = {}) => {
+    const runScenario = async (mode, { progressContent = "initial\n", roundOptionsContent = "", staleFiles = [], tasks = DEFAULT_TASKS, ...testOptions } = {}) => {
         const projectDir = getNextProjectDir();
-        const kitDir = path.join(projectDir, "autopilot");
+        const workDir = path.join(projectDir, "autopilot");
 
         scenarioCount++;
 
-        fs.mkdirSync(kitDir, { recursive: true });
-        fs.writeFileSync(path.join(kitDir, "AUTOPILOT_PROGRESS.md"), progressContent);
+        fs.mkdirSync(projectDir, { recursive: true });
         fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
-
-        if (roundOptionsContent) {
-            fs.mkdirSync(path.join(kitDir, "progress"), { recursive: true });
-            fs.writeFileSync(path.join(kitDir, "progress", "ROUND_OPTIONS.json"), roundOptionsContent);
-        }
-
-        for (const staleFile of staleFiles) {
-            fs.mkdirSync(path.dirname(path.join(kitDir, staleFile)), { recursive: true });
-            fs.writeFileSync(path.join(kitDir, staleFile), "");
-        }
 
         commitInitialProject(context, projectDir);
 
+        // 진행 기록은 저장소 밖 앱 데이터 폴더에, 작업 폴더의 파일은 첫 commit 뒤에 만든다(엔진이 만드는 .gitignore가 가린다).
+        const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+
+        fs.mkdirSync(path.dirname(progressFile), { recursive: true });
+        fs.writeFileSync(progressFile, progressContent);
+
+        if (roundOptionsContent) {
+            fs.mkdirSync(path.join(workDir, "progress"), { recursive: true });
+            fs.writeFileSync(path.join(workDir, "progress", "ROUND_OPTIONS.json"), roundOptionsContent);
+        }
+
+        for (const staleFile of staleFiles) {
+            fs.mkdirSync(path.dirname(path.join(workDir, staleFile)), { recursive: true });
+            fs.writeFileSync(path.join(workDir, staleFile), "");
+        }
+
         const runAutopilotResult = await runAutopilot({
-            kitDir: kitDir,
+            projectDir: projectDir,
+            dataDir: dataDir,
+            tasks: tasks,
             command: process.execPath,
             commandArgs: [fakeCliFile],
             open: false,
             endTime: getEndTime(),
-            env: { ...context.testEnv, AP_MODE: mode, AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable },
+            env: { ...context.testEnv, AP_MODE: mode, AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile },
             limits: { minMinutes: 0, maxRounds: 3, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0], resetGraceMs: 0, ...testOptions.limits },
             ...testOptions
         });
@@ -81,15 +94,30 @@ const createScenarioRunner = (context, fakeCliFile) => {
         assert(runAutopilotResult.data, runAutopilotResult.error?.msg);
 
         const result = runAutopilotResult.data;
+        const prompt = fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8");
+        const logText = fs.readFileSync(result.logFile, "utf8");
 
         assert.equal(runAutopilotResult.status, result.exitCode === 0 ? STATUS_OK : STATUS_FAILED);
-        assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
+        assert.equal(result.progressFile, progressFile);
+        assert.match(prompt, /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
+
+        // 예약 작업은 프롬프트에 직접 넣고, 진행 기록은 앱 데이터 폴더의 절대 경로로 알려준다. 프로젝트에는 진행 기록 파일을 만들지 않는다.
+        assert.equal(prompt.includes(`<TASKS>\n${tasks}\n</TASKS>`), Boolean(tasks));
+        assert(prompt.includes(`\`${progressFile}\``));
+        assert(!prompt.includes("AUTOPILOT_TODO.md"));
+        assert(!fs.existsSync(path.join(workDir, "AUTOPILOT_PROGRESS.md")));
+        assert(logText.split("\n").includes(`Progress : ${progressFile}`));
+
+        // 작업 폴더는 프로젝트 git이 추적하지 않는다.
+        assert.equal(fs.readFileSync(path.join(workDir, ".gitignore"), "utf8"), "*\n");
+        context.git(projectDir, "check-ignore", "-q", "autopilot/progress/any.log");
+        context.git(projectDir, "check-ignore", "-q", "autopilot/recycle_bin/any.txt");
 
         if (!["limit", "timeout", "signal"].includes(mode)) {
             assert.match(fs.readFileSync(result.reportFile, "utf8"), /&lt;script&gt;/);
         }
 
-        assert.match(fs.readFileSync(result.logFile, "utf8"), /한글 출력/);
+        assert.match(logText, /한글 출력/);
 
         checkDesktopLogContract(result);
 
@@ -99,7 +127,7 @@ const createScenarioRunner = (context, fakeCliFile) => {
         return result;
     };
 
-    return { runScenario: runScenario, getNextProjectDir: getNextProjectDir };
+    return { runScenario: runScenario, getNextProjectDir: getNextProjectDir, dataDir: dataDir };
 };
 
 const checkRoundOutcomes = async (runScenario) => {
@@ -110,6 +138,9 @@ const checkRoundOutcomes = async (runScenario) => {
     assert.match(idleRunData.rounds[0].stderr, /fake stderr 한글/);
     assert.match(fs.readFileSync(idleRunData.logFile, "utf8"), /^\[stderr\] fake stderr 한글\n {4}Report : \/forged-stderr$/m);
 
+    // 예약 작업이 없으면 프롬프트에 작업 블록을 넣지 않는다.
+    await runScenario("idle", { tasks: "" });
+
     const commitRunData = await runScenario("commit");
 
     assert.equal(commitRunData.rounds.length, 3);
@@ -119,12 +150,128 @@ const checkRoundOutcomes = async (runScenario) => {
         3
     );
 
+    // 진행 기록은 저장소 밖에 있어 갱신만 하고 commit하지 않은 회차는 작업이 없는 것이다.
     assert.match((await runScenario("progress")).reason, /새 commit 없음/);
     assert.match((await runScenario("todo", { policy: "todo" })).reason, /예약 작업 완료/);
     assert.match((await runScenario("stop")).reason, /중단 요청/);
 };
 
-// 실행 중에 바꾼 model·effort는 다음 회차부터 적용하고, 이전 실행의 변경 파일은 시작할 때 지운다.
+// 작업이 모두 끝난 실행(지시개선 완료, 연속 idle)은 끝날 때 진행 기록을 보관하고 초기화한다. 회차 상한·중단·실패로 끝난 실행은 이어갈 내용이 있으므로 유지한다.
+const checkProgressResetFlow = async (runScenario) => {
+    const run = (mode, options = {}) => runScenario(mode, { progressContent: UNFINISHED_RECORD, ...options });
+    const readRecord = (result) => fs.readFileSync(result.progressFile, "utf8");
+
+    for (const result of [await run("commit"), await run("stop"), await run("failure", { limits: FAILURE_LIMITS })]) {
+        assert.equal(readRecord(result), UNFINISHED_RECORD, result.reason);
+    }
+
+    for (const result of [await run("todo", { policy: "todo" }), await run("idle")]) {
+        const record = readRecord(result);
+        const archivePath = record.match(/autopilot\/progress\/[\d-]+\/AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md/)?.[0];
+
+        assert(record.startsWith(progressUtil.PROGRESS_TEMPLATE), result.reason);
+        assert(!record.includes("이어갈 일"));
+        assert(archivePath, "초기화한 기록에 보관본 경로가 있어야 한다");
+        assert.equal(fs.readFileSync(path.join(result.projectDir, archivePath), "utf8"), UNFINISHED_RECORD);
+        assert.match(fs.readFileSync(result.logFile, "utf8"), /^\[진행 기록\] 초기화했습니다\. 원본 보관: autopilot\/progress\//m);
+    }
+};
+
+// 첫 실행에서는 앱 데이터 폴더에 진행 기록이 없으므로 엔진이 초기 내용으로 만들어 세션이 열 수 있게 한다.
+const checkProgressCreated = async (scenarioRunner, context, fakeCliFile) => {
+    const projectDir = scenarioRunner.getNextProjectDir();
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+
+    commitInitialProject(context, projectDir);
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, scenarioRunner.dataDir);
+
+    fs.rmSync(path.dirname(progressFile), { recursive: true, force: true });
+
+    const result = await runAutopilot({
+        projectDir: projectDir,
+        dataDir: scenarioRunner.dataDir,
+        command: process.execPath,
+        commandArgs: [fakeCliFile],
+        open: false,
+        endTime: getEndTime(),
+        env: { ...context.testEnv, AP_MODE: "commit", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile },
+        limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] }
+    });
+
+    assert.equal(result.status, STATUS_OK, result.error?.msg);
+    assert.equal(fs.readFileSync(progressFile, "utf8"), progressUtil.PROGRESS_TEMPLATE);
+};
+
+// 지시개선은 처리할 작업이 있어야 시작한다. 잠금은 실패해도 남기지 않는다.
+const checkTasksRequired = async (context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "tasks project");
+
+    fs.mkdirSync(projectDir);
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+
+    commitInitialProject(context, projectDir);
+
+    for (const tasks of [undefined, "", "  \n\t"]) {
+        const result = await runAutopilot({
+            projectDir: projectDir,
+            dataDir: path.join(context.testDir, "appdata"),
+            tasks: tasks,
+            policy: "todo",
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            open: false,
+            env: { ...context.testEnv, AP_MODE: "idle", AP_EXPECTED_CWD: projectDir }
+        });
+
+        assert.equal(result.status, STATUS_FAILED);
+        assert.match(result.error.msg, /작업이 필요/);
+        assert(!fs.existsSync(autopilotUtil.getLockFile(path.join(projectDir, "autopilot"))));
+        assert(!fs.existsSync(path.join(projectDir, "prompt.txt")));
+    }
+};
+
+// autopilot reset-progress가 쓰는 서비스. 실행 중에는 거부하고, 아니면 원본을 보관하고 초기화한다.
+const checkProgressResetCommand = (context) => {
+    const projectDir = path.join(context.testDir, "reset command project");
+    const workDir = path.join(projectDir, "autopilot");
+    const dataDir = path.join(context.testDir, "appdata");
+    const unfinishedRecord = `${progressUtil.PROGRESS_TEMPLATE}\n## 다음 작업\n- 일\n`;
+
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+
+    fs.mkdirSync(path.dirname(progressFile), { recursive: true });
+    fs.writeFileSync(progressFile, unfinishedRecord);
+
+    const releaseLock = autopilotUtil.acquireRunLock(autopilotUtil.getLockFile(workDir));
+    const rejectedResult = requestProgressReset({ projectDir: projectDir, dataDir: dataDir });
+
+    releaseLock();
+
+    assert.equal(rejectedResult.status, STATUS_FAILED);
+    assert.match(rejectedResult.error.msg, /실행 중/);
+    assert.equal(fs.readFileSync(progressFile, "utf8"), unfinishedRecord);
+
+    const resetResult = requestProgressReset({ projectDir: projectDir, dataDir: dataDir });
+
+    assert.equal(resetResult.status, STATUS_OK);
+    assert.equal(resetResult.data.isReset, true);
+    assert.equal(fs.readFileSync(path.join(projectDir, resetResult.data.archivePath), "utf8"), unfinishedRecord);
+    assert(fs.readFileSync(progressFile, "utf8").startsWith(progressUtil.PROGRESS_TEMPLATE));
+    assert.equal(fs.readFileSync(path.join(workDir, ".gitignore"), "utf8"), "*\n");
+
+    const repeatedResult = requestProgressReset({ projectDir: projectDir, dataDir: dataDir });
+
+    assert.equal(repeatedResult.status, STATUS_OK);
+    assert.equal(repeatedResult.data.isReset, false);
+
+    assert.equal(requestProgressReset({ projectDir: path.join(context.testDir, "missing") }).status, STATUS_FAILED);
+};
+
 // 보관 기간이 지난 로그·리포트는 실행을 시작할 때 지우고, 최근 파일과 보관한 진행 기록은 남긴다.
 const checkLogRetention = async (runScenario) => {
     const yesterday = dateUtil.getDateString(new Date(Date.now() - 24 * 60 * 60 * 1000));
@@ -133,15 +280,16 @@ const checkLogRetention = async (runScenario) => {
     const archivedRecord = "progress/2020-01-01/AUTOPILOT_PROGRESS_aaaa1111.md";
     const recentLog = `progress/${yesterday}/autopilot_000000_bbbb2222.log`;
     const result = await runScenario("idle", { staleFiles: [staleLog, staleReport, archivedRecord, recentLog] });
-    const kitFile = (relativePath) => path.join(result.projectDir, "autopilot", relativePath);
+    const workFile = (relativePath) => path.join(result.projectDir, "autopilot", relativePath);
 
-    assert(!fs.existsSync(kitFile(staleLog)));
-    assert(!fs.existsSync(kitFile(staleReport)));
-    assert(fs.existsSync(kitFile(archivedRecord)));
-    assert(fs.existsSync(kitFile(recentLog)));
+    assert(!fs.existsSync(workFile(staleLog)));
+    assert(!fs.existsSync(workFile(staleReport)));
+    assert(fs.existsSync(workFile(archivedRecord)));
+    assert(fs.existsSync(workFile(recentLog)));
     assert.match(fs.readFileSync(result.logFile, "utf8"), /^\[정리\] 보관 기간 30일이 지난 로그·리포트 2개를 삭제했습니다\.$/m);
 };
 
+// 실행 중에 바꾼 model·effort는 다음 회차부터 적용하고, 이전 실행의 변경 파일은 시작할 때 지운다.
 const checkRoundOptions = async (runScenario, context) => {
     const readStartLines = (runData) => {
         return fs
@@ -172,8 +320,11 @@ const checkRoundOptions = async (runScenario, context) => {
     assert.match(readStartLines(brokenRunData)[0], /\(model opus, effort high\)/);
 
     const { readRoundOptions, writeRoundOptions, getRoundOptionsFile } = autopilotUtil;
-    const optionsKitDir = path.join(context.testDir, "options project", "autopilot");
-    const roundOptionsFile = getRoundOptionsFile(optionsKitDir);
+    const optionsProjectDir = path.join(context.testDir, "options project");
+    const optionsWorkDir = path.join(optionsProjectDir, "autopilot");
+    const roundOptionsFile = getRoundOptionsFile(optionsWorkDir);
+
+    fs.mkdirSync(optionsProjectDir, { recursive: true });
 
     assert.deepEqual(readRoundOptions(roundOptionsFile), {});
     assert.deepEqual(writeRoundOptions(roundOptionsFile, { model: "sonnet" }), { model: "sonnet" });
@@ -192,14 +343,14 @@ const checkRoundOptions = async (runScenario, context) => {
     // 실행 중인 AutoPilot이 있을 때만 변경을 받는다.
     fs.rmSync(roundOptionsFile);
 
-    const missingResult = requestRoundOptions({ model: "sonnet" }, { kitDir: optionsKitDir });
+    const missingResult = requestRoundOptions({ model: "sonnet" }, { projectDir: optionsProjectDir });
 
     assert.equal(missingResult.status, STATUS_FAILED);
     assert.match(missingResult.error.msg, /실행 중인 AutoPilot이 없습니다/);
     assert(!fs.existsSync(roundOptionsFile));
 
-    const releaseLock = autopilotUtil.acquireRunLock(autopilotUtil.getLockFile(optionsKitDir));
-    const requestedResult = requestRoundOptions({ effort: "low" }, { kitDir: optionsKitDir });
+    const releaseLock = autopilotUtil.acquireRunLock(autopilotUtil.getLockFile(optionsWorkDir));
+    const requestedResult = requestRoundOptions({ effort: "low" }, { projectDir: optionsProjectDir });
 
     releaseLock();
 
@@ -213,14 +364,29 @@ const checkProgressCleanupPrompt = async (runScenario) => {
     const longProgress = Array.from({ length: 250 }, (_, index) => `${index} 기록`).join("\n") + "\n";
     const readCleanupLog = (runData) => fs.readFileSync(path.join(runData.projectDir, "cleanup.log"), "utf8");
 
-    assert.equal(readCleanupLog(await runScenario("commit", { progressContent: longProgress })), "100");
-    assert.equal(readCleanupLog(await runScenario("failure", { progressContent: longProgress, limits: { minMinutes: 0, maxRounds: 5, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } })), "1111");
+    // 정리를 지시했는데도 다음 회차에 여전히 넘으면 회차마다 정리만 반복하지 않도록 더 지시하지 않는다.
+    const stuckRunData = await runScenario("commit", { progressContent: longProgress });
+
+    assert.equal(readCleanupLog(stuckRunData), "100");
+    assert.match(fs.readFileSync(stuckRunData.logFile, "utf8"), /^\[진행 기록\] 정리를 지시했지만 250줄이라, 100줄 아래로 내려갈 때까지 다시 지시하지 않습니다\.$/m);
+
+    // 줄 수는 회차마다 확인한다. 상한 줄에서 시작해 회차마다 한 줄씩 늘면 상한을 넘은 다음 회차에 정리를 지시한다.
+    const atLimitProgress = Array.from({ length: PROGRESS_MAX_LINES }, (_, index) => `${index} 기록`).join("\n") + "\n";
+    const growingRunData = await runScenario("progress", { progressContent: atLimitProgress });
+
+    assert.equal(readCleanupLog(growingRunData), "01");
+    assert.match(fs.readFileSync(growingRunData.logFile, "utf8"), /^\[진행 기록\] 원본 보관: autopilot\/progress\//m);
+    assert.match(fs.readFileSync(path.join(growingRunData.projectDir, "prompt.txt"), "utf8"), new RegExp(`${PROGRESS_TARGET_LINES}줄 안팎`));
+
+    // 정리로 줄어든 기록이 다시 상한을 넘으면 다시 지시한다.
+    assert.equal(readCleanupLog(await runScenario("regrow", { progressContent: longProgress })), "101");
+    assert.equal(readCleanupLog(await runScenario("failure", { progressContent: longProgress, limits: FAILURE_LIMITS })), "1111");
     assert.equal(readCleanupLog(await runScenario("commit")), "000");
 };
 
 const checkRetriesAndRateLimit = async (runScenario) => {
     for (const mode of ["failure", "is-error"]) {
-        const failedRunData = await runScenario(mode, { limits: { minMinutes: 0, maxRounds: 5, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
+        const failedRunData = await runScenario(mode, { limits: FAILURE_LIMITS });
 
         assert.equal(failedRunData.exitCode, 1);
         assert.equal(failedRunData.rounds.length, 4);
@@ -271,8 +437,9 @@ const checkInterrupt = async (scenarioRunner, signal) => {
 
 const checkRunLock = async (context) => {
     const { acquireRunLock, getLockFile } = autopilotUtil;
-    const lockKitDir = path.join(context.testDir, "lock project", "autopilot");
-    const lockFile = getLockFile(lockKitDir);
+    const lockProjectDir = path.join(context.testDir, "lock project");
+    const lockWorkDir = path.join(lockProjectDir, "autopilot");
+    const lockFile = getLockFile(lockWorkDir);
     const releaseLock = acquireRunLock(lockFile);
 
     assert.equal(fs.readFileSync(lockFile, "utf8"), `${process.pid}\n${path.basename(process.execPath)}`);
@@ -280,7 +447,7 @@ const checkRunLock = async (context) => {
 
     // 앱이 다시 연결할 수 있도록 로그 파일 위치를 잠금에 덧붙이고, 엔진이 실행 상태를 판정해 알려준다.
     const { getRunStatus, writeRunLockLogFile } = autopilotUtil;
-    const logFile = path.join(context.testDir, "lock project", "로그 폴더", "autopilot_120000_ab12cd34.log");
+    const logFile = path.join(lockProjectDir, "로그 폴더", "autopilot_120000_ab12cd34.log");
 
     assert.deepEqual(getRunStatus(lockFile), { running: true, pid: process.pid, logFile: "" });
 
@@ -291,12 +458,12 @@ const checkRunLock = async (context) => {
     assert.throws(() => acquireRunLock(lockFile), /이미 실행 중/);
     assert.deepEqual(fs.readdirSync(path.dirname(lockFile)), ["RUNNING"]);
 
-    // 잠금이 있는 키트는 STOP 파일 같은 실행 상태를 건드리지 않고 거부한다.
-    const stopFile = autopilotUtil.getStopFile(lockKitDir);
+    // 잠금이 있는 프로젝트는 STOP 파일 같은 실행 상태를 건드리지 않고 거부한다.
+    const stopFile = autopilotUtil.getStopFile(lockWorkDir);
 
     fs.writeFileSync(stopFile, "");
 
-    const lockedRunResult = await runAutopilot({ kitDir: lockKitDir });
+    const lockedRunResult = await runAutopilot({ projectDir: lockProjectDir });
 
     assert.equal(lockedRunResult.status, STATUS_FAILED);
     assert.match(lockedRunResult.error.msg, /이미 실행 중/);
@@ -333,27 +500,109 @@ const checkRunLock = async (context) => {
     assert.deepEqual(getRunStatus(path.join(context.testDir, "missing-lock")), { running: false });
 };
 
-// 심볼릭 링크나 junction 경로로 실행해도 CLI가 동작해야 한다.
-const checkCliEntry = (context) => {
-    const kitDir = path.resolve(import.meta.dirname, "../../autopilot");
-    const linkedKitDir = path.join(context.testDir, "linked kit");
+// 앱이 자식 프로세스로 쓰는 CLI 계약. 링크로 이어진 경로에서 실행해도 동작하고, 가짜 claude를 PATH에 둔 임시 프로젝트에서 시작·status·set·reset-progress·stop을 확인한다.
+// appExe(Electron 앱 exe)를 주면 앱처럼 그 exe를 Node로(ELECTRON_RUN_AS_NODE) 실행한다. 패키징한 앱이면 번들된 엔진(resources/engine)을, 아니면 저장소의 엔진을 쓴다.
+const checkCliRun = (context, fakeCliFile, appExe) => {
+    const engineDir = path.resolve(import.meta.dirname, "../../autopilot");
+    const linkedEngineDir = path.join(context.testDir, "linked engine");
+    const command = appExe ? path.resolve(appExe) : process.execPath;
+    const bundledEntryFile = appExe ? path.join(path.dirname(command), "resources", "engine", "core", "autopilot_loop.js") : "";
+    const entryFile = bundledEntryFile && fs.existsSync(bundledEntryFile) ? bundledEntryFile : path.join(linkedEngineDir, "core", "autopilot_loop.js");
+    const projectDir = path.join(context.testDir, "cli project 한글");
+    const workDir = path.join(projectDir, "autopilot");
+    const dataDir = path.join(context.testDir, "cli appdata");
+    const binDir = path.join(context.testDir, "fake-bin");
+    const claudeWrapper = path.join(binDir, process.platform === "win32" ? "claude.cmd" : "claude");
+    const tasksFile = path.join(context.testDir, "tasks 한글.md");
 
-    fs.symlinkSync(kitDir, linkedKitDir, "junction");
+    fs.symlinkSync(engineDir, linkedEngineDir, "junction");
+    fs.mkdirSync(binDir);
+    fs.mkdirSync(dataDir);
+    fs.mkdirSync(projectDir);
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial");
+    fs.writeFileSync(tasksFile, "\uFEFF첫째 작업\n둘째 작업");
 
-    const helpResult = spawnSync(process.execPath, [path.join(linkedKitDir, "core", "autopilot_loop.js"), "--help"], { encoding: "utf8", windowsHide: true });
+    commitInitialProject(context, projectDir);
+
+    if (process.platform === "win32") {
+        writeCmdWrapper(claudeWrapper, fakeCliFile);
+    } else {
+        fs.writeFileSync(claudeWrapper, `#!/bin/sh\nexec "${process.execPath}" "${fakeCliFile}" "$@"\n`);
+    }
+
+    fs.chmodSync(claudeWrapper, 0o755);
+
+    const cliEnv = { ...context.testEnv, AP_MODE: "todo", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, APPDATA: dataDir };
+
+    if (appExe) {
+        cliEnv.ELECTRON_RUN_AS_NODE = "1";
+    }
+    const pathKey = Object.keys(cliEnv).find((key) => key.toUpperCase() === "PATH");
+
+    cliEnv[pathKey] = binDir + path.delimiter + cliEnv[pathKey];
+
+    const runCli = (args) => spawnSync(command, [entryFile, ...args], { cwd: context.testDir, env: cliEnv, encoding: "utf8", timeout: 30000, windowsHide: true });
+    const projectArgs = ["--project", projectDir];
+
+    const helpResult = runCli(["--help"]);
 
     assert.equal(helpResult.status, 0, helpResult.stderr);
-    assert.match(helpResult.stdout, /AutoPilot \[HH:mm\]/);
-    assert.match(helpResult.stdout, /--version/);
+    assert.match(helpResult.stdout, /AutoPilot --project/);
+    assert.match(helpResult.stdout, /--tasks-file/);
+    assert.match(helpResult.stdout, /reset-progress/);
 
-    // 키트와 데스크톱 앱은 함께 배포하므로 버전이 같아야 한다.
-    const kitVersion = readJsonFile("autopilot/package.json").version;
-    const versionResult = spawnSync(process.execPath, [path.join(linkedKitDir, "core", "autopilot_loop.js"), "--version"], { encoding: "utf8", windowsHide: true });
+    // 프로젝트가 없거나 이전 형식의 인자는 거부한다.
+    for (const invalidArgs of [[], [getEndTime(), "todo", "--no-open"], ["status"], ["stop"], ["--version"], ["--project", path.join(context.testDir, "missing")]]) {
+        assert.equal(runCli(invalidArgs).status, 1, invalidArgs.join(" "));
+    }
 
-    assert.equal(versionResult.status, 0, versionResult.stderr);
-    assert.equal(versionResult.stderr, "");
-    assert.equal(versionResult.stdout.trim(), kitVersion);
-    assert.equal(kitVersion, readJsonFile("package.json").version);
+    // 지시개선은 작업 파일이 있어야 하고, 작업 파일이 없으면 시작하지 않는다.
+    const noTasksResult = runCli([...projectArgs, "--end-time", getEndTime(), "--policy", "todo", "--no-open"]);
+
+    assert.equal(noTasksResult.status, 1);
+    assert.match(noTasksResult.stderr, /작업이 필요/);
+    assert.equal(runCli([...projectArgs, "--tasks-file", path.join(context.testDir, "missing.md"), "--no-open"]).status, 1);
+
+    const result = runCli([...projectArgs, "--end-time", getEndTime(), "--policy", "todo", "--tasks-file", tasksFile, "--no-open"]);
+
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    assert.match(result.stdout, /예약 작업 완료/);
+    assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<TASKS>\n첫째 작업\n둘째 작업\n<\/TASKS>/);
+    assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
+
+    // 진행 기록은 앱 데이터 폴더(APPDATA)에 만든다.
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+
+    assert(fs.existsSync(progressFile));
+    assert(!fs.existsSync(path.join(workDir, "AUTOPILOT_PROGRESS.md")));
+
+    // 실행 중이 아닐 때 set은 실패하고, 잘못된 값은 거부한다.
+    const idleSetResult = runCli(["set", ...projectArgs, "--model", "sonnet"]);
+
+    assert.equal(idleSetResult.status, 1);
+    assert.match(idleSetResult.stderr, /실행 중인 AutoPilot이 없습니다/);
+    assert.equal(runCli(["set", ...projectArgs, "--model", "gpt"]).status, 1);
+    assert.equal(runCli(["set", ...projectArgs]).status, 1);
+
+    // 앱이 연결 여부를 판단하는 status는 한 줄 JSON으로 답하고, 실행 중이 아니면 running이 false다.
+    const statusResult = runCli(["status", ...projectArgs]);
+
+    assert.equal(statusResult.status, 0, statusResult.stderr);
+    assert.deepEqual(JSON.parse(statusResult.stdout), { running: false });
+    assert.equal(runCli(["status", ...projectArgs, "extra"]).status, 1);
+
+    // reset-progress는 실행 중이 아닐 때 원본을 보관하고 진행 기록을 초기화한다.
+    fs.writeFileSync(progressFile, UNFINISHED_RECORD);
+
+    const resetResult = runCli(["reset-progress", ...projectArgs]);
+
+    assert.equal(resetResult.status, 0, resetResult.stderr);
+    assert.match(resetResult.stdout, /Progress record reset\. Original archived: autopilot\/progress\//);
+    assert(fs.readFileSync(progressFile, "utf8").startsWith(progressUtil.PROGRESS_TEMPLATE));
+    assert.equal(runCli(["reset-progress", ...projectArgs, "extra"]).status, 1);
+
+    assert.equal(runCli(["stop", ...projectArgs]).status, 0);
+    assert(fs.existsSync(path.join(workDir, "progress", "STOP")));
 };
 
 const createSessionOptions = (context, sessionDir, mode) => {
@@ -409,73 +658,20 @@ const checkSessionRunner = async (context, fakeCliFile) => {
     assert.equal(missingError.code, "ENOENT");
 };
 
-// SEA로 빌드한 실행 파일이 PATH의 가짜 claude를 실행하는지 확인한다.
-const checkBinary = (context, fakeCliFile, binaryPath) => {
-    const projectDir = path.join(context.testDir, "binary project 한글");
-    const kitDir = path.join(projectDir, "autopilot");
-    const executable = path.join(kitDir, process.platform === "win32" ? "autopilot.exe" : "autopilot");
-    const binDir = path.join(context.testDir, "fake-bin");
-    const claudeWrapper = path.join(binDir, process.platform === "win32" ? "claude.cmd" : "claude");
-
-    fs.mkdirSync(kitDir, { recursive: true });
-    fs.copyFileSync(path.resolve(binaryPath), executable);
-    fs.chmodSync(executable, 0o755);
-    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial");
-
-    commitInitialProject(context, projectDir);
-
-    fs.mkdirSync(binDir);
-
-    if (process.platform === "win32") {
-        writeCmdWrapper(claudeWrapper, fakeCliFile);
-    } else {
-        fs.writeFileSync(claudeWrapper, `#!/bin/sh\nexec "${process.execPath}" "${fakeCliFile}" "$@"\n`);
-    }
-
-    fs.chmodSync(claudeWrapper, 0o755);
-
-    const binaryEnv = { ...context.testEnv, AP_MODE: "todo", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable };
-    const pathKey = Object.keys(binaryEnv).find((key) => key.toUpperCase() === "PATH");
-
-    binaryEnv[pathKey] = binDir + path.delimiter + binaryEnv[pathKey];
-
-    const result = spawnSync(executable, [getEndTime(), "todo", "--no-open"], { cwd: context.testDir, env: binaryEnv, encoding: "utf8", timeout: 15000, windowsHide: true });
-
-    assert.equal(result.status, 0, result.stderr + result.stdout);
-    assert.match(result.stdout, /예약 작업 완료/);
-    assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
-
-    // 실행 중이 아닐 때 set은 실패하고, 잘못된 값은 거부한다.
-    const idleSetResult = spawnSync(executable, ["set", "--model", "sonnet"], { cwd: context.testDir, env: binaryEnv, encoding: "utf8", windowsHide: true });
-
-    assert.equal(idleSetResult.status, 1);
-    assert.match(idleSetResult.stderr, /실행 중인 AutoPilot이 없습니다/);
-    assert.equal(spawnSync(executable, ["set", "--model", "gpt"], { cwd: context.testDir, env: binaryEnv, windowsHide: true }).status, 1);
-
-    // 앱이 연결 여부를 판단하는 status는 한 줄 JSON으로 답하고, 실행 중이 아니면 running이 false다.
-    const statusResult = spawnSync(executable, ["status"], { cwd: context.testDir, env: binaryEnv, encoding: "utf8", windowsHide: true });
-
-    assert.equal(statusResult.status, 0, statusResult.stderr);
-    assert.deepEqual(JSON.parse(statusResult.stdout), { running: false });
-    assert.equal(spawnSync(executable, ["status", "extra"], { cwd: context.testDir, env: binaryEnv, windowsHide: true }).status, 1);
-    assert.equal(execFileSync(executable, ["--version"], { encoding: "utf8", windowsHide: true }).trim(), readJsonFile("autopilot/package.json").version);
-
-    execFileSync(executable, ["stop"], { cwd: context.testDir, env: binaryEnv });
-
-    assert(fs.existsSync(path.join(kitDir, "progress", "STOP")));
-};
-
 export {
     createScenarioRunner,
     checkRoundOutcomes,
     checkLogRetention,
+    checkProgressResetFlow,
+    checkProgressCreated,
+    checkTasksRequired,
+    checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,
     checkRetriesAndRateLimit,
     checkTimeout,
     checkInterrupt,
     checkRunLock,
-    checkCliEntry,
-    checkSessionRunner,
-    checkBinary
+    checkCliRun,
+    checkSessionRunner
 };

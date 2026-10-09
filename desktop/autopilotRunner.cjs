@@ -1,8 +1,7 @@
 const fs = require("node:fs");
-const path = require("node:path");
 const { spawn, spawnSync, execFile } = require("node:child_process");
 const { StringDecoder } = require("node:string_decoder");
-const { isKitLogFile } = require("./engineFinder.cjs");
+const { isProjectLogFile } = require("./projectFiles.cjs");
 
 const STATUS_OK = "OK";
 const STATUS_FAILED = "FAILED";
@@ -47,6 +46,11 @@ const createInitialState = () => {
 
 const createFailure = (code, msg) => {
     return { status: STATUS_FAILED, error: { code: code, msg: msg } };
+};
+
+// 같은 엔진에 하위 명령(stop·set·status)을 전달한다. 모든 하위 명령이 대상 프로젝트를 가리켜야 한다.
+const execEngine = ({ command, prefixArgs = [], env, projectDir }, subcommand, extraArgs, callback) => {
+    execFile(command, [...prefixArgs, subcommand, "--project", projectDir, ...extraArgs], { windowsHide: true, timeout: STOP_TIMEOUT_MS, encoding: "utf8", env: env }, callback);
 };
 
 const createLineReader = (handleLines) => {
@@ -205,8 +209,8 @@ const getLogStartTime = (logFile) => {
     return birthtimeMs > 0 ? birthtimeMs : Date.now();
 };
 
-// 실행 파일(또는 prefixArgs로 감싼 스크립트) 하나를 자식 프로세스로 실행하고 로그·상태를 콜백으로 전달한다.
-// 앱이 시작하지 않은 엔진은 attachIfRunning으로 연결해 로그 파일을 따라간다. attachPollMs는 테스트에서 줄인다.
+// 엔진(실행 파일 + prefixArgs의 스크립트 + env)을 자식 프로세스로 실행하고 로그·상태를 콜백으로 전달한다.
+// 앱을 닫았다 다시 켠 사이에 계속 실행된 엔진은 attachIfRunning으로 연결해 로그 파일을 따라간다. attachPollMs는 테스트에서 줄인다.
 const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
     const state = createInitialState();
     const logs = [];
@@ -278,20 +282,20 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
         addLines("app", [wasAttached ? `[앱] 연결한 엔진이 종료됐어요 - ${state.reason}` : `[앱] 엔진이 종료됐어요 (exit ${exitCode}) - ${state.reason}`]);
     };
 
-    // roundOptions는 시작 인자로 넘기는 model·effort다. 첫 회차 로그가 올 때까지 화면에 이 값을 보여준다.
-    const start = ({ command, prefixArgs = [], args = [], roundOptions = {} }) => {
+    // roundOptions는 시작 인자로 넘기는 model·effort다. 첫 회차 로그가 올 때까지 화면에 이 값을 보여준다. projectDir은 stop·set에도 쓴다.
+    const start = ({ command, prefixArgs = [], env, projectDir = "", args = [], roundOptions = {} }) => {
         if (isActive()) {
             return createFailure("ALREADY_RUNNING", "이미 실행 중이에요.");
         }
 
-        launch = { command: command, prefixArgs: prefixArgs };
+        launch = { command: command, prefixArgs: prefixArgs, env: env, projectDir: projectDir };
         isKilled = false;
 
         const { model = "", effort = "" } = roundOptions;
 
         Object.assign(state, createInitialState(), { status: "running", startedAt: Date.now(), phase: "시작 중", model: model, effort: effort, requested: { model: model, effort: effort } });
 
-        const childProcess = spawn(command, [...prefixArgs, ...args], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+        const childProcess = spawn(command, [...prefixArgs, ...args], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: env });
         const outReader = createLineReader((lines) => addLines("out", lines));
         const errReader = createLineReader((lines) => addLines("err", lines));
 
@@ -354,8 +358,8 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
     };
 
     // 이미 실행 중인 엔진의 로그 파일을 처음부터 읽어 상태를 복원하고 이어서 따라간다. 앱이 시작한 엔진이 아니므로 종료 코드는 알 수 없다.
-    const attach = ({ command, prefixArgs, pid, logFile }) => {
-        launch = { command: command, prefixArgs: prefixArgs };
+    const attach = ({ command, prefixArgs, env, projectDir, pid, logFile }) => {
+        launch = { command: command, prefixArgs: prefixArgs, env: env, projectDir: projectDir };
         isKilled = false;
         // 읽을 파일은 검증을 거친 경로만 쓴다. 로그 안의 Log 헤더 값은 표시용이라 읽기 대상을 바꾸지 못한다.
         attachLogFile = logFile;
@@ -379,8 +383,8 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
         attachTimer = setInterval(followLog, attachPollMs);
     };
 
-    // 앱이 시작하지 않았지만 이미 실행 중인 엔진이 있으면(엔진의 status로 확인) 연결한다. 로그 경로는 키트 progress/ 안의 엔진 로그만 받는다.
-    const attachIfRunning = ({ command, prefixArgs = [], kitDir = path.dirname(command) }) => {
+    // 앱이 시작하지 않았지만 이미 실행 중인 엔진이 있으면(엔진의 status로 확인) 연결한다. 로그 경로는 프로젝트 autopilot/progress/ 안의 엔진 로그만 받는다.
+    const attachIfRunning = ({ command, prefixArgs = [], env, projectDir }) => {
         return new Promise((resolve) => {
             const notAttached = { status: STATUS_OK, data: { attached: false } };
 
@@ -390,17 +394,17 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
                 return;
             }
 
-            execFile(command, [...prefixArgs, "status"], { windowsHide: true, timeout: STOP_TIMEOUT_MS, encoding: "utf8" }, (error, stdout) => {
+            execEngine({ command: command, prefixArgs: prefixArgs, env: env, projectDir: projectDir }, "status", [], (error, stdout) => {
                 const runStatus = error ? null : parseRunStatus(stdout);
 
-                if (!runStatus || isActive() || !isKitLogFile(kitDir, runStatus.logFile)) {
+                if (!runStatus || isActive() || !isProjectLogFile(projectDir, runStatus.logFile)) {
                     resolve(notAttached);
 
                     return;
                 }
 
                 try {
-                    attach({ command: command, prefixArgs: prefixArgs, pid: runStatus.pid, logFile: runStatus.logFile });
+                    attach({ command: command, prefixArgs: prefixArgs, env: env, projectDir: projectDir, pid: runStatus.pid, logFile: runStatus.logFile });
                     resolve({ status: STATUS_OK, data: { attached: true } });
                 } catch (attachError) {
                     Object.assign(state, createInitialState());
@@ -412,7 +416,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
         });
     };
 
-    // 같은 실행 파일에 stop을 전달한다. 현재 회차를 마친 뒤 종료된다.
+    // 같은 엔진에 stop을 전달한다. 현재 회차를 마친 뒤 종료된다.
     const stop = () => {
         return new Promise((resolve) => {
             if (!isActive() || state.status !== "running") {
@@ -421,7 +425,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
                 return;
             }
 
-            execFile(launch.command, [...launch.prefixArgs, "stop"], { windowsHide: true, timeout: STOP_TIMEOUT_MS, encoding: "utf8" }, (error, stdout, stderr) => {
+            execEngine(launch, "stop", [], (error, stdout, stderr) => {
                 if (error) {
                     addLines("err", [`[앱] 종료 신호 전달 실패: ${(stderr || error.message).trim()}`]);
                     resolve(createFailure("STOP_FAILED", error.message));
@@ -440,7 +444,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
         });
     };
 
-    // 같은 실행 파일에 set을 전달한다. 진행 중인 회차에는 영향이 없고 다음 회차부터 적용된다.
+    // 같은 엔진에 set을 전달한다. 진행 중인 회차에는 영향이 없고 다음 회차부터 적용된다.
     const setRoundOptions = ({ model, effort }) => {
         return new Promise((resolve) => {
             if (!isActive() || state.status !== "running") {
@@ -449,26 +453,21 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
                 return;
             }
 
-            execFile(
-                launch.command,
-                [...launch.prefixArgs, "set", "--model", model, "--effort", effort],
-                { windowsHide: true, timeout: STOP_TIMEOUT_MS, encoding: "utf8" },
-                (error, stdout, stderr) => {
-                    if (error) {
-                        const message = (stderr || error.message).trim();
+            execEngine(launch, "set", ["--model", model, "--effort", effort], (error, stdout, stderr) => {
+                if (error) {
+                    const message = (stderr || error.message).trim();
 
-                        addLines("err", [`[앱] 모델·effort 변경 실패: ${message}`]);
-                        resolve(createFailure("SET_OPTIONS_FAILED", message));
+                    addLines("err", [`[앱] 모델·effort 변경 실패: ${message}`]);
+                    resolve(createFailure("SET_OPTIONS_FAILED", message));
 
-                        return;
-                    }
-
-                    state.requested = { model: model, effort: effort };
-
-                    addLines("app", [`[앱] 다음 회차부터 model ${model}, effort ${effort}을(를) 적용해요.`]);
-                    resolve({ status: STATUS_OK });
+                    return;
                 }
-            );
+
+                state.requested = { model: model, effort: effort };
+
+                addLines("app", [`[앱] 다음 회차부터 model ${model}, effort ${effort}을(를) 적용해요.`]);
+                resolve({ status: STATUS_OK });
+            });
         });
     };
 
@@ -506,9 +505,10 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
         kill: kill,
         isRunning: isActive,
         isAttached: () => attachedPid !== 0,
+        getProjectDir: () => launch?.projectDir || "",
         getState: () => state,
         getLogs: () => logs
     };
 };
 
-module.exports = { createRunner, createInitialState, parseLine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED };
+module.exports = { createRunner, createInitialState, parseLine, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED };

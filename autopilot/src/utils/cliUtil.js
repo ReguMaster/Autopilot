@@ -1,25 +1,14 @@
 import { EFFORT_LEVELS, MODEL_CHOICES } from "./config.js";
 
-const HELP_TEXT =
-    "AutoPilot [HH:mm] [auto|todo] [--config-dir .claude] [--model opus] [--effort high] [--no-open]\nAutoPilot set [--model opus] [--effort high]\nAutoPilot stop\nAutoPilot status\nAutoPilot --version";
-const USAGE_TEXT = "사용법: autopilot [HH:mm] [auto|todo]";
-const STOP_USAGE_TEXT = "사용법: autopilot stop";
-const STATUS_USAGE_TEXT = "사용법: autopilot status";
-const SET_USAGE_TEXT = "사용법: autopilot set [--model opus] [--effort high]";
-const MAX_POSITIONAL_ARGS = 2;
+const HELP_TEXT = [
+    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus] [--effort high] [--config-dir .claude] [--no-open]",
+    "AutoPilot set --project <dir> [--model opus] [--effort high]",
+    "AutoPilot stop|status|reset-progress --project <dir>"
+].join("\n");
 
-const OPTION_KEYS = {
-    "--config-dir": "configDir",
-    "--model": "model",
-    "--effort": "effort",
-    "--end-time": "endTime",
-    "--policy": "policy"
-};
-
-const SET_OPTION_KEYS = {
-    "--model": "model",
-    "--effort": "effort"
-};
+const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
+const SET_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--model": "model", "--effort": "effort" };
+const RUN_OPTION_KEYS = { ...SET_OPTION_KEYS, "--config-dir": "configDir", "--end-time": "endTime", "--policy": "policy", "--tasks-file": "tasksFile" };
 
 const parseOptionValue = (args, index) => {
     const value = args[index + 1];
@@ -41,52 +30,20 @@ const assertModelAndEffort = (options) => {
     }
 };
 
-const parseCommandArgs = (args) => {
-    const options = {};
-    const positionalArgs = [];
-
-    for (let index = 0; index < args.length; index++) {
-        const arg = args[index];
-
-        if (arg === "--no-open") {
-            options.open = false;
-        } else if (Object.hasOwn(OPTION_KEYS, arg)) {
-            options[OPTION_KEYS[arg]] = parseOptionValue(args, index);
-            index++;
-        } else if (arg.startsWith("-")) {
-            throw new Error(`알 수 없는 인자: ${arg}`);
-        } else {
-            positionalArgs.push(arg);
-        }
-    }
-
-    if (positionalArgs.length > MAX_POSITIONAL_ARGS) {
-        throw new Error(USAGE_TEXT);
-    }
-
-    options.endTime ??= positionalArgs[0];
-    options.policy ??= positionalArgs[1];
-
-    assertModelAndEffort(options);
-
-    return options;
-};
-
-// 실행 중인 AutoPilot에 전달할 값이므로 model과 effort만 받는다.
-const parseSetArgs = (args) => {
+const parseOptions = (args, optionKeys) => {
     const options = {};
 
     for (let index = 0; index < args.length; index++) {
-        if (!Object.hasOwn(SET_OPTION_KEYS, args[index])) {
-            throw new Error(SET_USAGE_TEXT);
+        if (!Object.hasOwn(optionKeys, args[index])) {
+            throw new Error(`알 수 없는 인자: ${args[index]}\n${HELP_TEXT}`);
         }
 
-        options[SET_OPTION_KEYS[args[index]]] = parseOptionValue(args, index);
+        options[optionKeys[args[index]]] = parseOptionValue(args, index);
         index++;
     }
 
-    if (!Object.keys(options).length) {
-        throw new Error(SET_USAGE_TEXT);
+    if (!options.projectDir) {
+        throw new Error(`--project 값이 필요합니다.\n${HELP_TEXT}`);
     }
 
     assertModelAndEffort(options);
@@ -94,4 +51,29 @@ const parseSetArgs = (args) => {
     return options;
 };
 
-export default { HELP_TEXT, STOP_USAGE_TEXT, STATUS_USAGE_TEXT, parseCommandArgs, parseSetArgs };
+const parseRunArgs = (args) => {
+    const options = parseOptions(
+        args.filter((arg) => arg !== "--no-open"),
+        RUN_OPTION_KEYS
+    );
+
+    return args.includes("--no-open") ? { ...options, open: false } : options;
+};
+
+// stop · status · reset-progress는 대상 프로젝트만 받는다.
+const parseProjectArgs = (args) => {
+    return parseOptions(args, PROJECT_OPTION_KEYS);
+};
+
+// 실행 중인 AutoPilot에 전달할 값이므로 프로젝트와 model·effort만 받는다.
+const parseSetArgs = (args) => {
+    const options = parseOptions(args, SET_OPTION_KEYS);
+
+    if (!options.model && !options.effort) {
+        throw new Error(`set에는 --model 또는 --effort가 필요합니다.\n${HELP_TEXT}`);
+    }
+
+    return options;
+};
+
+export default { HELP_TEXT, parseRunArgs, parseProjectArgs, parseSetArgs };

@@ -3,20 +3,35 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { FAKE_CLI_SOURCE, createTestContext } from "./lib/fixtures.js";
-import { checkInvalidKit, checkRunFilePrune, checkRunSettings, checkCommandArgs, checkClaudeArgs, checkProgressArchive, checkStreamEvent } from "./lib/unitChecks.js";
+import {
+    checkInvalidProject,
+    checkRunFilePrune,
+    checkProgressEnsure,
+    checkProgressReset,
+    checkRunSettings,
+    checkCommandArgs,
+    checkClaudeArgs,
+    checkRunEnv,
+    checkProjectPaths,
+    checkProgressArchive,
+    checkStreamEvent
+} from "./lib/unitChecks.js";
 import {
     createScenarioRunner,
     checkRoundOutcomes,
     checkLogRetention,
+    checkProgressResetFlow,
+    checkProgressCreated,
+    checkTasksRequired,
+    checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,
     checkRetriesAndRateLimit,
     checkTimeout,
     checkInterrupt,
     checkRunLock,
-    checkCliEntry,
-    checkSessionRunner,
-    checkBinary
+    checkCliRun,
+    checkSessionRunner
 } from "./lib/scenarioChecks.js";
 
 const checkAutopilot = async () => {
@@ -30,14 +45,18 @@ const checkAutopilot = async () => {
         console.log = () => {};
         console.error = (message) => errorMessages.push(String(message));
 
-        await checkInvalidKit(context, errorMessages);
+        await checkInvalidProject(context, errorMessages);
 
         checkRunSettings();
         checkCommandArgs();
         checkClaudeArgs();
+        checkRunEnv();
+        checkProjectPaths(context);
         checkProgressArchive(context);
         checkStreamEvent();
         checkRunFilePrune(context);
+        checkProgressEnsure(context);
+        checkProgressReset(context);
 
         const fakeCliFile = path.join(testDir, "fake.mjs");
 
@@ -47,6 +66,10 @@ const checkAutopilot = async () => {
 
         await checkRoundOutcomes(scenarioRunner.runScenario);
         await checkLogRetention(scenarioRunner.runScenario);
+        await checkProgressResetFlow(scenarioRunner.runScenario);
+        await checkProgressCreated(scenarioRunner, context, fakeCliFile);
+        await checkTasksRequired(context, fakeCliFile);
+        checkProgressResetCommand(context);
         await checkRoundOptions(scenarioRunner.runScenario, context);
         await checkRetriesAndRateLimit(scenarioRunner.runScenario);
         await checkTimeout(scenarioRunner.runScenario);
@@ -54,15 +77,11 @@ const checkAutopilot = async () => {
         await checkInterrupt(scenarioRunner, "SIGINT");
         await checkInterrupt(scenarioRunner, "SIGHUP");
         await checkRunLock(context);
-        checkCliEntry(context);
+        checkCliRun(context, fakeCliFile, process.argv[2]);
         await checkSessionRunner(context, fakeCliFile);
 
-        if (process.argv[2]) {
-            checkBinary(context, fakeCliFile, process.argv[2]);
-        }
-
         originalConsoleLog(
-            "OK: parsing, archive, UTF-8, commits/idle, progress-only, TODO, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, log retention, run lock/pid reuse, desktop log contract, linked path entry/version, inherited pipes, CLI launch"
+            "OK: arg parsing, project/work dirs, %APPDATA% progress record, tasks in prompt, UTF-8, commits/idle, TODO_COMPLETE, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, log retention, progress record reset, run lock/pid reuse, desktop log contract, CLI entry (linked path, tasks file, status/set/reset-progress/stop), inherited pipes"
         );
     } finally {
         console.log = originalConsoleLog;

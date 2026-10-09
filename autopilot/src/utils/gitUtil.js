@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import { PROGRESS_RELATIVE_PATH } from "./config.js";
 import dateUtil from "./dateUtil.js";
 
 const createGitRunner = (gitExecutable, projectDir, env) => {
@@ -19,7 +18,7 @@ const assertGitProject = (runGitCommand, projectDir) => {
     const gitRootDir = runGitCommand(["rev-parse", "--show-toplevel"]);
 
     if (fs.realpathSync.native(gitRootDir) !== fs.realpathSync.native(projectDir)) {
-        throw new Error("autopilot/의 상위 폴더가 Git 프로젝트 루트여야 합니다.");
+        throw new Error("프로젝트 폴더가 Git 저장소의 루트여야 합니다.");
     }
 
     // commit이 하나도 없으면 여기서 실패한다.
@@ -64,11 +63,9 @@ const collectNewCommits = (runGitCommand, since, recordedHashes) => {
     return commits;
 };
 
-// 진행 기록만 바뀐 회차는 작업이 없는 것으로 본다.
+// 회차 전후로 HEAD의 파일 내용이 달라지지 않았으면 작업이 없는 것으로 본다. 진행 기록은 저장소 밖에 있어 commit에 포함되지 않는다.
 const hasWorkChanges = (runGitCommand, previousHash) => {
-    const changedFiles = runGitCommand(["diff", "--name-only", previousHash, "HEAD", "--", ".", `:(exclude)${PROGRESS_RELATIVE_PATH}`]);
-
-    return Boolean(changedFiles);
+    return Boolean(runGitCommand(["diff", "--name-only", previousHash, "HEAD"]));
 };
 
 const getRecentLog = (runGitCommand) => {

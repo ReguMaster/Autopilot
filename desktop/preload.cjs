@@ -12,13 +12,20 @@ const subscribe = (channel) => {
 
 contextBridge.exposeInMainWorld("autopilot", {
     getState: () => ipcRenderer.invoke("autopilot:get-state"),
-    selectExecutable: () => ipcRenderer.invoke("autopilot:select-exe"),
-    findExecutable: () => ipcRenderer.invoke("autopilot:find-exe"),
+    selectProject: () => ipcRenderer.invoke("autopilot:select-project"),
     start: (options) => ipcRenderer.invoke("autopilot:start", options),
     stop: () => ipcRenderer.invoke("autopilot:stop"),
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
     kill: () => ipcRenderer.invoke("autopilot:kill"),
+    resetProgress: () => ipcRenderer.invoke("autopilot:reset-progress"),
     openReport: () => ipcRenderer.invoke("autopilot:open-report"),
     onLog: subscribe("autopilot:log"),
     onState: subscribe("autopilot:state")
+});
+
+contextBridge.exposeInMainWorld("appWindow", {
+    minimize: () => ipcRenderer.send("window:minimize"),
+    toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
+    close: () => ipcRenderer.send("window:close"),
+    onState: subscribe("window:state")
 });

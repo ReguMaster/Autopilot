@@ -5,13 +5,13 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { MODEL_CHOICES as ENGINE_MODELS, EFFORT_LEVELS as ENGINE_EFFORTS, DEFAULT_MODEL, DEFAULT_EFFORT } from "../autopilot/src/utils/config.js";
+import { MODEL_CHOICES as ENGINE_MODELS, EFFORT_LEVELS as ENGINE_EFFORTS, DEFAULT_MODEL, DEFAULT_EFFORT, POLICY_ALIASES, POLICY_SELF } from "../autopilot/src/utils/config.js";
 
 const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
-const { findEngineExecutable, isKitReportFile } = require("../desktop/engineFinder.cjs");
+const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
 
-// autopilot.exe 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다.
+// 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
 const fs = require("node:fs");
 const path = require("node:path");
@@ -21,6 +21,11 @@ const stopFile = path.join(dir, "STOP");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const main = async () => {
+    const subcommand = process.argv[2]?.startsWith("--") ? "start" : process.argv[2] || "start";
+
+    fs.writeFileSync(path.join(dir, "ARGS_" + subcommand), process.argv.slice(2).join("\n"));
+    fs.writeFileSync(path.join(dir, "ENV_" + subcommand), process.env.AP_RUNNER_ENV || "");
+
     if (process.argv[2] === "stop") {
         fs.writeFileSync(stopFile, "");
         console.log("AutoPilot will stop after the current round.");
@@ -187,7 +192,8 @@ const isProcessAlive = (pid) => {
     }
 };
 
-const createTestRunner = (testDir, mode) => {
+// extraEnv가 있으면 앱처럼 엔진에 환경을 직접 넘긴다. 없으면 이 프로세스의 환경을 그대로 쓴다.
+const createTestRunner = (testDir, mode, extraEnv) => {
     const logs = [];
     const states = [];
     const runner = createRunner({
@@ -195,9 +201,10 @@ const createTestRunner = (testDir, mode) => {
         onState: (state) => states.push(state.status),
         attachPollMs: 20
     });
-    const launch = { command: process.execPath, prefixArgs: [path.join(testDir, "fakeCli.cjs")] };
 
     process.env.AP_MODE = mode;
+
+    const launch = { command: process.execPath, prefixArgs: [path.join(testDir, "fakeCli.cjs")], projectDir: path.join(testDir, "project 한글"), env: extraEnv && { ...process.env, ...extraEnv } };
 
     return { runner: runner, logs: logs, states: states, launch: launch };
 };
@@ -234,11 +241,16 @@ const checkFinishedRun = async (testDir) => {
 };
 
 const checkStopSignal = async (testDir) => {
-    const { runner, launch } = createTestRunner(testDir, "wait");
+    const { runner, launch } = createTestRunner(testDir, "wait", { AP_RUNNER_ENV: "from-runner" });
+    const readTestFile = (name) => fs.readFileSync(path.join(testDir, name), "utf8");
 
-    runner.start({ ...launch, roundOptions: { model: "opus", effort: "high" } });
+    runner.start({ ...launch, args: ["--project", launch.projectDir, "--no-open"], roundOptions: { model: "opus", effort: "high" } });
 
     await waitFor(() => runner.getState().round === 1, "1회차 시작");
+
+    // 시작과 하위 명령 모두 앱이 정한 환경과 대상 프로젝트로 실행된다.
+    assert.equal(readTestFile("ENV_start"), "from-runner");
+    assert.equal(readTestFile("ARGS_start"), ["--project", launch.projectDir, "--no-open"].join("\n"));
 
     assert.equal(runner.getState().status, "running");
     assert.deepEqual(runner.getState().requested, { model: "opus", effort: "high" });
@@ -251,7 +263,8 @@ const checkStopSignal = async (testDir) => {
     assert.deepEqual(runner.getState().requested, { model: "opus", effort: "high" });
     assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low" })).status, STATUS_OK);
     assert.deepEqual(runner.getState().requested, { model: "sonnet", effort: "low" });
-    assert(fs.readFileSync(path.join(testDir, "OPTIONS"), "utf8").includes("--model sonnet --effort low"));
+    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --model sonnet --effort low`);
+    assert.equal(readTestFile("ENV_set"), "from-runner");
 
     await waitFor(() => runner.getState().round === 2, "2회차 시작");
 
@@ -259,6 +272,8 @@ const checkStopSignal = async (testDir) => {
     assert.equal(runner.getState().rounds[0].model, "opus");
     assert.equal(runner.getState().rounds[1].model, "sonnet");
     assert.equal((await runner.stop()).status, STATUS_OK);
+    assert.equal(readTestFile("ARGS_stop"), ["stop", "--project", launch.projectDir].join("\n"));
+    assert.equal(readTestFile("ENV_stop"), "from-runner");
     assert.equal(runner.getState().status, "stopping");
     assert.equal((await runner.stop()).status, STATUS_FAILED);
     assert.equal((await runner.setRoundOptions({ model: "opus", effort: "high" })).error.code, "NOT_RUNNING");
@@ -295,11 +310,11 @@ const checkForceKill = async (testDir) => {
     assert.equal(runner.getState().reason, "강제 종료");
 };
 
-// 앱이 시작하지 않은 엔진(예: 시작 배치로 띄운 엔진)에 연결해 로그를 따라가고, 종료 신호·강제 종료·종료 감지를 확인한다.
+// 앱을 닫았다 켠 사이에 계속 실행된 엔진에 연결해 로그를 따라가고, 종료 신호·강제 종료·종료 감지를 확인한다.
 const checkAttachToRunningEngine = async (testDir) => {
-    const kitDir = path.join(testDir, "attach kit", "autopilot");
-    const logFile = path.join(kitDir, "progress", "2026-10-10", "autopilot_120000_ab12cd34.log");
-    const outsideLogFile = path.join(testDir, "attach kit", "outside", "autopilot_120000_ab12cd34.log");
+    const projectDir = path.join(testDir, "attach project");
+    const logFile = path.join(projectDir, "autopilot", "progress", "2026-10-10", "autopilot_120000_ab12cd34.log");
+    const outsideLogFile = path.join(testDir, "attach project", "outside", "autopilot_120000_ab12cd34.log");
     const externals = [];
     const spawnExternal = (mode, externalLogFile) => {
         process.env.AP_MODE = mode;
@@ -318,7 +333,7 @@ const checkAttachToRunningEngine = async (testDir) => {
 
     try {
         const { runner, logs, launch } = createTestRunner(testDir, "finish");
-        const attachOptions = { ...launch, kitDir: kitDir };
+        const attachOptions = { ...launch, projectDir: projectDir };
         const signal = (name) => fs.writeFileSync(path.join(testDir, name), "");
 
         process.env.AP_LOG_FILE = logFile;
@@ -389,10 +404,10 @@ const checkAttachToRunningEngine = async (testDir) => {
         assert(logs.some((entry) => entry.stream === "app" && entry.text === "[앱] 연결한 엔진이 종료됐어요 - 중단 요청"));
         assert.equal(runner.isRunning(), false);
 
-        // 엔진이 알려준 로그 경로가 키트 progress/ 밖이면 읽지 않는다.
+        // 엔진이 알려준 로그 경로가 프로젝트 autopilot/progress/ 밖이면 읽지 않는다.
         const outsideExternal = spawnExternal("external-hang", outsideLogFile);
 
-        await waitFor(() => fs.existsSync(outsideLogFile), "키트 밖 로그를 쓰는 엔진 시작");
+        await waitFor(() => fs.existsSync(outsideLogFile), "프로젝트 작업 폴더 밖 로그를 쓰는 엔진 시작");
 
         process.env.AP_LOG_FILE = outsideLogFile;
 
@@ -438,34 +453,32 @@ const checkSpawnFailure = async (testDir) => {
     assert(runner.getState().reason.includes("ENOENT"));
 };
 
-const checkEngineFinder = (testDir) => {
-    const exeName = process.platform === "win32" ? "autopilot.exe" : "autopilot";
-    const nestedDir = path.join(testDir, "project", "src", "deep");
-    const kitDir = path.join(testDir, "project", "autopilot");
-    const repoDir = path.join(testDir, "repo", "desktop");
-    const buildDir = path.join(testDir, "repo", "dist", `cli-${process.platform}-${process.arch}`, "autopilot");
+// 시작하려면 대상 프로젝트가 Git 저장소의 루트 폴더여야 한다. .git은 워크트리에서는 파일이다.
+const checkProjectError = (testDir) => {
+    const projectDir = path.join(testDir, "project check");
+    const worktreeDir = path.join(testDir, "worktree check");
 
-    fs.mkdirSync(nestedDir, { recursive: true });
-    fs.mkdirSync(path.join(kitDir, exeName), { recursive: true });
-    fs.mkdirSync(repoDir, { recursive: true });
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    fs.mkdirSync(worktreeDir);
+    fs.writeFileSync(path.join(testDir, "not-a-folder"), "");
+    fs.writeFileSync(path.join(worktreeDir, ".git"), "gitdir: elsewhere");
 
-    assert.equal(findEngineExecutable([nestedDir, repoDir]), "");
+    for (const invalidDir of ["", path.join(testDir, "missing"), path.join(testDir, "not-a-folder"), projectDir, path.join(projectDir, "src")]) {
+        assert(getProjectError(invalidDir), invalidDir);
+    }
 
-    fs.rmSync(path.join(kitDir, exeName), { recursive: true });
-    fs.writeFileSync(path.join(kitDir, exeName), "");
+    fs.mkdirSync(path.join(projectDir, ".git"));
 
-    assert.equal(findEngineExecutable([nestedDir]), path.join(kitDir, exeName));
-
-    fs.mkdirSync(buildDir, { recursive: true });
-    fs.writeFileSync(path.join(buildDir, exeName), "");
-
-    assert.equal(findEngineExecutable([repoDir, nestedDir]), path.join(buildDir, exeName));
+    assert.equal(getProjectError(projectDir), "");
+    assert.equal(getProjectError(worktreeDir), "");
+    assert(getProjectError(path.join(projectDir, "src")));
 };
 
-// 엔진 출력에서 읽은 경로로 실행 파일이나 키트 밖의 파일을 열 수 없어야 한다.
+// 엔진 출력에서 읽은 경로로 실행 파일이나 작업 폴더 밖의 파일을 열 수 없어야 한다.
 const checkReportOpenGuard = (testDir) => {
-    const kitDir = path.join(testDir, "report guard", "autopilot");
-    const dayDir = path.join(kitDir, "progress", "2026-10-10");
+    const projectDir = path.join(testDir, "report guard");
+    const workDir = path.join(projectDir, "autopilot");
+    const dayDir = path.join(workDir, "progress", "2026-10-10");
     const outsideDir = path.join(testDir, "report guard", "outside");
     const reportFile = path.join(dayDir, "report_120000_ab12cd34.html");
     const touch = (file) => {
@@ -477,13 +490,13 @@ const checkReportOpenGuard = (testDir) => {
 
     touch(reportFile);
 
-    assert(isKitReportFile(kitDir, reportFile));
+    assert(isProjectReportFile(projectDir, reportFile));
 
-    // 키트 밖, progress 밖, 리포트 이름·확장자가 아닌 파일, 없는 파일, 빈 값은 거부한다.
+    // 작업 폴더 밖, progress 밖, 리포트 이름·확장자가 아닌 파일, 없는 파일, 빈 값은 거부한다.
     const rejectedFiles = [
         touch(path.join(outsideDir, "report_120000_ab12cd34.html")),
-        touch(path.join(kitDir, "report_120000_ab12cd34.html")),
-        touch(path.join(kitDir, "autopilot.exe")),
+        touch(path.join(workDir, "report_120000_ab12cd34.html")),
+        touch(path.join(workDir, "autopilot.exe")),
         touch(path.join(dayDir, "evil.html")),
         touch(path.join(dayDir, "report_120000_ab12cd34.html.exe")),
         touch(path.join(dayDir, "..", "..", "..", "outside", "report_1.html")),
@@ -492,33 +505,43 @@ const checkReportOpenGuard = (testDir) => {
     ];
 
     for (const rejectedFile of rejectedFiles) {
-        assert(!isKitReportFile(kitDir, rejectedFile), rejectedFile);
+        assert(!isProjectReportFile(projectDir, rejectedFile), rejectedFile);
     }
 
-    assert(!isKitReportFile("", reportFile));
+    assert(!isProjectReportFile("", reportFile));
 
     // progress 안의 링크가 밖을 가리키면 실제 경로로 판단해 거부한다.
-    const linkDir = path.join(kitDir, "progress", "link");
+    const linkDir = path.join(workDir, "progress", "link");
 
     touch(path.join(outsideDir, "report_777777_aaaaaaaa.html"));
     fs.symlinkSync(outsideDir, linkDir, "junction");
 
-    assert(!isKitReportFile(kitDir, path.join(linkDir, "report_777777_aaaaaaaa.html")));
+    assert(!isProjectReportFile(projectDir, path.join(linkDir, "report_777777_aaaaaaaa.html")));
 };
 
-// select의 option 값과 "기본값" 표시가 붙은 값을 돌려준다.
-const readSelectChoices = (html, id) => {
-    const optionsHtml = html.match(new RegExp(`<select id="${id}">([\\s\\S]*?)</select>`))[1];
-    const options = [...optionsHtml.matchAll(/<option value="([^"]*)">([^<]*)</g)];
+// 태그 목록에서 attribute 값을 순서대로 모으고, data-default가 붙은 태그의 값을 기본값으로 돌려준다.
+const readChoices = (tags, valueAttribute) => {
+    const choices = tags.map((tag) => ({ value: tag.match(new RegExp(`\\b${valueAttribute}="([^"]*)"`))[1], isDefault: /\bdata-default\b/.test(tag) }));
 
-    return { values: options.map((option) => option[1]), defaultValue: options.find((option) => option[2].includes("기본값"))?.[1] };
+    return { values: choices.map((choice) => choice.value), defaultValue: choices.find((choice) => choice.isDefault)?.value };
 };
 
-// 허용 값은 엔진(config.js)·러너·화면(index.html) 세 곳에 있으므로 어긋나면 실패시킨다.
+// 모델은 name="model" 라디오, Effort는 effort-levels 목록의 option label이다.
+const readModelChoices = (html) => {
+    return readChoices(html.match(/<input\b[^>]*\bname="model"[^>]*>/g) ?? [], "value");
+};
+
+const readEffortChoices = (html) => {
+    const listHtml = html.match(/<datalist id="effort-levels">([\s\S]*?)<\/datalist>/)[1];
+
+    return readChoices(listHtml.match(/<option\b[^>]*>/g) ?? [], "label");
+};
+
+// 허용 값은 엔진(config.js)·러너·화면(index.html) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
 const checkChoiceSync = () => {
     const html = fs.readFileSync(path.join(import.meta.dirname, "../desktop/index.html"), "utf8");
-    const model = readSelectChoices(html, "model");
-    const effort = readSelectChoices(html, "effort");
+    const model = readModelChoices(html);
+    const effort = readEffortChoices(html);
 
     assert.deepEqual(MODEL_CHOICES, ENGINE_MODELS);
     assert.deepEqual(EFFORT_CHOICES, ENGINE_EFFORTS);
@@ -526,6 +549,12 @@ const checkChoiceSync = () => {
     assert.deepEqual(effort.values, ENGINE_EFFORTS);
     assert.equal(model.defaultValue, DEFAULT_MODEL);
     assert.equal(effort.defaultValue, DEFAULT_EFFORT);
+
+    const policy = readChoices(html.match(/<input\b[^>]*\bname="policy"[^>]*>/g) ?? [], "value");
+
+    assert.deepEqual(policy.values, ["auto", "todo"]);
+    assert(policy.values.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
+    assert.equal(POLICY_ALIASES[policy.defaultValue], POLICY_SELF);
 };
 
 const runChecks = async () => {
@@ -537,7 +566,7 @@ const runChecks = async () => {
 
     try {
         checkChoiceSync();
-        checkEngineFinder(testDir);
+        checkProjectError(testDir);
         checkReportOpenGuard(testDir);
 
         await checkFinishedRun(testDir);
