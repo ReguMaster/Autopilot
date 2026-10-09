@@ -23,8 +23,57 @@ const formatDeadline = (ms) => {
     return `${date.getMonth() + 1}월 ${date.getDate()}일 ${formatClock(ms)}`;
 };
 
+// 종료 시각(HH:mm, 비우면 엔진 기본값). 엔진처럼 날짜는 없고 이미 지난 시각이면 다음 날로 본다.
+const DEFAULT_END_TIME = "07:00";
+const MINUTES_PER_DAY = 1440;
+const PRESET_ROUND_MINUTES = 5;
+
+const parseTimeMinutes = (value) => {
+    const [hours, minutes] = (value || DEFAULT_END_TIME).split(":").map(Number);
+
+    return hours * 60 + minutes;
+};
+
+const formatTimeMinutes = (totalMinutes) => {
+    const minutes = ((totalMinutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+
+    return `${padNumber(Math.floor(minutes / 60))}:${padNumber(minutes % 60)}`;
+};
+
+const shiftEndTime = (value, minutes) => {
+    return formatTimeMinutes(parseTimeMinutes(value) + minutes);
+};
+
+// 지금부터 minutes 뒤를 5분 단위로 올려 잡는다.
+const getEndTimeAfter = (nowMs, minutes) => {
+    const date = new Date(nowMs);
+    const target = date.getHours() * 60 + date.getMinutes() + (date.getSeconds() > 0 ? 1 : 0) + minutes;
+
+    return formatTimeMinutes(Math.ceil(target / PRESET_ROUND_MINUTES) * PRESET_ROUND_MINUTES);
+};
+
+const formatTimeUntil = (value, nowMs) => {
+    const date = new Date(nowMs);
+    const nowMinutes = date.getHours() * 60 + date.getMinutes();
+    const diff = (((parseTimeMinutes(value) - nowMinutes) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY || MINUTES_PER_DAY;
+    const hours = Math.floor(diff / 60);
+    const minutes = diff % 60;
+
+    if (!hours) {
+        return `${minutes}분 뒤`;
+    }
+
+    return minutes ? `${hours}시간 ${minutes}분 뒤` : `${hours}시간 뒤`;
+};
+
+const EFFORT_LABELS = { low: "Low", medium: "Medium", high: "High", xhigh: "XHigh", max: "Max" };
+
+const formatEffort = (effort) => {
+    return EFFORT_LABELS[effort] || effort;
+};
+
 const formatOptions = (model, effort) => {
-    return model ? `${MODEL_LABELS[model] || model} · ${effort}` : "-";
+    return model ? `${MODEL_LABELS[model] || model} · ${formatEffort(effort)}` : "-";
 };
 
 const getLineKind = ({ stream, text }) => {

@@ -1,14 +1,15 @@
 // 시간대별 수채 하늘. 하루를 분(0~1439)으로 보고 하늘색, 해·달 위치, 별·별자리·구름·운석을 그린다. 대시보드 상태와 무관하다.
 // CSP가 inline style 속성을 막으므로 스타일은 CSSOM(style.setProperty)으로만 넣는다.
+// 낮 하늘은 흰 UI 글자가 읽히도록 깊은 파랑으로 둔다(밝은 하늘색이면 흰 글자 대비가 3:1 아래로 떨어진다).
 const SKY_KEYFRAMES = [
     [0, "#0b1026", "#1b2447"],
     [270, "#0e1530", "#262c52"],
     [330, "#2b3a6b", "#e89a7a"],
-    [390, "#7fa6dc", "#ffd2b0"],
-    [480, "#79b6f2", "#d6ecff"],
-    [720, "#5aa7f0", "#cfe8ff"],
-    [990, "#6aa9e8", "#e3f1ff"],
-    [1080, "#7188c8", "#ffc09a"],
+    [390, "#5a7fc4", "#f7c09e"],
+    [480, "#3a80d4", "#9ccaf2"],
+    [720, "#2f78d0", "#94c4f0"],
+    [990, "#387dce", "#a6cdf2"],
+    [1080, "#5a6fb4", "#f5b08a"],
     [1125, "#3b3f78", "#f08a6b"],
     [1170, "#1c2350", "#43406f"],
     [1260, "#0d1330", "#1d2448"],
@@ -21,17 +22,20 @@ const SKY_ARC = { left: 0.1, right: 0.9, base: 0.42, top: 0.09 };
 const SYNODIC_MONTH_DAYS = 29.530588;
 const KNOWN_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14);
 const DAY_MS = 86400000;
+// 달(반지름 46)을 가리는 그림자 원(반지름 47)이 이만큼 비켜나면 보름이다. 테두리에 실선이 남지 않게 지름보다 조금 더 민다.
+const MOON_SHADOW_TRAVEL = 94;
 const SKY_UPDATE_MS = 30000;
 const SKY_RESIZE_DELAY_MS = 200;
 const METEOR_MIN_DELAY_MS = 5000;
 const METEOR_DELAY_RANGE_MS = 10000;
-// 글자가 있는 높이의 하늘이 이보다 어두우면 글자를 밝게 바꾼다. 0.19는 어두운 잉크와 밝은 잉크의 대비가 같아지는 밝기다.
-// 노을빛은 화면 아래(블러 영역)에 모이므로 글자 높이의 하늘은 위쪽 색을 주로 따른다.
+// 글자가 있는 높이의 하늘이 이보다 어두우면 밤(body.night)으로 보고 운석을 떨어뜨린다. UI 색은 시각과 무관하게 흰색이다.
+// 아래쪽 색(노을빛)은 화면 맨 아래 타원에만 칠해지고 글자 높이의 하늘은 거의 위쪽 색이다.
 const NIGHT_LUMINANCE = 0.19;
-const UI_SKY_POSITION = 0.2;
+const UI_SKY_POSITION = 0.06;
 const STAR_AREA_PX = 2500;
 const STAR_DENSITY = 0.8;
 const STAR_SEED = 18;
+const STAR_LAYER_COUNT = 3;
 const CLOUD_SEED = 42;
 const CLOUD_COUNT = 5;
 const CLOUD_DURATION_RANGE = [90, 170];
@@ -87,7 +91,9 @@ const skyElements = {
     sky: document.getElementById("sky"),
     stars: document.getElementById("sky-stars"),
     clouds: document.getElementById("sky-clouds"),
-    meteors: document.getElementById("sky-meteors")
+    meteors: document.getElementById("sky-meteors"),
+    moonShadow: document.getElementById("moon-shadow"),
+    moonGlow: document.getElementById("moon-glow")
 };
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -203,13 +209,15 @@ const renderSky = () => {
         "--moon-left": `${moon.left.toFixed(1)}px`,
         "--moon-top": `${moon.top.toFixed(1)}px`,
         "--moon-on": getHorizonVisibility(moonProgress).toFixed(3),
-        "--moon-shadow": `${((phase < 0.5 ? -lit : lit) * 100).toFixed(1)}%`,
         "--glow-x": clampNumber(sunProgress, 0, 1).toFixed(3)
     };
 
     for (const [name, value] of Object.entries(values)) {
         skyRoot.style.setProperty(name, value);
     }
+
+    skyElements.moonShadow.setAttribute("cx", ((phase < 0.5 ? -lit : lit) * MOON_SHADOW_TRAVEL).toFixed(2));
+    skyElements.moonGlow.setAttribute("opacity", lit.toFixed(2));
 
     document.body.classList.toggle("night", getLuminance(uiSky) < NIGHT_LUMINANCE);
 };
@@ -224,36 +232,35 @@ const createSvgElement = (name, attributes) => {
     return element;
 };
 
+// 별마다 애니메이션을 걸면 매 프레임 SVG 전체를 다시 그리므로, 별을 몇 겹의 SVG로 나눠 겹 단위 opacity(합성만 함)로 반짝이게 한다.
 const buildStars = () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
     const random = createSeededRandom(STAR_SEED);
     const count = Math.round(((width * height) / STAR_AREA_PX) * STAR_DENSITY);
-    const fragment = document.createDocumentFragment();
-
-    skyElements.stars.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const layers = Array.from({ length: STAR_LAYER_COUNT + 1 }, () => createSvgElement("svg", { viewBox: `0 0 ${width} ${height}` }));
 
     for (let index = 0; index < count; index++) {
-        const star = createSvgElement("circle", { class: "star", cx: random() * width, cy: random() * height, r: 0.4 + random() ** 3 * 1.4 });
-
-        star.style.setProperty("--twinkle", `${(1.6 + random() * 3).toFixed(2)}s`);
-        star.style.setProperty("--twinkle-delay", `${(-random() * 4).toFixed(2)}s`);
-        fragment.append(star);
+        layers[index % STAR_LAYER_COUNT].append(createSvgElement("circle", { class: "star", cx: random() * width, cy: random() * height, r: 0.4 + random() ** 3 * 1.4 }));
     }
+
+    const constellationLayer = layers[STAR_LAYER_COUNT];
+
+    constellationLayer.classList.add("constellations");
 
     for (const constellation of CONSTELLATIONS) {
         const points = constellation.stars.map(([x, y]) => [constellation.at[0] * width + (x - 0.5) * constellation.size, constellation.at[1] * height + (y - 0.5) * constellation.size * 0.8]);
 
         for (const [from, to] of constellation.lines) {
-            fragment.append(createSvgElement("line", { class: "star-line", x1: points[from][0], y1: points[from][1], x2: points[to][0], y2: points[to][1] }));
+            constellationLayer.append(createSvgElement("line", { class: "star-line", x1: points[from][0], y1: points[from][1], x2: points[to][0], y2: points[to][1] }));
         }
 
         for (const [x, y] of points) {
-            fragment.append(createSvgElement("circle", { class: "star-bright", cx: x, cy: y, r: 1.9 }));
+            constellationLayer.append(createSvgElement("circle", { class: "star-bright", cx: x, cy: y, r: 1.9 }));
         }
     }
 
-    skyElements.stars.replaceChildren(fragment);
+    skyElements.stars.replaceChildren(...layers);
 };
 
 const buildClouds = () => {
@@ -265,7 +272,8 @@ const buildClouds = () => {
         const duration = CLOUD_DURATION_RANGE[0] + random() * (CLOUD_DURATION_RANGE[1] - CLOUD_DURATION_RANGE[0]);
 
         cloud.className = "cloud";
-        cloud.innerHTML = `<svg viewBox="0 0 120 60" aria-hidden="true"><path d="${CLOUD_PATH}" /></svg>`;
+        // 블러를 SVG 안에서 한 번만 그려 두면 흐르는 동안 레이어를 옮기기만 한다(CSS filter는 매 프레임 다시 흐린다).
+        cloud.innerHTML = `<svg viewBox="-20 -20 160 100" aria-hidden="true"><path d="${CLOUD_PATH}" filter="url(#cloud-blur)" /></svg>`;
         cloud.style.setProperty("--cloud-top", `${((CLOUD_TOP_RANGE[0] + random() * (CLOUD_TOP_RANGE[1] - CLOUD_TOP_RANGE[0])) * 100).toFixed(1)}%`);
         cloud.style.setProperty("--cloud-scale", (0.55 + random() * 0.8).toFixed(2));
         cloud.style.setProperty("--cloud-duration", `${duration.toFixed(1)}s`);

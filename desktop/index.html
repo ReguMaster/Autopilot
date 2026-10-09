@@ -12,27 +12,57 @@
         <script src="renderer.js" defer></script>
     </head>
     <body data-status="idle">
-        <svg width="0" height="0" class="defs" aria-hidden="true">
-            <defs>
-                <mask id="moon-cut">
-                    <rect width="48" height="48" fill="#fff" />
-                    <circle cx="32" cy="17" r="14" fill="#000" />
-                </mask>
-            </defs>
-        </svg>
-
         <div id="sky" class="sky" aria-hidden="true">
             <div class="sky-fill"></div>
             <div class="sky-glow"></div>
-            <svg id="sky-stars" class="stars"></svg>
+            <div id="sky-stars" class="stars"></div>
             <div class="sun">
-                <svg viewBox="-50 -50 100 100"><circle r="30" /></svg>
+                <svg viewBox="-50 -50 100 100">
+                    <defs>
+                        <radialGradient id="sun-halo">
+                            <stop offset="0.3" stop-color="#ffcd78" stop-opacity="0.75" />
+                            <stop offset="1" stop-color="#ffcd78" stop-opacity="0" />
+                        </radialGradient>
+                        <radialGradient id="sun-core">
+                            <stop offset="0.9" stop-color="#ffd98a" />
+                            <stop offset="1" stop-color="#ffd98a" stop-opacity="0" />
+                        </radialGradient>
+                    </defs>
+                    <circle r="95" fill="url(#sun-halo)" />
+                    <circle r="31" fill="url(#sun-core)" />
+                </svg>
             </div>
-            <div class="moon"><i class="moon-lit"></i></div>
+            <div class="moon">
+                <svg viewBox="-50 -50 100 100">
+                    <defs>
+                        <radialGradient id="moon-surface" cx="38%" cy="34%" r="70%">
+                            <stop offset="0" stop-color="#fffdf2" />
+                            <stop offset="0.72" stop-color="#e7e0c4" />
+                        </radialGradient>
+                        <radialGradient id="moon-halo">
+                            <stop offset="0.45" stop-color="#fffadc" stop-opacity="0.35" />
+                            <stop offset="1" stop-color="#fffadc" stop-opacity="0" />
+                        </radialGradient>
+                        <mask id="moon-phase">
+                            <circle r="46" fill="#fff" />
+                            <circle id="moon-shadow" r="47" fill="#000" />
+                        </mask>
+                    </defs>
+                    <circle id="moon-glow" r="96" fill="url(#moon-halo)" />
+                    <circle class="moon-dark" r="46" />
+                    <circle r="46" fill="url(#moon-surface)" mask="url(#moon-phase)" />
+                </svg>
+            </div>
+            <svg class="sky-defs" width="0" height="0">
+                <filter id="cloud-blur" filterUnits="userSpaceOnUse" x="-20" y="-20" width="160" height="100">
+                    <feGaussianBlur stdDeviation="5.6" />
+                </filter>
+            </svg>
             <div id="sky-clouds" class="clouds"></div>
+            <div class="sky-shade"></div>
             <div id="sky-meteors" class="meteors"></div>
         </div>
-        <div class="veil" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="veil" aria-hidden="true"></div>
 
         <header id="titlebar" class="titlebar">
             <div class="window-controls">
@@ -73,60 +103,48 @@
                         <p id="stat-phase" class="phase" hidden></p>
                     </div>
 
-                    <p id="notice" class="notice" role="alert" hidden></p>
-                    <p id="project-banner" class="notice" data-tone="warn" hidden>
-                        대상 프로젝트 폴더를 먼저 골라 주세요. <button type="button" id="banner-select-project" class="text-button">폴더 선택</button>
-                    </p>
-
                     <form id="run-form" class="run-form">
-                        <button type="submit" id="main-action" class="main-action">시작</button>
+                        <button type="submit" id="main-action" class="button primary large main-action">시작</button>
 
-                        <div class="options">
-                            <div class="models choice" role="radiogroup" aria-label="모델">
-                                <label class="model" title="Fable">
-                                    <input type="radio" name="model" value="fable" />
-                                    <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
-                                        <circle cx="23" cy="25" r="17" fill="#46609f" mask="url(#moon-cut)" />
-                                        <circle cx="37" cy="33" r="2.6" fill="#e9a23b" />
-                                    </svg>
-                                    <span>Fable</span>
-                                </label>
-                                <label class="model" title="Opus (기본값)">
-                                    <input type="radio" name="model" value="opus" data-default />
-                                    <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
-                                        <path d="M24 4 41 14v20L24 44 7 34V14Z" fill="#df8f2e" />
-                                        <path d="M24 4v40M7 14l17 10 17-10M7 34l17-10 17 10" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.5" stroke-linejoin="round" />
-                                    </svg>
-                                    <span>Opus</span>
-                                </label>
-                                <label class="model" title="Sonnet">
-                                    <input type="radio" name="model" value="sonnet" />
-                                    <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
-                                        <rect x="4" y="4" width="40" height="40" rx="11" fill="#2c7f8f" />
-                                        <path
-                                            d="M12 18c4-4.5 7.5-4.5 12 0s8 4.5 12 0M12 25c4-4.5 7.5-4.5 12 0s8 4.5 12 0M12 32c4-4.5 7.5-4.5 12 0s8 4.5 12 0"
-                                            fill="none"
-                                            stroke="#fff"
-                                            stroke-width="2.6"
-                                            stroke-linecap="round"
-                                        />
-                                    </svg>
-                                    <span>Sonnet</span>
-                                </label>
-                                <label class="model" title="Haiku">
-                                    <input type="radio" name="model" value="haiku" />
-                                    <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
-                                        <path d="M24 3C40 7 46 24 24 45 2 24 8 7 24 3Z" fill="#5f9e45" />
-                                        <path d="M19 19h10M17 26h14M19 33h10" stroke="#fff" stroke-width="3" stroke-linecap="round" />
-                                    </svg>
-                                    <span>Haiku</span>
-                                </label>
-                            </div>
+                        <div class="composer">
+                            <textarea
+                                id="tasks"
+                                class="tasks"
+                                rows="2"
+                                spellcheck="false"
+                                aria-label="처리할 작업"
+                                placeholder="처리할 작업을 한 줄에 하나씩 적어요 (지시개선은 꼭 필요해요)"
+                            ></textarea>
 
-                            <div class="effort" id="effort-control" data-level="2">
-                                <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-                                <input type="range" id="effort" min="0" max="4" step="1" value="2" list="effort-levels" aria-label="Effort" />
-                                <b id="effort-name" class="effort-name">high</b>
+                            <div class="composer-bar">
+                                <button type="button" id="model-chip" class="chip" popovertarget="model-popover" aria-label="모델 고르기" aria-expanded="false">
+                                    <svg class="mark" aria-hidden="true"><use id="model-chip-mark" href="#mark-opus" /></svg>
+                                    <span id="model-chip-name">Opus</span>
+                                    <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
+                                </button>
+
+                                <button type="button" id="effort-control" class="chip effort" data-level="2" popovertarget="effort-popover" aria-label="Effort 고르기" aria-expanded="false">
+                                    <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+                                    <b id="effort-name" class="effort-name">High</b>
+                                </button>
+
+                                <button type="button" id="policy-chip" class="chip" popovertarget="policy-popover" aria-label="개선 정책 고르기" aria-expanded="false">
+                                    <svg class="chip-icon" viewBox="0 0 20 20" aria-hidden="true"><use id="policy-chip-icon" href="#icon-policy-auto" /></svg>
+                                    <span id="policy-chip-name">자율개선</span>
+                                    <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
+                                </button>
+
+                                <button type="button" id="end-time-button" class="chip end-time-chip" popovertarget="end-time-popover" aria-label="종료 시각 고르기" aria-expanded="false">
+                                    <svg class="clock-icon" viewBox="0 0 16 16" aria-hidden="true">
+                                        <circle cx="8" cy="8" r="6.25" />
+                                        <path class="hand-hour" d="M8 8V5.2" />
+                                        <path class="hand-minute" d="M8 8h2.8" />
+                                    </svg>
+                                    <b id="end-time-value" class="num">07:00</b>
+                                    <small id="end-time-until" class="end-time-until num"></small>
+                                </button>
+                                <input type="hidden" id="end-time" />
+                                <input type="range" id="effort" min="0" max="4" step="1" value="2" list="effort-levels" aria-label="Effort" hidden />
                                 <datalist id="effort-levels">
                                     <option value="0" label="low"></option>
                                     <option value="1" label="medium"></option>
@@ -135,45 +153,169 @@
                                     <option value="4" label="max"></option>
                                 </datalist>
                             </div>
-
-                            <label class="end-time" title="비우면 07:00">종료 <input type="time" id="end-time" /></label>
                         </div>
 
                         <p id="apply-note" class="apply-note" aria-live="polite" hidden></p>
-
-                        <textarea id="tasks" class="tasks" rows="1" spellcheck="false" aria-label="처리할 작업" placeholder="처리할 작업을 한 줄에 하나씩 적어요 (지시개선은 꼭 필요해요)"></textarea>
                     </form>
+
+                    <p id="notice" class="notice" role="alert" hidden></p>
+                    <p id="project-banner" class="notice" data-tone="warn" hidden>
+                        대상 프로젝트 폴더를 먼저 골라 주세요. <button type="button" id="banner-select-project" class="button small">폴더 선택</button>
+                    </p>
 
                     <div id="live-panel" class="live-panel" role="button" tabindex="0" aria-controls="history" aria-expanded="false" title="눌러서 전체 기록 보기">
                         <ol id="live" class="live" aria-hidden="true"></ol>
                     </div>
                 </div>
             </main>
-
-            <section id="history" class="history" aria-label="실행 기록" hidden>
-                <div class="history-log">
-                    <div class="history-head">
-                        <h2>로그</h2>
-                        <span id="log-count" class="num">0줄</span>
-                        <label class="check"><input type="checkbox" id="follow" checked />따라가기</label>
-                        <button type="button" id="clear-log" class="text-button">지우기</button>
-                        <button type="button" id="history-close" class="text-button">닫기</button>
-                    </div>
-                    <div id="log" class="log" role="log" aria-live="off" tabindex="0">
-                        <div class="line empty" id="log-empty"><span class="ln">1</span><span class="tx">아직 기록된 로그가 없어요.</span></div>
-                    </div>
-                </div>
-                <div class="history-rounds">
-                    <div class="history-head">
-                        <h2>회차</h2>
-                        <span id="round-count" class="num">0회</span>
-                    </div>
-                    <p id="round-summary" class="round-summary"></p>
-                    <ol id="rounds" class="rounds"></ol>
-                </div>
-            </section>
         </div>
 
+        <svg class="symbols" width="0" height="0" aria-hidden="true">
+            <symbol id="mark-fable" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#5b5fd3" />
+                <path d="M14 6.6A6.4 6.4 0 1 0 17.5 15 5 5 0 0 1 14 6.6Z" fill="#fff" />
+                <path d="M17.6 6.6l.6 1.3 1.3.6-1.3.6-.6 1.3-.6-1.3-1.3-.6 1.3-.6Z" fill="#ffd27a" />
+            </symbol>
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="mark-sonnet" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#1f8a90" />
+                <path d="M6 9.2c2-2 4-2 6 0s4 2 6 0M6 14.8c2-2 4-2 6 0s4 2 6 0" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" />
+            </symbol>
+            <symbol id="mark-haiku" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#4a9a3d" />
+                <path d="M6.5 17.5C6.5 10.5 10.5 6.5 17.5 6.5 17.5 13.5 13.5 17.5 6.5 17.5Z" fill="#fff" />
+                <path d="M6.5 17.5 13 11" fill="none" stroke="#4a9a3d" stroke-width="1.4" stroke-linecap="round" />
+            </symbol>
+            <symbol id="icon-policy-auto" viewBox="0 0 20 20"><path d="M6.2 13.4a4 4 0 1 1 0-6.8l7.6 6.8a4 4 0 1 0 0-6.8l-7.6 6.8" /></symbol>
+            <symbol id="icon-policy-todo" viewBox="0 0 20 20"><path d="M3.5 5.5l1.5 1.5 2.5-3M3.5 12.5l1.5 1.5 2.5-3M10.5 5.5h6M10.5 12.5h6" /></symbol>
+        </svg>
+
+        <div id="model-popover" class="popover choice-popover" popover role="radiogroup" aria-label="모델">
+            <label class="choice-option">
+                <input type="radio" name="model" value="fable" form="run-form" />
+                <svg class="mark" aria-hidden="true"><use href="#mark-fable" /></svg>
+                <span class="choice-title">Fable</span>
+                <small class="choice-desc">가장 깊게</small>
+            </label>
+            <label class="choice-option">
+                <input type="radio" name="model" value="opus" form="run-form" data-default />
+                <svg class="mark" aria-hidden="true"><use href="#mark-opus" /></svg>
+                <span class="choice-title">Opus</span>
+                <small class="choice-desc">기본값</small>
+            </label>
+            <label class="choice-option">
+                <input type="radio" name="model" value="sonnet" form="run-form" />
+                <svg class="mark" aria-hidden="true"><use href="#mark-sonnet" /></svg>
+                <span class="choice-title">Sonnet</span>
+                <small class="choice-desc">균형</small>
+            </label>
+            <label class="choice-option">
+                <input type="radio" name="model" value="haiku" form="run-form" />
+                <svg class="mark" aria-hidden="true"><use href="#mark-haiku" /></svg>
+                <span class="choice-title">Haiku</span>
+                <small class="choice-desc">가볍고 빠르게</small>
+            </label>
+        </div>
+
+        <div id="effort-popover" class="popover choice-popover" popover role="group" aria-label="Effort" data-level="2">
+            <button type="button" class="choice-option effort" data-level="0" aria-pressed="false">
+                <span class="bars" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i></span>
+                <span class="choice-title">Low</span>
+                <small class="choice-desc">가장 빠르게</small>
+            </button>
+            <button type="button" class="choice-option effort" data-level="1" aria-pressed="false">
+                <span class="bars" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>
+                <span class="choice-title">Medium</span>
+                <small class="choice-desc">가볍게</small>
+            </button>
+            <button type="button" class="choice-option effort" data-level="2" aria-pressed="true">
+                <span class="bars" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>
+                <span class="choice-title">High</span>
+                <small class="choice-desc">기본값</small>
+            </button>
+            <button type="button" class="choice-option effort" data-level="3" aria-pressed="false">
+                <span class="bars" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span>
+                <span class="choice-title">XHigh</span>
+                <small class="choice-desc">더 깊게</small>
+            </button>
+            <button type="button" class="choice-option effort" data-level="4" aria-pressed="false">
+                <span class="bars" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+                <span class="choice-title">Max</span>
+                <small class="choice-desc">가장 깊게</small>
+            </button>
+        </div>
+
+        <div id="policy-popover" class="popover choice-popover" popover role="group" aria-label="개선 정책">
+            <button type="button" class="choice-option" data-policy="auto" aria-pressed="true">
+                <svg class="chip-icon" viewBox="0 0 20 20" aria-hidden="true"><use href="#icon-policy-auto" /></svg>
+                <span class="choice-title">자율개선</span>
+                <small class="choice-desc">작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요</small>
+            </button>
+            <button type="button" class="choice-option" data-policy="todo" aria-pressed="false">
+                <svg class="chip-icon" viewBox="0 0 20 20" aria-hidden="true"><use href="#icon-policy-todo" /></svg>
+                <span class="choice-title">지시개선</span>
+                <small class="choice-desc">적어 둔 작업만 처리하고 끝나요. 작업 입력이 꼭 필요해요</small>
+            </button>
+        </div>
+        <div id="end-time-popover" class="popover time-popover" popover aria-label="종료 시각">
+            <p class="time-popover-title">언제 끝낼까요?</p>
+            <div class="time-spinners">
+                <div class="time-spin" data-unit="60">
+                    <button type="button" class="spin-button" data-step="1" aria-label="1시간 늦게">
+                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5 6 4.5l3 3" /></svg>
+                    </button>
+                    <b id="time-hour" class="num">07</b>
+                    <button type="button" class="spin-button" data-step="-1" aria-label="1시간 이르게">
+                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
+                    </button>
+                </div>
+                <span class="time-colon">:</span>
+                <div class="time-spin" data-unit="10">
+                    <button type="button" class="spin-button" data-step="1" aria-label="10분 늦게">
+                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5 6 4.5l3 3" /></svg>
+                    </button>
+                    <b id="time-minute" class="num">00</b>
+                    <button type="button" class="spin-button" data-step="-1" aria-label="10분 이르게">
+                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
+                    </button>
+                </div>
+            </div>
+            <p id="time-until" class="time-until num"></p>
+            <div class="time-presets">
+                <button type="button" class="button small" data-after="60">1시간 뒤</button>
+                <button type="button" class="button small" data-after="180">3시간 뒤</button>
+                <button type="button" class="button small" data-after="360">6시간 뒤</button>
+                <button type="button" class="button small" data-reset>기본 07:00</button>
+            </div>
+        </div>
+
+        <div class="scrim" aria-hidden="true"></div>
+        <section id="history" class="history" aria-label="실행 기록" inert>
+            <div class="history-log">
+                <div class="history-head">
+                    <h2>로그</h2>
+                    <span id="log-count" class="num">0줄</span>
+                    <label class="check"><input type="checkbox" id="follow" checked />따라가기</label>
+                    <button type="button" id="clear-log" class="button small">지우기</button>
+                    <button type="button" id="history-close" class="button small">닫기</button>
+                </div>
+                <div id="log" class="log" role="log" aria-live="off" tabindex="0">
+                    <div class="line empty" id="log-empty"><span class="ln">1</span><span class="tx">아직 기록된 로그가 없어요.</span></div>
+                </div>
+            </div>
+            <div class="history-rounds">
+                <div class="history-head">
+                    <h2>회차</h2>
+                    <span id="round-count" class="num">0회</span>
+                </div>
+                <p id="round-summary" class="round-summary"></p>
+                <ol id="rounds" class="rounds"></ol>
+            </div>
+        </section>
         <aside id="settings" class="settings" aria-labelledby="settings-title" inert>
             <div class="settings-head">
                 <h2 id="settings-title">설정</h2>
@@ -182,24 +324,33 @@
             <section class="settings-group project">
                 <h3>대상 프로젝트</h3>
                 <p id="project-path" class="project-path">선택한 폴더가 없어요.</p>
-                <button type="button" id="select-project" class="text-button">폴더 선택</button>
+                <button type="button" id="select-project" class="button">폴더 선택</button>
             </section>
 
             <section class="settings-group">
                 <h3>개선 정책</h3>
-                <div class="policy choice" role="radiogroup" aria-label="개선 정책">
-                    <label title="작업을 마쳐도 종료 시각까지 스스로 개선점을 찾아요"><input type="radio" name="policy" value="auto" form="run-form" data-default /><span>자율개선</span></label>
-                    <label title="작업만 처리하고 마치면 종료해요. 작업 입력이 필요해요"><input type="radio" name="policy" value="todo" form="run-form" /><span>지시개선</span></label>
+                <div class="policy" role="radiogroup" aria-label="개선 정책">
+                    <label class="policy-card">
+                        <svg class="policy-icon" viewBox="0 0 20 20" aria-hidden="true"><use href="#icon-policy-auto" /></svg>
+                        <span class="policy-title">자율개선</span>
+                        <span class="policy-desc">작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</span>
+                        <input type="radio" name="policy" value="auto" form="run-form" data-default />
+                    </label>
+                    <label class="policy-card">
+                        <svg class="policy-icon" viewBox="0 0 20 20" aria-hidden="true"><use href="#icon-policy-todo" /></svg>
+                        <span class="policy-title">지시개선</span>
+                        <span class="policy-desc">적어 둔 작업만 처리하고 끝나요. 작업 입력이 꼭 필요해요.</span>
+                        <input type="radio" name="policy" value="todo" form="run-form" />
+                    </label>
                 </div>
-                <p class="settings-note">자율개선은 작업을 마친 뒤에도 종료 시각까지 개선점을 찾고, 지시개선은 적은 작업만 처리하고 끝나요.</p>
             </section>
 
             <section class="settings-group">
                 <h3>기록</h3>
                 <div class="settings-actions">
-                    <button type="button" id="history-toggle" class="text-button" aria-expanded="false" aria-controls="history">전체 기록 보기</button>
-                    <button type="button" id="open-report" class="text-button">리포트 열기</button>
-                    <button type="button" id="reset-progress" class="text-button">진행 기록 초기화</button>
+                    <button type="button" id="history-toggle" class="button" aria-expanded="false" aria-controls="history">전체 기록 보기</button>
+                    <button type="button" id="open-report" class="button">리포트 열기</button>
+                    <button type="button" id="reset-progress" class="button danger">진행 기록 초기화</button>
                 </div>
             </section>
 

@@ -72,10 +72,10 @@ const killWindowsProcessTree = (childProcess) => {
         throw result.error;
     }
 
-    const isStillRunning = childProcess.exitCode === null && childProcess.signalCode === null;
-
-    if (result.status && isStillRunning) {
-        throw new Error(`프로세스 트리 종료 실패: PID ${childProcess.pid}: ${result.stderr?.trim()}`);
+    // spawnSync 동안 exit 이벤트를 받지 못하므로 실제 생존 여부로 판단한다. 이미 끝난 자식 때문에 taskkill이 실패 코드를 내도 대상이 죽었으면 성공이다.
+    // taskkill 출력은 OEM 코드페이지라 깨지므로 메시지에 넣지 않는다.
+    if (result.status && isProcessRunning(childProcess.pid)) {
+        throw new Error(`프로세스 트리 종료 실패: PID ${childProcess.pid} (taskkill 종료 코드 ${result.status})`);
     }
 };
 

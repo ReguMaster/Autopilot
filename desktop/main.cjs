@@ -5,12 +5,12 @@ const { registerIpc, confirmClose, attachRunningEngine, checkEngine } = require(
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
 const WINDOW_SCREEN_MARGIN = 40;
-const WINDOW_BACKGROUND = { day: "#7fb4ea", night: "#121a3c" };
+const WINDOW_BACKGROUND = { day: "#2f78d0", night: "#121a3c" };
 const DAYLIGHT_HOURS = { from: 6, to: 19 };
 const SMOKE_TEST_TIMEOUT_MS = 15000;
 
 const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar'))";
+    "typeof window.autopilot?.start === 'function' && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && typeof initialize === 'function'";
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -56,6 +56,7 @@ const createWindow = () => {
         backgroundColor: getWindowBackground(),
         icon: path.join(__dirname, "../docs/icon.png"),
         frame: false,
+        show: false,
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, "preload.cjs"),
@@ -65,6 +66,8 @@ const createWindow = () => {
         }
     });
 
+    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다.
+    window.once("ready-to-show", () => window.show());
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.on("close", (event) => {

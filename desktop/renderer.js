@@ -1,7 +1,8 @@
 const MAX_LOG_LINES = 3000;
 const LIVE_LINES = 4;
 const LIVE_FADE_MS = 650;
-const MAX_WORD_DELAY_STEPS = 24;
+const LIVE_SHIFT_MS = 450;
+const LIVE_SHIFT_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const CLOCK_INTERVAL_MS = 1000;
 const FOLLOW_THRESHOLD_PX = 24;
 const LOG_FLUSH_MS = 50;
@@ -44,18 +45,37 @@ const elements = {
     bannerSelectProject: byId("banner-select-project"),
     form: byId("run-form"),
     mainAction: byId("main-action"),
-    choices: document.querySelectorAll(".choice"),
     effortControl: byId("effort-control"),
     effortBars: byId("effort-control").querySelectorAll(".bars i"),
     effort: byId("effort"),
     effortName: byId("effort-name"),
+    effortPopover: byId("effort-popover"),
+    effortOptions: byId("effort-popover").querySelectorAll("[data-level]"),
+    composer: document.querySelector(".composer"),
+    modelChip: byId("model-chip"),
+    modelChipMark: byId("model-chip-mark"),
+    modelChipName: byId("model-chip-name"),
+    modelPopover: byId("model-popover"),
+    policyChip: byId("policy-chip"),
+    policyChipIcon: byId("policy-chip-icon"),
+    policyChipName: byId("policy-chip-name"),
+    policyPopover: byId("policy-popover"),
+    policyOptions: byId("policy-popover").querySelectorAll("[data-policy]"),
     effortLevels: byId("effort-levels"),
     endTime: byId("end-time"),
+    endTimeButton: byId("end-time-button"),
+    endTimeValue: byId("end-time-value"),
+    endTimeUntil: byId("end-time-until"),
+    timePopover: byId("end-time-popover"),
+    timeHour: byId("time-hour"),
+    timeMinute: byId("time-minute"),
+    timeUntil: byId("time-until"),
     tasks: byId("tasks"),
     applyNote: byId("apply-note"),
     livePanel: byId("live-panel"),
     live: byId("live"),
     history: byId("history"),
+    scrim: document.querySelector(".scrim"),
     historyToggle: byId("history-toggle"),
     historyClose: byId("history-close"),
     log: byId("log"),
@@ -89,6 +109,12 @@ let isApplyQueued = false;
 
 /* 화면 움직임 */
 
+const replayAnimation = (element, className) => {
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
+};
+
 // 문구가 바뀔 때만 새 문구가 맺히는 전환을 다시 건다.
 const swapText = (element, text) => {
     if (element.textContent === text) {
@@ -96,39 +122,19 @@ const swapText = (element, text) => {
     }
 
     element.textContent = text;
-    element.classList.remove("swap");
-    void element.offsetWidth;
-    element.classList.add("swap");
+    replayAnimation(element, "swap");
 };
 
-// 고른 항목 뒤로 선택 표시를 옮긴다. 이름이 펼쳐지는 동안에도 따라가도록 크기 변화마다 다시 잰다.
-const updateChoicePill = (choice) => {
-    const checked = choice.querySelector("input:checked")?.closest("label");
-
-    if (!checked) {
-        return;
-    }
-
-    choice.style.setProperty("--pill-x", `${checked.offsetLeft}px`);
-    choice.style.setProperty("--pill-w", `${checked.offsetWidth}px`);
-};
-
-const watchChoicePills = () => {
-    const observer = new ResizeObserver(() => elements.choices.forEach(updateChoicePill));
-
-    for (const choice of elements.choices) {
-        for (const label of choice.querySelectorAll("label")) {
-            observer.observe(label);
-        }
-
-        choice.addEventListener("change", () => updateChoicePill(choice));
-        updateChoicePill(choice);
-    }
-};
-
-// 블러는 최근 로그 바로 아래에서 시작한다.
+// 블러는 모델 선택 줄에서 시작한다.
 const updateVeil = () => {
-    document.documentElement.style.setProperty("--veil-top", `${Math.round(elements.livePanel.getBoundingClientRect().bottom)}px`);
+    document.documentElement.style.setProperty("--veil-top", `${Math.round(elements.composer.getBoundingClientRect().top)}px`);
+};
+
+// 서체와 첫 상태가 준비된 뒤에 화면을 차례로 드러낸다(그 전에는 CSS가 등장 애니메이션을 멈춰 둔다).
+const revealWhenReady = async () => {
+    await document.fonts.ready;
+
+    requestAnimationFrame(() => document.body.classList.add("ready"));
 };
 
 /* 전체 기록 로그 */
@@ -161,28 +167,24 @@ const updateLogCount = () => {
     elements.logCount.textContent = `${getLineCount()}줄`;
 };
 
+const isHistoryOpen = () => {
+    return document.body.classList.contains("history-open");
+};
+
+// 닫혀 있는 동안에는 스크롤 위치를 계산하지 않고(레이아웃 강제), 열 때 한 번 맞춘다.
 const scrollLogToEnd = () => {
-    if (elements.follow.checked) {
+    if (elements.follow.checked && isHistoryOpen()) {
         elements.log.scrollTop = elements.log.scrollHeight;
     }
 };
 
-/* 최근 로그: 단어 단위로 맺히고 오래된 줄은 흐려지며 빠진다 */
+/* 최근 로그: 줄 단위로 떠오르고 오래된 줄은 흐려지며 빠진다 */
 
 const createLiveLine = (entry) => {
     const item = document.createElement("li");
 
     item.dataset.kind = getLineKind(entry);
-
-    entry.text.split(/(\s+)/).forEach((part, index) => {
-        const word = document.createElement("span");
-
-        word.className = "word";
-        word.style.setProperty("--word", Math.min(index, MAX_WORD_DELAY_STEPS));
-        word.textContent = part;
-
-        item.append(word);
-    });
+    item.textContent = entry.text;
 
     return item;
 };
@@ -193,15 +195,31 @@ const fadeOutLiveLine = (item) => {
     setTimeout(() => item.remove(), LIVE_FADE_MS);
 };
 
+const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// 목록은 아래에 붙어 있어 새 줄이 붙으면 기존 줄이 한 줄만큼 순간이동한다. 붙이기 전 화면 위치(움직이는 중이면 그 위치)에서 새 위치로 이어서 옮긴다.
 const appendLiveLines = (entries) => {
     const visibleLines = [...elements.live.children].filter((item) => !item.classList.contains("out"));
     const newLines = entries.slice(-LIVE_LINES).map(createLiveLine);
     const overflow = visibleLines.length + newLines.length - LIVE_LINES;
+    const anchor = elements.live.firstElementChild;
+    const beforeTop = anchor?.getBoundingClientRect().top;
 
+    elements.live.getAnimations().forEach((animation) => animation.cancel());
     elements.live.append(...newLines);
 
     for (const item of visibleLines.slice(0, Math.max(0, overflow))) {
         fadeOutLiveLine(item);
+    }
+
+    if (!anchor || reducedMotionQuery.matches) {
+        return;
+    }
+
+    const shift = beforeTop - anchor.getBoundingClientRect().top;
+
+    if (shift > 0) {
+        elements.live.animate([{ translate: `0 ${shift}px` }, { translate: "0 0" }], { duration: LIVE_SHIFT_MS, easing: LIVE_SHIFT_EASING });
     }
 };
 
@@ -272,17 +290,14 @@ const setSettingsOpen = (isOpen) => {
     document.body.classList.toggle("settings-open", isOpen);
     elements.settings.inert = !isOpen;
     elements.settingsToggle.setAttribute("aria-expanded", String(isOpen));
-
-    if (isOpen) {
-        elements.choices.forEach(updateChoicePill);
-    }
 };
 
+// 전체 기록은 아래에서 올라오는 시트다. 화면을 스크롤하지 않고 위에 겹친다.
 const setHistoryOpen = (isOpen) => {
     const label = isOpen ? "전체 기록 닫기" : "전체 기록 보기";
 
-    elements.history.hidden = !isOpen;
     document.body.classList.toggle("history-open", isOpen);
+    elements.history.inert = !isOpen;
     elements.historyToggle.setAttribute("aria-expanded", String(isOpen));
     elements.historyToggle.textContent = label;
     elements.livePanel.setAttribute("aria-expanded", String(isOpen));
@@ -290,16 +305,17 @@ const setHistoryOpen = (isOpen) => {
     if (isOpen) {
         setSettingsOpen(false);
         scrollLogToEnd();
-        elements.history.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else {
-        elements.content.scrollTo({ top: 0, behavior: "smooth" });
     }
+};
+
+const toggleHistory = () => {
+    setHistoryOpen(!isHistoryOpen());
 };
 
 const handleLivePanelKey = (event) => {
     if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        setHistoryOpen(elements.history.hidden);
+        toggleHistory();
     }
 };
 
@@ -311,9 +327,16 @@ const handleOutsidePointer = (event) => {
 };
 
 const handleEscape = (event) => {
-    if (event.key === "Escape" && document.body.classList.contains("settings-open")) {
+    if (event.key !== "Escape") {
+        return;
+    }
+
+    if (document.body.classList.contains("settings-open")) {
         setSettingsOpen(false);
         elements.settingsToggle.focus();
+    } else if (isHistoryOpen()) {
+        setHistoryOpen(false);
+        elements.livePanel.focus();
     }
 };
 
@@ -438,17 +461,90 @@ const renderSettings = () => {
     elements.project.toggleAttribute("data-missing", !hasProject);
     elements.selectProject.textContent = hasProject ? "폴더 변경" : "폴더 선택";
     elements.projectBanner.hidden = hasProject;
-    elements.appVersion.textContent = `AutoPilot v${appVersion}`;
+    elements.appVersion.textContent = appVersion ? `v${appVersion}` : "";
+};
+
+/* 컴포저 알약: 모델·정책은 팝오버 목록에서 고르고, 고른 값을 알약에 보여준다 */
+
+const POLICY_LABELS = { auto: "자율개선", todo: "지시개선" };
+// 목록의 선택 표시가 미끄러지는 것을 보여준 뒤 팝오버를 닫는다.
+const CHOICE_CLOSE_DELAY_MS = 320;
+
+// 알약의 글자·아이콘이 실제로 바뀔 때만 맺히는 전환을 건다.
+const updateChip = (chip, icon, name, iconId, label) => {
+    const href = `#${iconId}`;
+
+    if (icon.getAttribute("href") === href && name.textContent === label) {
+        return;
+    }
+
+    icon.setAttribute("href", href);
+    name.textContent = label;
+    replayAnimation(chip, "chip-swap");
+};
+
+const closePopoverSoon = (popover) => {
+    setTimeout(() => popover.hidePopover(), CHOICE_CLOSE_DELAY_MS);
+};
+
+// 개선 정책은 설정 패널의 라디오가 값을 갖고, 컴포저의 알약·팝오버는 그 값을 보여주고 바꾼다.
+const renderPolicy = () => {
+    const policy = elements.form.elements.policy.value;
+
+    elements.policyPopover.dataset.policy = policy;
+    updateChip(elements.policyChip, elements.policyChipIcon, elements.policyChipName, `icon-policy-${policy}`, POLICY_LABELS[policy]);
+
+    for (const option of elements.policyOptions) {
+        option.setAttribute("aria-pressed", String(option.dataset.policy === policy));
+    }
+};
+
+const handlePolicyOptionClick = (event) => {
+    const option = event.target.closest("[data-policy]");
+
+    if (option) {
+        elements.form.elements.policy.value = option.dataset.policy;
+        renderPolicy();
+        closePopoverSoon(elements.policyPopover);
+    }
+};
+
+const renderModelChip = () => {
+    const model = elements.form.elements.model.value;
+
+    updateChip(elements.modelChip, elements.modelChipMark, elements.modelChipName, `mark-${model}`, MODEL_LABELS[model]);
+};
+
+// 팝오버가 열리고 닫히면 그 팝오버를 여는 알약에 상태를 알린다.
+const bindPopoverChips = () => {
+    for (const popover of document.querySelectorAll("[popover]")) {
+        const chip = document.querySelector(`[popovertarget="${popover.id}"]`);
+
+        popover.addEventListener("toggle", (event) => chip.setAttribute("aria-expanded", String(event.newState === "open")));
+    }
 };
 
 /* 모델·Effort */
 
+// 이름은 단계가 오른 쪽(아래에서)·내린 쪽(위에서)으로 들어온다.
 const renderEffort = () => {
     const level = Number(elements.effort.value);
+    const previousLevel = Number(elements.effortControl.dataset.level);
+
+    const label = formatEffort(EFFORT_LEVELS[level]);
 
     elements.effortControl.dataset.level = level;
-    swapText(elements.effortName, EFFORT_LEVELS[level]);
-    elements.effort.setAttribute("aria-valuetext", EFFORT_LEVELS[level]);
+    elements.effortControl.style.setProperty("--level", level);
+    elements.effortPopover.dataset.level = level;
+
+    for (const option of elements.effortOptions) {
+        option.setAttribute("aria-pressed", String(Number(option.dataset.level) === level));
+    }
+
+    if (elements.effortName.textContent !== label) {
+        elements.effortName.textContent = label;
+        replayAnimation(elements.effortName, level > previousLevel ? "tick-up" : "tick-down");
+    }
 
     elements.effortBars.forEach((bar, index) => {
         bar.classList.toggle("on", index <= level);
@@ -464,7 +560,7 @@ const setSelectedOptions = ({ model, effort }) => {
     elements.effort.value = String(Math.max(0, EFFORT_LEVELS.indexOf(effort)));
 
     renderEffort();
-    elements.choices.forEach(updateChoicePill);
+    renderModelChip();
 };
 
 const setRadiosDisabled = (name, disabled) => {
@@ -490,7 +586,14 @@ const renderOptions = (state) => {
     const isPending = !isIdle && (state.requested.model !== state.model || state.requested.effort !== state.effort);
 
     setRadiosDisabled("model", state.status === "stopping");
+    elements.modelChip.disabled = state.status === "stopping";
     elements.effort.disabled = state.status === "stopping";
+    elements.effortControl.disabled = state.status === "stopping";
+
+    if (state.status === "stopping") {
+        elements.modelPopover.hidePopover();
+        elements.effortPopover.hidePopover();
+    }
 
     if (isPending) {
         showApplyNote(`적용 대기: 다음 회차부터 ${formatOptions(state.requested.model, state.requested.effort)} (지금 ${formatOptions(state.model, state.effort)})`, "warn");
@@ -528,13 +631,99 @@ const applyRoundOptions = async () => {
     renderOptions(currentState);
 };
 
-// range는 끄는 동안 input이 계속 오므로 표시만 바꾸고, 엔진 전달은 손을 뗀 뒤(change) 한 번만 한다.
-const handleOptionChange = () => {
+// 실행 중이면 고른 값을 엔진에 바로 전달한다(다음 회차부터 적용).
+const handleEffortOptionClick = (event) => {
+    const option = event.target.closest("[data-level]");
+
+    if (!option || elements.effort.disabled) {
+        return;
+    }
+
+    elements.effort.value = option.dataset.level;
+    renderEffort();
+    handleOptionChange({ target: elements.effort });
+    closePopoverSoon(elements.effortPopover);
+};
+
+const handleOptionChange = (event) => {
+    if (event.target.name === "model") {
+        renderModelChip();
+        closePopoverSoon(elements.modelPopover);
+    }
+
     if (currentState.status === "running") {
         applyRoundOptions();
     } else {
         renderOptions(currentState);
     }
+};
+
+/* 종료 시각: 비우면 엔진 기본값(07:00)이고, 지난 시각이면 다음 날이다 */
+
+const setText = (element, text) => {
+    if (element.textContent !== text) {
+        element.textContent = text;
+    }
+};
+
+const renderEndTime = () => {
+    const value = elements.endTime.value;
+    const [hour, minute] = (value || DEFAULT_END_TIME).split(":");
+    const until = formatTimeUntil(value, Date.now());
+
+    setText(elements.endTimeValue, value || DEFAULT_END_TIME);
+    setText(elements.endTimeUntil, until);
+    setText(elements.timeHour, hour);
+    setText(elements.timeMinute, minute);
+    setText(elements.timeUntil, `지금부터 ${until}에 끝나요`);
+};
+
+// 바뀐 자리의 숫자만 바뀐 방향에서 미끄러져 들어오게 한다.
+const setEndTime = (value, direction) => {
+    const [beforeHour, beforeMinute] = (elements.endTime.value || DEFAULT_END_TIME).split(":");
+    const [hour, minute] = (value || DEFAULT_END_TIME).split(":");
+
+    elements.endTime.value = value;
+    renderEndTime();
+
+    if (hour !== beforeHour) {
+        replayAnimation(elements.timeHour, `tick-${direction}`);
+    }
+
+    if (minute !== beforeMinute) {
+        replayAnimation(elements.timeMinute, `tick-${direction}`);
+    }
+};
+
+const stepEndTime = (spin, step) => {
+    setEndTime(shiftEndTime(elements.endTime.value, step * Number(spin.dataset.unit)), step > 0 ? "up" : "down");
+};
+
+const handleTimePresetClick = (event) => {
+    const preset = event.target.closest("[data-after], [data-reset]");
+
+    if (preset) {
+        setEndTime(preset.hasAttribute("data-reset") ? "" : getEndTimeAfter(Date.now(), Number(preset.dataset.after)), "up");
+    }
+};
+
+const bindEndTimePicker = () => {
+    for (const spin of elements.timePopover.querySelectorAll(".time-spin")) {
+        for (const button of spin.querySelectorAll(".spin-button")) {
+            button.addEventListener("click", () => stepEndTime(spin, Number(button.dataset.step)));
+        }
+
+        spin.addEventListener(
+            "wheel",
+            (event) => {
+                event.preventDefault();
+                stepEndTime(spin, event.deltaY < 0 ? 1 : -1);
+            },
+            { passive: false }
+        );
+    }
+
+    elements.timePopover.addEventListener("click", handleTimePresetClick);
 };
 
 /* 전체 렌더링과 이벤트 */
@@ -565,8 +754,18 @@ const renderState = (state) => {
     renderMainAction(state, hasProject);
 
     elements.endTime.disabled = !isIdle;
+    elements.endTimeButton.disabled = !isIdle;
+
+    if (!isIdle) {
+        elements.timePopover.hidePopover();
+    }
     elements.tasks.disabled = !isIdle;
     setRadiosDisabled("policy", !isIdle);
+    elements.policyChip.disabled = !isIdle;
+
+    if (!isIdle) {
+        elements.policyPopover.hidePopover();
+    }
     elements.openReport.disabled = !state.reportFile;
     elements.selectProject.disabled = !isIdle;
     elements.bannerSelectProject.disabled = !isIdle;
@@ -644,11 +843,12 @@ const bindLayoutWatchers = () => {
 
     observer.observe(elements.hero);
     window.addEventListener("resize", updateVeil);
-    watchChoicePills();
+    elements.content.addEventListener("scroll", updateVeil, { passive: true });
     updateVeil();
 };
 
 const initialize = async () => {
+    revealWhenReady();
     bindWindowControls();
 
     const snapshot = await window.autopilot.getState();
@@ -657,8 +857,10 @@ const initialize = async () => {
     appVersion = snapshot.version;
 
     elements.endTime.value = settings.endTime;
+    renderEndTime();
     elements.tasks.value = settings.tasks;
     elements.form.elements.policy.value = settings.policy;
+    renderPolicy();
 
     setSelectedOptions(settings);
     renderSettings();
@@ -674,22 +876,36 @@ const initialize = async () => {
     elements.bannerSelectProject.addEventListener("click", handleSelectProject);
     elements.resetProgress.addEventListener("click", handleResetProgress);
     elements.openReport.addEventListener("click", handleOpenReport);
-    elements.historyToggle.addEventListener("click", () => setHistoryOpen(elements.history.hidden));
+    elements.historyToggle.addEventListener("click", toggleHistory);
+    elements.scrim.addEventListener("click", () => {
+        setSettingsOpen(false);
+        setHistoryOpen(false);
+    });
     elements.historyClose.addEventListener("click", () => setHistoryOpen(false));
-    elements.livePanel.addEventListener("click", () => setHistoryOpen(elements.history.hidden));
+    elements.livePanel.addEventListener("click", toggleHistory);
     elements.livePanel.addEventListener("keydown", handleLivePanelKey);
     elements.clearLog.addEventListener("click", clearLog);
     elements.log.addEventListener("scroll", handleFollowByScroll);
-    elements.effort.addEventListener("input", renderEffort);
-    elements.effort.addEventListener("change", handleOptionChange);
+    elements.effortPopover.addEventListener("click", handleEffortOptionClick);
     document.addEventListener("pointerdown", handleOutsidePointer);
     document.addEventListener("keydown", handleEscape);
+
+    bindPopoverChips();
+    elements.policyPopover.addEventListener("click", handlePolicyOptionClick);
+
+    for (const radio of elements.form.elements.policy) {
+        radio.addEventListener("change", renderPolicy);
+    }
 
     for (const radio of elements.form.elements.model) {
         radio.addEventListener("change", handleOptionChange);
     }
 
-    setInterval(renderClock, CLOCK_INTERVAL_MS);
+    bindEndTimePicker();
+    setInterval(() => {
+        renderClock();
+        renderEndTime();
+    }, CLOCK_INTERVAL_MS);
 };
 
 initialize();

@@ -3,7 +3,20 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 
-const EXPORTED_NAMES = ["MODEL_LABELS", "formatDuration", "formatClock", "formatDeadline", "formatOptions", "getLineKind", "getRunPhase", "getRoundTone", "formatRoundTime"];
+const EXPORTED_NAMES = [
+    "MODEL_LABELS",
+    "formatDuration",
+    "formatClock",
+    "formatDeadline",
+    "formatOptions",
+    "getLineKind",
+    "getRunPhase",
+    "getRoundTone",
+    "formatRoundTime",
+    "shiftEndTime",
+    "getEndTimeAfter",
+    "formatTimeUntil"
+];
 
 // 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
 const loadViewFormat = () => {
@@ -24,8 +37,9 @@ const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOp
     assert.equal(formatClock(morning), "07:05");
     assert.equal(formatDeadline(morning), "10월 10일 07:05");
 
-    assert.equal(formatOptions("opus", "high"), "Opus · high");
-    assert.equal(formatOptions("unknown-model", "low"), "unknown-model · low");
+    assert.equal(formatOptions("opus", "high"), "Opus · High");
+    assert.equal(formatOptions("sonnet", "xhigh"), "Sonnet · XHigh");
+    assert.equal(formatOptions("unknown-model", "low"), "unknown-model · Low");
     assert.equal(formatOptions("", "high"), "-");
 };
 
@@ -97,9 +111,28 @@ const checkRoundTime = ({ formatRoundTime }) => {
     assert.equal(formatRoundTime({ timesKnown: false, startedAt: startedAt, endedAt: startedAt }), "시각을 알 수 없어요");
 };
 
+// 종료 시각은 날짜 없이 HH:mm이고, 비우면 07:00, 지난 시각은 다음 날이다(엔진과 같다).
+const checkEndTime = ({ shiftEndTime, getEndTimeAfter, formatTimeUntil }) => {
+    const at2232 = new Date(2026, 9, 10, 22, 32, 10).getTime();
+    const at0700 = new Date(2026, 9, 10, 7, 0).getTime();
+
+    assert.equal(shiftEndTime("", 60), "08:00");
+    assert.equal(shiftEndTime("23:30", 60), "00:30");
+    assert.equal(shiftEndTime("00:05", -10), "23:55");
+
+    assert.equal(getEndTimeAfter(at2232, 60), "23:35");
+    assert.equal(getEndTimeAfter(at2232, 180), "01:35");
+
+    assert.equal(formatTimeUntil("", at2232), "8시간 28분 뒤");
+    assert.equal(formatTimeUntil("23:00", at2232), "28분 뒤");
+    assert.equal(formatTimeUntil("09:00", at0700), "2시간 뒤");
+    assert.equal(formatTimeUntil("07:00", at0700), "24시간 뒤");
+};
+
 const checkViewFormat = () => {
     const viewFormat = loadViewFormat();
 
+    checkEndTime(viewFormat);
     checkFormatting(viewFormat);
     checkLineKind(viewFormat);
     checkPhases(viewFormat);

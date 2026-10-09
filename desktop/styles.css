@@ -1,4 +1,5 @@
-/* 수채 하늘 위의 한 화면. 하늘은 시각에 따라 바뀌고(sky.js), 글자색은 화면 가운데 하늘 밝기에 맞춰 낮(어두운 잉크)·밤(밝은 잉크)으로 천천히 바뀐다.
+/* 수채 하늘 위의 한 화면. 하늘은 시각에 따라 바뀌고(sky.js), UI는 시각과 관계없이 흰 글자·흰 유리 바탕 하나로 그린다.
+   밝은 낮에는 하늘을 깊은 파랑으로 두고 UI 뒤에 그늘(.sky-shade)과 글자 번짐을 깔아 흰 글자가 묻히지 않게 한다.
    로고 PNG는 흰 배경이라 블렌드로 하늘에 녹이므로, 로고를 감싼 요소에는 transform·opacity·filter·z-index를 걸지 않는다(블렌드가 격리된다). 서체는 Pretendard를 앱에 넣어 쓴다. */
 @font-face {
     font-family: "Pretendard";
@@ -7,82 +8,16 @@
     font-display: block;
 }
 
-@property --ink {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #2a1d33;
-}
-
-@property --ink-hover {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #4a3a56;
-}
-
-@property --on-ink {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #fff;
-}
-
-@property --muted {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #463a50;
-}
-
-@property --line {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: rgb(42 29 51 / 0.18);
-}
-
-@property --tint {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: rgb(42 29 51 / 0.09);
-}
-
-@property --bar-off {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: rgb(42 29 51 / 0.16);
-}
-
-@property --halo {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: rgb(255 255 255 / 0.55);
-}
-
-@property --panel-tint {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #f5f7fc;
-}
-
-@property --wait {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #5f3300;
-}
-
-@property --done {
-    syntax: "<color>";
-    inherits: true;
-    initial-value: #1d4a33;
-}
-
 @property --sky-top {
     syntax: "<color>";
     inherits: true;
-    initial-value: #5aa7f0;
+    initial-value: #2f78d0;
 }
 
 @property --sky-bottom {
     syntax: "<color>";
     inherits: true;
-    initial-value: #cfe8ff;
+    initial-value: #94c4f0;
 }
 
 @property --night {
@@ -98,35 +33,42 @@
 }
 
 :root {
-    color-scheme: light;
-    --ink: #2a1d33;
-    --ink-hover: #4a3a56;
-    --on-ink: #fff;
-    --muted: #463a50;
-    --muted-base: #463a50;
-    --line: rgb(42 29 51 / 0.18);
-    --tint: rgb(42 29 51 / 0.09);
-    --bar-off: rgb(42 29 51 / 0.16);
-    --halo: rgb(255 255 255 / 0.55);
-    --panel-tint: #f5f7fc;
-    --wait: #5f3300;
-    --done: #1d4a33;
-    --stop: #c23a30;
-    --stop-text: #861f19;
-    --stop-hover: #a5302a;
-    --level-0: #6f8cc8;
-    --level-1: #a084c0;
-    --level-2: #e9845f;
-    --level-3: #d9512f;
-    --level-4: #b0172a;
-    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    color-scheme: dark;
+    --ink: #fff;
+    --ink-hover: #fff;
+    --on-ink: #1b2347;
+    --muted: rgb(255 255 255 / 0.74);
+    --line: rgb(255 255 255 / 0.26);
+    --tint: rgb(255 255 255 / 0.14);
+    --bar-off: rgb(255 255 255 / 0.28);
+    /* 흰 글자 뒤에 까는 짙은 번짐. 밝은 낮 하늘·구름 위에서도 글자가 떠 보이게 한다 */
+    --halo: rgb(8 18 52 / 0.42);
+    --panel-tint: #182044;
+    --wait: #ffd27a;
+    --done: #9de6bf;
+    --stop: #d9463b;
+    --stop-text: #ffa49b;
+    --stop-hover: #c23a30;
+    --level-0: #8fb0f0;
+    --level-1: #c6a6ff;
+    --level-2: #ffa47a;
+    --level-3: #ff7650;
+    --level-4: #ff4d5e;
+    --raised: rgb(255 255 255 / 0.26);
+    /* 칸·버튼의 바탕: 흰 유리. 하늘이 비치되 글자와 테두리가 또렷하게 보이는 만큼만 깐다 */
+    --surface: rgb(255 255 255 / 0.13);
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    /* 선택 표시가 미끄러져 와서 살짝 지나쳤다 자리 잡는다 */
+    --ease-slide: cubic-bezier(0.34, 1.18, 0.5, 1);
     font-family: "Pretendard", "Malgun Gothic", sans-serif;
-    /* 하늘색은 30초마다 바뀌므로 그 사이를 이어 칠한다 */
+    /* 하늘색은 30초마다 바뀐다. 30초 내내 이어 칠하면 하늘·구름·블러를 매 프레임 다시 그리므로, 짧게 넘어가고 나머지 시간은 멈춰 둔다 */
     transition:
-        --sky-top 30s linear,
-        --sky-bottom 30s linear,
-        --night 30s linear,
-        --day 30s linear;
+        --sky-top 4s var(--ease-in-out),
+        --sky-bottom 4s var(--ease-in-out),
+        --night 4s var(--ease-in-out),
+        --day 4s var(--ease-in-out);
 }
 
 * {
@@ -148,40 +90,12 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: #5aa7f0;
     color: var(--ink);
     font-size: 14px;
     line-height: 1.6;
-    /* 새벽·노을에는 하늘이 중간 밝기라 보조 글자를 본문 잉크에 가깝게 진하게 한다 */
-    --muted: color-mix(in srgb, var(--ink) calc(var(--twilight, 0) * 70%), var(--muted-base));
-    transition:
-        --ink 1.2s ease,
-        --ink-hover 1.2s ease,
-        --on-ink 1.2s ease,
-        --muted 1.2s ease,
-        --line 1.2s ease,
-        --tint 1.2s ease,
-        --bar-off 1.2s ease,
-        --halo 1.2s ease,
-        --panel-tint 1.2s ease,
-        --wait 1.2s ease,
-        --done 1.2s ease;
-}
-
-body.night {
-    color-scheme: dark;
-    --ink: #f3effa;
-    --ink-hover: #fff;
-    --on-ink: #1d1838;
-    --muted-base: #cbc5dc;
-    --line: rgb(255 255 255 / 0.22);
-    --tint: rgb(255 255 255 / 0.13);
-    --bar-off: rgb(255 255 255 / 0.2);
-    --halo: rgb(10 14 40 / 0.5);
-    --panel-tint: #161b3d;
-    --wait: #ffc56b;
-    --done: #93e0b8;
-    --stop-text: #ff9a91;
+    /* 한글이 단어 중간에서 끊기지 않게 하고, 너무 긴 토큰만 어디서든 끊는다 */
+    word-break: keep-all;
+    overflow-wrap: break-word;
 }
 
 button,
@@ -200,8 +114,24 @@ textarea {
     font-variant-numeric: tabular-nums;
 }
 
-.defs {
+/* 모델 마크·정책 아이콘 정의(use로 가져다 쓴다) */
+.symbols {
     position: absolute;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background: var(--line) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
 /* 수채 하늘: 물감 번짐이 천천히 흐르고, 구름이 지나가고, 밤에는 별이 반짝이고 운석이 떨어진다 */
@@ -212,6 +142,15 @@ textarea {
     overflow: hidden;
     pointer-events: none;
     background: var(--sky-top);
+    animation: sky-in 1.6s var(--ease-out) backwards;
+}
+
+/* 켤 때 창 바탕색(main.cjs)에서 하늘이 번지듯 맺힌다 */
+@keyframes sky-in {
+    from {
+        opacity: 0;
+        scale: 1.04;
+    }
 }
 
 .sky > * {
@@ -234,24 +173,49 @@ textarea {
     }
 }
 
+/* 낮에는 UI 뒤(화면 가운데)에만 은은한 그늘을 깔아 흰 글자의 대비를 지킨다. 밤에는 하늘이 어두워 필요 없다 */
+.sky-shade {
+    inset: 0;
+    opacity: var(--day);
+    background: radial-gradient(ellipse 72% 52% at 50% 52%, rgb(10 28 78 / 0.26), transparent 78%);
+}
+
 .sky-glow {
     inset: 0;
     opacity: var(--twilight, 0);
     background: radial-gradient(ellipse 80% 40% at calc(var(--glow-x, 0.5) * 100%) 42%, rgb(255 150 100 / 0.55), transparent 70%);
-    transition: opacity 30s linear;
+    transition: opacity 4s var(--ease-in-out);
 }
 
 .stars {
     inset: 0;
+    opacity: var(--night);
+}
+
+.stars svg {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    opacity: var(--night);
+}
+
+/* 별은 겹마다 다른 주기로 반짝인다(sky.js가 별을 겹으로 나눈다). 겹의 opacity만 바뀌므로 다시 그리지 않는다 */
+.stars svg:not(.constellations) {
+    animation: twinkle 2.6s var(--ease-in-out) infinite alternate;
+}
+
+.stars svg:nth-child(2) {
+    animation-duration: 3.7s;
+    animation-delay: -1.2s;
+}
+
+.stars svg:nth-child(3) {
+    animation-duration: 4.9s;
+    animation-delay: -2.9s;
 }
 
 .star {
     fill: #fff;
-    animation: twinkle var(--twinkle) ease-in-out infinite alternate;
-    animation-delay: var(--twinkle-delay);
 }
 
 @keyframes twinkle {
@@ -269,23 +233,25 @@ textarea {
     fill: #fff;
 }
 
+/* 해·달은 left/top 대신 translate로 옮겨 픽셀 단위로 끊기지 않고 부드럽게 흐른다. 후광은 CSS filter 대신 SVG 그라데이션이라 움직이는 동안 다시 흐리지 않는다 */
 .sun,
 .moon {
-    left: var(--sun-left, 50%);
-    top: var(--sun-top, 10%);
-    translate: -50% -50%;
+    left: 0;
+    top: 0;
+    translate: calc(var(--orb-x) - 50%) calc(var(--orb-y) - 50%);
+    will-change: translate;
     transition:
-        left 30s linear,
-        top 30s linear,
-        opacity 2s ease;
+        translate 30s linear,
+        opacity 2s var(--ease-in-out);
 }
 
 .sun {
+    --orb-x: var(--sun-left, 50vw);
+    --orb-y: var(--sun-top, 10vh);
     width: 60px;
     height: 60px;
     opacity: var(--sun-on, 0);
-    filter: blur(1.5px) drop-shadow(0 0 30px rgb(255 205 120 / 0.8));
-    animation: glow 6s ease-in-out infinite alternate;
+    animation: glow 6s var(--ease-in-out) infinite alternate;
 }
 
 @keyframes glow {
@@ -294,35 +260,25 @@ textarea {
     }
 }
 
-.sun svg {
+.sun svg,
+.moon svg {
     display: block;
     width: 100%;
     height: 100%;
     overflow: visible;
 }
 
-.sun circle {
-    fill: #ffd98a;
-}
-
+/* 달 모양: 그림자 원(sky.js가 cx를 정한다)을 옆으로 민 만큼만 보인다. SVG 마스크라 테두리가 매끄럽다 */
 .moon {
-    left: var(--moon-left, 50%);
-    top: var(--moon-top, 10%);
-    width: 36px;
-    height: 36px;
+    --orb-x: var(--moon-left, 50vw);
+    --orb-y: var(--moon-top, 10vh);
+    width: 40px;
+    height: 40px;
     opacity: var(--moon-on, 0);
-    border-radius: 50%;
-    background: rgb(255 255 255 / 0.07);
-    filter: drop-shadow(0 0 10px rgb(255 250 220 / 0.4));
 }
 
-/* 달 모양: 같은 크기의 그림자 원을 옆으로 민 만큼만 보인다 */
-.moon-lit {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle at 38% 34%, #fffdf2, #e7e0c4 72%);
-    mask: radial-gradient(circle 18px at calc(50% + var(--moon-shadow, 0%)) 50%, transparent 98%, #000 100%);
+.moon-dark {
+    fill: rgb(255 255 255 / 0.08);
 }
 
 .clouds {
@@ -334,9 +290,9 @@ textarea {
     position: absolute;
     left: 0;
     top: var(--cloud-top);
-    width: calc(150px * var(--cloud-scale));
-    opacity: calc(0.3 + var(--day) * 0.65);
-    filter: blur(7px);
+    width: calc(200px * var(--cloud-scale));
+    /* 낮에도 흰 글자 뒤로 지나갈 때 글자를 가리지 않도록 반투명하게 둔다 */
+    opacity: calc(0.3 + var(--day) * 0.4);
     animation: drift var(--cloud-duration) linear infinite;
     animation-delay: var(--cloud-delay);
 }
@@ -396,7 +352,7 @@ textarea {
 }
 
 /* avoid-ai-design-ignore: K3 (로그 아래 점진 블러는 요청 사항이고, 설정·기록 패널은 움직이는 하늘 위에 실제로 겹친다) */
-/* 로그 아래부터 화면 끝까지 블러가 점점 짙어진다. 세 겹의 블러를 다른 높이에서 서서히 드러내 단계가 보이지 않게 한다 */
+/* 모델 선택 줄부터 화면 끝까지 블러가 점점 짙어진다. 블러는 아래 하늘이 움직일 때마다 다시 계산하므로 한 겹만 두고 마스크로 서서히 드러낸다 */
 .veil {
     position: fixed;
     left: 0;
@@ -405,34 +361,21 @@ textarea {
     top: var(--veil-top, 72%);
     z-index: -1;
     pointer-events: none;
+    background: linear-gradient(transparent 30%, color-mix(in srgb, var(--sky-bottom) 30%, transparent));
+    backdrop-filter: blur(10px);
+    mask: linear-gradient(transparent, #000 55%);
     transition:
         top 0.5s var(--ease-out),
-        opacity 0.5s ease;
+        opacity 0.5s var(--ease-in-out);
 }
 
-.veil i {
-    position: absolute;
-    inset: 0;
-}
-
-.veil i:nth-child(1) {
-    backdrop-filter: blur(2px);
-    mask: linear-gradient(transparent, #000 45%);
-}
-
-.veil i:nth-child(2) {
-    backdrop-filter: blur(7px);
-    mask: linear-gradient(transparent 25%, #000 75%);
-}
-
-.veil i:nth-child(3) {
-    backdrop-filter: blur(16px);
-    mask: linear-gradient(transparent 50%, #000);
-    background: linear-gradient(transparent 40%, color-mix(in srgb, var(--sky-bottom) 30%, transparent));
-}
-
+/* 기록을 펼치면 블러 계산을 아예 멈춘다 */
 body.history-open .veil {
     opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity 0.5s var(--ease-in-out),
+        visibility 0s linear 0.5s;
 }
 
 /* 헤더: 창 프레임 없이 직접 그리고 하늘과 이어진다. 전체가 창 끌기 영역이고 버튼만 뺀다 */
@@ -464,9 +407,9 @@ body.history-open .veil {
     background: none;
     color: var(--muted);
     transition:
-        background-color 0.2s ease,
-        color 0.2s ease,
-        scale 0.15s ease;
+        background-color 0.2s var(--ease-out),
+        color 0.2s var(--ease-out),
+        scale 0.15s var(--ease-out);
 }
 
 .window-control svg {
@@ -533,46 +476,73 @@ body.settings-open .settings-toggle svg {
     flex-direction: column;
     overflow-x: clip;
     overflow-y: auto;
+    /* 스크롤바가 생겨도 가운데 정렬이 한쪽으로 밀리지 않게 양쪽에 같은 자리를 둔다 */
+    scrollbar-gutter: stable both-edges;
 }
 
+/* 열 너비를 창에 묶는다. auto 열이면 줄바꿈 없는 긴 로그 줄만큼 열이 창보다 넓어져 화면 전체가 오른쪽으로 밀린다 */
+/* 위에서부터 쌓는다. 가운데 정렬이면 안내 문구가 생기고 사라질 때마다 화면 전체가 위아래로 튄다 */
 .stage {
     flex: 1;
     display: grid;
-    place-items: center;
-    padding: clamp(8px, 2.4vh, 28px) 24px 24px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    align-content: start;
+    padding: clamp(8px, 7vh, 96px) 16px 24px;
 }
 
 .hero {
     width: min(860px, 100%);
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: clamp(12px, 2.4vh, 20px);
 }
 
-/* 처음 켤 때 위에서부터 차례로 맺힌다 */
+.hero > * {
+    max-width: 100%;
+}
+
+/* 처음 켤 때 하늘이 맺힌 뒤 위에서부터 차례로 떠오른다. 서체가 준비되기 전(body.ready 전)에는 멈춰 둔다 */
 @keyframes rise {
     from {
         opacity: 0;
-        translate: 0 14px;
-        filter: blur(4px);
+        translate: 0 16px;
     }
 }
 
 @keyframes rise-plain {
     from {
         opacity: 0;
-        translate: 0 14px;
+        translate: 0 16px;
     }
 }
 
+@keyframes fade-in {
+    from {
+        opacity: 0;
+    }
+}
+
+.window-controls,
 .hero > :not(.brand),
-.run-form > * {
-    animation: rise 0.8s var(--ease-out) backwards;
+.run-form > *,
+.composer-bar > * {
+    animation: rise 0.9s var(--ease-out) backwards;
+}
+
+body:not(.ready) :is(.window-controls, .hero > *, .run-form > *, .composer-bar > *, .brand img) {
+    animation-play-state: paused;
+}
+
+.window-controls {
+    animation-name: fade-in;
+    animation-delay: 0.5s;
 }
 
 .hero > .status {
-    animation-delay: 0.12s;
+    animation-delay: 0.32s;
 }
 
 .hero > .run-form {
@@ -580,20 +550,35 @@ body.settings-open .settings-toggle svg {
 }
 
 .run-form > :nth-child(1) {
-    animation-delay: 0.22s;
-}
-
-.run-form > :nth-child(2) {
-    animation-delay: 0.32s;
-}
-
-.run-form > :nth-child(3),
-.run-form > :nth-child(4) {
     animation-delay: 0.42s;
 }
 
-.hero > .live-panel {
+.run-form > :nth-child(2) {
     animation-delay: 0.52s;
+}
+
+.composer-bar > :nth-child(1) {
+    animation-delay: 0.62s;
+}
+
+.composer-bar > :nth-child(2) {
+    animation-delay: 0.68s;
+}
+
+.composer-bar > :nth-child(3) {
+    animation-delay: 0.74s;
+}
+
+.composer-bar > :nth-child(4) {
+    animation-delay: 0.8s;
+}
+
+.run-form > :nth-child(3) {
+    animation-delay: 0.72s;
+}
+
+.hero > .live-panel {
+    animation-delay: 0.82s;
 }
 
 .brand {
@@ -601,36 +586,35 @@ body.settings-open .settings-toggle svg {
     margin: 0;
 }
 
+/* 남색 로고를 뒤집어 흰 로고로 쓰고, 흰 배경(뒤집으면 검정)은 screen 블렌드로 지운다 */
 .brand img {
     display: block;
     width: 100%;
-    filter: brightness(1.04);
-    mix-blend-mode: multiply;
-    transition: filter 1.2s ease;
-    animation: rise-plain 0.9s var(--ease-out) backwards;
-}
-
-body.night .brand img {
     filter: invert(1) hue-rotate(180deg) contrast(1.08);
     mix-blend-mode: screen;
+    animation: rise-plain 1.1s var(--ease-out) 0.15s backwards;
 }
 
-/* 하늘 위 글자가 묻히지 않게 바탕색 쪽의 옅은 번짐을 깐다 */
+/* 하늘 위 흰 글자가 묻히지 않게 짙은 번짐을 깐다. 하늘이 밝은 낮(--day)일수록 크게 깐다 */
 .status,
 .notice,
-.apply-note,
-.live,
-.end-time,
-.model,
-.effort-name {
-    /* 새벽·노을에는 하늘이 중간 밝기라 번짐을 더 크고 진하게 깐다 */
+.apply-note {
     text-shadow:
-        0 0 calc(12px + var(--twilight, 0) * 16px) var(--halo),
-        0 0 calc(3px + var(--twilight, 0) * 6px) var(--halo);
+        0 0 calc(10px + var(--day) * 8px) var(--halo),
+        0 1px 2px rgb(8 18 52 / 0.3);
+}
+
+/* 최근 로그는 자주 다시 그리므로 번짐을 작은 반경으로 줄인다 */
+.live {
+    text-shadow:
+        0 0 6px var(--halo),
+        0 1px 2px rgb(8 18 52 / 0.3);
 }
 
 /* 상태 */
+/* 상태 줄과 진행 단계 줄 자리를 늘 비워 두어 단계 줄이 생겨도 아래가 밀리지 않는다 */
 .status {
+    min-height: calc(1.6em + 13px * 1.6 + 2px);
     text-align: center;
 }
 
@@ -675,7 +659,7 @@ body.night .brand img {
 
 /* 문구가 바뀌면 새 문구가 아래에서 맺힌다 */
 .swap {
-    animation: swap 0.45s var(--ease-out);
+    animation: swap 0.5s var(--ease-out);
 }
 
 @keyframes swap {
@@ -686,11 +670,12 @@ body.night .brand img {
 }
 
 .notice {
-    max-width: 520px;
+    max-width: min(520px, 100%);
     margin: 0;
     color: var(--stop-text);
     font-size: 13px;
     text-align: center;
+    overflow-wrap: anywhere;
 }
 
 .notice[data-tone="warn"] {
@@ -701,66 +686,113 @@ body.night .brand img {
     color: var(--done);
 }
 
-.notice .text-button {
+.notice .button {
     margin-left: 6px;
 }
 
-/* 시작·종료 버튼과 옵션 */
-.run-form {
-    display: flex;
-    flex-direction: column;
+/* 공통 버튼. 하늘 위에서도 글자와 구분되도록 옅은 면과 테두리를 갖고, 눌리는 느낌을 준다
+   primary(채운 잉크)·danger(붉은 글자)·small·large를 조합한다 */
+.button {
+    display: inline-flex;
     align-items: center;
-    gap: 16px;
-}
-
-.main-action {
-    min-width: 132px;
-    padding: 15px 40px;
-    border: 1.5px solid var(--ink);
-    border-radius: 8px;
-    background: var(--ink);
-    color: var(--on-ink);
-    font-size: 16px;
-    font-weight: 700;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
     line-height: 1;
+    white-space: nowrap;
     cursor: pointer;
+    box-shadow: 0 1px 2px rgb(20 20 50 / 0.06);
     transition:
-        background-color 0.3s ease,
-        border-color 0.3s ease,
-        color 0.3s ease,
-        translate 0.2s var(--ease-out),
-        scale 0.15s ease,
-        box-shadow 0.3s ease;
+        background-color 0.3s var(--ease-out),
+        border-color 0.3s var(--ease-out),
+        color 0.3s var(--ease-out),
+        box-shadow 0.3s var(--ease-out),
+        translate 0.3s var(--ease-out),
+        scale 0.18s var(--ease-in-out);
 }
 
-.main-action:hover {
-    border-color: var(--ink-hover);
-    background: var(--ink-hover);
+.button:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--ink) 34%, transparent);
+    background: color-mix(in srgb, var(--ink) 12%, var(--surface));
     translate: 0 -1px;
-    box-shadow: 0 8px 22px rgb(20 20 50 / 0.16);
+    box-shadow: 0 6px 16px rgb(20 20 50 / 0.12);
 }
 
-.main-action:active {
-    scale: 0.98;
+.button:active:not(:disabled) {
+    scale: 0.97;
     translate: 0;
+    box-shadow: 0 1px 2px rgb(20 20 50 / 0.08);
 }
 
-.main-action:disabled {
-    border-color: var(--line);
-    background: var(--tint);
-    color: var(--muted);
+.button:disabled {
+    opacity: 0.45;
     cursor: not-allowed;
-    translate: 0;
     box-shadow: none;
 }
 
-.main-action[data-action="stop"] {
-    background: transparent;
-    color: var(--ink);
+.button.small {
+    height: 28px;
+    padding: 0 11px;
+    border-radius: 8px;
+    font-size: 12.5px;
 }
 
-.main-action[data-action="stop"]:hover {
-    background: var(--tint);
+.button.large {
+    min-width: 148px;
+    height: 50px;
+    padding: 0 40px;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.button.primary {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: var(--on-ink);
+    box-shadow: 0 4px 14px rgb(20 20 50 / 0.16);
+}
+
+.button.primary:hover:not(:disabled) {
+    border-color: var(--ink-hover);
+    background: var(--ink-hover);
+    box-shadow: 0 10px 26px rgb(20 20 50 / 0.22);
+}
+
+.button.primary:disabled {
+    border-color: var(--line);
+    background: var(--surface);
+    color: var(--muted);
+    opacity: 1;
+}
+
+.button.danger {
+    color: var(--stop-text);
+}
+
+.button.danger:hover:not(:disabled) {
+    border-color: rgb(194 58 48 / 0.45);
+    background: rgb(194 58 48 / 0.14);
+}
+
+/* 가운데 버튼은 상태에 따라 시작(primary) → 종료 신호(보통) → 종료(위험)로 바뀐다 */
+.main-action[data-action="stop"] {
+    border-color: color-mix(in srgb, var(--ink) 40%, transparent);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: none;
+}
+
+.main-action[data-action="stop"]:hover:not(:disabled) {
+    border-color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 12%, var(--surface));
 }
 
 .main-action[data-action="kill"] {
@@ -769,129 +801,173 @@ body.night .brand img {
     color: #fff;
 }
 
-.main-action[data-action="kill"]:hover {
+.main-action[data-action="kill"]:hover:not(:disabled) {
     border-color: var(--stop-hover);
     background: var(--stop-hover);
 }
 
-.options {
+.run-form {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    gap: 12px 26px;
+    gap: 16px;
 }
 
-/* 선택 표시가 고른 항목으로 미끄러져 간다(renderer.js가 --pill-x·--pill-w를 정한다) */
-.choice {
-    position: relative;
-    display: flex;
-    gap: 2px;
-    isolation: isolate;
-}
-
-.choice::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    top: 0;
-    bottom: 0;
-    left: var(--pill-x, 0);
-    width: var(--pill-w, 0);
-    border-radius: 8px;
-    background: var(--tint);
+/* 컴포저: 작업 입력과 실행 옵션을 카드 하나에 모은다. 위는 작업 입력, 아래는 알약 버튼 줄이다. 실행 중에도 크기가 그대로다 */
+.composer {
+    width: min(520px, 100%);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: 0 6px 22px rgb(20 20 50 / 0.08);
     transition:
-        left 0.4s var(--ease-out),
-        width 0.4s var(--ease-out);
+        border-color 0.3s var(--ease-out),
+        box-shadow 0.3s var(--ease-out),
+        background-color 0.3s var(--ease-out);
 }
 
-.choice label {
+.composer:focus-within {
+    border-color: color-mix(in srgb, var(--ink) 38%, transparent);
+    box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent),
+        0 6px 22px rgb(20 20 50 / 0.1);
+}
+
+/* 알약은 어떤 값이어도 한 줄에 들어간다. 줄바꿈하지 않고 모든 알약의 폭을 고정한다 */
+.composer-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0;
+    padding: 6px;
+    border-top: 1px solid var(--line);
+}
+
+/* 알약 버튼: 평소에는 글자만 보이고 머무르거나 열리면 옅은 면이 깔린다 */
+.chip {
     position: relative;
     display: inline-flex;
     align-items: center;
-    padding: 6px 9px;
-    border-radius: 8px;
-    color: var(--muted);
+    gap: 7px;
+    flex: none;
+    height: 34px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    transition: color 0.25s ease;
-}
-
-.choice input {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    opacity: 0;
-    cursor: pointer;
-}
-
-.choice label:hover,
-.choice label:has(input:checked) {
-    color: var(--ink);
-}
-
-.choice label:has(input:focus-visible) {
-    outline: 2px solid var(--ink);
-    outline-offset: 1px;
-}
-
-.choice label:has(input:disabled) {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-.choice label:has(input:disabled) input {
-    cursor: not-allowed;
-}
-
-/* 모델은 마크만 두고 고른 모델만 이름을 펼친다 */
-.model {
-    font-weight: 600;
-}
-
-.model span {
-    max-width: 0;
-    margin-left: 0;
-    overflow: hidden;
-    opacity: 0;
     transition:
-        max-width 0.45s var(--ease-out),
-        margin-left 0.45s var(--ease-out),
-        opacity 0.3s ease;
+        background-color 0.25s var(--ease-out),
+        opacity 0.3s var(--ease-out),
+        scale 0.15s var(--ease-in-out);
 }
 
-.model:has(input:checked) span {
-    max-width: 5.5em;
-    margin-left: 7px;
-    opacity: 1;
+.chip:hover:not(:disabled, :has(:disabled)),
+.chip[aria-expanded="true"] {
+    background: var(--tint);
+}
+
+.chip:active:not(:disabled) {
+    scale: 0.96;
+}
+
+.chip:disabled,
+.chip:has(:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.chip .mark {
+    width: 20px;
+    height: 20px;
+}
+
+.chip-icon {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chevron {
+    width: 11px;
+    height: 11px;
+    margin-left: -2px;
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: rotate 0.35s var(--ease-out);
+}
+
+.chip[aria-expanded="true"] .chevron {
+    rotate: 180deg;
+}
+
+/* 가장 긴 이름(Sonnet)에 맞춰 폭을 고정해 모델을 바꿔도 옆 알약이 밀리지 않는다 */
+#model-chip {
+    anchor-name: --model-chip;
+}
+
+#model-chip-name {
+    width: 3.7em;
+    text-align: left;
+}
+
+#policy-chip {
+    anchor-name: --policy-chip;
+}
+
+/* 고른 값이 바뀌면 알약 안의 마크·이름이 아래에서 맺힌다 */
+.chip-swap {
+    animation: chip-swap 0.45s var(--ease-slide);
+}
+
+@keyframes chip-swap {
+    from {
+        opacity: 0;
+        translate: 0 6px;
+    }
 }
 
 .mark {
-    width: 20px;
-    height: 20px;
     flex: none;
-    opacity: 0.6;
-    transition:
-        opacity 0.25s ease,
-        scale 0.3s var(--ease-out);
+    border-radius: 6px;
 }
 
-.model:hover .mark {
-    opacity: 1;
-    scale: 1.08;
+.choice-option .mark {
+    width: 24px;
+    height: 24px;
 }
 
-.model:has(input:checked) .mark {
-    opacity: 1;
+.choice-option:has(input:checked) .mark,
+.choice-option[aria-pressed="true"] > svg {
+    animation: mark-pop 0.5s var(--ease-slide);
 }
 
-/* Effort: 막대가 높아지고 색이 데워진다. 켜진 막대는 아래에서 솟고, max에서만 미세하게 일렁인다 */
+@keyframes mark-pop {
+    from {
+        scale: 0.7;
+    }
+}
+
+/* Effort: 알약을 누르면 단계 목록이 뜬다. 막대가 높아지고 색이 데워지며, 막대 아래 점이 현재 단계로 미끄러진다 */
 .effort {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
+    gap: 9px;
     --level-color: var(--level-2);
+}
+
+#effort-control {
+    anchor-name: --effort-chip;
 }
 
 .effort[data-level="0"] {
@@ -911,43 +987,81 @@ body.night .brand img {
 }
 
 .bars {
+    position: relative;
     display: inline-flex;
+    flex: none;
     align-items: flex-end;
-    gap: 3px;
-    height: 22px;
+    gap: 2.5px;
+    height: 16px;
 }
 
+.bars::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -5px;
+    width: 5px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--level-color);
+    translate: calc(var(--level, 2) * 7.5px) 0;
+    transition:
+        translate 0.5s var(--ease-slide),
+        background-color 0.35s var(--ease-out);
+}
+
+/* 단계를 바꾸면 막대가 왼쪽부터 차례로 물든다 */
 .bars i {
-    width: 7px;
+    width: 5px;
     border-radius: 1.5px;
     background: var(--bar-off);
     transform-origin: bottom;
-    transition: background-color 0.3s ease;
+    transition: background-color 0.3s var(--ease-out);
 }
 
 .bars i:nth-child(1) {
-    height: 6px;
+    height: 5px;
 }
 
 .bars i:nth-child(2) {
-    height: 10px;
+    height: 7.5px;
+    transition-delay: 0.04s;
 }
 
 .bars i:nth-child(3) {
-    height: 14px;
+    height: 10.5px;
+    transition-delay: 0.08s;
 }
 
 .bars i:nth-child(4) {
-    height: 18px;
+    height: 13px;
+    transition-delay: 0.12s;
 }
 
 .bars i:nth-child(5) {
-    height: 22px;
+    height: 16px;
+    transition-delay: 0.16s;
 }
 
 .bars i.on {
     background: var(--level-color);
-    animation: bar-on 0.4s var(--ease-out);
+    animation: bar-on 0.5s var(--ease-slide) backwards;
+}
+
+.bars i.on:nth-child(2) {
+    animation-delay: 0.04s;
+}
+
+.bars i.on:nth-child(3) {
+    animation-delay: 0.08s;
+}
+
+.bars i.on:nth-child(4) {
+    animation-delay: 0.12s;
+}
+
+.bars i.on:nth-child(5) {
+    animation-delay: 0.16s;
 }
 
 @keyframes bar-on {
@@ -957,7 +1071,7 @@ body.night .brand img {
 }
 
 .effort[data-level="4"] .bars i.on {
-    animation: heat 0.9s ease-in-out infinite alternate;
+    animation: heat 0.9s var(--ease-in-out) infinite alternate;
 }
 
 .effort[data-level="4"] .bars i:nth-child(2) {
@@ -982,41 +1096,10 @@ body.night .brand img {
     }
 }
 
-/* 네이티브 range를 막대 위에 투명하게 겹쳐 끌기·키보드 조작을 그대로 쓴다 */
-.effort input {
-    position: absolute;
-    left: -6px;
-    top: -8px;
-    width: calc(5 * 7px + 4 * 3px + 12px);
-    height: calc(100% + 16px);
-    margin: 0;
-    opacity: 0;
-    cursor: pointer;
-}
-
-.effort input:disabled {
-    cursor: not-allowed;
-}
-
-.effort:has(input:disabled) {
-    opacity: 0.55;
-}
-
-.effort:has(input:focus-visible) .bars {
-    outline: 2px solid var(--ink);
-    outline-offset: 5px;
-    border-radius: 2px;
-}
-
+/* 이름이 바뀌어도 알약 너비가 그대로이도록 가장 긴 이름(Medium) 폭을 고정한다. 단계 색은 막대에만 쓰고 글자는 잉크색이다 */
 .effort-name {
-    min-width: 3.4em;
-    /* 하늘 위에서도 읽히도록 단계 색에 잉크색을 섞는다(낮에는 진하게, 밤에는 밝게) */
-    color: color-mix(in srgb, var(--level-color) 45%, var(--ink));
-    font-weight: 500;
-    transition: color 0.3s ease;
-}
-
-.effort[data-level="3"] .effort-name {
+    width: 3.8em;
+    color: var(--ink);
     font-weight: 600;
 }
 
@@ -1024,85 +1107,419 @@ body.night .brand img {
     font-weight: 700;
 }
 
-.end-time {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--muted);
+/* 종료 시각: 정한 시각과 남은 시간을 함께 보여주고 줄 오른쪽 끝에 둔다 */
+.end-time-chip {
+    margin-left: auto;
+    padding-right: 6px;
+    anchor-name: --end-time;
+}
+
+.end-time-chip b {
+    font-weight: 700;
+}
+
+/* "N분 뒤"·"N시간 N분 뒤" 길이가 달라도 알약 폭이 그대로이도록 가장 긴 폭을 잡아 둔다 */
+.end-time-until {
+    min-width: 5.8em;
     white-space: nowrap;
+    text-align: left;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
 }
 
-.end-time input {
-    padding: 3px 2px;
-    border: 0;
-    border-bottom: 1.5px solid var(--line);
-    border-radius: 0;
-    background: none;
+.clock-icon {
+    flex: none;
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+}
+
+.clock-icon path {
+    transform-origin: 8px 8px;
+    transition: rotate 0.9s var(--ease-in-out);
+}
+
+.end-time-chip:hover:not(:disabled) .hand-minute,
+.end-time-chip[aria-expanded="true"] .hand-minute {
+    rotate: 360deg;
+}
+
+.end-time-chip:hover:not(:disabled) .hand-hour,
+.end-time-chip[aria-expanded="true"] .hand-hour {
+    rotate: 30deg;
+}
+
+/* 알약 버튼 아래(공간이 없으면 위)에 붙는 팝오버. 열 때 살짝 내려오며 맺히고 닫을 때 흐려진다 */
+.popover {
+    position-area: bottom span-right;
+    position-try-fallbacks:
+        flip-block,
+        flip-inline,
+        flip-block flip-inline;
+    inset: auto;
+    margin: 8px 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--panel-tint) 94%, transparent);
     color: var(--ink);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    transition: border-color 0.2s ease;
+    box-shadow: 0 18px 44px rgb(20 20 50 / 0.24);
+    opacity: 0;
+    translate: 0 -6px;
+    scale: 0.96;
+    transform-origin: top left;
+    transition:
+        opacity 0.25s var(--ease-out),
+        translate 0.35s var(--ease-out),
+        scale 0.35s var(--ease-out),
+        display 0.35s allow-discrete,
+        overlay 0.35s allow-discrete;
 }
 
-.end-time input:hover:not(:disabled),
-.end-time input:focus {
-    border-bottom-color: var(--ink);
-    outline: none;
+.popover:popover-open {
+    opacity: 1;
+    translate: 0;
+    scale: 1;
 }
 
-.end-time input:disabled {
-    opacity: 0.55;
+.choice-popover:popover-open {
+    display: grid;
 }
 
+/* 닫히며 흐려지는 동안에도 그 자리를 누르면 고른 값이 바뀌지 않게 한다 */
+.popover:not(:popover-open) {
+    pointer-events: none;
+}
+
+@starting-style {
+    .popover:popover-open {
+        opacity: 0;
+        translate: 0 -6px;
+        scale: 0.96;
+    }
+}
+
+/* 종료 시각: 위아래 단추·휠로 시·분을 바꾸고 자주 쓰는 시각을 한 번에 고른다 */
+.time-popover {
+    position-anchor: --end-time;
+    position-area: bottom span-left;
+    width: min(264px, calc(100vw - 32px));
+    transform-origin: top right;
+}
+
+/* 모델·정책: 고르는 목록. 선택 표시 한 장이 고른 줄로 미끄러진 뒤 창이 닫힌다 */
+/* display는 열렸을 때만 준다. 닫힌 팝오버에 display를 주면 브라우저 기본 display: none을 덮어써, 보이지 않는 목록이 그 자리에 남아 클릭으로 값이 바뀐다 */
+.choice-popover {
+    --index: 0;
+    isolation: isolate;
+    gap: 2px;
+    width: min(240px, calc(100vw - 32px));
+    padding: 6px;
+}
+
+#model-popover {
+    position-anchor: --model-chip;
+}
+
+#model-popover:has(input[value="opus"]:checked) {
+    --index: 1;
+}
+
+#model-popover:has(input[value="sonnet"]:checked) {
+    --index: 2;
+}
+
+#model-popover:has(input[value="haiku"]:checked) {
+    --index: 3;
+}
+
+#effort-popover {
+    --row-height: 44px;
+    position-anchor: --effort-chip;
+    width: min(220px, calc(100vw - 32px));
+}
+
+#effort-popover[data-level="1"] {
+    --index: 1;
+}
+
+#effort-popover[data-level="2"] {
+    --index: 2;
+}
+
+#effort-popover[data-level="3"] {
+    --index: 3;
+}
+
+#effort-popover[data-level="4"] {
+    --index: 4;
+}
+
+.choice-option .bars {
+    grid-area: icon;
+    align-self: center;
+}
+
+.choice-option .bars::after {
+    display: none;
+}
+
+#policy-popover {
+    position-anchor: --policy-chip;
+    width: min(280px, calc(100vw - 32px));
+}
+
+#policy-popover[data-policy="todo"] {
+    --index: 1;
+}
+
+/* 줄 높이가 같으므로 위치는 순번(--index)만으로 정한다 */
+.choice-popover::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: 6px;
+    left: 6px;
+    right: 6px;
+    height: var(--row-height);
+    border-radius: 11px;
+    background: var(--tint);
+    translate: 0 calc(var(--index) * (100% + 2px));
+    transition: translate 0.45s var(--ease-slide);
+}
+
+#model-popover {
+    --row-height: 44px;
+}
+
+#policy-popover {
+    --row-height: 66px;
+}
+
+.choice-option {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "icon title"
+        "icon desc";
+    align-content: center;
+    column-gap: 10px;
+    height: var(--row-height);
+    padding: 0 10px;
+    border: 0;
+    border-radius: 11px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.3s var(--ease-out);
+}
+
+.choice-option:hover,
+.choice-option:has(input:checked),
+.choice-option[aria-pressed="true"] {
+    color: var(--ink);
+}
+
+.choice-option:has(input:focus-visible) {
+    outline: 2px solid var(--ink);
+    outline-offset: -2px;
+}
+
+.choice-option input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+}
+
+.choice-option > svg {
+    grid-area: icon;
+    align-self: center;
+}
+
+.choice-title {
+    grid-area: title;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.choice-desc {
+    grid-area: desc;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.time-popover-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.time-spinners {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.time-spin {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+}
+
+.time-spin b {
+    min-width: 2ch;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: center;
+}
+
+.time-colon {
+    padding-bottom: 4px;
+    color: var(--muted);
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.spin-button {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+        background-color 0.25s var(--ease-out),
+        color 0.25s var(--ease-out),
+        scale 0.15s var(--ease-in-out);
+}
+
+.spin-button:hover {
+    background: var(--tint);
+    color: var(--ink);
+}
+
+.spin-button:active {
+    scale: 0.9;
+}
+
+.spin-button svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 숫자가 바뀌면 바뀐 방향에서 미끄러져 들어온다 */
+.tick-up {
+    animation: tick-up 0.3s var(--ease-out);
+}
+
+.tick-down {
+    animation: tick-down 0.3s var(--ease-out);
+}
+
+@keyframes tick-up {
+    from {
+        opacity: 0.2;
+        translate: 0 8px;
+    }
+}
+
+@keyframes tick-down {
+    from {
+        opacity: 0.2;
+        translate: 0 -8px;
+    }
+}
+
+.time-until {
+    margin: 6px 0 14px;
+    color: var(--muted);
+    font-size: 12.5px;
+    text-align: center;
+}
+
+.time-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+/* 적용 대기 문구는 숨겨도 한 줄 자리를 남겨 아래 로그가 밀리지 않게 한다 */
 .apply-note {
-    margin: -4px 0 0;
+    min-height: 1.6em;
+    margin: -6px 0 0;
     color: var(--muted);
     font-size: 13px;
     text-align: center;
+}
+
+.apply-note[hidden] {
+    display: block !important;
+    visibility: hidden;
 }
 
 .apply-note[data-tone="warn"] {
     color: var(--wait);
 }
 
-/* 처리할 작업: 한 줄로 시작해 적는 만큼 늘어난다. 실행 중에는 잠기므로 숨긴다 */
+/* 처리할 작업: 컴포저 위쪽. 세 줄 높이로 고정하고 넘치면 칸 안에서 스크롤한다(적을 때마다 카드가 커지면 아래가 밀린다).
+   실행 중에도 숨기지 않고 잠근 채 보여 카드 크기가 그대로다 */
 .tasks {
-    width: min(520px, 100%);
-    min-height: calc(1.55em + 18px);
-    max-height: 9.5em;
-    padding: 8px 12px;
-    border: 1.5px solid var(--line);
-    border-radius: 8px;
+    display: block;
+    width: 100%;
+    height: calc(3 * 1.55em + 24px);
+    padding: 12px 16px;
+    border: 0;
     background: none;
     color: var(--ink);
     font-size: 13.5px;
     line-height: 1.55;
     resize: none;
-    field-sizing: content;
-    transition:
-        border-color 0.25s ease,
-        background-color 0.25s ease;
+    transition: opacity 0.3s var(--ease-out);
 }
 
 .tasks::placeholder {
     color: var(--muted);
-    opacity: 0.8;
+    opacity: 1;
 }
 
-.tasks:hover,
 .tasks:focus {
-    border-color: var(--ink);
-    background: var(--tint);
     outline: none;
 }
 
-body:not([data-status="idle"]) .tasks {
-    display: none;
+.tasks:disabled {
+    opacity: 0.55;
 }
 
-/* 최근 로그: 카드 없이 글자만 단어 단위로 맺히고 오래된 줄부터 흐려져 사라진다. 누르면 전체 기록이 펼쳐진다 */
+/* 최근 로그: 카드 없이 글자만 보이고 오래된 줄부터 흐려져 사라진다. 누르면 전체 기록이 펼쳐진다
+   패널이 높이를 고정하고 잘라 내며 목록은 아래에 붙는다. 새 줄이 오면 목록 전체가 한 줄만큼 부드럽게 올라간다(renderer가 translate로 이어 준다) */
 .live-panel {
     width: min(720px, 100%);
+    height: min(4 * 1.95 * 15px, 18vh);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
     border-radius: 10px;
     cursor: pointer;
 }
@@ -1112,14 +1529,10 @@ body:not([data-status="idle"]) .tasks {
 }
 
 .live {
-    height: min(4 * 1.95em, 18vh);
+    flex: none;
     margin: 0;
     padding: 0;
     list-style: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    overflow: hidden;
     font-size: 15px;
     line-height: 1.95;
     text-align: center;
@@ -1131,9 +1544,19 @@ body:not([data-status="idle"]) .tasks {
     white-space: nowrap;
     text-overflow: ellipsis;
     transition:
-        opacity 0.6s ease-out,
-        filter 0.6s ease-out,
-        translate 0.6s ease-out;
+        opacity 0.6s var(--ease-out),
+        translate 0.6s var(--ease-out);
+}
+
+/* 새 줄은 흐릿하게 시작해 맺힌다(위치는 목록 전체가 함께 올라가며 맞춘다). 단어마다 애니메이션·블러를 걸면 로그가 빠르게 올 때 버벅인다 */
+.live li {
+    animation: line-in 0.5s var(--ease-out);
+}
+
+@keyframes line-in {
+    from {
+        opacity: 0;
+    }
 }
 
 .live li:nth-last-child(2) {
@@ -1154,22 +1577,6 @@ body:not([data-status="idle"]) .tasks {
 
 .live li.out {
     opacity: 0 !important;
-    filter: blur(2px);
-    translate: 0 -8px;
-}
-
-.live .word {
-    display: inline-block;
-    white-space: pre;
-    animation: appear 0.5s ease-out backwards;
-    animation-delay: calc(var(--word) * 55ms);
-}
-
-@keyframes appear {
-    from {
-        opacity: 0;
-        filter: blur(3px);
-    }
 }
 
 .live [data-kind="tool"],
@@ -1197,26 +1604,76 @@ body:not([data-status="idle"]) .tasks {
     color: var(--stop-text);
 }
 
-/* 펼쳐 보는 전체 기록. 움직이는 하늘 위에서 긴 글을 읽으므로 반투명 막을 깐다 */
+/* 전체 기록: 아래에서 올라오는 시트. 화면을 스크롤하지 않고 스크림 위에 겹친다. 열 때는 감속, 닫을 때는 가속해 내려간다
+   뒤 화면이 비치면 글자가 겹쳐 보이고 블러는 스크롤마다 다시 계산하므로 불투명한 막을 깐다 */
 .history {
+    position: fixed;
+    top: 56px;
+    right: 10px;
+    bottom: 0;
+    left: 10px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
-    gap: 32px;
-    margin: 0 12px 12px;
-    padding: 16px 20px 12px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--panel-tint) 70%, transparent);
-    backdrop-filter: blur(20px);
-    animation: rise 0.5s var(--ease-out);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 28px;
+    padding: 22px 20px 16px;
+    border-radius: 20px 20px 0 0;
+    background: var(--panel-tint);
+    box-shadow: 0 -14px 40px rgb(20 20 50 / 0.18);
+    translate: 0 calc(100% + 48px);
+    visibility: hidden;
+    transition:
+        translate 0.38s var(--ease-in),
+        visibility 0s linear 0.38s;
+}
+
+body.history-open .history {
+    translate: 0;
+    visibility: visible;
+    transition:
+        translate 0.6s var(--ease-out),
+        visibility 0s;
+}
+
+/* 시트 손잡이 */
+.history::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--line);
+    translate: -50% 0;
+}
+
+.history-log,
+.history-rounds {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+body.history-open .history > * {
+    animation: rise-plain 0.6s var(--ease-out) 0.08s backwards;
+}
+
+body.history-open .history > :nth-child(2) {
+    animation-delay: 0.16s;
 }
 
 .history-head {
     display: flex;
-    align-items: baseline;
-    gap: 14px;
+    align-items: center;
+    gap: 10px 14px;
     margin-bottom: 8px;
     color: var(--muted);
     font-size: 13px;
+}
+
+.history-head .check {
+    margin-left: auto;
 }
 
 .history-head h2 {
@@ -1238,16 +1695,20 @@ body:not([data-status="idle"]) .tasks {
 }
 
 .log {
-    height: 46vh;
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     font-size: 12.5px;
     line-height: 1.75;
     font-variant-numeric: tabular-nums;
 }
 
+/* 화면 밖 줄(최대 3000줄)은 그리지 않는다 */
 .line {
     display: flex;
     gap: 12px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1.75em;
 }
 
 .line .ln {
@@ -1275,7 +1736,8 @@ body:not([data-status="idle"]) .tasks {
 }
 
 .rounds {
-    max-height: 42vh;
+    flex: 1;
+    min-height: 0;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -1332,56 +1794,91 @@ body:not([data-status="idle"]) .tasks {
     color: var(--muted);
 }
 
-/* 설정: 오른쪽에서 밀려 들어오는 패널. 자주 쓰지 않는 항목(프로젝트·정책·기록 관리)을 여기에 모은다 */
+/* 설정: 오른쪽 끝에서 미끄러져 들어오는 패널. 열 때는 감속(ease-out), 닫을 때는 가속(ease-in)해 밀려 나간다
+   자주 쓰지 않는 항목(프로젝트·정책·기록 관리)을 여기에 모은다 */
+/* 헤더까지 덮어 뒤 화면 전체를 어둡게 하되, 눌림은 헤더 아래(::after)만 받는다. 헤더 버튼과 창 끌기는 그대로 동작한다 */
+.scrim {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: rgb(6 10 30 / 0.34);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity 0.4s var(--ease-in-out),
+        visibility 0s linear 0.4s;
+}
+
+.scrim::after {
+    content: "";
+    position: absolute;
+    inset: 40px 0 0;
+    pointer-events: auto;
+}
+
+body.settings-open .scrim,
+body.history-open .scrim {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
 .settings {
     position: fixed;
     top: 40px;
     right: 0;
     bottom: 0;
     width: min(340px, 88vw);
-    padding: 16px 24px 24px;
+    padding: 18px 22px 20px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 26px;
     overflow-y: auto;
-    border-top-left-radius: 16px;
-    background: color-mix(in srgb, var(--panel-tint) 80%, transparent);
+    border-top-left-radius: 18px;
+    background: color-mix(in srgb, var(--panel-tint) 82%, transparent);
     backdrop-filter: blur(24px) saturate(1.15);
-    box-shadow: -18px 0 40px rgb(20 20 50 / 0.14);
-    opacity: 0;
-    translate: 28px 0;
+    box-shadow: -18px 0 40px rgb(20 20 50 / 0.16);
+    /* 그림자까지 화면 밖으로 밀어 둔다 */
+    translate: calc(100% + 48px) 0;
     visibility: hidden;
     transition:
-        translate 0.45s var(--ease-out),
-        opacity 0.3s ease,
-        visibility 0s linear 0.45s;
+        translate 0.38s var(--ease-in),
+        visibility 0s linear 0.38s;
 }
 
 body.settings-open .settings {
-    opacity: 1;
     translate: 0;
     visibility: visible;
-    transition-delay: 0s;
+    transition:
+        translate 0.6s var(--ease-out),
+        visibility 0s;
 }
 
 body.settings-open .settings > * {
-    animation: rise-plain 0.5s var(--ease-out) backwards;
+    animation: slide-in 0.6s var(--ease-out) backwards;
+}
+
+@keyframes slide-in {
+    from {
+        opacity: 0;
+        translate: 28px 0;
+    }
 }
 
 body.settings-open .settings > :nth-child(2) {
-    animation-delay: 0.06s;
+    animation-delay: 0.05s;
 }
 
 body.settings-open .settings > :nth-child(3) {
-    animation-delay: 0.12s;
+    animation-delay: 0.1s;
 }
 
 body.settings-open .settings > :nth-child(4) {
-    animation-delay: 0.18s;
+    animation-delay: 0.15s;
 }
 
 body.settings-open .settings > :nth-child(5) {
-    animation-delay: 0.24s;
+    animation-delay: 0.2s;
 }
 
 .settings-head h2 {
@@ -1391,7 +1888,7 @@ body.settings-open .settings > :nth-child(5) {
 
 .settings-group {
     display: grid;
-    gap: 8px;
+    gap: 10px;
     justify-items: start;
 }
 
@@ -1413,73 +1910,137 @@ body.settings-open .settings > :nth-child(5) {
     color: var(--wait);
 }
 
+/* 개선 정책: 이름과 설명을 함께 보여주는 카드. 고른 카드는 테두리와 면이 짙어지고 오른쪽 표시가 찬다 */
 .policy {
-    border-radius: 9px;
+    width: 100%;
+    display: grid;
+    gap: 8px;
+}
+
+.policy-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+        "icon title radio"
+        "icon desc radio";
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 2px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    cursor: pointer;
+    transition:
+        border-color 0.3s var(--ease-out),
+        background-color 0.3s var(--ease-out),
+        box-shadow 0.3s var(--ease-out),
+        translate 0.3s var(--ease-out);
+}
+
+.policy-card:hover:not(:has(:disabled)) {
+    border-color: color-mix(in srgb, var(--ink) 34%, transparent);
+    translate: 0 -1px;
+}
+
+.policy-card:has(input:checked) {
+    border-color: var(--ink);
+    background: var(--raised);
+    box-shadow: 0 4px 14px rgb(20 20 50 / 0.1);
+}
+
+.policy-card:has(input:disabled) {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.policy-icon {
+    grid-area: icon;
+    align-self: start;
+    width: 34px;
+    height: 34px;
+    padding: 8px;
+    border-radius: 10px;
     background: var(--tint);
-    padding: 3px;
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition:
+        background-color 0.3s var(--ease-out),
+        stroke 0.3s var(--ease-out);
 }
 
-.policy::before {
-    top: 3px;
-    bottom: 3px;
-    background: var(--panel-tint);
-    box-shadow: 0 1px 4px rgb(20 20 50 / 0.12);
+.policy-card:has(input:checked) .policy-icon {
+    background: var(--ink);
+    stroke: var(--on-ink);
 }
 
-.policy label:has(input:checked) {
+.policy-title {
+    grid-area: title;
     font-weight: 700;
 }
 
-.settings-note {
-    margin: 0;
+.policy-desc {
+    grid-area: desc;
     color: var(--muted);
     font-size: 12.5px;
+    line-height: 1.5;
+}
+
+/* 라디오는 링으로 그리고, 고르면 안쪽 점이 차오른다 */
+.policy-card input {
+    grid-area: radio;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 50%;
+    background: transparent;
+    cursor: inherit;
+    transition:
+        border-color 0.3s var(--ease-out),
+        box-shadow 0.35s var(--ease-out);
+}
+
+.policy-card input:checked {
+    border-color: var(--ink);
+    box-shadow: inset 0 0 0 4px var(--ink);
+}
+
+.policy-card input:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
 }
 
 .settings-actions {
-    display: grid;
-    justify-items: start;
-    gap: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .settings-version {
+    align-self: center;
     margin: auto 0 0;
     color: var(--muted);
     font-size: 12px;
-}
-
-.text-button {
-    padding: 4px 2px;
-    border: 0;
-    border-bottom: 1px solid transparent;
-    background: none;
-    color: var(--ink);
-    font-weight: 600;
-    cursor: pointer;
-    transition:
-        border-color 0.2s ease,
-        color 0.2s ease;
-}
-
-.text-button:hover:not(:disabled) {
-    border-bottom-color: var(--ink);
-}
-
-.text-button:disabled {
-    color: var(--muted);
-    opacity: 0.6;
-    cursor: not-allowed;
+    letter-spacing: 0.02em;
 }
 
 /* 기본 창은 세로형(600×800)이라 기록은 로그 아래에 회차를 둔다 */
 @media (max-width: 760px) {
     .history {
         grid-template-columns: minmax(0, 1fr);
-        gap: 20px;
+        grid-template-rows: minmax(0, 1fr) minmax(0, 30%);
+        gap: 16px;
     }
+}
 
-    .rounds {
-        max-height: none;
+/* 좁은 창에서는 알약이 한 줄에 들어가도록 남은 시간을 숨긴다(종료 시각 팝오버에는 그대로 보인다) */
+@media (max-width: 540px) {
+    .end-time-until {
+        display: none;
     }
 }
 
@@ -1493,12 +2054,12 @@ body.settings-open .settings > :nth-child(5) {
         gap: 12px;
     }
 
-    .options {
-        gap: 10px 20px;
+    .tasks {
+        height: calc(2 * 1.55em + 20px);
     }
 
-    .live {
-        height: min(4 * 1.95em, 16vh);
+    .live-panel {
+        height: min(4 * 1.95 * 15px, 16vh);
     }
 }
 

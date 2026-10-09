@@ -184,8 +184,9 @@ const killProcessTree = (pid, hasExited) => {
         throw result.error;
     }
 
-    if (result.status && !hasExited()) {
-        throw new Error(`프로세스 트리 종료 실패: PID ${pid}: ${result.stderr?.trim()}`);
+    // spawnSync 동안 exit 이벤트를 받지 못하므로 실제 생존 여부도 본다. taskkill 출력은 OEM 코드페이지라 깨지므로 메시지에 넣지 않는다.
+    if (result.status && !hasExited() && isPidAlive(pid)) {
+        throw new Error(`프로세스 트리 종료 실패: PID ${pid} (taskkill 종료 코드 ${result.status})`);
     }
 };
 
