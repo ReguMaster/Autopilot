@@ -1,0 +1,63 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  cli:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - name: Check tag matches versions
+        shell: bash
+        run: |
+          app_version="v$(node -p "require('./package.json').version")"
+          kit_version="v$(node -p "require('./autopilot/package.json').version")"
+          test "$app_version" = "$GITHUB_REF_NAME" && test "$kit_version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, app $app_version, kit $kit_version"; exit 1; }
+      - run: npm run format:check:cli
+      - run: npm run format:check:desktop
+      - run: npm run test:desktop
+      - run: npm run build:cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.os }}
+          path: dist/autopilot-*.tar.gz
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop
+          path: dist/AutoPilot-*.exe
+  release:
+    needs: [cli, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - run: gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
