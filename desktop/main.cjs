@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const path = require("node:path");
-const { registerIpc, confirmClose, attachRunningEngine, checkEngine } = require("./autopilotIpc.cjs");
+const { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine } = require("./autopilotIpc.cjs");
+const { createTray, showWindow } = require("./systemIntegration.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
@@ -8,6 +9,8 @@ const WINDOW_SCREEN_MARGIN = 40;
 const WINDOW_BACKGROUND = { day: "#2f78d0", night: "#121a3c" };
 const DAYLIGHT_HOURS = { from: 6, to: 19 };
 const SMOKE_TEST_TIMEOUT_MS = 15000;
+
+let isQuitting = false;
 
 const SMOKE_CHECK_SCRIPT =
     "typeof window.autopilot?.start === 'function' && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && typeof initialize === 'function'";
@@ -70,9 +73,19 @@ const createWindow = () => {
     window.once("ready-to-show", () => window.show());
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    // 앱이 시작한 엔진이 실행 중이면 닫기는 트레이로 숨기기만 한다. 종료는 트레이 메뉴에서 확인을 거쳐 한다.
     window.on("close", (event) => {
+        if (!isQuitting && isOwnedEngineRunning()) {
+            event.preventDefault();
+            window.hide();
+
+            return;
+        }
+
         if (!confirmClose(window)) {
             event.preventDefault();
+
+            isQuitting = false;
         }
     });
     window.on("focus", attachRunningEngine);
@@ -103,18 +116,11 @@ const createWindow = () => {
     }
 };
 
-const focusExistingWindow = () => {
-    const [window] = BrowserWindow.getAllWindows();
+const quitFromTray = () => {
+    isQuitting = true;
 
-    if (!window) {
-        return;
-    }
-
-    if (window.isMinimized()) {
-        window.restore();
-    }
-
-    window.focus();
+    showWindow();
+    BrowserWindow.getAllWindows()[0]?.close();
 };
 
 // 엔진은 한 번에 하나만 실행되므로 앱도 하나만 띄운다. 스모크 테스트는 실행 중인 앱과 무관하게 검증해야 하므로 제외한다.
@@ -123,12 +129,13 @@ const hasInstanceLock = process.argv.includes("--smoke-test") || app.requestSing
 if (!hasInstanceLock) {
     app.quit();
 } else {
-    app.on("second-instance", focusExistingWindow);
+    app.on("second-instance", showWindow);
 
     app.whenReady().then(() => {
         registerIpc();
         registerWindowControls();
         createWindow();
+        createTray({ onQuit: quitFromTray });
 
         app.on("activate", () => {
             if (BrowserWindow.getAllWindows().length === 0) {

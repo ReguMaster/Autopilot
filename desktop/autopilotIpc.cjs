@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("./projectFiles.cjs");
+const { handleState } = require("./systemIntegration.cjs");
 
 const POLICY_CHOICES = ["auto", "todo"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -88,7 +89,10 @@ const broadcast = (channel, payload) => {
 
 const runner = createRunner({
     onLog: (entries) => broadcast("autopilot:log", entries),
-    onState: (state) => broadcast("autopilot:state", state)
+    onState: (state) => {
+        broadcast("autopilot:state", state);
+        handleState(state);
+    }
 });
 
 // 시작 인자의 오류를 알려준다. 없으면 null.
@@ -299,7 +303,12 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:open-report", handleOpenReport);
 };
 
-// 앱이 시작한 엔진은 창을 닫으면 출력이 끊기므로 확인을 받고 강제 종료한다. 연결한 엔진은 앱 소유가 아니라 그대로 두고 닫는다. 닫아도 되면 true를 반환한다.
+// 앱이 시작한 엔진이 실행 중인지. 이때 창을 닫으면 트레이로 숨겨 엔진을 계속 돌린다.
+const isOwnedEngineRunning = () => {
+    return runner.isRunning() && !runner.isAttached();
+};
+
+// 앱이 시작한 엔진은 트레이에서 종료할 때 출력이 끊기므로 확인을 받고 강제 종료한다. 연결한 엔진은 앱 소유가 아니라 그대로 두고 닫는다. 닫아도 되면 true를 반환한다.
 const confirmClose = (window) => {
     if (!runner.isRunning() || runner.isAttached()) {
         return true;
@@ -309,8 +318,8 @@ const confirmClose = (window) => {
         type: "warning",
         title: "AutoPilot",
         message: "AutoPilot이 실행 중이에요.",
-        detail: "창을 닫으면 실행 중인 회차가 강제 종료되고 commit 전 변경은 working tree에 남아요.",
-        buttons: ["계속 실행", "강제 종료 후 닫기"],
+        detail: "앱을 종료하면 실행 중인 회차가 강제 종료되고 commit 전 변경은 working tree에 남아요.",
+        buttons: ["계속 실행", "강제 종료 후 종료"],
         defaultId: 0,
         cancelId: 0
     });
@@ -324,4 +333,4 @@ const confirmClose = (window) => {
     return true;
 };
 
-module.exports = { registerIpc, confirmClose, attachRunningEngine, checkEngine };
+module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine };

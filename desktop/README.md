@@ -19,7 +19,7 @@ npm start
 
 Windows에서 빌드합니다. 최초 설치와 패키징에는 Electron 및 패키징 도구 다운로드를 위한 인터넷 연결이 필요합니다. 배포 EXE는 코드 서명하지 않으므로 Windows에서 게시자 경고가 표시될 수 있습니다.
 
-`desktop/main.cjs`는 앱 창과 보안 설정을, `autopilotRunner.cjs`·`autopilotIpc.cjs`·`projectFiles.cjs`·`preload.cjs`는 엔진 제어와 연결을, `viewFormat.js`·`index.html`·`styles.css`·`renderer.js`는 대시보드 화면을 담당합니다(`viewFormat.js`는 화면에 의존하지 않는 표시용 함수라 `npm run test:desktop`이 따로 검증합니다). 별도 웹 서버나 프론트엔드 빌드 도구는 사용하지 않습니다. 서체는 `desktop/fonts/`의 Pretendard(SIL OFL 1.1, `Pretendard-LICENSE.txt` 동봉)를 앱에 넣어 오프라인에서도 같게 보입니다.
+`desktop/main.cjs`는 앱 창과 보안 설정을, `systemIntegration.cjs`는 트레이·절전 방지·알림·작업표시줄 진행을, `autopilotRunner.cjs`·`autopilotIpc.cjs`·`projectFiles.cjs`·`preload.cjs`는 엔진 제어와 연결을, `viewFormat.js`·`index.html`·`styles.css`·`renderer.js`는 대시보드 화면을 담당합니다(`viewFormat.js`는 화면에 의존하지 않는 표시용 함수라 `npm run test:desktop`이 따로 검증합니다). 별도 웹 서버나 프론트엔드 빌드 도구는 사용하지 않습니다. 서체는 `desktop/fonts/`의 Pretendard(SIL OFL 1.1, `Pretendard-LICENSE.txt` 동봉)를 앱에 넣어 오프라인에서도 같게 보입니다.
 
 엔진(`autopilot/`)은 앱에 포함됩니다. 앱은 자기 실행 파일을 `ELECTRON_RUN_AS_NODE=1`로 실행해 엔진 스크립트를 자식 프로세스로 띄웁니다(개발 중에는 저장소의 `autopilot/core/autopilot_loop.js`, 패키지에서는 `resources/engine/core/autopilot_loop.js`). 별도 엔진 파일을 연결할 필요가 없습니다.
 
@@ -47,7 +47,9 @@ Windows에서 빌드합니다. 최초 설치와 패키징에는 Electron 및 패
 - 배경은 시각에 따라 바뀌는 수채 하늘입니다. 낮에는 해와 흐르는 구름, 해 뜰 때와 질 때는 노을빛, 밤에는 그날의 달 모양·별·별자리와 가끔 떨어지는 운석이 보이고, UI는 시각과 관계없이 흰색이고, 낮에는 하늘을 깊은 파랑으로 두어 흰 글자가 잘 보입니다. 작업 입력 카드부터는 블러가 점점 짙어집니다. Windows의 동작 줄이기 설정을 켜면 애니메이션이 멈춥니다.
 - 앱은 하나만 실행됩니다. 이미 실행 중일 때 다시 켜면 새 창 없이 기존 창이 앞으로 나옵니다.
 - 앱을 닫았다 켠 사이에도 엔진이 살아 있어 선택한 프로젝트에서 실행 중이면, 앱을 켜거나 창에 포커스를 줄 때 자동으로 연결합니다. 연결하면 로그 파일을 처음부터 읽어 진행 상황을 복원하고 이어서 따라가며(지난 회차의 시각은 알 수 없습니다), 종료 신호 · 모델 변경 · 강제 종료도 같은 방식으로 쓸 수 있습니다. 연결한 엔진은 앱이 소유하지 않으므로 창을 닫아도 계속 실행되고, 종료 코드는 알 수 없어 로그의 종료 사유만 표시합니다.
-- 앱이 시작한 엔진은 창을 닫으면 확인 후 강제 종료합니다.
+- 앱이 시작한 엔진이 실행 중이면 창을 닫아도 트레이로 숨기기만 하고 엔진은 계속 돕니다(트레이 아이콘을 누르면 창이 다시 열립니다). 트레이 메뉴의 **종료**는 확인 후 엔진을 강제 종료하고 앱을 닫습니다. 실행 중이 아니거나 연결한 엔진이면 창을 닫을 때 앱이 그대로 종료됩니다.
+- 엔진이 도는 동안(연결한 엔진 포함) `powerSaveBlocker`로 PC 절전(앱 일시 중단)을 막습니다. 화면은 꺼져도 됩니다.
+- 종료·실패·사용량 한도 대기로 바뀌면 창에 포커스가 없을 때 Windows 알림을 띄우고(누르면 창을 엽니다, 직접 강제 종료한 경우는 제외), 작업표시줄 아이콘에 종료 시각까지의 진행률을 보여줍니다(종료 신호·재시도·한도 대기 중에는 일시 중지 색, 종료 시각을 모르면 진행 중 표시).
 - VS Code 등이 `ELECTRON_RUN_AS_NODE=1`을 설정한 셸에서는 해제한 뒤 `npm start`·`npm test`를 실행하세요. (앱이 엔진을 띄울 때는 앱이 직접 지정합니다.)
 
 `npm run test:desktop`은 가짜 CLI로 시작·종료 신호·강제 종료·로그 해석을 확인합니다. 엔진 자체의 검증은 루트 README의 `test:cli`를 참고하세요.
