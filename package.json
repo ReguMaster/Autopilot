@@ -40,7 +40,11 @@
         "win": {
             "target": "portable",
             "icon": "docs/icon.png",
-            "signAndEditExecutable": true
+            "signAndEditExecutable": true,
+            "signtoolOptions": {
+                "certificateSubjectName": "ReguMaster",
+                "publisherName": "ReguMaster"
+            }
         },
         "artifactName": "AutoPilot-${version}-${arch}.${ext}",
         "extraResources": [
