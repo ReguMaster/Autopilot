@@ -10,6 +10,7 @@ import { MODEL_CHOICES as ENGINE_MODELS, EFFORT_LEVELS as ENGINE_EFFORTS, DEFAUL
 const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
+const { getAuthStatus, getLoginError, runLogin } = require("../desktop/claudeAuth.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -21,6 +22,22 @@ const stopFile = path.join(dir, "STOP");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const main = async () => {
+    if (process.argv[2] === "auth") {
+        const loginFile = path.join(dir, "LOGGED_IN");
+
+        fs.writeFileSync(path.join(dir, "AUTH_ENV"), JSON.stringify([process.env.CLAUDE_CONFIG_DIR, process.env.ELECTRON_RUN_AS_NODE ?? null]));
+
+        if (process.argv[3] === "login") {
+            fs.writeFileSync(loginFile, "");
+            return 0;
+        }
+
+        const isLoggedIn = fs.existsSync(loginFile);
+
+        console.log(JSON.stringify({ loggedIn: isLoggedIn, ...(isLoggedIn ? { email: "dev@example.com" } : {}) }));
+        return isLoggedIn ? 0 : 1;
+    }
+
     const subcommand = process.argv[2]?.startsWith("--") ? "start" : process.argv[2] || "start";
 
     fs.writeFileSync(path.join(dir, "ARGS_" + subcommand), process.argv.slice(2).join("\n"));
@@ -453,6 +470,36 @@ const checkSpawnFailure = async (testDir) => {
     assert(runner.getState().reason.includes("ENOENT"));
 };
 
+// 시작 전 로그인 확인과 로그인 실행. 가짜 claude가 LOGGED_IN 파일로 로그인 상태를 흉내 낸다.
+const checkClaudeAuth = async (testDir) => {
+    const claude = `"${process.execPath}" "${path.join(testDir, "fakeCli.cjs")}"`;
+
+    fs.rmSync(path.join(testDir, "LOGGED_IN"), { force: true });
+    process.env.ELECTRON_RUN_AS_NODE = "1";
+
+    assert.deepEqual((await getAuthStatus(claude)).data, { loggedIn: false, email: "" });
+    assert.equal((await getLoginError(claude)).error.code, "LOGIN_REQUIRED");
+
+    const [configDir, electronRunAsNode] = JSON.parse(fs.readFileSync(path.join(testDir, "AUTH_ENV"), "utf8"));
+
+    assert.equal(configDir, path.resolve(os.homedir(), ".claude"));
+    assert.equal(electronRunAsNode, null);
+
+    const [firstLogin, secondLogin] = [runLogin(claude), runLogin(claude)];
+
+    assert.equal(firstLogin, secondLogin);
+    assert.equal((await firstLogin).status, STATUS_OK);
+    assert.deepEqual((await getAuthStatus(claude)).data, { loggedIn: true, email: "dev@example.com" });
+    assert.equal(await getLoginError(claude), null);
+
+    const missing = await getLoginError("autopilot-no-such-claude");
+
+    assert.equal(missing.error.code, "CLAUDE_NOT_FOUND");
+    assert.equal((await runLogin("autopilot-no-such-claude")).error.code, "CLAUDE_NOT_FOUND");
+
+    delete process.env.ELECTRON_RUN_AS_NODE;
+};
+
 // 시작하려면 대상 프로젝트가 Git 저장소의 루트 폴더여야 한다. .git은 워크트리에서는 파일이다.
 const checkProjectError = (testDir) => {
     const projectDir = path.join(testDir, "project check");
@@ -568,6 +615,8 @@ const runChecks = async () => {
         checkChoiceSync();
         checkProjectError(testDir);
         checkReportOpenGuard(testDir);
+
+        await checkClaudeAuth(testDir);
 
         await checkFinishedRun(testDir);
 
