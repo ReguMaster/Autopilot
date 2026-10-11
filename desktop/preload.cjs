@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     getState: () => ipcRenderer.invoke("autopilot:get-state"),
     selectProject: () => ipcRenderer.invoke("autopilot:select-project"),
     start: (options) => ipcRenderer.invoke("autopilot:start", options),
+    login: () => ipcRenderer.invoke("autopilot:login"),
     stop: () => ipcRenderer.invoke("autopilot:stop"),
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
     kill: () => ipcRenderer.invoke("autopilot:kill"),

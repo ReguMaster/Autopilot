@@ -45,7 +45,7 @@ Claude Code로 프로젝트를 무인 자율 개발시키는 Windows 데스크�
 
 > **주의**: `claude`는 `--dangerously-skip-permissions`로 실행되므로 **신뢰할 수 있는 프로젝트에서만** 사용하세요.
 
-Claude 설정 폴더는 사용자 홈의 `.claude`입니다. Opus가 실패하면 Sonnet으로 넘어가며, Sonnet을 직접 고르면 fallback은 쓰지 않습니다.
+시작할 때 `claude auth status`로 로그인 상태를 확인하고, 로그인돼 있지 않으면 안내 줄의 **로그인** 버튼으로 브라우저 로그인(`claude auth login`)을 진행한 뒤 이어서 시작합니다. Claude 설정 폴더는 사용자 홈의 `.claude`입니다. Opus가 실패하면 Sonnet으로 넘어가며, Sonnet을 직접 고르면 fallback은 쓰지 않습니다.
 
 ### 실행 중에 할 수 있는 일
 

@@ -43,6 +43,9 @@ const elements = {
     notice: byId("notice"),
     projectBanner: byId("project-banner"),
     bannerSelectProject: byId("banner-select-project"),
+    loginBanner: byId("login-banner"),
+    loginMessage: byId("login-message"),
+    bannerLogin: byId("banner-login"),
     form: byId("run-form"),
     mainAction: byId("main-action"),
     effortControl: byId("effort-control"),
@@ -454,6 +457,37 @@ const showFailure = (result) => {
     showNotice(result.status === STATUS_OK ? "" : result.error.msg);
 };
 
+// 로그인이 필요해서 시작하지 못했으면 안내 줄에 로그인 버튼을 보여준다.
+const showLoginRequired = (isRequired, message = "") => {
+    elements.loginMessage.textContent = message;
+    elements.loginBanner.hidden = !isRequired;
+};
+
+const startRun = async () => {
+    const result = await window.autopilot.start({ tasks: elements.tasks.value, endTime: elements.endTime.value, policy: elements.form.elements.policy.value, ...getSelectedOptions() });
+    const isLoginRequired = result.status !== STATUS_OK && result.error.code === "LOGIN_REQUIRED";
+
+    showLoginRequired(isLoginRequired, isLoginRequired ? result.error.msg : "");
+    showFailure(isLoginRequired ? { status: STATUS_OK } : result);
+};
+
+// 브라우저 로그인이 끝나면 멈췄던 시작을 이어간다.
+const handleLogin = async () => {
+    elements.bannerLogin.disabled = true;
+    showNotice("브라우저에서 Claude 로그인을 진행해 주세요.", "ok");
+
+    const result = await window.autopilot.login();
+
+    elements.bannerLogin.disabled = false;
+
+    if (result.status === STATUS_OK) {
+        showLoginRequired(false);
+        await startRun();
+    } else {
+        showFailure(result);
+    }
+};
+
 const renderSettings = () => {
     const hasProject = Boolean(settings.projectDir);
 
@@ -782,7 +816,7 @@ const handleMainAction = async (event) => {
     const { action } = MAIN_ACTIONS[currentState.status];
 
     if (action === "start") {
-        showFailure(await window.autopilot.start({ tasks: elements.tasks.value, endTime: elements.endTime.value, policy: elements.form.elements.policy.value, ...getSelectedOptions() }));
+        await startRun();
     } else if (action === "stop") {
         showFailure(await window.autopilot.stop());
     } else {
@@ -874,6 +908,7 @@ const initialize = async () => {
     elements.form.addEventListener("submit", handleMainAction);
     elements.selectProject.addEventListener("click", handleSelectProject);
     elements.bannerSelectProject.addEventListener("click", handleSelectProject);
+    elements.bannerLogin.addEventListener("click", handleLogin);
     elements.resetProgress.addEventListener("click", handleResetProgress);
     elements.openReport.addEventListener("click", handleOpenReport);
     elements.historyToggle.addEventListener("click", toggleHistory);

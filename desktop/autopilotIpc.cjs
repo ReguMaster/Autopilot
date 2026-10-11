@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("./projectFiles.cjs");
+const { getLoginError, runLogin } = require("./claudeAuth.cjs");
 const { handleState } = require("./systemIntegration.cjs");
 
 const POLICY_CHOICES = ["auto", "todo"];
@@ -114,7 +115,7 @@ const getStartError = (settings, options) => {
     return null;
 };
 
-const handleStart = (event, options = {}) => {
+const handleStart = async (event, options = {}) => {
     const settings = readSettings();
     const startOptions = {
         tasks: typeof options.tasks === "string" ? options.tasks : "",
@@ -127,6 +128,12 @@ const handleStart = (event, options = {}) => {
 
     if (startError) {
         return startError;
+    }
+
+    const loginError = await getLoginError();
+
+    if (loginError) {
+        return loginError;
     }
 
     // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
@@ -296,6 +303,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
     ipcMain.handle("autopilot:start", handleStart);
+    ipcMain.handle("autopilot:login", () => runLogin());
     ipcMain.handle("autopilot:stop", () => runner.stop());
     ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:kill", handleKill);

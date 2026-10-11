@@ -13,7 +13,7 @@ const SMOKE_TEST_TIMEOUT_MS = 15000;
 let isQuitting = false;
 
 const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && typeof initialize === 'function'";
+    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.login === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && typeof initialize === 'function'";
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
