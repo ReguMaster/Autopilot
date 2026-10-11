@@ -16,42 +16,46 @@
             <div class="sky-fill"></div>
             <div class="sky-glow"></div>
             <div id="sky-stars" class="stars"></div>
-            <div class="sun">
-                <svg viewBox="-50 -50 100 100">
-                    <defs>
-                        <radialGradient id="sun-halo">
-                            <stop offset="0.3" stop-color="#ffcd78" stop-opacity="0.75" />
-                            <stop offset="1" stop-color="#ffcd78" stop-opacity="0" />
-                        </radialGradient>
-                        <radialGradient id="sun-core">
-                            <stop offset="0.9" stop-color="#ffd98a" />
-                            <stop offset="1" stop-color="#ffd98a" stop-opacity="0" />
-                        </radialGradient>
-                    </defs>
-                    <circle r="95" fill="url(#sun-halo)" />
-                    <circle r="31" fill="url(#sun-core)" />
-                </svg>
+            <div class="orb-track sun-track">
+                <div class="sun">
+                    <svg viewBox="-50 -50 100 100">
+                        <defs>
+                            <radialGradient id="sun-halo">
+                                <stop offset="0.3" stop-color="#ffcd78" stop-opacity="0.75" />
+                                <stop offset="1" stop-color="#ffcd78" stop-opacity="0" />
+                            </radialGradient>
+                            <radialGradient id="sun-core">
+                                <stop offset="0.9" stop-color="#ffd98a" />
+                                <stop offset="1" stop-color="#ffd98a" stop-opacity="0" />
+                            </radialGradient>
+                        </defs>
+                        <circle r="95" fill="url(#sun-halo)" />
+                        <circle r="31" fill="url(#sun-core)" />
+                    </svg>
+                </div>
             </div>
-            <div class="moon">
-                <svg viewBox="-50 -50 100 100">
-                    <defs>
-                        <radialGradient id="moon-surface" cx="38%" cy="34%" r="70%">
-                            <stop offset="0" stop-color="#fffdf2" />
-                            <stop offset="0.72" stop-color="#e7e0c4" />
-                        </radialGradient>
-                        <radialGradient id="moon-halo">
-                            <stop offset="0.45" stop-color="#fffadc" stop-opacity="0.35" />
-                            <stop offset="1" stop-color="#fffadc" stop-opacity="0" />
-                        </radialGradient>
-                        <mask id="moon-phase">
-                            <circle r="46" fill="#fff" />
-                            <circle id="moon-shadow" r="47" fill="#000" />
-                        </mask>
-                    </defs>
-                    <circle id="moon-glow" r="96" fill="url(#moon-halo)" />
-                    <circle class="moon-dark" r="46" />
-                    <circle r="46" fill="url(#moon-surface)" mask="url(#moon-phase)" />
-                </svg>
+            <div class="orb-track moon-track">
+                <div class="moon">
+                    <svg viewBox="-50 -50 100 100">
+                        <defs>
+                            <radialGradient id="moon-surface" cx="38%" cy="34%" r="70%">
+                                <stop offset="0" stop-color="#fffdf2" />
+                                <stop offset="0.72" stop-color="#e7e0c4" />
+                            </radialGradient>
+                            <radialGradient id="moon-halo">
+                                <stop offset="0.45" stop-color="#fffadc" stop-opacity="0.35" />
+                                <stop offset="1" stop-color="#fffadc" stop-opacity="0" />
+                            </radialGradient>
+                            <mask id="moon-phase">
+                                <circle r="46" fill="#fff" />
+                                <circle id="moon-shadow" r="47" fill="#000" />
+                            </mask>
+                        </defs>
+                        <circle id="moon-glow" r="96" fill="url(#moon-halo)" />
+                        <circle class="moon-dark" r="46" />
+                        <circle r="46" fill="url(#moon-surface)" mask="url(#moon-phase)" />
+                    </svg>
+                </div>
             </div>
             <svg class="sky-defs" width="0" height="0">
                 <filter id="cloud-blur" filterUnits="userSpaceOnUse" x="-20" y="-20" width="160" height="100">

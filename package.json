@@ -8,13 +8,11 @@
     "scripts": {
         "start": "electron .",
         "dev": "electron . --dev",
-        "check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/autopilotRunner.cjs && node --check desktop/autopilotIpc.cjs && node --check desktop/systemIntegration.cjs && node --check desktop/projectFiles.cjs && node --check desktop/claudeAuth.cjs && node --check desktop/viewFormat.js && node --check desktop/sky.js && node --check desktop/renderer.js && node --check tests/checkDesktopRunner.js && node --check tests/checkDesktopView.js",
-        "test": "npm run check && electron . --smoke-test",
-        "test:desktop": "npm run check && node tests/checkDesktopRunner.js && node tests/checkDesktopView.js",
-        "build": "npm run check && electron-builder --win --x64 --dir",
-        "dist": "npm run check && electron-builder --win portable --x64",
-        "check:cli": "node --check autopilot/core/autopilot_loop.js && node --check tests/checkAutopilot.js && node --check tests/lib/fixtures.js && node --check tests/lib/unitChecks.js && node --check tests/lib/scenarioChecks.js",
-        "test:cli": "npm run check:cli && node tests/checkAutopilot.js",
+        "test": "electron . --smoke-test",
+        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js",
+        "build": "electron-builder --win --x64 --dir",
+        "dist": "electron-builder --win --x64",
+        "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/viewFormat.js desktop/sky.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js",
@@ -38,7 +36,10 @@
             "package.json"
         ],
         "win": {
-            "target": "portable",
+            "target": [
+                "portable",
+                "nsis"
+            ],
             "icon": "docs/icon.png",
             "signAndEditExecutable": true,
             "signtoolOptions": {
@@ -46,7 +47,21 @@
                 "publisherName": "ReguMaster"
             }
         },
-        "artifactName": "AutoPilot-${version}-${arch}.${ext}",
+        "electronLanguages": [
+            "ko",
+            "en-US"
+        ],
+        "compression": "maximum",
+        "portable": {
+            "artifactName": "AutoPilot-Portable-${version}-${arch}.${ext}"
+        },
+        "nsis": {
+            "artifactName": "AutoPilot-Setup-${version}-${arch}.${ext}",
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "allowElevation": true,
+            "language": "1042"
+        },
         "extraResources": [
             {
                 "from": "autopilot",

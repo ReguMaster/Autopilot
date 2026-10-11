@@ -25,7 +25,6 @@ const DAY_MS = 86400000;
 // 달(반지름 46)을 가리는 그림자 원(반지름 47)이 이만큼 비켜나면 보름이다. 테두리에 실선이 남지 않게 지름보다 조금 더 민다.
 const MOON_SHADOW_TRAVEL = 94;
 const SKY_UPDATE_MS = 30000;
-const SKY_RESIZE_DELAY_MS = 200;
 const METEOR_MIN_DELAY_MS = 5000;
 const METEOR_DELAY_RANGE_MS = 10000;
 // 글자가 있는 높이의 하늘이 이보다 어두우면 밤(body.night)으로 보고 운석을 떨어뜨린다. UI 색은 시각과 무관하게 흰색이다.
@@ -34,6 +33,7 @@ const NIGHT_LUMINANCE = 0.19;
 const UI_SKY_POSITION = 0.06;
 const STAR_AREA_PX = 2500;
 const STAR_DENSITY = 0.8;
+const STAR_MAX_COUNT = 900;
 const STAR_SEED = 18;
 const STAR_LAYER_COUNT = 3;
 const CLOUD_SEED = 42;
@@ -96,8 +96,6 @@ const skyElements = {
     moonGlow: document.getElementById("moon-glow")
 };
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-let skyResizeTimer = 0;
 
 const clampNumber = (value, min, max) => {
     return Math.min(max, Math.max(min, value));
@@ -173,7 +171,7 @@ const getNowMinutes = () => {
 const getArcPosition = (progress) => {
     const lift = Math.sin(Math.PI * clampNumber(progress, 0, 1));
 
-    return { left: (SKY_ARC.left + (SKY_ARC.right - SKY_ARC.left) * progress) * window.innerWidth, top: (SKY_ARC.base - (SKY_ARC.base - SKY_ARC.top) * lift) * window.innerHeight };
+    return { left: (SKY_ARC.left + (SKY_ARC.right - SKY_ARC.left) * progress) * 100, top: (SKY_ARC.base - (SKY_ARC.base - SKY_ARC.top) * lift) * 100 };
 };
 
 const getHorizonVisibility = (progress) => {
@@ -203,11 +201,11 @@ const renderSky = () => {
         "--twilight": twilight.toFixed(3),
         "--sky-top": toRgb(colors.top),
         "--sky-bottom": toRgb(colors.bottom),
-        "--sun-left": `${sun.left.toFixed(1)}px`,
-        "--sun-top": `${sun.top.toFixed(1)}px`,
+        "--sun-left": `${sun.left.toFixed(2)}%`,
+        "--sun-top": `${sun.top.toFixed(2)}%`,
         "--sun-on": getHorizonVisibility(sunProgress).toFixed(3),
-        "--moon-left": `${moon.left.toFixed(1)}px`,
-        "--moon-top": `${moon.top.toFixed(1)}px`,
+        "--moon-left": `${moon.left.toFixed(2)}%`,
+        "--moon-top": `${moon.top.toFixed(2)}%`,
         "--moon-on": getHorizonVisibility(moonProgress).toFixed(3),
         "--glow-x": clampNumber(sunProgress, 0, 1).toFixed(3)
     };
@@ -233,34 +231,34 @@ const createSvgElement = (name, attributes) => {
 };
 
 // 별마다 애니메이션을 걸면 매 프레임 SVG 전체를 다시 그리므로, 별을 몇 겹의 SVG로 나눠 겹 단위 opacity(합성만 함)로 반짝이게 한다.
+// 별은 모니터 크기로 한 번만 그리고 창 크기에 맞춰 잘라 보이며, 별자리는 퍼센트 좌표로 둬 창이 커져도 하늘 비율을 따른다.
 const buildStars = () => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const { width, height } = window.screen;
     const random = createSeededRandom(STAR_SEED);
-    const count = Math.round(((width * height) / STAR_AREA_PX) * STAR_DENSITY);
-    const layers = Array.from({ length: STAR_LAYER_COUNT + 1 }, () => createSvgElement("svg", { viewBox: `0 0 ${width} ${height}` }));
+    const count = Math.min(STAR_MAX_COUNT, Math.round(((width * height) / STAR_AREA_PX) * STAR_DENSITY));
+    const layers = Array.from({ length: STAR_LAYER_COUNT }, () => createSvgElement("svg", { width, height, viewBox: `0 0 ${width} ${height}` }));
+    const constellationLayer = createSvgElement("svg", { class: "constellations" });
 
     for (let index = 0; index < count; index++) {
         layers[index % STAR_LAYER_COUNT].append(createSvgElement("circle", { class: "star", cx: random() * width, cy: random() * height, r: 0.4 + random() ** 3 * 1.4 }));
     }
 
-    const constellationLayer = layers[STAR_LAYER_COUNT];
-
-    constellationLayer.classList.add("constellations");
-
     for (const constellation of CONSTELLATIONS) {
-        const points = constellation.stars.map(([x, y]) => [constellation.at[0] * width + (x - 0.5) * constellation.size, constellation.at[1] * height + (y - 0.5) * constellation.size * 0.8]);
+        const group = createSvgElement("svg", { x: `${constellation.at[0] * 100}%`, y: `${constellation.at[1] * 100}%`, overflow: "visible" });
+        const points = constellation.stars.map(([x, y]) => [(x - 0.5) * constellation.size, (y - 0.5) * constellation.size * 0.8]);
 
         for (const [from, to] of constellation.lines) {
-            constellationLayer.append(createSvgElement("line", { class: "star-line", x1: points[from][0], y1: points[from][1], x2: points[to][0], y2: points[to][1] }));
+            group.append(createSvgElement("line", { class: "star-line", x1: points[from][0], y1: points[from][1], x2: points[to][0], y2: points[to][1] }));
         }
 
         for (const [x, y] of points) {
-            constellationLayer.append(createSvgElement("circle", { class: "star-bright", cx: x, cy: y, r: 1.9 }));
+            group.append(createSvgElement("circle", { class: "star-bright", cx: x, cy: y, r: 1.9 }));
         }
+
+        constellationLayer.append(group);
     }
 
-    skyElements.stars.replaceChildren(...layers);
+    skyElements.stars.replaceChildren(...layers, constellationLayer);
 };
 
 const buildClouds = () => {
@@ -319,15 +317,6 @@ const scheduleMeteor = () => {
     );
 };
 
-const handleSkyResize = () => {
-    clearTimeout(skyResizeTimer);
-
-    skyResizeTimer = setTimeout(() => {
-        buildStars();
-        renderSky();
-    }, SKY_RESIZE_DELAY_MS);
-};
-
 // 처음 그릴 때는 전환 없이 바로 현재 하늘로 칠한다(켤 때 낮 하늘에서 30초에 걸쳐 밤으로 바뀌지 않게).
 skyRoot.classList.add("sky-instant");
 buildStars();
@@ -336,4 +325,3 @@ renderSky();
 requestAnimationFrame(() => requestAnimationFrame(() => skyRoot.classList.remove("sky-instant")));
 scheduleMeteor();
 setInterval(renderSky, SKY_UPDATE_MS);
-window.addEventListener("resize", handleSkyResize);

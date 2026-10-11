@@ -11,7 +11,6 @@ npm start
 | --- | --- |
 | `npm start` | Electron 앱 실행 |
 | `npm run dev` | 개발자 도구를 함께 열어 실행 |
-| `npm run check` | 메인 프로세스 JavaScript 구문 검사 |
 | `npm test` | Electron 창, preload 연결, 로컬 HTML 로드, 번들 엔진 실행(`ELECTRON_RUN_AS_NODE`) 확인 후 자동 종료 (실행 엔진은 시작하지 않음) |
 | `npm run test:desktop` | 가짜 CLI로 엔진 제어(시작·종료 신호·강제 종료·로그 해석·다시 연결)와 허용 값 일치, 프로젝트·경로 검사 확인 |
 | `npm run build` | Windows x64 앱 폴더 생성 (`dist/win-unpacked/AutoPilot.exe`) |

@@ -21,7 +21,7 @@ Claude Code로 프로젝트를 무인 자율 개발시키는 Windows 데스크�
 
 ## 사용법
 
-1. [Releases](../../releases)의 `AutoPilot-<버전>-x64.exe`를 받아 실행합니다. 직접 만들려면 `npm run dist`입니다(아래 개발 참고).
+1. [Releases](../../releases)의 `AutoPilot-Setup-<버전>-x64.exe`(설치형, 시작이 빠릅니다) 또는 `AutoPilot-Portable-<버전>-x64.exe`(포터블, 실행할 때마다 임시 폴더에 풀어 시작이 느립니다)를 받아 실행합니다. 직접 만들려면 `npm run dist`입니다(아래 개발 참고).
 2. 오른쪽 위 **설정(톱니)** 패널의 **폴더 선택**(또는 처음 화면의 안내 줄에 있는 **폴더 선택**)으로 대상 프로젝트를 고릅니다. `.git`이 있는 Git 저장소의 루트 폴더여야 하고, commit이 하나 이상 있어야 합니다. 고르기 전에는 시작 버튼이 잠겨 있습니다.
 3. 가운데 **시작** 버튼 아래 카드의 위쪽 칸에 처리할 작업을 한 줄에 하나씩 적고, 아래쪽 알약 버튼으로 **모델 · Effort · 개선 정책 · 종료 시각**을 정합니다. 알약을 누르면 고르는 창이 뜹니다.
 4. **시작**을 누릅니다. 작업 범위(프로젝트 루트)는 엔진이 회차마다 알려주므로 따로 설정하지 않습니다.
@@ -169,7 +169,7 @@ npm run dist
 - `.prettierrc`는 `29commerce_backend`에서 복사했습니다. ESM, 4칸 들여쓰기, 큰따옴표, 세미콜론, trailing comma 없음으로 통일합니다. 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용합니다. 공개 서비스는 try/catch와 오류 로그를 갖추고 `{ status: STATUS_OK, data }` 또는 `{ status: STATUS_FAILED, error: { code, msg } }`를 반환합니다. 실패한 실행의 보고서 데이터는 `data`에 함께 유지합니다. 포맷터는 수정한 JS 파일만 지정합니다.
 - `test:cli`는 임시 Git 저장소와 가짜 Claude를 사용합니다. 실제 Claude 세션이나 대상 프로젝트는 실행하지 않습니다. 인자 해석, 프로젝트 · 작업 폴더, 앱 데이터 폴더의 진행 기록, 프롬프트의 작업 블록, 진행 기록 보관 · 초기화, 정상 commit, idle, 재시도, 사용량 한도, STOP/TODO_COMPLETE, UTF-8, 프로세스 트리 종료, SIGINT·SIGHUP 처리, 동시 실행 잠금(pid 재사용 포함), 오래된 로그 정리, 데스크톱 앱이 읽는 로그 형식과 위조 줄 차단, CLI 진입(작업 파일 · `status` · `set` · `reset-progress` · `stop`)을 확인합니다.
 - `test:desktop`은 가짜 CLI로 앱의 엔진 제어(시작 · 종료 신호 · 강제 종료 · 로그 해석 · 다시 연결)와 허용 값 일치, 프로젝트 · 경로 검사, 표시 함수를 확인합니다. `npm test`는 Electron 창 · preload와 번들 엔진 실행(`ELECTRON_RUN_AS_NODE`)을 확인한 뒤 종료합니다.
-- `npm run dist`는 Windows x64 포터블 exe를 `dist/AutoPilot-<버전>-x64.exe`로 만듭니다. 앱 asar에는 `desktop/`과 로고가, 엔진은 `resources/engine/`에 들어갑니다. `npm run build`로 만든 `dist/win-unpacked`의 엔진까지 검증하려면 `node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe`를 실행합니다.
+- `npm run dist`는 Windows x64 포터블 exe(`dist/AutoPilot-Portable-<버전>-x64.exe`)와 NSIS 설치 파일(`dist/AutoPilot-Setup-<버전>-x64.exe`)을 함께 만듭니다. 앱 asar에는 `desktop/`과 로고가, 엔진은 `resources/engine/`에 들어갑니다. `npm run build`로 만든 `dist/win-unpacked`의 엔진까지 검증하려면 `node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe`를 실행합니다.
 - `.github/workflows/ci.yml`은 Windows에서 포맷 검사, `test:cli`, `test:desktop`, Electron 스모크(`npm test`)를 실행합니다.
 - `.github/workflows/release.yml`은 `v<버전>` 태그를 push하면 위 검증을 거쳐 포터블 exe를 GitHub Release로 올립니다. 태그는 루트 `package.json`의 버전과 같아야 합니다. 배포 exe는 게시자 서명이 없으므로 Windows에서 경고가 표시될 수 있습니다.
 - 시한 초과나 SIGINT/SIGTERM/SIGHUP에는 Windows에서 `taskkill /T /F`를 사용합니다. 자식이 별도 세션으로 이탈하는 실행 방식은 추적 대상이 아닙니다.

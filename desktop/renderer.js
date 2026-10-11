@@ -855,9 +855,10 @@ const handleResetProgress = async () => {
     }
 };
 
-const renderWindowState = ({ maximized }) => {
+const renderWindowState = ({ maximized, resizing }) => {
     const label = maximized ? "이전 크기로" : "최대화";
 
+    document.body.classList.toggle("resizing", Boolean(resizing));
     elements.titlebar.toggleAttribute("data-maximized", maximized);
     elements.windowMaximize.setAttribute("aria-label", label);
     elements.windowMaximize.title = label;

@@ -9,11 +9,59 @@ const WINDOW_SCREEN_MARGIN = 40;
 const WINDOW_BACKGROUND = { day: "#2f78d0", night: "#121a3c" };
 const DAYLIGHT_HOURS = { from: 6, to: 19 };
 const SMOKE_TEST_TIMEOUT_MS = 15000;
+const WINDOW_RESIZE_ANIMATION_MS = 240;
+const WINDOW_RESIZE_FRAME_MS = 16;
 
 let isQuitting = false;
+let resizeAnimation = null;
+let restoreBounds = null;
 
 const SMOKE_CHECK_SCRIPT =
     "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.login === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && typeof initialize === 'function'";
+
+// 화면은 크기를 옮기는 동안 하늘 애니메이션을 멈춰 다시 그릴 양을 줄인다.
+const sendWindowState = (window, resizing = false) => window.webContents.send("window:state", { maximized: window.isMaximized(), resizing });
+
+// 프레임 없는 창은 최대화·복원이 즉시 바뀌어 화면이 튄다. 크기를 보간하며 옮기고, 끝에서 실제 최대화로 전환해 스냅·더블클릭 같은 기본 동작과 맞춘다.
+const animateWindowBounds = (window, from, to, onDone) => {
+    const startedAt = Date.now();
+
+    sendWindowState(window, true);
+
+    resizeAnimation = setInterval(() => {
+        const ratio = Math.min(1, (Date.now() - startedAt) / WINDOW_RESIZE_ANIMATION_MS);
+        const eased = 1 - (1 - ratio) ** 3;
+
+        if (window.isDestroyed()) {
+            clearInterval(resizeAnimation);
+            resizeAnimation = null;
+
+            return;
+        }
+
+        window.setBounds({
+            x: Math.round(from.x + (to.x - from.x) * eased),
+            y: Math.round(from.y + (to.y - from.y) * eased),
+            width: Math.round(from.width + (to.width - from.width) * eased),
+            height: Math.round(from.height + (to.height - from.height) * eased)
+        });
+
+        if (ratio === 1) {
+            clearInterval(resizeAnimation);
+            resizeAnimation = null;
+            onDone?.();
+            sendWindowState(window);
+        }
+    }, WINDOW_RESIZE_FRAME_MS);
+};
+
+const maximizeWithAnimation = (window) => {
+    const from = window.getBounds();
+    const { workArea } = screen.getDisplayMatching(from);
+
+    restoreBounds = from;
+    animateWindowBounds(window, from, workArea, () => window.maximize());
+};
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -24,14 +72,14 @@ const registerWindowControls = () => {
     ipcMain.on("window:toggle-maximize", (event) => {
         const window = getSenderWindow(event);
 
-        if (!window) {
+        if (!window || resizeAnimation) {
             return;
         }
 
         if (window.isMaximized()) {
             window.unmaximize();
         } else {
-            window.maximize();
+            maximizeWithAnimation(window);
         }
     });
 };
@@ -90,10 +138,17 @@ const createWindow = () => {
     });
     window.on("focus", attachRunningEngine);
 
-    const sendWindowState = () => window.webContents.send("window:state", { maximized: window.isMaximized() });
+    window.on("maximize", () => sendWindowState(window, Boolean(resizeAnimation)));
+    window.on("unmaximize", () => {
+        sendWindowState(window);
 
-    window.on("maximize", sendWindowState);
-    window.on("unmaximize", sendWindowState);
+        if (restoreBounds) {
+            const target = restoreBounds;
+
+            restoreBounds = null;
+            animateWindowBounds(window, window.getBounds(), target);
+        }
+    });
 
     if (process.argv.includes("--smoke-test")) {
         const timeout = setTimeout(() => app.exit(1), SMOKE_TEST_TIMEOUT_MS);

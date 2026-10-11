@@ -33,7 +33,7 @@ npm run dist
 
 검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다. 검증 시간 단축은 runAutopilot()의 limits 옵션으로만 하며, 사용자 CLI에 테스트 설정을 노출하지 않는다. 패키징한 앱의 엔진까지 확인하려면 npm run build 뒤 node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe를 실행한다(번들된 resources/engine을 앱 exe로 실행해 CLI 계약을 검증한다).
 
-npm run dist는 electron-builder로 Windows x64 포터블 exe를 만든다. 앱 asar에는 desktop/과 로고만 들어가고, 엔진은 extraResources로 resources/engine/에 복사된다. 지침 본문은 엔진 소스(guideText.js)에 있으므로 별도 파일이 필요 없다. .github/workflows/ci.yml은 Windows에서 CLI·데스크톱 포맷 검사, test:cli, test:desktop, Electron 스모크(npm test)를 실행한다. .github/workflows/release.yml은 v* 태그를 push하면 같은 검증 뒤 포터블 exe를 GitHub Release로 올린다. 태그는 루트 package.json의 version과 같아야 한다.
+npm run dist는 electron-builder로 Windows x64 포터블 exe(AutoPilot-Portable-*)와 NSIS 설치 파일(AutoPilot-Setup-*)을 함께 만든다(포터블은 실행마다 임시 폴더에 풀어 느리므로 설치형을 병행한다). 앱 asar에는 desktop/과 로고만 들어가고, 엔진은 extraResources로 resources/engine/에 복사된다. 지침 본문은 엔진 소스(guideText.js)에 있으므로 별도 파일이 필요 없다. .github/workflows/ci.yml은 Windows에서 CLI·데스크톱 포맷 검사, test:cli, test:desktop, Electron 스모크(npm test)를 실행한다. .github/workflows/release.yml은 v* 태그를 push하면 같은 검증 뒤 포터블 exe와 설치 파일을 GitHub Release로 올린다. 태그는 루트 package.json의 version과 같아야 한다.
 
 ## Electron 연동
 
