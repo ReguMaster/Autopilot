@@ -1,4 +1,4 @@
-// 시간대별 수채 하늘. 하루를 분(0~1439)으로 보고 하늘색, 해·달 위치, 별·별자리·구름·운석을 그린다. 대시보드 상태와 무관하다.
+// 시간대별 수채 하늘. 하루를 분(0~1439)으로 보고 하늘색, 해·달 위치, 별·구름·운석을 그린다. 대시보드 상태와 무관하다.
 // CSP가 inline style 속성을 막으므로 스타일은 CSSOM(style.setProperty)으로만 넣는다.
 // 낮 하늘은 흰 UI 글자가 읽히도록 깊은 파랑으로 둔다(밝은 하늘색이면 흰 글자 대비가 3:1 아래로 떨어진다).
 const SKY_KEYFRAMES = [
@@ -37,54 +37,11 @@ const STAR_MAX_COUNT = 900;
 const STAR_SEED = 18;
 const STAR_LAYER_COUNT = 3;
 const CLOUD_SEED = 42;
-const CLOUD_COUNT = 5;
+const CLOUD_COUNT = 11;
 const CLOUD_DURATION_RANGE = [90, 170];
 const CLOUD_TOP_RANGE = [0.04, 0.5];
 const CLOUD_PATH = "M20 50C8 50 2 42 6 34 2 24 12 16 22 20 26 8 42 4 52 14 60 4 80 6 84 20 96 16 110 24 106 36 114 44 106 52 96 50Z";
 const SVG_NS = "http://www.w3.org/2000/svg";
-
-// 실제 별자리 모양을 단순화했다. 글자와 겹치지 않게 화면 위쪽 양옆에 둔다.
-const CONSTELLATIONS = [
-    {
-        at: [0.2, 0.1],
-        size: 140,
-        stars: [
-            [0, 0.3],
-            [0.17, 0.34],
-            [0.31, 0.42],
-            [0.45, 0.52],
-            [0.62, 0.5],
-            [0.7, 0.72],
-            [0.5, 0.76]
-        ],
-        lines: [
-            [0, 1],
-            [1, 2],
-            [2, 3],
-            [3, 4],
-            [4, 5],
-            [5, 6],
-            [6, 3]
-        ]
-    },
-    {
-        at: [0.82, 0.08],
-        size: 100,
-        stars: [
-            [0, 0.2],
-            [0.24, 0.6],
-            [0.48, 0.32],
-            [0.72, 0.66],
-            [0.96, 0.24]
-        ],
-        lines: [
-            [0, 1],
-            [1, 2],
-            [2, 3],
-            [3, 4]
-        ]
-    }
-];
 
 const skyRoot = document.documentElement;
 const skyElements = {
@@ -231,34 +188,18 @@ const createSvgElement = (name, attributes) => {
 };
 
 // 별마다 애니메이션을 걸면 매 프레임 SVG 전체를 다시 그리므로, 별을 몇 겹의 SVG로 나눠 겹 단위 opacity(합성만 함)로 반짝이게 한다.
-// 별은 모니터 크기로 한 번만 그리고 창 크기에 맞춰 잘라 보이며, 별자리는 퍼센트 좌표로 둬 창이 커져도 하늘 비율을 따른다.
+// 별은 모니터 크기로 한 번만 그리고 창 크기에 맞춰 잘라 보인다.
 const buildStars = () => {
     const { width, height } = window.screen;
     const random = createSeededRandom(STAR_SEED);
     const count = Math.min(STAR_MAX_COUNT, Math.round(((width * height) / STAR_AREA_PX) * STAR_DENSITY));
     const layers = Array.from({ length: STAR_LAYER_COUNT }, () => createSvgElement("svg", { width, height, viewBox: `0 0 ${width} ${height}` }));
-    const constellationLayer = createSvgElement("svg", { class: "constellations" });
 
     for (let index = 0; index < count; index++) {
         layers[index % STAR_LAYER_COUNT].append(createSvgElement("circle", { class: "star", cx: random() * width, cy: random() * height, r: 0.4 + random() ** 3 * 1.4 }));
     }
 
-    for (const constellation of CONSTELLATIONS) {
-        const group = createSvgElement("svg", { x: `${constellation.at[0] * 100}%`, y: `${constellation.at[1] * 100}%`, overflow: "visible" });
-        const points = constellation.stars.map(([x, y]) => [(x - 0.5) * constellation.size, (y - 0.5) * constellation.size * 0.8]);
-
-        for (const [from, to] of constellation.lines) {
-            group.append(createSvgElement("line", { class: "star-line", x1: points[from][0], y1: points[from][1], x2: points[to][0], y2: points[to][1] }));
-        }
-
-        for (const [x, y] of points) {
-            group.append(createSvgElement("circle", { class: "star-bright", cx: x, cy: y, r: 1.9 }));
-        }
-
-        constellationLayer.append(group);
-    }
-
-    skyElements.stars.replaceChildren(...layers, constellationLayer);
+    skyElements.stars.replaceChildren(...layers);
 };
 
 const buildClouds = () => {
@@ -273,7 +214,7 @@ const buildClouds = () => {
         // 블러를 SVG 안에서 한 번만 그려 두면 흐르는 동안 레이어를 옮기기만 한다(CSS filter는 매 프레임 다시 흐린다).
         cloud.innerHTML = `<svg viewBox="-20 -20 160 100" aria-hidden="true"><path d="${CLOUD_PATH}" filter="url(#cloud-blur)" /></svg>`;
         cloud.style.setProperty("--cloud-top", `${((CLOUD_TOP_RANGE[0] + random() * (CLOUD_TOP_RANGE[1] - CLOUD_TOP_RANGE[0])) * 100).toFixed(1)}%`);
-        cloud.style.setProperty("--cloud-scale", (0.55 + random() * 0.8).toFixed(2));
+        cloud.style.setProperty("--cloud-scale", (0.7 + random() * 0.9).toFixed(2));
         cloud.style.setProperty("--cloud-duration", `${duration.toFixed(1)}s`);
         cloud.style.setProperty("--cloud-delay", `${(-random() * duration).toFixed(1)}s`);
         clouds.push(cloud);
@@ -324,4 +265,17 @@ buildClouds();
 renderSky();
 requestAnimationFrame(() => requestAnimationFrame(() => skyRoot.classList.remove("sky-instant")));
 scheduleMeteor();
-setInterval(renderSky, SKY_UPDATE_MS);
+
+// 백그라운드 스로틀링을 꺼 둔 대신, 창이 숨겨지면 하늘 애니메이션과 갱신을 직접 멈춘다.
+setInterval(() => {
+    if (!document.hidden) {
+        renderSky();
+    }
+}, SKY_UPDATE_MS);
+document.addEventListener("visibilitychange", () => {
+    skyRoot.classList.toggle("window-hidden", document.hidden);
+
+    if (!document.hidden) {
+        renderSky();
+    }
+});

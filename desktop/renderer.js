@@ -93,6 +93,8 @@ const elements = {
     projectPath: byId("project-path"),
     selectProject: byId("select-project"),
     appVersion: byId("app-version"),
+    devGroup: byId("dev-group"),
+    toggleDevtools: byId("toggle-devtools"),
     resetProgress: byId("reset-progress"),
     openReport: byId("open-report")
 };
@@ -855,10 +857,9 @@ const handleResetProgress = async () => {
     }
 };
 
-const renderWindowState = ({ maximized, resizing }) => {
+const renderWindowState = ({ maximized }) => {
     const label = maximized ? "이전 크기로" : "최대화";
 
-    document.body.classList.toggle("resizing", Boolean(resizing));
     elements.titlebar.toggleAttribute("data-maximized", maximized);
     elements.windowMaximize.setAttribute("aria-label", label);
     elements.windowMaximize.title = label;
@@ -871,6 +872,11 @@ const bindWindowControls = () => {
     elements.windowClose.addEventListener("click", () => window.appWindow.close());
 
     window.appWindow.onState(renderWindowState);
+
+    window.appWindow.isDev().then((isDev) => {
+        elements.devGroup.hidden = !isDev;
+    });
+    elements.toggleDevtools.addEventListener("click", () => window.appWindow.toggleDevTools());
 };
 
 const bindLayoutWatchers = () => {

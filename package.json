@@ -60,7 +60,10 @@
             "oneClick": false,
             "allowToChangeInstallationDirectory": true,
             "allowElevation": true,
-            "language": "1042"
+            "language": "1042",
+            "installerSidebar": "build/installer/installerSidebar.bmp",
+            "uninstallerSidebar": "build/installer/uninstallerSidebar.bmp",
+            "installerHeader": "build/installer/installerHeader.bmp"
         },
         "extraResources": [
             {

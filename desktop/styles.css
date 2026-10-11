@@ -80,6 +80,12 @@
     transition: none !important;
 }
 
+:root.window-hidden *,
+:root.window-hidden *::before,
+:root.window-hidden *::after {
+    animation-play-state: paused !important;
+}
+
 [hidden] {
     display: none !important;
 }
@@ -200,13 +206,8 @@ textarea {
     top: 0;
 }
 
-.stars > svg.constellations {
-    width: 100%;
-    height: 100%;
-}
-
 /* 별은 겹마다 다른 주기로 반짝인다(sky.js가 별을 겹으로 나눈다). 겹의 opacity만 바뀌므로 다시 그리지 않는다 */
-.stars > svg:not(.constellations) {
+.stars > svg {
     animation: twinkle 2.6s var(--ease-in-out) infinite alternate;
 }
 
@@ -220,17 +221,9 @@ textarea {
     animation-delay: -2.9s;
 }
 
-/* 낮에는 별이 보이지 않으므로 반짝임을 멈추고, 창 크기를 옮기는 동안에도 하늘 애니메이션을 멈춘다 */
-body:not(.night) .stars > svg,
-body.resizing .stars > svg,
-body.resizing .sky-fill,
-body.resizing .cloud,
-body.resizing .sun {
+/* 낮에는 별이 보이지 않으므로 반짝임을 멈춘다 */
+body:not(.night) .stars > svg {
     animation-play-state: paused;
-}
-
-body.resizing .veil {
-    transition: none;
 }
 
 .star {
@@ -241,15 +234,6 @@ body.resizing .veil {
     to {
         opacity: 0.2;
     }
-}
-
-.star-line {
-    stroke: rgb(255 255 255 / 0.42);
-    stroke-width: 1;
-}
-
-.star-bright {
-    fill: #fff;
 }
 
 /* 해·달은 화면 크기의 트랙을 퍼센트 translate로 옮긴다. 퍼센트는 창 크기가 바뀌어도 계산값이 그대로라 최대화·크기 조절 중에 전환이 다시 시작되지 않고 하늘 비율을 따라 늘어난다. 후광은 CSS filter 대신 SVG 그라데이션이라 움직이는 동안 다시 흐리지 않는다 */
@@ -323,7 +307,7 @@ body.resizing .veil {
     top: var(--cloud-top);
     width: calc(200px * var(--cloud-scale));
     /* 낮에도 흰 글자 뒤로 지나갈 때 글자를 가리지 않도록 반투명하게 둔다 */
-    opacity: calc(0.3 + var(--day) * 0.4);
+    opacity: calc(0.6 + var(--day) * 0.15);
     animation: drift var(--cloud-duration) linear infinite;
     animation-delay: var(--cloud-delay);
 }
@@ -335,7 +319,7 @@ body.resizing .veil {
 }
 
 .cloud path {
-    fill: color-mix(in srgb, #fff calc(var(--day) * 100%), #4d5578);
+    fill: color-mix(in srgb, #fff calc(var(--day) * 100%), #8e9ac8);
 }
 
 @keyframes drift {
