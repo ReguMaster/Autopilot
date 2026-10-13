@@ -34,8 +34,8 @@ process.stdin.on('end', () => {
     fs.writeFileSync('grandchild.pid', String(child.pid));
     process.exit(0);
   }
-  if (mode === 'limit') {
-    emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: Date.now() / 1000 + 0.05 } });
+  if (mode.startsWith('limit')) {
+    emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: Date.now() / 1000 + (mode === 'limit-long' ? 1.5 : 0.05) } });
     emit({ type: 'result', is_error: true, result: 'limit' });
     process.exitCode = 1;
   } else if (mode === 'commit') {
@@ -58,7 +58,7 @@ process.stdin.on('end', () => {
   } else if (mode === 'stop') fs.writeFileSync('autopilot/progress/STOP', '');
   else if (mode === 'options') fs.writeFileSync('autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ model: 'sonnet', effort: 'low' }));
   if (mode === 'failure') process.exitCode = 1;
-  if (mode !== 'limit') emit({ type: 'result', subtype: 'success', is_error: mode === 'is-error', num_turns: 1, duration_ms: 10, total_cost_usd: 0.25, result: '검증 <script>' });
+  if (!mode.startsWith('limit')) emit({ type: 'result', subtype: 'success', is_error: mode === 'is-error', num_turns: 1, duration_ms: 10, total_cost_usd: 0.25, result: '검증 <script>' });
   console.error('fake stderr 한글\nReport : /forged-stderr');
 });
 `;

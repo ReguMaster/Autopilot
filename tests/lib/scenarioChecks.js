@@ -113,7 +113,7 @@ const createScenarioRunner = (context, fakeCliFile) => {
         context.git(projectDir, "check-ignore", "-q", "autopilot/progress/any.log");
         context.git(projectDir, "check-ignore", "-q", "autopilot/recycle_bin/any.txt");
 
-        if (!["limit", "timeout", "signal"].includes(mode)) {
+        if (!["limit", "limit-long", "timeout", "signal"].includes(mode)) {
             assert.match(fs.readFileSync(result.reportFile, "utf8"), /&lt;script&gt;/);
         }
 
@@ -397,6 +397,15 @@ const checkRetriesAndRateLimit = async (runScenario) => {
     assert.equal(rateLimitedRunData.exitCode, 0);
     assert.equal(rateLimitedRunData.rounds.length, 3);
     assert(rateLimitedRunData.rounds.every((round) => round.outcome === "사용량 한도"));
+
+    // 기본은 종료 시각을 그대로 두고, extendOnLimit이면 기다린 만큼(초 단위 올림) 늦춘다. 로그 파서도 연장된 시각을 읽는다(checkDesktopLogContract).
+    const extendedRunData = await runScenario("limit-long", { extendOnLimit: true, limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [], resetGraceMs: 0 } });
+
+    assert.equal(rateLimitedRunData.deadline.getSeconds(), 0);
+    assert.equal(extendedRunData.rounds.length, 1);
+    assert(extendedRunData.deadline.getSeconds() > 0);
+    assert.equal(extendedRunData.deadline.getMilliseconds(), 0);
+    assert.match(fs.readFileSync(extendedRunData.logFile, "utf8"), /^\[사용량 한도\] 종료 시각 연장 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(\+1분\)$/m);
 };
 
 const checkTimeout = async (runScenario) => {

@@ -4,12 +4,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("./projectFiles.cjs");
+const { createAccountIpc } = require("./accountIpc.cjs");
 
 const POLICY_CHOICES = ["auto", "todo"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 const TASKS_FILE_NAME = "tasks.md";
-const DEFAULT_SETTINGS = { projectDir: "", tasks: "", endTime: "", policy: "auto", model: "opus", effort: "high" };
+const DEFAULT_SETTINGS = { projectDir: "", tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", effort: "high", accounts: [], accountId: "default", claudeDir: "" };
 
 // 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
 const SETTING_VALIDATORS = {
@@ -17,8 +18,12 @@ const SETTING_VALIDATORS = {
     tasks: (value) => typeof value === "string",
     endTime: (value) => value === "" || END_TIME_PATTERN.test(value),
     policy: (value) => POLICY_CHOICES.includes(value),
+    extendOnLimit: (value) => typeof value === "boolean",
     model: (value) => MODEL_CHOICES.includes(value),
-    effort: (value) => EFFORT_CHOICES.includes(value)
+    effort: (value) => EFFORT_CHOICES.includes(value),
+    accounts: (value) => Array.isArray(value),
+    accountId: (value) => typeof value === "string",
+    claudeDir: (value) => typeof value === "string"
 };
 
 const getSettingsFile = () => {
@@ -68,11 +73,19 @@ const isValidRoundOptions = ({ model, effort }) => {
     return MODEL_CHOICES.includes(model) && EFFORT_CHOICES.includes(effort);
 };
 
-const getCliArgs = ({ projectDir, tasksFile, endTime, policy, model, effort }) => {
+const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, model, effort, configDir }) => {
     const args = ["--project", projectDir, "--no-open", "--tasks-file", tasksFile, "--policy", policy, "--model", model, "--effort", effort];
 
     if (endTime) {
         args.push("--end-time", endTime);
+    }
+
+    if (extendOnLimit) {
+        args.push("--extend-on-limit");
+    }
+
+    if (configDir) {
+        args.push("--config-dir", configDir);
     }
 
     return args;
@@ -90,6 +103,8 @@ const runner = createRunner({
     onLog: (entries) => broadcast("autopilot:log", entries),
     onState: (state) => broadcast("autopilot:state", state)
 });
+
+const accounts = createAccountIpc({ readSettings: readSettings, writeSettings: writeSettings, broadcast: broadcast, isRunning: () => runner.isRunning() });
 
 // 시작 인자의 오류를 알려준다. 없으면 null.
 const getStartError = (settings, options) => {
@@ -110,12 +125,13 @@ const getStartError = (settings, options) => {
     return null;
 };
 
-const handleStart = (event, options = {}) => {
+const handleStart = async (event, options = {}) => {
     const settings = readSettings();
     const startOptions = {
         tasks: typeof options.tasks === "string" ? options.tasks : "",
         endTime: String(options.endTime || ""),
         policy: options.policy,
+        extendOnLimit: options.extendOnLimit === true,
         model: options.model,
         effort: options.effort
     };
@@ -123,6 +139,12 @@ const handleStart = (event, options = {}) => {
 
     if (startError) {
         return startError;
+    }
+
+    const runAccount = await accounts.getRunAccount();
+
+    if (runAccount.status !== STATUS_OK) {
+        return runAccount;
     }
 
     // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
@@ -135,7 +157,7 @@ const handleStart = (event, options = {}) => {
     return runner.start({
         ...getEngineLaunch(),
         projectDir: settings.projectDir,
-        args: getCliArgs({ ...startOptions, projectDir: settings.projectDir, tasksFile: tasksFile }),
+        args: getCliArgs({ ...startOptions, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
         roundOptions: { model: startOptions.model, effort: startOptions.effort }
     });
 };
@@ -297,6 +319,10 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:kill", handleKill);
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
+    accounts.register();
+
+    // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.
+    app.on("before-quit", () => accounts.cancelLogin());
 };
 
 // 앱이 시작한 엔진은 창을 닫으면 출력이 끊기므로 확인을 받고 강제 종료한다. 연결한 엔진은 앱 소유가 아니라 그대로 두고 닫는다. 닫아도 되면 true를 반환한다.
@@ -324,4 +350,9 @@ const confirmClose = (window) => {
     return true;
 };
 
-module.exports = { registerIpc, confirmClose, attachRunningEngine, checkEngine };
+// 앱을 켤 때 한 번 조회하고 이후 주기적으로 다시 읽는다. 스모크 테스트는 네트워크를 쓰지 않도록 시작하지 않는다.
+const startAccountWatch = () => {
+    accounts.startWatch();
+};
+
+module.exports = { registerIpc, confirmClose, attachRunningEngine, checkEngine, startAccountWatch };

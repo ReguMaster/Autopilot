@@ -27,6 +27,38 @@ const formatOptions = (model, effort) => {
     return model ? `${MODEL_LABELS[model] || model} · ${effort}` : "-";
 };
 
+const formatRemaining = (ms) => {
+    const totalMinutes = Math.max(0, Math.round(ms / 60000));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+
+    if (days > 0) {
+        return `${days}일 ${hours}시간`;
+    }
+
+    return hours > 0 ? `${hours}시간 ${minutes}분` : `${minutes}분`;
+};
+
+// 같은 날이면 시각만, 다른 날이면 날짜까지 보여준다.
+const formatUsageReset = (resetsAt, now) => {
+    if (!resetsAt) {
+        return "리셋 시각을 알 수 없어요";
+    }
+
+    const isSameDay = new Date(resetsAt).toDateString() === new Date(now).toDateString();
+
+    return `${isSameDay ? formatClock(resetsAt) : formatDeadline(resetsAt)} 리셋 · ${formatRemaining(resetsAt - now)} 후`;
+};
+
+const getUsageTone = (percent) => {
+    if (percent >= 90) {
+        return "danger";
+    }
+
+    return percent >= 70 ? "warn" : "ok";
+};
+
 const getLineKind = ({ stream, text }) => {
     if (stream === "err" || text.startsWith("[stderr]")) {
         return "err";

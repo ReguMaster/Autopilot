@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const path = require("node:path");
-const { registerIpc, confirmClose, attachRunningEngine, checkEngine } = require("./autopilotIpc.cjs");
+const { registerIpc, confirmClose, attachRunningEngine, checkEngine, startAccountWatch } = require("./autopilotIpc.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
@@ -10,7 +10,7 @@ const DAYLIGHT_HOURS = { from: 6, to: 19 };
 const SMOKE_TEST_TIMEOUT_MS = 15000;
 
 const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar'))";
+    "typeof window.autopilot?.start === 'function' && typeof window.appWindow?.close === 'function' && typeof window.autopilot?.getAccounts === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && Boolean(document.querySelector('#profile'))";
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -126,6 +126,10 @@ if (!hasInstanceLock) {
         registerIpc();
         registerWindowControls();
         createWindow();
+
+        if (!process.argv.includes("--smoke-test")) {
+            startAccountWatch();
+        }
 
         app.on("activate", () => {
             if (BrowserWindow.getAllWindows().length === 0) {

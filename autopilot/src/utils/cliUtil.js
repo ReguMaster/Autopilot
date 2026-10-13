@@ -1,7 +1,7 @@
 import { EFFORT_LEVELS, MODEL_CHOICES } from "./config.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus] [--effort high] [--config-dir .claude] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus] [--effort high] [--config-dir .claude] [--extend-on-limit] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>"
 ].join("\n");
@@ -9,6 +9,7 @@ const HELP_TEXT = [
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
 const SET_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--model": "model", "--effort": "effort" };
 const RUN_OPTION_KEYS = { ...SET_OPTION_KEYS, "--config-dir": "configDir", "--end-time": "endTime", "--policy": "policy", "--tasks-file": "tasksFile" };
+const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
 
 const parseOptionValue = (args, index) => {
     const value = args[index + 1];
@@ -53,11 +54,11 @@ const parseOptions = (args, optionKeys) => {
 
 const parseRunArgs = (args) => {
     const options = parseOptions(
-        args.filter((arg) => arg !== "--no-open"),
+        args.filter((arg) => !RUN_FLAGS.includes(arg)),
         RUN_OPTION_KEYS
     );
 
-    return args.includes("--no-open") ? { ...options, open: false } : options;
+    return { ...options, ...(args.includes("--no-open") && { open: false }), ...(args.includes("--extend-on-limit") && { extendOnLimit: true }) };
 };
 
 // stop · status · reset-progress는 대상 프로젝트만 받는다.

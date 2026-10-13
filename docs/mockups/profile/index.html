@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>프로필 패널 시안</title>
+  <style>
+    body { margin: 0; padding: 32px 24px 48px; background: #eef1f6; color: #222; font: 14px/1.6 "Pretendard", "Malgun Gothic", sans-serif; }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    p.lead { margin: 0 0 28px; color: #555; }
+    .row { display: flex; flex-wrap: wrap; gap: 28px; margin-bottom: 40px; }
+    figure { margin: 0; width: 360px; }
+    .window { position: relative; width: 360px; height: 480px; overflow: hidden; border-radius: 10px; box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
+    .window iframe { position: absolute; inset: 0; width: 600px; height: 800px; border: 0; transform: scale(.6); transform-origin: 0 0; }
+    figcaption { margin-top: 10px; }
+    figcaption b { display: block; font-size: 15px; }
+    figcaption span { color: #555; font-size: 13px; }
+    h2 { margin: 0 0 12px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>프로필 패널 시안</h1>
+  <p class="lead">헤더 설정 버튼 왼쪽의 버튼(사람 아이콘)으로 여는 패널입니다. 위는 계정 정보, 아래는 사용량과 한도입니다. 이름·이메일·요금제·조직은 가짜 값이고, 실제로 어떤 필드가 오는지는 구현 전에 확인합니다.</p>
+
+  <h2>레이아웃 3안</h2>
+  <div class="row">
+    <figure>
+      <div class="window"><iframe src="frame.html#a" title="A안"></iframe></div>
+      <figcaption><b>A. 명함형</b><span>아바타·이름·이메일을 한 줄에, 요금제는 오른쪽 끝에 글자로. 가장 작고 가볍습니다. 조직 이름은 넣을 자리가 없습니다.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="window"><iframe src="frame.html#b" title="B안"></iframe></div>
+      <figcaption><b>B. 행 목록형</b><span>설정 패널의 그룹과 같은 문법으로 라벨·값을 한 줄씩. 항목이 늘어도 자리가 있고 복사하기 좋지만, 위쪽이 가장 길어집니다.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="window"><iframe src="frame.html#c" title="C안"></iframe></div>
+      <figcaption><b>C. 요금제 강조형</b><span>요금제 이름을 크게. 한도가 요금제에 따라 달라지는 앱이라 맥락이 바로 읽히지만, 계정 정보는 작아집니다.</span></figcaption>
+    </figure>
+  </div>
+
+  <h2>상태 (A안 기준, 나머지 안도 같은 규칙)</h2>
+  <div class="row">
+    <figure>
+      <div class="window"><iframe src="frame.html#a-loading" title="불러오는 중"></iframe></div>
+      <figcaption><b>불러오는 중</b><span>앱을 켠 직후 첫 조회가 끝나기 전. 글자 자리에 옅은 막대가 숨 쉽니다.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="window"><iframe src="frame.html#a-error" title="갱신 실패"></iframe></div>
+      <figcaption><b>갱신 실패</b><span>캐시한 값은 그대로 두고 아래 안내만 주황색으로 바뀝니다. 캐시가 아예 없을 때는 안내 문구만 보입니다.</span></figcaption>
+    </figure>
+  </div>
+</body>
+</html>

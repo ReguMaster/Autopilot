@@ -19,6 +19,7 @@ const ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
 const ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \(model (\S+), effort (\S+)\))?/;
 const RETRY_PATTERN = /^(\d+)분 후 재시도/;
 const LIMIT_PATTERN = /^\[사용량 한도\] (.+)까지 대기/;
+const LIMIT_EXTEND_PATTERN = /^\[사용량 한도\] 종료 시각 연장 (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/;
 const FINISH_PATTERN = /^AutoPilot 종료 - (.+) \(\d+회차\)$/;
 
 const createInitialState = () => {
@@ -141,6 +142,14 @@ const parseLine = (state, line, isReplay = false) => {
 
     if (round) {
         applyRound(state, Number(round[1]), round[2], isReplay);
+
+        return;
+    }
+
+    const limitExtend = line.match(LIMIT_EXTEND_PATTERN);
+
+    if (limitExtend) {
+        state.deadlineAt = new Date(limitExtend[1].replace(" ", "T")).getTime();
 
         return;
     }

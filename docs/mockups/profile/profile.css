@@ -1,0 +1,159 @@
+/* 프로필 패널 시안 전용. 확정되면 desktop/styles.css로 옮긴다. 패널 껍데기(.settings)와 사용량 막대(.usage-*)는 앱 styles.css의 것을 그대로 쓴다. */
+.panel-body {
+    display: contents;
+}
+
+.pf-usage {
+    display: grid;
+    gap: 14px;
+}
+
+.pf-section {
+    margin: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.pf-foot {
+    margin-top: auto;
+}
+
+.pf-avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--tint);
+    color: var(--ink);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.pf-id {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.pf-name {
+    font-size: 16px;
+}
+
+.pf-email {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A. 명함형: 한 줄에 아바타·이름·이메일, 요금제는 오른쪽에 글자만 */
+.pf-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pf-plan {
+    margin-left: auto;
+    padding: 2px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+/* B. 행 목록형: 설정 패널의 그룹과 같은 문법, 라벨과 값을 한 줄씩 */
+.pf-rows {
+    justify-items: stretch;
+}
+
+.pf-rows dl {
+    margin: 0;
+}
+
+.pf-rows dl > div {
+    display: grid;
+    grid-template-columns: 4.5em minmax(0, 1fr);
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
+    font-size: 13.5px;
+}
+
+.pf-rows dt {
+    color: var(--muted);
+}
+
+.pf-rows dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+/* C. 요금제 강조형: 요금제 이름이 가장 크고, 계정은 그 아래에 */
+.pf-hero {
+    display: grid;
+    gap: 2px;
+}
+
+.pf-hero-label {
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.pf-hero-plan {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.pf-hero-id {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.pf-hero-id .pf-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 15px;
+}
+
+/* 불러오는 중: 글자 자리에 옅은 막대가 천천히 숨 쉰다 */
+.pf-bar {
+    display: block;
+    height: 0.9em;
+    border-radius: 4px;
+    background: var(--tint);
+    animation: pf-breathe 1.4s ease-in-out infinite alternate;
+}
+
+.pf-bar.big {
+    height: 1.6em;
+}
+
+.pf-skeleton .pf-avatar {
+    animation: pf-breathe 1.4s ease-in-out infinite alternate;
+}
+
+.pf-skeleton .usage-meter {
+    background: var(--tint);
+}
+
+.pf-skeleton.pf-rows dl > div {
+    align-items: center;
+}
+
+@keyframes pf-breathe {
+    from {
+        opacity: 0.45;
+    }
+}

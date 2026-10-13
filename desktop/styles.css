@@ -516,6 +516,11 @@ body.settings-open .settings-toggle svg {
     rotate: 90deg;
 }
 
+body.profile-open .profile-toggle {
+    background: var(--tint);
+    color: var(--ink);
+}
+
 .icon-restore,
 .titlebar[data-maximized] .icon-maximize {
     display: none;
@@ -1357,30 +1362,36 @@ body:not([data-status="idle"]) .tasks {
         visibility 0s linear 0.45s;
 }
 
-body.settings-open .settings {
+body.settings-open #settings,
+body.profile-open #profile {
     opacity: 1;
     translate: 0;
     visibility: visible;
     transition-delay: 0s;
 }
 
-body.settings-open .settings > * {
+body.settings-open #settings > *,
+body.profile-open #profile > * {
     animation: rise-plain 0.5s var(--ease-out) backwards;
 }
 
-body.settings-open .settings > :nth-child(2) {
+body.settings-open #settings > :nth-child(2),
+body.profile-open #profile > :nth-child(2) {
     animation-delay: 0.06s;
 }
 
-body.settings-open .settings > :nth-child(3) {
+body.settings-open #settings > :nth-child(3),
+body.profile-open #profile > :nth-child(3) {
     animation-delay: 0.12s;
 }
 
-body.settings-open .settings > :nth-child(4) {
+body.settings-open #settings > :nth-child(4),
+body.profile-open #profile > :nth-child(4) {
     animation-delay: 0.18s;
 }
 
-body.settings-open .settings > :nth-child(5) {
+body.settings-open #settings > :nth-child(5),
+body.profile-open #profile > :nth-child(5) {
     animation-delay: 0.24s;
 }
 
@@ -1409,7 +1420,8 @@ body.settings-open .settings > :nth-child(5) {
     font-size: 13px;
 }
 
-.project[data-missing] .project-path {
+.project[data-missing] .project-path,
+.claude-dir[data-missing] .project-path {
     color: var(--wait);
 }
 
@@ -1430,6 +1442,19 @@ body.settings-open .settings > :nth-child(5) {
     font-weight: 700;
 }
 
+.settings-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    cursor: pointer;
+}
+
+.settings-check:has(input:disabled) {
+    opacity: 0.55;
+    cursor: default;
+}
+
 .settings-note {
     margin: 0;
     color: var(--muted);
@@ -1440,6 +1465,280 @@ body.settings-open .settings > :nth-child(5) {
     display: grid;
     justify-items: start;
     gap: 6px;
+}
+
+.settings-note[data-tone="warn"] {
+    color: var(--wait);
+}
+
+.account-bar,
+.account-form,
+.login-box {
+    display: grid;
+    justify-items: start;
+    gap: 10px;
+}
+
+.account-bar > .account-picker,
+.account-form > .account-input {
+    justify-self: stretch;
+}
+
+.account-picker {
+    position: relative;
+}
+
+.account-picker::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--muted);
+    border-bottom: 1.5px solid var(--muted);
+    rotate: 45deg;
+    translate: 0 -70%;
+    pointer-events: none;
+}
+
+.account-select,
+.account-input {
+    width: 100%;
+    padding: 7px 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    background: none;
+    color: var(--ink);
+    font-size: 13.5px;
+    transition:
+        border-color 0.25s ease,
+        background-color 0.25s ease;
+}
+
+.account-select {
+    padding-right: 34px;
+    appearance: none;
+    cursor: pointer;
+}
+
+.account-select option {
+    background: var(--panel-tint);
+    color: var(--ink);
+}
+
+.account-input::placeholder {
+    color: var(--muted);
+    opacity: 0.8;
+}
+
+.account-select:hover:not(:disabled),
+.account-select:focus,
+.account-input:hover,
+.account-input:focus {
+    border-color: var(--ink);
+    background: var(--tint);
+    outline: none;
+}
+
+.account-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 16px;
+}
+
+.login-code {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.login-code .account-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.profile-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.profile-avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--tint);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.profile-id {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.profile-name {
+    font-size: 16px;
+}
+
+.profile-email {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-plan {
+    margin-left: auto;
+    padding: 2px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+.profile-usage {
+    display: grid;
+    gap: 14px;
+}
+
+.profile-section {
+    margin: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.profile-foot {
+    margin-top: auto;
+}
+
+/* 첫 조회가 끝나기 전: 글자 자리에 옅은 막대가 천천히 숨 쉰다 */
+.profile-card[aria-busy="true"] .profile-avatar,
+.profile-card[aria-busy="true"] .profile-name,
+.profile-card[aria-busy="true"] .profile-email,
+.usage-list[data-loading] :is(h3, .usage-percent, .usage-reset) {
+    display: block;
+    border-radius: 4px;
+    background: var(--tint);
+    color: transparent;
+    animation: skeleton-breathe 1.4s ease-in-out infinite alternate;
+}
+
+.profile-card[aria-busy="true"] .profile-avatar {
+    border-radius: 50%;
+}
+
+.profile-card[aria-busy="true"] .profile-name {
+    width: 7em;
+    height: 1em;
+}
+
+.profile-card[aria-busy="true"] .profile-email {
+    width: 11em;
+    height: 0.9em;
+}
+
+.usage-list[data-loading] h3 {
+    width: 6em;
+    height: 0.9em;
+}
+
+.usage-list[data-loading] .usage-percent {
+    width: 2em;
+    height: 1em;
+    justify-self: end;
+}
+
+.usage-list[data-loading] .usage-reset {
+    width: 12em;
+    height: 0.9em;
+}
+
+.usage-list[data-loading] .usage-meter i {
+    animation: none;
+}
+
+@keyframes skeleton-breathe {
+    from {
+        opacity: 0.45;
+    }
+}
+
+.usage-list {
+    display: grid;
+    gap: 20px;
+}
+
+.usage-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 6px 12px;
+}
+
+.usage-item h3 {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.usage-percent {
+    font-size: 17px;
+}
+
+.usage-meter {
+    grid-column: 1 / -1;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--tint);
+    overflow: hidden;
+}
+
+.usage-meter i {
+    display: block;
+    width: calc(var(--value, 0) * 1%);
+    height: 100%;
+    border-radius: inherit;
+    background: var(--level-0);
+    transition:
+        width 0.6s var(--ease-out),
+        background-color 0.3s ease;
+    animation: meter-fill 0.7s var(--ease-out) backwards;
+}
+
+.usage-item[data-tone="warn"] .usage-meter i {
+    background: var(--level-2);
+}
+
+.usage-item[data-tone="danger"] .usage-meter i {
+    background: var(--level-4);
+}
+
+.usage-reset {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
+@keyframes meter-fill {
+    from {
+        width: 0;
+    }
 }
 
 .settings-version {

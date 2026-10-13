@@ -6,6 +6,7 @@ import {
     STATUS_FAILED,
     ERROR_CODE_AUTOPILOT_FAILED,
     ERROR_CODE_AUTOPILOT_ERROR,
+    SECOND_MS,
     MINUTE_MS,
     WAIT_POLL_MS,
     REPORT_REFRESH_MS,
@@ -311,17 +312,25 @@ const runRound = async (context, loopState, remainingMinutes) => {
 };
 
 // 중단해야 하면 true를 반환한다. 한도 리셋이 종료 시각 이후면 기다리지 않고 끝낸다.
+// extendOnLimit이면 기다린 만큼 종료 시각을 늦춰 대기 전 남은 시간이 그대로 남는다. 로그 시각이 초 단위라 연장분은 올림한다.
 const waitForRateLimitReset = async (context, loopState, resetAt) => {
-    const { runConfig, runState, writeLog } = context;
+    const { options, runConfig, runState, writeLog } = context;
     const resumeAt = resetAt + runConfig.resetGraceMs;
+    const extensionMs = options.extendOnLimit ? Math.ceil(Math.max(0, resumeAt - Date.now()) / SECOND_MS) * SECOND_MS : 0;
 
-    if (runState.deadline - resumeAt < runConfig.minMinutes * MINUTE_MS) {
-        loopState.reason = "사용량 한도 리셋이 종료 시각 이후";
+    if (+runState.deadline + extensionMs - resumeAt < runConfig.minMinutes * MINUTE_MS) {
+        loopState.reason = extensionMs ? "사용량 한도 대기 전 남은 시간 부족" : "사용량 한도 리셋이 종료 시각 이후";
 
         return true;
     }
 
     const resumeTime = dateUtil.getTimeString(new Date(resumeAt));
+
+    if (extensionMs) {
+        runState.deadline = new Date(+runState.deadline + extensionMs);
+
+        writeLog(`[사용량 한도] 종료 시각 연장 ${dateUtil.getDatetimeString(runState.deadline)} (+${Math.ceil(extensionMs / MINUTE_MS)}분)`);
+    }
 
     writeLog(`[사용량 한도] ${resumeTime}까지 대기 (실패로 세지 않음)`);
     reportUtil.writeRunReport(runState, `사용량 한도 - ${resumeTime} 재시도`, true);

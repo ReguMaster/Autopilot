@@ -6,6 +6,8 @@ const CLOCK_INTERVAL_MS = 1000;
 const FOLLOW_THRESHOLD_PX = 24;
 const LOG_FLUSH_MS = 50;
 const EMPTY_CLOCK = "--:--:--";
+const SKELETON_ITEM_COUNT = 3;
+const PANEL_NAMES = ["settings", "profile"];
 
 const STATUS_OK = "OK";
 
@@ -29,6 +31,36 @@ const elements = {
     titlebar: byId("titlebar"),
     settingsToggle: byId("settings-toggle"),
     settings: byId("settings"),
+    profileToggle: byId("profile-toggle"),
+    profile: byId("profile"),
+    profileCard: byId("profile-card"),
+    profileAvatar: byId("profile-avatar"),
+    profileName: byId("profile-name"),
+    profileEmail: byId("profile-email"),
+    profilePlan: byId("profile-plan"),
+    usageSection: byId("usage-section"),
+    usageList: byId("usage-list"),
+    usageStatus: byId("usage-status"),
+    usageRefresh: byId("usage-refresh"),
+    accountSelect: byId("account-select"),
+    accountAdd: byId("account-add"),
+    accountLogin: byId("account-login"),
+    accountRemove: byId("account-remove"),
+    accountMessage: byId("account-message"),
+    accountForm: byId("account-form"),
+    accountLabel: byId("account-label"),
+    accountShare: byId("account-share"),
+    claudeDir: byId("claude-dir"),
+    claudeDirPath: byId("claude-dir-path"),
+    selectClaudeDir: byId("select-claude-dir"),
+    resetClaudeDir: byId("reset-claude-dir"),
+    accountFormCancel: byId("account-form-cancel"),
+    loginBox: byId("login-box"),
+    loginMessage: byId("login-message"),
+    loginOpen: byId("login-open"),
+    loginCodeForm: byId("login-code-form"),
+    loginCode: byId("login-code"),
+    loginCancel: byId("login-cancel"),
     windowMinimize: byId("window-minimize"),
     windowMaximize: byId("window-maximize"),
     windowClose: byId("window-close"),
@@ -51,6 +83,7 @@ const elements = {
     effortName: byId("effort-name"),
     effortLevels: byId("effort-levels"),
     endTime: byId("end-time"),
+    extendOnLimit: byId("extend-on-limit"),
     tasks: byId("tasks"),
     applyNote: byId("apply-note"),
     livePanel: byId("live-panel"),
@@ -86,6 +119,17 @@ let renderedRoundsKey = "";
 let lineNumber = 0;
 let isApplying = false;
 let isApplyQueued = false;
+let renderedUsageKey = "";
+const EMPTY_ACCOUNT = { profile: null, limits: [], fetchedAt: 0, error: null };
+const LOGIN_DONE_HIDE_MS = 3000;
+const MAX_ACCOUNT_COUNT = 9;
+
+let accountsState = { accounts: [], activeId: "default" };
+let accountSnapshots = {};
+let loginState = null;
+let claudeDirInfo = null;
+let renderedAccountsKey = "";
+let loginHideTimer = 0;
 
 /* 화면 움직임 */
 
@@ -266,16 +310,322 @@ const handleFollowByScroll = () => {
     elements.follow.checked = scrollHeight - scrollTop - clientHeight < FOLLOW_THRESHOLD_PX;
 };
 
-/* 설정 패널과 전체 기록 */
+/* 사용량 */
 
-const setSettingsOpen = (isOpen) => {
-    document.body.classList.toggle("settings-open", isOpen);
-    elements.settings.inert = !isOpen;
-    elements.settingsToggle.setAttribute("aria-expanded", String(isOpen));
+const createUsageItem = () => {
+    const item = document.createElement("section");
+    const name = document.createElement("h3");
+    const percent = document.createElement("b");
+    const meter = document.createElement("div");
+    const fill = document.createElement("i");
+    const reset = document.createElement("span");
 
-    if (isOpen) {
+    item.className = "usage-item";
+    percent.className = "usage-percent num";
+    meter.className = "usage-meter";
+    meter.setAttribute("role", "meter");
+    meter.setAttribute("aria-valuemin", "0");
+    meter.setAttribute("aria-valuemax", "100");
+    reset.className = "usage-reset";
+
+    meter.append(fill);
+    item.append(name, percent, meter, reset);
+
+    return item;
+};
+
+const updateUsageItem = (item, limit, now) => {
+    const percent = Math.round(limit.percent);
+    const meter = item.querySelector(".usage-meter");
+
+    item.dataset.tone = getUsageTone(limit.percent);
+    item.querySelector("h3").textContent = limit.label;
+    item.querySelector(".usage-percent").textContent = `${percent}%`;
+    item.querySelector(".usage-reset").textContent = formatUsageReset(limit.resetsAt, now);
+    meter.style.setProperty("--value", String(limit.percent));
+    meter.setAttribute("aria-valuenow", String(percent));
+    meter.setAttribute("aria-label", limit.label);
+};
+
+const getAvatarLetter = ({ name, email }) => {
+    return Array.from(name || email)[0]?.toUpperCase() ?? "";
+};
+
+// 아바타 사진은 계정 정보에 없어 이름(없으면 이메일)의 첫 글자를 그린다. 조직 이름은 요금제 표시의 툴팁에 둔다.
+const renderProfile = (profile, isLoading) => {
+    elements.profileCard.hidden = !profile && !isLoading;
+    elements.profileCard.setAttribute("aria-busy", String(isLoading));
+    elements.profileAvatar.textContent = profile ? getAvatarLetter(profile) : "";
+    elements.profileName.textContent = profile ? profile.name || profile.email : "";
+    elements.profileEmail.textContent = profile?.name ? profile.email : "";
+    elements.profilePlan.textContent = profile?.plan || "";
+    elements.profilePlan.hidden = !profile?.plan;
+    elements.profilePlan.title = profile?.organization || "";
+};
+
+// 항목 구성이 같으면 막대를 다시 만들지 않아 값이 바뀔 때만 막대가 움직인다.
+const renderUsage = (limits, isLoading) => {
+    const key = isLoading ? "loading" : limits.map((limit) => limit.label).join("|");
+
+    elements.usageSection.hidden = !isLoading && limits.length === 0;
+
+    if (key !== renderedUsageKey) {
+        elements.usageList.replaceChildren(...Array.from({ length: isLoading ? SKELETON_ITEM_COUNT : limits.length }, createUsageItem));
+        elements.usageList.toggleAttribute("data-loading", isLoading);
+        renderedUsageKey = key;
+    }
+
+    if (!isLoading) {
+        limits.forEach((limit, index) => updateUsageItem(elements.usageList.children[index], limit, Date.now()));
+    }
+};
+
+const getAccountStatus = (account, isLoading) => {
+    if (isLoading) {
+        return { text: "불러오는 중이에요.", tone: "" };
+    }
+
+    if (!account.error) {
+        return { text: `${formatClock(account.fetchedAt)} 기준`, tone: "" };
+    }
+
+    const staleNote = account.fetchedAt ? ` (${formatClock(account.fetchedAt)} 기준 값)` : "";
+
+    return { text: account.error.msg + staleNote, tone: "warn" };
+};
+
+// 메인 프로세스가 앱을 켤 때 한 번 읽어 보관하고 주기적으로 갱신해 보내 준다. 값이 없고 오류도 없으면 첫 조회 중이다.
+const renderAccount = (account) => {
+    const isLoading = !account.fetchedAt && !account.error;
+    const status = getAccountStatus(account, isLoading);
+
+    renderProfile(account.profile, isLoading);
+    renderUsage(account.limits, isLoading);
+
+    elements.usageStatus.textContent = status.text;
+    elements.usageStatus.dataset.tone = status.tone;
+};
+
+const renderActiveAccount = () => {
+    renderAccount(accountSnapshots[accountsState.activeId] || EMPTY_ACCOUNT);
+};
+
+const showAccountMessage = (message) => {
+    elements.accountMessage.textContent = message;
+    elements.accountMessage.dataset.tone = "warn";
+    elements.accountMessage.hidden = !message;
+};
+
+const showAccountFailure = (result) => {
+    showAccountMessage(result.status === STATUS_OK ? "" : result.error.msg);
+
+    return result.status === STATUS_OK;
+};
+
+/* 계정 */
+
+// 실행 중이거나 로그인 중에는 계정을 바꾸거나 추가·제거할 수 없다(메인 프로세스도 막는다).
+const renderAccountBar = () => {
+    const { accounts, activeId } = accountsState;
+    const isIdle = !currentState || currentState.status === "idle";
+    const isLocked = !isIdle || loginState?.phase === "waiting";
+    const accountsKey = accounts.map((account) => `${account.id}:${account.label}`).join("|");
+
+    if (accountsKey !== renderedAccountsKey) {
+        elements.accountSelect.replaceChildren(...accounts.map((account) => new Option(account.label, account.id)));
+        renderedAccountsKey = accountsKey;
+    }
+
+    elements.accountSelect.value = activeId;
+    elements.accountSelect.disabled = isLocked;
+    elements.accountSelect.title = isIdle ? "" : "실행 중에는 계정을 바꿀 수 없어요.";
+    elements.accountAdd.disabled = isLocked || accounts.length >= MAX_ACCOUNT_COUNT;
+    elements.accountLogin.disabled = isLocked;
+    elements.accountRemove.disabled = isLocked || activeId === "default";
+    elements.selectClaudeDir.disabled = isLocked;
+    elements.resetClaudeDir.disabled = isLocked || !claudeDirInfo || claudeDirInfo.isAuto;
+};
+
+const renderClaudeDir = () => {
+    elements.claudeDirPath.textContent = claudeDirInfo ? `${claudeDirInfo.path}${claudeDirInfo.isAuto ? " (자동 감지)" : ""}${claudeDirInfo.exists ? "" : " - 폴더를 찾지 못했어요"}` : "";
+    elements.claudeDir.toggleAttribute("data-missing", Boolean(claudeDirInfo) && !claudeDirInfo.exists);
+};
+
+const hideLoginBox = () => {
+    clearTimeout(loginHideTimer);
+
+    loginState = null;
+
+    renderLogin();
+    renderAccountBar();
+};
+
+const renderLogin = () => {
+    const isWaiting = loginState?.phase === "waiting";
+
+    elements.loginBox.hidden = !loginState;
+
+    if (!loginState) {
+        return;
+    }
+
+    elements.loginMessage.textContent = loginState.message;
+    elements.loginMessage.dataset.tone = loginState.phase === "failed" ? "warn" : "";
+    elements.loginOpen.hidden = !isWaiting || !loginState.url;
+    elements.loginCodeForm.hidden = !isWaiting || !loginState.url;
+    elements.loginCancel.textContent = isWaiting ? "취소" : "닫기";
+
+    if (isWaiting) {
+        elements.accountForm.hidden = true;
+    }
+};
+
+const applyLoginState = (state) => {
+    clearTimeout(loginHideTimer);
+
+    loginState = state;
+
+    renderLogin();
+    renderAccountBar();
+
+    if (state?.phase === "succeeded") {
+        elements.loginCode.value = "";
+        loginHideTimer = setTimeout(hideLoginBox, LOGIN_DONE_HIDE_MS);
+    }
+};
+
+const applyAccountsPayload = (payload) => {
+    accountsState = { accounts: payload.accounts, activeId: payload.activeId };
+    claudeDirInfo = payload.claudeDir;
+    accountSnapshots = { ...accountSnapshots, ...payload.snapshots };
+
+    if (payload.login || loginState?.phase === "waiting") {
+        applyLoginState(payload.login);
+    }
+
+    renderAccountBar();
+    renderClaudeDir();
+    renderActiveAccount();
+};
+
+const handleAccountSelect = async () => {
+    const result = await window.autopilot.selectAccount(elements.accountSelect.value);
+
+    if (showAccountFailure(result)) {
+        applyAccountsPayload(result.data);
+    }
+
+    renderAccountBar();
+};
+
+const handleAccountAdd = () => {
+    showAccountMessage("");
+
+    elements.accountForm.hidden = false;
+    elements.accountLabel.focus();
+};
+
+const handleAccountFormCancel = () => {
+    elements.accountForm.hidden = true;
+    elements.accountLabel.value = "";
+};
+
+const handleAccountFormSubmit = async (event) => {
+    event.preventDefault();
+
+    const result = await window.autopilot.addAccount({ label: elements.accountLabel.value, shareData: elements.accountShare.checked });
+
+    if (showAccountFailure(result)) {
+        handleAccountFormCancel();
+    }
+};
+
+const handleAccountLogin = async () => {
+    showAccountFailure(await window.autopilot.loginAccount(accountsState.activeId));
+};
+
+const handleAccountRemove = async () => {
+    const result = await window.autopilot.removeAccount(accountsState.activeId);
+
+    if (showAccountFailure(result) && !result.data.cancelled) {
+        applyAccountsPayload(result.data);
+    }
+};
+
+const handleLoginCancel = async () => {
+    if (loginState?.phase === "waiting") {
+        await window.autopilot.cancelLogin();
+    } else {
+        hideLoginBox();
+    }
+};
+
+const handleLoginCode = async (event) => {
+    event.preventDefault();
+
+    if (showAccountFailure(await window.autopilot.submitLoginCode(elements.loginCode.value))) {
+        elements.loginCode.value = "";
+    }
+};
+
+const handleClaudeDirChange = async (request) => {
+    const result = await request();
+
+    showFailure(result);
+
+    if (result.status === STATUS_OK) {
+        applyAccountsPayload(result.data);
+    }
+};
+
+const handleRefreshAccount = async () => {
+    elements.usageRefresh.disabled = true;
+
+    const result = await window.autopilot.refreshAccount(accountsState.activeId);
+
+    elements.usageRefresh.disabled = false;
+
+    if (showAccountFailure(result)) {
+        accountSnapshots[result.data.id] = result.data.account;
+        renderActiveAccount();
+    }
+};
+
+/* 설정·프로필 패널과 전체 기록 */
+
+const getOpenPanel = () => {
+    return PANEL_NAMES.find((name) => document.body.classList.contains(`${name}-open`));
+};
+
+const applyPanelState = (name, isOpen) => {
+    if (document.body.classList.contains(`${name}-open`) === isOpen) {
+        return;
+    }
+
+    document.body.classList.toggle(`${name}-open`, isOpen);
+    elements[name].inert = !isOpen;
+    elements[`${name}Toggle`].setAttribute("aria-expanded", String(isOpen));
+
+    if (name === "settings" && isOpen) {
         elements.choices.forEach(updateChoicePill);
     }
+
+    if (name === "profile" && isOpen) {
+        renderActiveAccount();
+    }
+};
+
+// 두 패널은 같은 자리에 뜨므로 하나를 열면 다른 하나는 닫는다.
+const setPanelOpen = (name, isOpen) => {
+    if (isOpen) {
+        PANEL_NAMES.filter((otherName) => otherName !== name).forEach((otherName) => applyPanelState(otherName, false));
+    }
+
+    applyPanelState(name, isOpen);
+};
+
+const closePanels = () => {
+    PANEL_NAMES.forEach((name) => applyPanelState(name, false));
 };
 
 const setHistoryOpen = (isOpen) => {
@@ -288,7 +638,7 @@ const setHistoryOpen = (isOpen) => {
     elements.livePanel.setAttribute("aria-expanded", String(isOpen));
 
     if (isOpen) {
-        setSettingsOpen(false);
+        closePanels();
         scrollLogToEnd();
         elements.history.scrollIntoView({ behavior: "smooth", block: "start" });
     } else {
@@ -303,17 +653,21 @@ const handleLivePanelKey = (event) => {
     }
 };
 
-// 설정이 열린 채로 화면의 다른 곳을 누르거나 Esc를 누르면 닫는다.
+// 패널이 열린 채로 화면의 다른 곳을 누르거나 Esc를 누르면 닫는다.
 const handleOutsidePointer = (event) => {
-    if (document.body.classList.contains("settings-open") && !elements.settings.contains(event.target) && !elements.settingsToggle.contains(event.target)) {
-        setSettingsOpen(false);
+    const name = getOpenPanel();
+
+    if (name && !elements[name].contains(event.target) && !elements[`${name}Toggle`].contains(event.target)) {
+        closePanels();
     }
 };
 
 const handleEscape = (event) => {
-    if (event.key === "Escape" && document.body.classList.contains("settings-open")) {
-        setSettingsOpen(false);
-        elements.settingsToggle.focus();
+    const name = getOpenPanel();
+
+    if (event.key === "Escape" && name) {
+        closePanels();
+        elements[`${name}Toggle`].focus();
     }
 };
 
@@ -565,6 +919,7 @@ const renderState = (state) => {
     renderMainAction(state, hasProject);
 
     elements.endTime.disabled = !isIdle;
+    elements.extendOnLimit.disabled = !isIdle;
     elements.tasks.disabled = !isIdle;
     setRadiosDisabled("policy", !isIdle);
     elements.openReport.disabled = !state.reportFile;
@@ -574,6 +929,7 @@ const renderState = (state) => {
 
     renderOptions(state);
     renderRounds(state);
+    renderAccountBar();
     renderClock();
 };
 
@@ -583,7 +939,15 @@ const handleMainAction = async (event) => {
     const { action } = MAIN_ACTIONS[currentState.status];
 
     if (action === "start") {
-        showFailure(await window.autopilot.start({ tasks: elements.tasks.value, endTime: elements.endTime.value, policy: elements.form.elements.policy.value, ...getSelectedOptions() }));
+        showFailure(
+            await window.autopilot.start({
+                tasks: elements.tasks.value,
+                endTime: elements.endTime.value,
+                policy: elements.form.elements.policy.value,
+                extendOnLimit: elements.extendOnLimit.checked,
+                ...getSelectedOptions()
+            })
+        );
     } else if (action === "stop") {
         showFailure(await window.autopilot.stop());
     } else {
@@ -631,7 +995,8 @@ const renderWindowState = ({ maximized }) => {
 };
 
 const bindWindowControls = () => {
-    elements.settingsToggle.addEventListener("click", () => setSettingsOpen(!document.body.classList.contains("settings-open")));
+    elements.settingsToggle.addEventListener("click", () => setPanelOpen("settings", getOpenPanel() !== "settings"));
+    elements.profileToggle.addEventListener("click", () => setPanelOpen("profile", getOpenPanel() !== "profile"));
     elements.windowMinimize.addEventListener("click", () => window.appWindow.minimize());
     elements.windowMaximize.addEventListener("click", () => window.appWindow.toggleMaximize());
     elements.windowClose.addEventListener("click", () => window.appWindow.close());
@@ -659,6 +1024,7 @@ const initialize = async () => {
     elements.endTime.value = settings.endTime;
     elements.tasks.value = settings.tasks;
     elements.form.elements.policy.value = settings.policy;
+    elements.extendOnLimit.checked = settings.extendOnLimit;
 
     setSelectedOptions(settings);
     renderSettings();
@@ -666,6 +1032,17 @@ const initialize = async () => {
     appendLogEntries(snapshot.logs);
     bindLayoutWatchers();
 
+    applyAccountsPayload((await window.autopilot.getAccounts()).data);
+
+    window.autopilot.onAccounts(applyAccountsPayload);
+    window.autopilot.onLogin(applyLoginState);
+    window.autopilot.onAccount(({ id, account }) => {
+        accountSnapshots[id] = account;
+
+        if (id === accountsState.activeId) {
+            renderActiveAccount();
+        }
+    });
     window.autopilot.onLog(appendLogEntries);
     window.autopilot.onState(renderState);
 
@@ -674,6 +1051,18 @@ const initialize = async () => {
     elements.bannerSelectProject.addEventListener("click", handleSelectProject);
     elements.resetProgress.addEventListener("click", handleResetProgress);
     elements.openReport.addEventListener("click", handleOpenReport);
+    elements.usageRefresh.addEventListener("click", handleRefreshAccount);
+    elements.accountSelect.addEventListener("change", handleAccountSelect);
+    elements.selectClaudeDir.addEventListener("click", () => handleClaudeDirChange(window.autopilot.selectClaudeDir));
+    elements.resetClaudeDir.addEventListener("click", () => handleClaudeDirChange(window.autopilot.resetClaudeDir));
+    elements.accountAdd.addEventListener("click", handleAccountAdd);
+    elements.accountLogin.addEventListener("click", handleAccountLogin);
+    elements.accountRemove.addEventListener("click", handleAccountRemove);
+    elements.accountForm.addEventListener("submit", handleAccountFormSubmit);
+    elements.accountFormCancel.addEventListener("click", handleAccountFormCancel);
+    elements.loginOpen.addEventListener("click", async () => showAccountFailure(await window.autopilot.openLoginUrl()));
+    elements.loginCodeForm.addEventListener("submit", handleLoginCode);
+    elements.loginCancel.addEventListener("click", handleLoginCancel);
     elements.historyToggle.addEventListener("click", () => setHistoryOpen(elements.history.hidden));
     elements.historyClose.addEventListener("click", () => setHistoryOpen(false));
     elements.livePanel.addEventListener("click", () => setHistoryOpen(elements.history.hidden));
