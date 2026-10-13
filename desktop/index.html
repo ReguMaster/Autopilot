@@ -70,6 +70,12 @@
 
         <header id="titlebar" class="titlebar">
             <div class="window-controls">
+                <button type="button" id="profile-toggle" class="window-control profile-toggle" aria-label="프로필" title="프로필" aria-expanded="false" aria-controls="profile">
+                    <svg viewBox="0 0 12 12" aria-hidden="true">
+                        <circle cx="6" cy="4.2" r="2.1" />
+                        <path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" />
+                    </svg>
+                </button>
                 <button type="button" id="settings-toggle" class="window-control settings-toggle" aria-label="설정" title="설정" aria-expanded="false" aria-controls="settings">
                     <svg viewBox="0 0 12 12" aria-hidden="true">
                         <path
@@ -164,7 +170,7 @@
 
                     <p id="notice" class="notice" role="alert" hidden></p>
                     <p id="login-banner" class="notice" data-tone="warn" hidden>
-                        <span id="login-message">Claude 로그인이 필요해요.</span> <button type="button" id="banner-login" class="button small">로그인</button>
+                        <span id="login-banner-message">Claude 로그인이 필요해요.</span> <button type="button" id="banner-login" class="button small">로그인</button>
                     </p>
                     <p id="project-banner" class="notice" data-tone="warn" hidden>
                         대상 프로젝트 폴더를 먼저 골라 주세요. <button type="button" id="banner-select-project" class="button small">폴더 선택</button>
@@ -323,6 +329,64 @@
                 <ol id="rounds" class="rounds"></ol>
             </div>
         </section>
+        <aside id="profile" class="settings" aria-labelledby="profile-title" inert>
+            <div class="settings-head">
+                <h2 id="profile-title">프로필</h2>
+            </div>
+
+            <section class="account-bar">
+                <div class="account-picker">
+                    <select id="account-select" class="account-select" aria-label="사용할 계정"></select>
+                </div>
+                <div class="account-actions">
+                    <button type="button" id="account-add" class="button small">계정 추가</button>
+                    <button type="button" id="account-login" class="button small">다시 로그인</button>
+                    <button type="button" id="account-remove" class="button small">제거</button>
+                </div>
+                <p id="account-message" class="settings-note" aria-live="polite" hidden></p>
+            </section>
+
+            <form id="account-form" class="account-form" hidden>
+                <input id="account-label" class="account-input" type="text" maxlength="30" autocomplete="off" spellcheck="false" placeholder="계정 이름 (비우면 이메일)" aria-label="계정 이름" />
+                <label class="check" title="기본 .claude의 메모리·세션 기록(projects), CLAUDE.md, settings.json, 스킬, 플러그인을 이 계정이 함께 써요. 로그인 정보는 계정마다 따로예요."
+                    ><input type="checkbox" id="account-share" checked />기본 .claude의 메모리·지침·스킬 함께 쓰기</label
+                >
+                <div class="account-actions">
+                    <button type="submit" class="button small">로그인 시작</button>
+                    <button type="button" id="account-form-cancel" class="button small">취소</button>
+                </div>
+            </form>
+
+            <section id="login-box" class="login-box" aria-live="polite" hidden>
+                <p id="login-message" class="settings-note"></p>
+                <button type="button" id="login-open" class="button small" hidden>브라우저에서 열기</button>
+                <form id="login-code-form" class="login-code" hidden>
+                    <input id="login-code" class="account-input" type="text" autocomplete="off" spellcheck="false" placeholder="브라우저에 표시된 코드" aria-label="로그인 코드" />
+                    <button type="submit" class="button small">확인</button>
+                </form>
+                <button type="button" id="login-cancel" class="button small">취소</button>
+            </section>
+
+            <section id="profile-card" class="profile-card" aria-busy="true" hidden>
+                <span id="profile-avatar" class="profile-avatar" aria-hidden="true"></span>
+                <div class="profile-id">
+                    <b id="profile-name" class="profile-name"></b>
+                    <span id="profile-email" class="profile-email"></span>
+                </div>
+                <span id="profile-plan" class="profile-plan" hidden></span>
+            </section>
+
+            <section id="usage-section" class="profile-usage">
+                <h3 class="profile-section">사용량과 한도</h3>
+                <div id="usage-list" class="usage-list"></div>
+            </section>
+
+            <section class="settings-group profile-foot">
+                <p id="usage-status" class="settings-note" aria-live="polite">불러오는 중이에요.</p>
+                <button type="button" id="usage-refresh" class="button small">새로 고침</button>
+            </section>
+        </aside>
+
         <aside id="settings" class="settings" aria-labelledby="settings-title" inert>
             <div class="settings-head">
                 <h2 id="settings-title">설정</h2>
@@ -332,6 +396,18 @@
                 <h3>대상 프로젝트</h3>
                 <p id="project-path" class="project-path">선택한 폴더가 없어요.</p>
                 <button type="button" id="select-project" class="button">폴더 선택</button>
+            </section>
+
+            <section id="claude-dir" class="settings-group claude-dir">
+                <h3>Claude 데이터 폴더</h3>
+                <p id="claude-dir-path" class="project-path"></p>
+                <div class="account-actions">
+                    <button type="button" id="select-claude-dir" class="button small">폴더 변경</button>
+                    <button type="button" id="reset-claude-dir" class="button small">자동 감지</button>
+                </div>
+                <p class="settings-note">
+                    메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요. 자동 감지는 환경 변수 CLAUDE_CONFIG_DIR, 없으면 사용자 폴더의 .claude예요.
+                </p>
             </section>
 
             <section class="settings-group">
@@ -350,6 +426,12 @@
                         <input type="radio" name="policy" value="todo" form="run-form" />
                     </label>
                 </div>
+            </section>
+
+            <section class="settings-group">
+                <h3>사용량 한도</h3>
+                <label class="settings-check"><input type="checkbox" id="extend-on-limit" form="run-form" /><span>대기한 시간만큼 종료 시각 연장</span></label>
+                <p class="settings-note">한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요.</p>
             </section>
 
             <section class="settings-group">

@@ -67,6 +67,8 @@ const checkCommandArgs = () => {
         open: false
     });
     assert.equal(parseRunArgs(project).open, undefined);
+    assert.equal(parseRunArgs(project).extendOnLimit, undefined);
+    assert.deepEqual(parseRunArgs([...project, "--extend-on-limit", "--no-open"]), { projectDir: "C:\\work\\demo project", open: false, extendOnLimit: true });
 
     // 프로젝트가 없거나 위치 인자·알 수 없는 인자·잘못된 값은 거부한다. 이전 형식(HH:mm todo 위치 인자)은 더 받지 않는다.
     assert.throws(() => parseRunArgs([]), /--project/);

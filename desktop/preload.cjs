@@ -14,14 +14,27 @@ contextBridge.exposeInMainWorld("autopilot", {
     getState: () => ipcRenderer.invoke("autopilot:get-state"),
     selectProject: () => ipcRenderer.invoke("autopilot:select-project"),
     start: (options) => ipcRenderer.invoke("autopilot:start", options),
-    login: () => ipcRenderer.invoke("autopilot:login"),
     stop: () => ipcRenderer.invoke("autopilot:stop"),
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
     kill: () => ipcRenderer.invoke("autopilot:kill"),
     resetProgress: () => ipcRenderer.invoke("autopilot:reset-progress"),
     openReport: () => ipcRenderer.invoke("autopilot:open-report"),
+    getAccounts: () => ipcRenderer.invoke("autopilot:get-accounts"),
+    refreshAccount: (accountId) => ipcRenderer.invoke("autopilot:refresh-account", accountId),
+    selectAccount: (accountId) => ipcRenderer.invoke("autopilot:select-account", accountId),
+    addAccount: (options) => ipcRenderer.invoke("autopilot:add-account", options),
+    loginAccount: (accountId) => ipcRenderer.invoke("autopilot:login-account", accountId),
+    submitLoginCode: (code) => ipcRenderer.invoke("autopilot:submit-login-code", code),
+    cancelLogin: () => ipcRenderer.invoke("autopilot:cancel-login"),
+    openLoginUrl: () => ipcRenderer.invoke("autopilot:open-login-url"),
+    removeAccount: (accountId) => ipcRenderer.invoke("autopilot:remove-account", accountId),
+    selectClaudeDir: () => ipcRenderer.invoke("autopilot:select-claude-dir"),
+    resetClaudeDir: () => ipcRenderer.invoke("autopilot:reset-claude-dir"),
     onLog: subscribe("autopilot:log"),
-    onState: subscribe("autopilot:state")
+    onState: subscribe("autopilot:state"),
+    onAccount: subscribe("autopilot:account"),
+    onAccounts: subscribe("autopilot:accounts"),
+    onLogin: subscribe("autopilot:login")
 });
 
 contextBridge.exposeInMainWorld("appWindow", {

@@ -15,7 +15,9 @@ const EXPORTED_NAMES = [
     "formatRoundTime",
     "shiftEndTime",
     "getEndTimeAfter",
-    "formatTimeUntil"
+    "formatTimeUntil",
+    "formatUsageReset",
+    "getUsageTone"
 ];
 
 // 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
@@ -129,6 +131,30 @@ const checkEndTime = ({ shiftEndTime, getEndTimeAfter, formatTimeUntil }) => {
     assert.equal(formatTimeUntil("07:00", at0700), "24시간 뒤");
 };
 
+const checkUsageFormat = ({ formatUsageReset, getUsageTone }) => {
+    const now = new Date(2026, 9, 13, 10, 0).getTime();
+    const minutes = (count) => count * 60000;
+
+    assert.equal(formatUsageReset(now + minutes(130), now), "12:10 리셋 · 2시간 10분 후");
+    assert.equal(formatUsageReset(now + minutes(5), now), "10:05 리셋 · 5분 후");
+    assert.equal(formatUsageReset(now + minutes(4 * 1440 + 3 * 60), now), "10월 17일 13:00 리셋 · 4일 3시간 후");
+    assert.equal(formatUsageReset(now - minutes(1), now), "09:59 리셋 · 0분 후");
+    assert.equal(formatUsageReset(0, now), "리셋 시각을 알 수 없어요");
+
+    const tones = [
+        [0, "ok"],
+        [69.9, "ok"],
+        [70, "warn"],
+        [89, "warn"],
+        [90, "danger"],
+        [100, "danger"]
+    ];
+
+    for (const [percent, tone] of tones) {
+        assert.equal(getUsageTone(percent), tone, String(percent));
+    }
+};
+
 const checkViewFormat = () => {
     const viewFormat = loadViewFormat();
 
@@ -137,6 +163,7 @@ const checkViewFormat = () => {
     checkLineKind(viewFormat);
     checkPhases(viewFormat);
     checkRoundTime(viewFormat);
+    checkUsageFormat(viewFormat);
 
     console.log("Desktop view checks passed.");
 };

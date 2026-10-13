@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
 const path = require("node:path");
-const { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine } = require("./autopilotIpc.cjs");
+const { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch } = require("./autopilotIpc.cjs");
 const { createTray, showWindow } = require("./systemIntegration.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
@@ -29,7 +29,7 @@ app.setAppUserModelId("com.autopilot.desktop");
 let isQuitting = false;
 
 const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.login === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && typeof initialize === 'function'";
+    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.loginAccount === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && typeof window.autopilot?.getAccounts === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && Boolean(document.querySelector('#profile')) && typeof initialize === 'function'";
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -169,6 +169,10 @@ if (!hasInstanceLock) {
         registerWindowControls();
         createWindow();
         createTray({ onQuit: quitFromTray });
+
+        if (!process.argv.includes("--smoke-test")) {
+            startAccountWatch();
+        }
 
         app.on("activate", () => {
             if (BrowserWindow.getAllWindows().length === 0) {

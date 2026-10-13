@@ -10,7 +10,7 @@ import { MODEL_CHOICES as ENGINE_MODELS, EFFORT_LEVELS as ENGINE_EFFORTS, DEFAUL
 const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
-const { getAuthStatus, getLoginError, runLogin } = require("../desktop/claudeAuth.cjs");
+const { createAccountReader } = require("../desktop/claudeAccount.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -22,22 +22,6 @@ const stopFile = path.join(dir, "STOP");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const main = async () => {
-    if (process.argv[2] === "auth") {
-        const loginFile = path.join(dir, "LOGGED_IN");
-
-        fs.writeFileSync(path.join(dir, "AUTH_ENV"), JSON.stringify([process.env.CLAUDE_CONFIG_DIR, process.env.ELECTRON_RUN_AS_NODE ?? null]));
-
-        if (process.argv[3] === "login") {
-            fs.writeFileSync(loginFile, "");
-            return 0;
-        }
-
-        const isLoggedIn = fs.existsSync(loginFile);
-
-        console.log(JSON.stringify({ loggedIn: isLoggedIn, ...(isLoggedIn ? { email: "dev@example.com" } : {}) }));
-        return isLoggedIn ? 0 : 1;
-    }
-
     const subcommand = process.argv[2]?.startsWith("--") ? "start" : process.argv[2] || "start";
 
     fs.writeFileSync(path.join(dir, "ARGS_" + subcommand), process.argv.slice(2).join("\n"));
@@ -470,36 +454,6 @@ const checkSpawnFailure = async (testDir) => {
     assert(runner.getState().reason.includes("ENOENT"));
 };
 
-// 시작 전 로그인 확인과 로그인 실행. 가짜 claude가 LOGGED_IN 파일로 로그인 상태를 흉내 낸다.
-const checkClaudeAuth = async (testDir) => {
-    const claude = `"${process.execPath}" "${path.join(testDir, "fakeCli.cjs")}"`;
-
-    fs.rmSync(path.join(testDir, "LOGGED_IN"), { force: true });
-    process.env.ELECTRON_RUN_AS_NODE = "1";
-
-    assert.deepEqual((await getAuthStatus(claude)).data, { loggedIn: false, email: "" });
-    assert.equal((await getLoginError(claude)).error.code, "LOGIN_REQUIRED");
-
-    const [configDir, electronRunAsNode] = JSON.parse(fs.readFileSync(path.join(testDir, "AUTH_ENV"), "utf8"));
-
-    assert.equal(configDir, path.resolve(os.homedir(), ".claude"));
-    assert.equal(electronRunAsNode, null);
-
-    const [firstLogin, secondLogin] = [runLogin(claude), runLogin(claude)];
-
-    assert.equal(firstLogin, secondLogin);
-    assert.equal((await firstLogin).status, STATUS_OK);
-    assert.deepEqual((await getAuthStatus(claude)).data, { loggedIn: true, email: "dev@example.com" });
-    assert.equal(await getLoginError(claude), null);
-
-    const missing = await getLoginError("autopilot-no-such-claude");
-
-    assert.equal(missing.error.code, "CLAUDE_NOT_FOUND");
-    assert.equal((await runLogin("autopilot-no-such-claude")).error.code, "CLAUDE_NOT_FOUND");
-
-    delete process.env.ELECTRON_RUN_AS_NODE;
-};
-
 // 시작하려면 대상 프로젝트가 Git 저장소의 루트 폴더여야 한다. .git은 워크트리에서는 파일이다.
 const checkProjectError = (testDir) => {
     const projectDir = path.join(testDir, "project check");
@@ -566,6 +520,162 @@ const checkReportOpenGuard = (testDir) => {
     assert(!isProjectReportFile(projectDir, path.join(linkDir, "report_777777_aaaaaaaa.html")));
 };
 
+// 가짜 fetch와 임시 로그인 파일로 계정(프로필·사용량) 조회를 검증한다. 토큰은 조회 두 곳으로만 보내고 결과에는 담지 않아야 한다.
+const checkClaudeAccount = async (testDir) => {
+    const credentialsFile = path.join(testDir, "credentials.json");
+    const clock = { now: Date.parse("2026-10-13T00:00:00Z") };
+    const writeCredentials = (oauth) => fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: oauth }));
+    const jsonResponse = (body, status = 200) => ({ ok: status === 200, status: status, json: async () => body });
+    const usageBody = {
+        limits: [
+            { kind: "session", percent: 3, resets_at: "2026-10-13T06:19:59.526207+00:00" },
+            { kind: "weekly_all", percent: 20, resets_at: "2026-10-17T05:59:59+00:00" },
+            { kind: "weekly_scoped", percent: 30, resets_at: "2026-10-17T05:59:59+00:00", scope: { model: { display_name: "Fable" } } },
+            { kind: "unknown_kind", percent: 99 },
+            { kind: "session", percent: null }
+        ]
+    };
+    const profileBody = {
+        account: { display_name: "개발자", full_name: "개발자 풀네임", email: "dev@example.com", has_claude_max: false, has_claude_pro: false },
+        organization: { name: "Example Org", organization_type: "claude_team", rate_limit_tier: "default_claude_max_5x" }
+    };
+    const requests = [];
+    const changes = [];
+    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody) } = {}) => {
+        const responses = { usage: usage, profile: profile, isDown: false };
+        const fetchImpl = async (url, init) => {
+            requests.push({ url: url, headers: init.headers });
+
+            if (responses.isDown) {
+                throw new Error("fetch failed");
+            }
+
+            return new URL(url).pathname.endsWith("/usage") ? responses.usage : responses.profile;
+        };
+        const reader = createAccountReader({ credentialsFile: credentialsFile, fetchImpl: fetchImpl, now: () => clock.now, onChange: (account) => changes.push(account) });
+
+        return { ...reader, responses: responses };
+    };
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now + 3600000 });
+
+    const reader = createReader();
+
+    assert.deepEqual(reader.getAccount(), { profile: null, limits: [], fetchedAt: 0, error: null });
+
+    const account = await reader.refresh();
+
+    assert.equal(account.error, null);
+    assert.deepEqual(account.profile, { name: "개발자", email: "dev@example.com", plan: "Team", organization: "Example Org" });
+    assert.deepEqual(
+        account.limits.map((limit) => [limit.label, limit.percent]),
+        [
+            ["5시간 한도", 3],
+            ["주간 한도", 20],
+            ["주간 한도 · Fable", 30]
+        ]
+    );
+    assert.equal(account.limits[0].resetsAt, Date.parse("2026-10-13T06:19:59.526207+00:00"));
+    assert.equal(account.fetchedAt, clock.now);
+    assert.equal(changes.length, 1);
+    assert(!JSON.stringify(account).includes("secret-token"));
+    assert.equal(requests.length, 2);
+    assert(requests.every((request) => request.headers.Authorization === "Bearer secret-token" && new URL(request.url).host === "api.anthropic.com"));
+
+    // 방금 시도했으면 다시 요청하지 않고, 간격이 지나면 다시 읽는다. 진행 중인 요청은 합쳐진다.
+    await reader.refresh();
+
+    assert.equal(requests.length, 2);
+
+    clock.now += 16000;
+
+    const concurrent = await Promise.all([reader.refresh(), reader.refresh()]);
+
+    assert.equal(requests.length, 4);
+    assert.equal(concurrent[0], concurrent[1]);
+
+    // 요금제 이름: 조직 유형이 우선이고, 개인 계정은 플래그로 정하며 Max는 배수를 붙인다.
+    const planCases = [
+        [{ account: { email: "a@b.c" }, organization: { organization_type: "claude_max", rate_limit_tier: "default_claude_max_5x" } }, "Max 5x"],
+        [{ account: { email: "a@b.c", has_claude_pro: true }, organization: {} }, "Pro"],
+        [{ account: { email: "a@b.c", has_claude_max: true }, organization: { rate_limit_tier: "default_claude_max_20x" } }, "Max 20x"],
+        [{ account: { email: "a@b.c" }, organization: { organization_type: "something_new" } }, ""]
+    ];
+
+    for (const [body, plan] of planCases) {
+        clock.now += 16000;
+
+        assert.equal((await createReader({ profile: jsonResponse(body) }).refresh()).profile.plan, plan);
+    }
+
+    // 이름이 없으면 이메일만 남기고, 둘 다 없으면 프로필을 찾지 못한 것으로 본다.
+    assert.equal((await createReader({ profile: jsonResponse({ account: { full_name: "홍길동" } }) }).refresh()).profile.name, "홍길동");
+    assert.equal((await createReader({ profile: jsonResponse({ account: {} }) }).refresh()).error.code, "UNSUPPORTED_RESPONSE");
+
+    // 범위를 벗어난 값은 0~100으로 맞추고, limits가 없으면 five_hour·seven_day로 대신한다.
+    const legacy = await createReader({ usage: jsonResponse({ five_hour: { utilization: 130, resets_at: "bad" }, seven_day: { utilization: 20, resets_at: "2026-10-17T05:59:59+00:00" } }) }).refresh();
+
+    assert.deepEqual(
+        legacy.limits.map((limit) => [limit.label, limit.percent, limit.resetsAt === 0]),
+        [
+            ["5시간 한도", 100, true],
+            ["주간 한도", 20, false]
+        ]
+    );
+
+    // 일부만 실패하면 성공한 쪽은 새 값, 실패한 쪽은 이전 값을 유지하고 오류를 알린다. 전부 실패해도 이전 값과 갱신 시각은 그대로다.
+    const keepReader = createReader();
+    const firstFetchedAt = (await keepReader.refresh()).fetchedAt;
+
+    clock.now += 16000;
+    keepReader.responses.usage = jsonResponse({}, 429);
+    keepReader.responses.profile = jsonResponse({ ...profileBody, account: { email: "new@example.com" } });
+
+    const partial = await keepReader.refresh();
+
+    assert.equal(partial.error.code, "HTTP_ERROR");
+    assert.equal(partial.profile.email, "new@example.com");
+    assert.equal(partial.limits.length, 3);
+    assert(partial.fetchedAt > firstFetchedAt);
+
+    clock.now += 16000;
+    keepReader.responses.isDown = true;
+
+    const down = await keepReader.refresh();
+
+    assert.equal(down.error.code, "REQUEST_FAILED");
+    assert.equal(down.profile.email, "new@example.com");
+    assert.equal(down.limits.length, 3);
+    assert.equal(down.fetchedAt, partial.fetchedAt);
+
+    const failures = [
+        [{ usage: jsonResponse({}, 401) }, "TOKEN_EXPIRED"],
+        [{ usage: jsonResponse({ limits: [] }) }, "UNSUPPORTED_RESPONSE"]
+    ];
+
+    for (const [responses, code] of failures) {
+        clock.now += 16000;
+
+        assert.equal((await createReader(responses).refresh()).error.code, code);
+    }
+
+    // 만료된 토큰은 요청하지 않고, 로그인 정보가 없거나 깨져도 실패로 알린다.
+    const requestsBeforeExpired = requests.length;
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now - 1 });
+
+    assert.equal((await createReader().refresh()).error.code, "TOKEN_EXPIRED");
+    assert.equal(requests.length, requestsBeforeExpired);
+
+    fs.writeFileSync(credentialsFile, "{ broken");
+
+    assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
+
+    fs.rmSync(credentialsFile);
+
+    assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
+};
+
 // 태그 목록에서 attribute 값을 순서대로 모으고, data-default가 붙은 태그의 값을 기본값으로 돌려준다.
 const readChoices = (tags, valueAttribute) => {
     const choices = tags.map((tag) => ({ value: tag.match(new RegExp(`\\b${valueAttribute}="([^"]*)"`))[1], isDefault: /\bdata-default\b/.test(tag) }));
@@ -616,8 +726,7 @@ const runChecks = async () => {
         checkProjectError(testDir);
         checkReportOpenGuard(testDir);
 
-        await checkClaudeAuth(testDir);
-
+        await checkClaudeAccount(testDir);
         await checkFinishedRun(testDir);
 
         fs.rmSync(path.join(testDir, "STOP"), { force: true });
