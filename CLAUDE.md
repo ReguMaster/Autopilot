@@ -1,89 +1,145 @@
 # AutoPilot 개발 지침
 
-이 문서는 AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPilot 회차로 실행 중이라면 이 문서 대신 회차 프롬프트에 포함된 AUTOPILOT.md와 AUTOPILOT_POLICY.md(원본은 autopilot/src/utils/guideText.js)를 따른다.
+AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPilot 회차로 실행 중이라면 이 문서 대신 회차 프롬프트에 포함된 AUTOPILOT.md와 AUTOPILOT_POLICY.md(원본은 autopilot/src/utils/guideText.js)를 따른다.
 
-## 구조와 실행
+- 이 문서는 공통 규칙과 엔진(autopilot/) 규칙을 담는다.
+- desktop/의 파일을 읽거나 고치기 전에 [desktop/CLAUDE.md](desktop/CLAUDE.md)를 따른다(Electron 연동·화면·계정 규칙).
+- 사용자 관점의 화면 동작은 [desktop/README.md](desktop/README.md), 제품 소개와 사용법은 [README.md](README.md)에 있다.
+
+## 구조
 
 - 배포물은 Electron 앱의 Windows exe(포터블과 NSIS 설치형)다. 엔진(autopilot/)은 앱에 내장되고(electron-builder extraResources로 패키지의 resources/engine/에 복사), 앱이 자기 실행 파일을 ELECTRON_RUN_AS_NODE=1로 Node처럼 실행해 엔진 스크립트를 자식 프로세스로 돌린다. 사용자는 앱 화면에서 대상 프로젝트 폴더·작업·종료 시각·정책·model·effort를 모두 정하고 시작한다.
-- 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI), tests/(검증), docs/(README 이미지·앱 로고·UI 시안), legacy/(보관), .github/, package.json, .prettierrc다.
-- autopilot/package.json은 엔진이 앱·대상 프로젝트의 module 설정과 무관하게 ESM으로 읽히게 하는 선언이다. 패키지의 resources/engine/에도 복사되므로 지우지 않는다.
-- 엔진 진입점: autopilot/core/autopilot_loop.js (ESM, 런타임 외부 의존성 없음, Electron 44에 들어 있는 Node 24에서 실행).
-- 실행 서비스: autopilot/src/services/autopilotService.js(runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset). 공통 로직은 autopilot/src/utils/의 라이브러리로 분리한다. 설정 해석 settingsUtil, CLI 인자 cliUtil, 프롬프트 promptUtil, 지침·정책 본문 guideText.js, 진행 기록 보관 progressUtil, HTML 리포트 reportUtil, git gitUtil, 프로세스 실행·종료 processUtil, stream-json 해석 streamUtil, 날짜·파일·로그·공통 함수 dateUtil·fileUtil·logUtil·util, 프로젝트·작업 폴더·진행 기록 경로와 회차 결과 autopilotUtil, 상수 config.js. 검증은 tests/checkAutopilot.js(진입점)와 tests/lib/(fixtures 공용 가짜 CLI·헬퍼, unitChecks 단위 검증, scenarioChecks 시나리오·CLI 진입 검증)다.
-- 실행(CLI 계약): node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--no-open]. 하위 명령은 모두 --project가 필요하다. 중단 요청 stop, 실행 중 model·effort 변경 set --model <m> --effort <e>, 진행 기록 초기화 reset-progress, 실행 상태 확인 status(한 줄 JSON `{"running":true,"pid":N,"logFile":"..."}` 또는 `{"running":false}`).
-- 프로젝트: --project는 Git 저장소의 루트 폴더여야 한다(엔진이 확인). 프로젝트 안의 .autopilot/은 progress/(로그·리포트·실행 신호)와 recycle_bin/을 두는 작업 폴더이며 엔진이 만들고 .gitignore(*)를 써서 프로젝트 git에서 제외한다(이미 있는 .gitignore는 건드리지 않는다). 중첩 .git은 두지 않는다.
-- 예약 작업(Tasks)은 앱이 userData/tasks.md에 쓰고 --tasks-file로 넘긴다(긴 텍스트라 인자로 넘기지 않는다). 엔진이 시작할 때 한 번 읽어 매 회차 프롬프트의 <TASKS> 블록에 넣는다. 지시개선은 작업이 비어 있으면 시작하지 않는다.
-- 진행 기록은 프로젝트 저장소가 아니라 앱 데이터 폴더의 %APPDATA%/AutoPilot/projects/<프로젝트 폴더명>-<실제 경로 SHA-256 앞 8자>/AUTOPILOT_PROGRESS.md 하나다(autopilotUtil.getProgressFile, 정리되는 임시 폴더는 쓰지 않는다). 같은 프로젝트의 다음 실행이 이어받는다. 첫 실행이면 엔진이 PROGRESS_TEMPLATE으로 만들어 두고, 경로는 프롬프트와 로그 헤더(Progress)로 알린다. 세션은 이 파일을 갱신하되 commit하지 않는다. 검증은 runAutopilot의 dataDir 옵션(CLI는 APPDATA 환경 변수)으로 위치를 격리한다.
-- 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·예약 작업·진행 기록 경로·정책·남은 시간·작업 수 상한을 명시하고, AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다. 실제 세션은 claude -p로 실행한다.
-- 엔진은 Claude 세션과 그 하위 프로세스에 ELECTRON_RUN_AS_NODE를 넘기지 않는다(autopilotUtil.getRunEnv가 지운다). 넘기면 대상 프로젝트의 electron 실행이 깨진다.
+- 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI), tests/(검증), docs/(README 스크린샷·앱 로고·아이콘), legacy/(보관), .github/, package.json, .prettierrc다.
 - legacy/의 PowerShell 구현 압축본(autopilot_loop.ps1, check_progress_archive.ps1)은 새 실행 경로에서 사용하지 않으며 수정하지 않는다. 다른 레거시 소스도 legacy/에 압축해 보관한다.
 
-## 개발 명령
+## 개발 명령과 검증
 
 ```sh
 npm ci
-npm run test:cli
-npm run format:cli
+npm run test:cli              # 엔진 검증(tests/checkAutopilot.js)
+npm run test:desktop          # 데스크톱 러너·표시·계정·기록 검증
+npm test                      # Electron 창·preload 스모크, 앱 번들의 엔진을 ELECTRON_RUN_AS_NODE로 --help 실행
+npm run format:cli            # 엔진과 엔진 검증 파일 전체 포맷
+npm run format:desktop        # desktop과 데스크톱 검증 파일 전체 포맷
 npm run format:check:cli
-npm run test:desktop
-npm run format:desktop
-npm test
-npm run build
-npm run dist
+npm run format:check:desktop
+npm run build                 # dist/win-unpacked/AutoPilot.exe
+npm run dist                  # 포터블·설치형 exe
 ```
 
-검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다. 검증 시간 단축은 runAutopilot()의 limits 옵션으로만 하며, 사용자 CLI에 테스트 설정을 노출하지 않는다. 패키징한 앱의 엔진까지 확인하려면 npm run build 뒤 node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe를 실행한다(번들된 resources/engine을 앱 exe로 실행해 CLI 계약을 검증한다).
+- 검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다.
+- 검증 시간 단축은 runAutopilot()의 limits 옵션으로만 한다. 사용자 CLI에 테스트 설정을 노출하지 않는다.
+- 검증은 runAutopilot의 dataDir 옵션(CLI는 APPDATA 환경 변수)으로 진행 기록 위치를 격리한다.
+- 엔진 검증 파일은 tests/checkAutopilot.js(진입점)와 tests/lib/(fixtures 공용 가짜 CLI·헬퍼, unitChecks 단위 검증, scenarioChecks 시나리오·CLI 진입 검증)다. 데스크톱 검증 파일은 tests/checkDesktop*.js다.
+- 패키징한 앱의 엔진까지 확인하려면 npm run build 뒤 node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe를 실행한다(번들된 resources/engine을 앱 exe로 실행해 CLI 계약을 검증한다).
+- VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 npm start·npm test로 electron을 실행한다(앱이 엔진을 띄울 때는 앱이 직접 지정한다).
+- npm run dist는 electron-builder로 Windows x64 포터블 exe(AutoPilot-Portable-*)와 NSIS 설치 파일(AutoPilot-Setup-*)을 함께 만든다(포터블은 실행마다 임시 폴더에 풀어 느리므로 설치형을 병행한다). 앱 asar에는 desktop/과 로고만 들어가고, 엔진은 extraResources로 resources/engine/에 복사된다. 지침 본문은 엔진 소스(guideText.js)에 있으므로 별도 파일이 필요 없다.
+- .github/workflows/ci.yml은 Windows에서 CLI·데스크톱 포맷 검사, test:cli, test:desktop, Electron 스모크(npm test)를 실행한다.
+- .github/workflows/release.yml은 v* 태그를 push하면 같은 검증 뒤 포터블 exe와 설치 파일을 GitHub Release로 올린다. 태그는 루트 package.json의 version과 같아야 한다.
 
-npm run dist는 electron-builder로 Windows x64 포터블 exe(AutoPilot-Portable-*)와 NSIS 설치 파일(AutoPilot-Setup-*)을 함께 만든다(포터블은 실행마다 임시 폴더에 풀어 느리므로 설치형을 병행한다). 앱 asar에는 desktop/과 로고만 들어가고, 엔진은 extraResources로 resources/engine/에 복사된다. 지침 본문은 엔진 소스(guideText.js)에 있으므로 별도 파일이 필요 없다. .github/workflows/ci.yml은 Windows에서 CLI·데스크톱 포맷 검사, test:cli, test:desktop, Electron 스모크(npm test)를 실행한다. .github/workflows/release.yml은 v* 태그를 push하면 같은 검증 뒤 포터블 exe와 설치 파일을 GitHub Release로 올린다. 태그는 루트 package.json의 version과 같아야 한다.
+## 엔진 CLI 계약
 
-## Electron 연동
+엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
-사용자 관점의 화면 동작은 desktop/README.md에 있고, 아래는 코드를 고칠 때 지켜야 할 연동 규칙이다.
+```sh
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--no-open]
+```
 
-- desktop/은 엔진 코드를 import하지 않는다. 앱 exe를 ELECTRON_RUN_AS_NODE=1로 실행해 엔진 스크립트를 자식 프로세스로 띄우며(개발 중에는 저장소의 autopilot/core/, 패키지에서는 resources/engine/core/), CLI 계약(인자·stdout 로그 줄 형식·exit code·stop)이 UI와의 인터페이스다. 로그 줄 형식을 바꾸면 desktop/autopilotRunner.cjs의 파서와 tests/checkDesktopRunner.js를 함께 고친다. tests/checkAutopilot.js는 모든 시나리오에서 실제 엔진 로그를 이 파서로 읽어 회차 결과와 비교하므로, 형식이 어긋나면 CLI 검증이 실패한다. 앱은 로그를 줄 맨 앞의 형식으로 해석하므로 엔진은 로그 기록 호출 한 번을 제어 줄 한 줄로만 쓰고(헤더도 줄마다 호출), 줄바꿈 뒤의 본문(Claude 출력·stderr·오류 메시지)은 logUtil이 4칸 들여써서 제어 줄을 흉내 내지 못하게 한다.
-- viewFormat.js는 DOM에 의존하지 않는 표시용 순수 함수이며 renderer.js보다 먼저 불러오는 클래식 스크립트다. tests/checkDesktopView.js가 단독으로 불러 검증한다. 렌더러에는 Node 권한을 주지 않고 preload.cjs가 window.autopilot·window.appWindow만 노출한다.
-- 대상 프로젝트는 Git 저장소의 루트(.git이 있는 폴더)만 받고(projectFiles.getProjectError), 고르기 전에는 시작 버튼이 잠기며 실행 중에는 바꿀 수 없다. 프로젝트·작업·종료 시각·정책·model·effort는 userData/settings.json에 저장해 다음 실행 때 복원한다(프로젝트는 고를 때, 나머지는 시작할 때 저장하고, model·effort는 실행 중 set에 성공해도 저장한다). 종료 신호는 같은 엔진의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다. 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 보고 둘이 다르면 적용 대기로 표시한다. 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES와 index.html의 모델 라디오(name="model")·Effort 단계 목록(datalist#effort-levels의 option label)·정책 라디오(name="policy")이며 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 data-default가 붙은 기본값을 대조한다. Effort는 range를 끄는 동안(input) 표시만 바꾸고 손을 뗄 때(change) 한 번만 set을 보낸다.
-- 프로필 패널(#profile, 헤더 설정 버튼 왼쪽의 #profile-toggle)은 그 버튼 아래에 뜨는 카드이고 설정 패널(#settings, 오른쪽에 뜨는 카드)과 같은 .panel 컴포넌트를 쓰며 한 번에 하나만 열린다(renderer의 setPanelOpen). 맨 위는 계정 목록(#account-select 안에 renderer가 만드는 role=radio 버튼 줄)과 추가·로그인·제거, 그 아래는 계정 카드(이름 첫 글자 아바타·이름·이메일·요금제, 조직 이름은 요금제 툴팁)와 5시간·주간·모델별 주간 한도 막대다. 조회는 메인 프로세스의 claudeAccount.cjs가 계정마다 하나씩(accountIpc.cjs가 관리) 한다. 그 계정 설정 폴더의 .credentials.json 토큰으로 비공식 엔드포인트 api.anthropic.com/api/oauth/usage·/api/oauth/profile 두 곳만 부른다. 앱을 켤 때(startAccountWatch, 스모크 테스트 제외) 모든 계정을 한 번 읽어 메인에 보관하고 5분마다 다시 읽어 autopilot:account({id, account})로 화면에 보내며, 새로 고침(autopilot:refresh-account)은 15초 안의 재요청을 막는다. 일부만 실패하면 성공한 쪽만 갱신하고 이전 값은 유지한다. 토큰은 이 모듈 밖으로 내보내거나 로그에 쓰지 않고 읽기만 한다(앱이 refresh하지 않는다. refresh token을 쓰면 Claude Code 로그인이 깨질 수 있다. 액세스 토큰은 수명이 약 8시간이라 만료되면 claudeCli.renewCredentials가 가장 작은 `claude -p` 요청 한 번(haiku, effort low, 도구·사용자 설정·MCP를 빼서 입력 약 3k 토큰, 약 $0.0006)으로 CLI가 직접 갱신하게 맡기고 다시 읽는다. 실행·로그인 중에는 하지 않고 계정마다 30분에 한 번만 시도하며, 갱신이 안 되면 그때 안내를 낸다). 프로필에는 아바타 URL이 없다. 사용량은 limits[](session·weekly_all·weekly_scoped)를 기준으로 읽고 없으면 five_hour·seven_day로 대신하며, 형식이 바뀌어도 앱이 깨지지 않게 실패 안내만 낸다. 엔진·로그 형식과는 무관하고 tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
-- 멀티 계정: 기본 계정은 "Claude 데이터 폴더"(기본 .claude)에 로그인된 계정이다. 이 폴더는 설정 패널에서 고른 경로(settings.json의 claudeDir), 없으면 환경 변수 CLAUDE_CONFIG_DIR, 없으면 ~/.claude 순으로 정하고(accountStore.resolveBaseDir) 환경마다 달라도 폴더 선택·자동 감지로 맞춘다. 엔진의 --config-dir 기본값이 ~/.claude이므로 기본 계정이 다른 위치면 그 폴더를 --config-dir로 명시하고, 직접 고른 폴더가 없어졌으면 시작하지 않는다. 추가한 계정은 앱 데이터 폴더의 accounts/<acct-8자리16진수>/ 설정 폴더 하나씩이고(로그인 정보·.claude.json은 계정마다 따로), 계정 추가 때 "기본 .claude의 메모리·지침·스킬 함께 쓰기"(기본 켬)를 고르면 기본 폴더의 projects(메모리·세션 기록)·skills·plugins·commands·agents는 junction(관리자 권한 불필요)으로, CLAUDE.md·settings.json은 심볼릭 링크(안 되면 복사)로 연결한다(accountStore.linkSharedData). 이미 있는 실제 폴더·파일은 건드리지 않고, 앱을 켤 때·폴더를 바꿀 때 다시 이어 주며 새 위치에 없는 항목의 낡은 링크는 끊는다. 계정 제거는 연결을 먼저 끊고 폴더를 지워 기본 .claude의 데이터를 지우지 않는다(테스트로 보장). settings.json에는 {id, label, shared} 목록(accounts)과 선택한 계정(accountId)만 저장하고 계정 폴더 경로나 토큰은 저장하지 않으며, 폴더는 id로만 정해서 설정 파일로 임의 경로를 가리킬 수 없다(id 형식을 검사한다). 로그인은 claudeCli.cjs가 CLAUDE_CONFIG_DIR을 그 폴더로 지정해 `claude auth login --claudeai`를 실행하고(브라우저는 CLI가 연다), 출력에서 찾은 로그인 주소(claude.com·claude.ai·anthropic.com의 https만)를 "브라우저에서 열기"로 열 수 있게 알리며 브라우저가 코드를 보여 주면 입력칸의 코드를 CLI의 stdin으로 전달한다. 끝나면 `claude auth status --json`으로 로그인 상태를 확인하고, 새 계정이 실패·취소되면 만든 폴더를 지운다. 로그인 코드는 로그에 남기지 않는다. 시작할 때 선택한 계정이 기본 계정이 아니면 엔진에 --config-dir <그 폴더>를 넘긴다. 시작 전에는 기본 계정을 포함해 선택한 계정의 로그인을 `claude auth status --json`으로 확인하고(accountIpc.getRunAccount, 종료 코드는 보지 않는다) 안 돼 있으면 시작하지 않고 LOGIN_REQUIRED를 돌려준다. 렌더러는 이때 안내 줄(#login-banner)에 로그인 버튼을 보이고, 누르면 그 계정의 로그인을 시작해 주소·코드 입력이 있는 프로필 패널을 열며 로그인이 성공하면 멈췄던 시작을 이어간다. 실행·로그인 중에는 계정 선택·추가·제거·로그인·데이터 폴더 변경을 막는다(메인도 거부한다). 한도 회피를 위한 자동 계정 전환은 하지 않는다. tests/checkDesktopAccounts.js가 가짜 claude로 검증한다.
-- 계정 기능의 플랫폼 범위: 배포는 Windows exe(포터블·설치형)뿐이지만 계정 코드는 비-Windows에서도 돌도록 짠다(claudeCli.findClaude는 비-Windows에서 실행 권한을 확인, junction은 Windows 밖에서 디렉터리 심볼릭 링크, 프로세스 종료는 Windows taskkill·그 외 SIGTERM, CMD 래퍼 처리는 Windows만). 로그인 여부는 저장 위치가 플랫폼마다 달라 파일이 아니라 `claude auth status --json`으로 확인한다. Windows·Linux는 로그인 정보가 설정 폴더의 .credentials.json이라 사용량·프로필 조회가 되지만, macOS는 키체인이라 조회하지 못하고(UNSUPPORTED_PLATFORM 안내) 계정 전환·로그인·실행은 CLI로 된다. Linux는 WSL로 tests/checkDesktopAccounts.js·checkDesktopRunner.js·checkDesktopView.js를 확인했고 macOS는 확인하지 못했다.
-- 지난 실행(기록 보기): 시작 화면(#recent)에 최근 3개, 설정 패널의 지난 실행 보기·#archive-all의 전체 보기가 시트(#archive)로 목록과 상세(채팅 모양 #archive-chat)를 연다. 원본은 대상 프로젝트의 .autopilot/progress/<날짜>/autopilot_*.log뿐이며 별도 저장소를 두지 않는다(보관 기간은 엔진의 logRetentionDays를 따른다). 읽기는 메인 프로세스의 runHistory.cjs(listRuns·readRun)가 하고 IPC는 autopilot:list-runs·read-run·open-run-file이다. 렌더러가 보내는 값은 실행 id(`YYYY-MM-DD/autopilot_*.log`)뿐이고 getRunFiles가 형식을 검사해 진행 기록 폴더 안의 경로로만 바꾸며, 열기(리포트·원본 로그)는 projectFiles의 isProjectReportFile·isProjectLogFile로 실제 경로까지 검사한다. 요약은 앱의 로그 해석(autopilotRunner.parseLine, isReplay)을 그대로 쓰고 시작 시각은 폴더 날짜와 파일 이름의 HHmmss, 끝 시각은 파일 수정 시각이다(7일을 넘기면 알 수 없음). 깨진 로그 대응: 잘못된 UTF-8·BOM·CRLF·제어 문자·2000자 넘는 줄을 정리하고, 16MB를 넘으면 끝부분만 읽으며(isPartial), 상세는 최근 20000줄까지 보내고, 비었거나 알아볼 줄이 없으면 isEmpty, 읽기 오류는 isUnreadable, 끝맺음 줄이 없으면 reason이 비어 `끝맺음 없음`이다(실행 중인 엔진의 로그는 isActive라 제외). 목록의 심볼릭 링크·junction은 따라가지 않는다. 대화 변환(viewFormat.buildTranscript)은 알아볼 수 없는 줄을 건너뛰고 1500개까지만 둔다. 삭제(autopilot:delete-run, runHistory.deleteRun)는 메인의 확인 대화상자를 거쳐 그 실행의 로그·리포트만 지우고 진행 중인 실행(isActive)은 거부하며 날짜 폴더는 비었을 때만 지운다(완료 마커·보관 원본은 건드리지 않는다). 요약 문장은 viewFormat.describePastRun이 만든다. 로그 줄 형식을 바꾸면 이 해석도 함께 고치고 tests/checkDesktopHistory.js(runHistory)와 tests/checkDesktopView.js(describePastRun·buildTranscript)로 확인한다.
-- 화면은 사이드바 없이 한 장이고 스크롤하지 않는다. 위에서부터 헤더, 상태 줄(.course: 상태 점·#status-badge·#stat-phase와 오른쪽 #clock, 그 아래 회차 진행선 #track), 본문(.stage), 안내 문구(.notices: #notice·#login-banner·#project-banner, 없으면 자리를 차지하지 않는다), 컴포저(#run-form.composer)를 쌓는다. 본문은 body[data-view]로 셋 중 하나만 보인다(viewFormat.getView). ready는 시작 전 인사(.greet, 시각·정책·종료 시각·프로젝트 폴더 이름에 맞춘 문구와 이모지 getGreeting, ready에서는 상태 줄(.course)을 숨긴다), run은 이야기(.story), done은 실행을 마친 뒤의 정리(.finish: describeFinish의 인사·종료 이유, 성과 목록, 회차별 커밋, 리포트 열기·전체 기록 버튼)다. done은 실행이 끝난 상태가 남아 있는 동안이고, 다른 프로젝트를 고르면 ready로 돌아간다(isFinishDismissed). 이야기는 renderer가 로그 줄마다 viewFormat.applyStoryEntry로 Claude의 문장(시각 + 본문 줄, 여러 줄 메시지의 4칸 들여 쓴 줄은 앞 문장에 잇는다)과 도구 줄(`HH:MM:SS   > 이름 인자`)을 묶음(beat)으로 만든다. 문장 앞에는 그 전에 부른 도구가 칩으로 붙고, 도구만 온 동안에는 describeTool이 지은 문장을 보여주다가 Claude의 문장이 오면 바꾼다. 앱이 엔진을 시작·연결하는 [앱] 줄이 오면 이야기를 비운다. 지금 문장(#now-text)은 크게, 지난 문장(#story-past, 최대 STORY_PAST_LINES개)은 같은 크기로 쌓여 위로 갈수록 마스크로 흐려지고 도구 칩은 문장 위 한 줄에 모으며(줄이 늘거나 지금 문장 높이가 바뀌면 renderer의 slidePast가 FLIP으로 올려 보내고 새 줄만 맺힌다), 사용량 한도·재시도 대기·종료 신호 뒤에는 getWaitSentence의 기다리는 이유가 지금 문장을 대신한다. 그 아래에 가장 최근 성과(state.gains의 마지막, parseGain으로 "이전 → 이후"면 숫자를 크게), 지금 문장 시각·적용 대기(#apply-note)·전체 기록 버튼(#live-panel), 일한 양(getWorkSummary: 도구 호출·읽은 파일·고친 파일·커밋 수와 줄 수)이 온다. 진행선(getTrack)은 실행 시작부터 종료 예정 시각까지를 100으로 놓고 회차 구간·커밋 점(회차 끝)·지금 위치를 퍼센트로 그리며(회차 이름은 상태 줄의 N회차 진행 중과 겹쳐 그리지 않는다), 0.1% 넘게 바뀔 때만 다시 그린다. 컴포저는 위가 작업 입력(textarea, 높이 고정이고 넘치면 칸 안에서 스크롤한다. 실행이 시작되면 컴포저가 아래에 붙은 얇은 막대로 줄어들고(position: sticky, 좌우 여백은 그대로 두고 흰 바탕·그림자로 떠 있게 한다), 작업 칸은 접혀 작업 요약 한 줄 #tasks-toggle(개수·첫 작업·화살표)만 남으며 누르면 .fold의 grid-template-rows 0fr↔1fr 전환으로 읽기 전용 작업 칸이 펴진다. 접힌 칸은 visibility로 포커스를 막고 실행이 끝나면 접힌 상태로 돌아간다. renderer의 setTasksOpen이 body[data-tasks-open]을 다룬다), 아래가 알약 줄(.composer-bar)과 주 버튼(#main-action, 시작 → 종료 신호(실수 방지로 한 번 누르면 붉게 바뀌어 4초 동안 "한 번 더 눌러 종료"를 보이며 줄어드는 채움이 남은 시간을 알리고, 그 안에 다시 눌러야 stop을 보낸다. renderer의 setStopArmed) → 종료(강제 종료, 메인 프로세스의 확인 대화상자를 거친다), 글자는 #main-action-label)이다. 알약은 모델(#model-popover, 2×2 카드로 고르고 알약은 고른 모델 색으로 옅게 물든다. 모델 마크는 선 아이콘 symbol), Effort(단계가 오를수록 커지는 파형과 단계 이름 Low·Medium·High·XHigh·Max, #effort-popover. 파형은 renderer의 getWavePath가 path의 d를 정하고 값은 숨은 input#effort가 갖는다), 개선 정책(#policy-popover, 설정 패널 라디오의 값을 보여주고 바꾼다), 종료 시각(정한 시각과 남은 시간, #end-time-popover에서 위아래 단추·휠로 시·분을 바꾸거나 1·3·6시간 뒤·기본 07:00을 고른다. 값은 숨은 input#end-time에 HH:mm 또는 빈 값)이다. 실행 중에는 정책·종료 시각 알약을 숨긴다(종료 시각과 남은 시간은 상태 줄·진행선에, 정책은 작업 요약의 문구에 이미 있다), 알약 줄은 줄바꿈 없이 한 줄에 들어가야 하므로 좁은 창(560px 이하)에서는 남은 시간과 화살표를 숨긴다. 팝오버는 native popover와 anchor 위치를 쓰고 컴포저가 아래에 있어 위로 열린다(display는 :popover-open에만 준다. 닫힌 팝오버에 display를 주면 보이지 않는 목록이 남아 클릭으로 값이 바뀐다). 모델 라디오는 팝오버 안에 있지만 form="run-form"으로 폼에 속하고, 마크·아이콘은 svg.symbols의 symbol을 use로 쓴다. 자주 쓰지 않는 프로젝트 선택·Claude 데이터 폴더·사용량 한도(종료 시각 연장)·진행 기록 초기화(확인 대화상자를 거쳐 reset-progress 실행, 실행 중에는 막는다)·리포트 열기·전체 기록·앱 버전(v0.1.0 형식)은 헤더의 설정 버튼으로 여는 패널(#settings, 닫혀 있으면 inert, 열 때 ease-out·닫을 때 ease-in, 뒤에 헤더 아래만 덮는 .scrim을 깐다)에 둔다. 정책 라디오(name="policy")는 정책 팝오버 안의 숨은 입력이고 form="run-form"으로 폼에 속하며, 팝오버 버튼은 그 값만 바꾼다(설정 패널에는 정책이 없다). 버튼은 공통 .button(primary·danger·small 조합)을 쓴다. 등장 애니메이션은 서체가 준비돼 body.ready가 붙기 전까지 멈춰 두고, 창은 첫 화면이 그려진 뒤(ready-to-show) 띄운다. 전체 기록(#history)은 아래에서 올라오는 흰 시트이고(닫혀 있으면 inert, 스크림을 누르거나 Esc로 닫는다) 전체 로그 줄은 content-visibility로 화면 밖을 그리지 않는다.
-- 화면은 흰 바탕 한 벌이고 색은 지금 진행 중인 것(상태 점·진행선·캐럿·성과의 이후 숫자·시작 버튼)에만 파랑(--accent) 하나를 쓴다. 글자 크기는 styles.css :root의 열 단계(--text-xs 12 ~ --display 56)만 쓴다. 서체는 desktop/fonts/의 Pretendard(OFL, 라이선스 파일 동봉)를 @font-face로 넣어 오프라인에서도 같게 보이고, 숫자는 body의 tabular-nums(Pretendard 고정폭 숫자)로 써서 시계가 바뀌어도 흔들리지 않는다. 고정폭 서체(--mono, Windows의 Cascadia Mono)는 코드·경로·해시·전체 로그에만 쓴다(한글이 섞인 숫자 문구에 쓰면 글자 사이가 벌어진다). 지금 문장은 줄 순서대로 마스크를 쓸어 드러내고(renderer의 revealNowText, 글자 위치는 그대로다), 드러내는 중에 문장이 이어지면 마스크를 걷어 다 보여준다. 길이에 따라 글자 크기를 줄여(data-length) 네 줄 안에 넣는다. prefers-reduced-motion에서는 이동·확대 전환(패널·시트·팝오버 미끄러짐, 등장)을 끄고, 자리가 바뀌지 않는 투명도 표시(캐럿 깜빡임, 상태 점, 문장 드러내기, 문구 전환)만 남긴다. 창을 숨기면(document.hidden) :root.window-hidden으로 반복 애니메이션을 멈춘다. CSP가 inline style 속성을 막으므로 스크립트의 스타일은 style.setProperty로만 넣는다.
-- 창은 세로형 600×800(최소 480×640, 작업 영역보다 크면 줄인다)이고 frame 없이 흰 바탕(main.cjs의 WINDOW_BACKGROUND)으로 띄운다. 헤더(#titlebar)는 index.html에서 직접 그리고 왼쪽에 로고, 오른쪽에 프로필·설정·최소화·최대화·닫기 버튼을 둔다. 헤더 전체가 끌기 영역(-webkit-app-region: drag)이고 버튼만 뺀다. 최소화·최대화·닫기는 preload의 window.appWindow가 main.cjs의 window:* IPC로 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다. 최대화 상태는 window:state로 받아 아이콘을 바꾼다. 화면은 스크롤하지 않고 창 높이에 맞춰 본문이 줄어든다(헤더가 밀려나면 창을 끌 곳이 없다). 스모크 테스트는 window.appWindow·#titlebar·#profile·#login-banner도 확인한다.
-- 새 버전 알림: 메인 프로세스의 updateCheck.cjs가 앱을 켤 때(스모크 테스트 제외)와 6시간마다 GitHub `releases/latest`(공개 저장소, 토큰 없음)의 태그를 app.getVersion()과 숫자로 비교해 더 높으면 {version, url}을 보관하고 바뀔 때만 autopilot:update로 화면에 보낸다. 조회 실패는 조용히 넘어가고 이전 값을 유지한다. 열 주소는 `^v?\d+\.\d+\.\d+$`를 통과한 태그로 직접 만들며(응답의 URL은 쓰지 않는다) 렌더러는 주소를 보내지 않고 autopilot:open-update만 요청한다. 헤더 버튼 줄 맨 앞의 #update-chip(회색 칩, 파랑은 진행 중 표시 전용)이 누르면 그 릴리스 페이지를 연다. 자동 설치는 하지 않는다. tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
-- 엔진이 알려준 경로는 믿지 않는다. 리포트 열기는 시작한 프로젝트의 .autopilot/progress/ 안의 report_*.html만 허용하고, 연결할 로그는 progress/ 안의 autopilot_*.log만 읽는다. 둘 다 링크를 실제 경로로 풀어 판단한다(projectFiles.cjs).
-- 앱을 닫았다 켠 사이에도 엔진이 살아 있어 선택한 프로젝트에서 실행 중이면 앱을 켤 때와 창에 포커스가 올 때 엔진의 status로 확인해 연결한다. 연결하면 로그 파일을 처음부터 읽어 상태를 복원하고(이때 읽은 회차는 시각을 알 수 없다) 1초마다 새 로그와 pid 생존을 확인한다. 종료 신호는 stop, 모델 변경은 set, 강제 종료는 pid로 하며 종료 코드는 알 수 없어 사유는 로그의 종료 줄에서 읽는다. 연결한 엔진은 앱 소유가 아니므로 창을 닫아도 종료하지 않는다.
-- 앱이 시작한 엔진이 실행 중이면 창을 닫을 때 트레이로 숨기기만 하고 엔진은 계속 돈다(main.cjs의 close 처리, isOwnedEngineRunning). 종료는 트레이 메뉴의 종료로 하며 창을 띄워 confirmClose의 확인 후 강제 종료한다. 실행 중이 아니거나 연결한 엔진이면 닫을 때 앱이 종료된다. systemIntegration.cjs가 러너 상태 변화(onState)마다 절전 방지(powerSaveBlocker prevent-app-suspension, 엔진이 도는 동안), 작업표시줄 진행률(종료 시각까지 경과, 종료 신호·재시도·한도 대기는 paused), 트레이 툴팁, Windows 알림(포커스가 없을 때 종료·실패·사용량 한도 대기 전환만, 강제 종료 제외)을 맞춘다. 앱은 단일 인스턴스이며 두 번째 실행은 종료하고 기존 창을 앞으로 가져온다(--smoke-test는 실행 중인 앱과 무관하게 검증하도록 잠금에서 제외한다). 로그는 메인 프로세스가 최근 3000줄만 보관한다.
-- 검증은 npm run test:desktop(가짜 CLI로 러너·연결·경로 검증, 표시 함수 검증)과 npm test(창·preload 스모크, 앱 번들의 엔진을 ELECTRON_RUN_AS_NODE로 --help 실행하는 확인 포함)다. VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 electron을 실행한다(앱이 엔진을 띄울 때는 앱이 직접 지정한다).
-
-## 스크립트와 세션 계약
-
-아래 .autopilot/progress/ 경로는 대상 프로젝트 안의 작업 폴더다.
-
-- 인수인계는 위 진행 기록(앱 데이터 폴더의 AUTOPILOT_PROGRESS.md) 하나로 유지한다. 날짜별로 나누지 않는다.
-- 진행 기록이 100줄(PROGRESS_MAX_LINES)을 초과하면 원본을 .autopilot/progress/<시작 날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md에 보관한다. 줄 수는 매 회차 시작 때 확인하고(하루 동안 문서가 커지는 것을 막기 위해서다), 보관 성공 시에만 정리를 지시하며 현재 상태·미완료·주의사항·다음 작업과 최근 완료 5건을 유지하고 전체를 60줄(PROGRESS_TARGET_LINES) 안팎으로 줄이게 한다. 상한까지 바로 다시 차서 정리가 반복되지 않도록 목표를 상한보다 낮게 둔다. 정리 지시가 실패한 회차는 같은 지시를 이어가고(재보관하지 않는다), 지시 후 다음 회차에도 상한을 넘으면 줄 수가 상한 이하로 내려갈 때까지 다시 지시하지 않는다. 보관 실패 시 원본을 유지한다.
-- 작업이 모두 끝난 실행(지시개선의 TODO_COMPLETE 인정, 연속 idle 종료)은 종료할 때 진행 기록 원본을 progress/<날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md에 보관하고 초기 상태(progressUtil의 PROGRESS_TEMPLATE과 보관 경로 한 줄)로 되돌린다. 진행 기록이 저장소 밖에 있어 commit 안 된 변경이 남지 않으므로 종료 때 바로 한다. 시각 도달·회차 상한·실패·중단 종료는 이어갈 내용이 있어 그대로 둔다. 보관에 실패하면 원본을 유지하고, 이미 초기 상태(비었거나 템플릿뿐이거나 안내 한 줄만 있음)면 아무것도 하지 않는다. reset-progress 명령(앱의 진행 기록 초기화 버튼)은 같은 동작을 지금 하며 실행 중이면 거부한다.
-- TODO_COMPLETE는 .autopilot/progress/<실행 시작 날짜>/TODO_COMPLETE다. 시작 시 이전 마커를 지우고, 성공한 지시개선 회차 뒤에만 완료 신호로 인정한다.
-- STOP은 .autopilot/progress/STOP이다. 시작 시 지우고, 현재 회차 후 종료한다. 대기 중에도 감지한다.
-- ROUND_OPTIONS는 .autopilot/progress/ROUND_OPTIONS.json이다. set은 RUNNING 잠금의 pid가 살아 있을 때만 model·effort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES·EFFORT_LEVELS이고 깨진 파일·허용되지 않은 값은 무시한다. 회차 시작 로그는 [N회차] 시작 - 남은 시간 N분 (model X, effort Y) 형식이다.
-- RUNNING은 .autopilot/progress/RUNNING이다. 첫 줄에 실행 중인 pid, 둘째 줄에 실행 파일 이름, 셋째 줄에 이번 실행의 로그 파일(로그 위치가 정해진 직후 임시 파일 교체로 덧붙인다)을 적어 같은 프로젝트의 동시 실행을 막고 앱이 연결할 수 있게 한다. status는 이 잠금을 아래 판정으로 해석한 결과다. 잠금을 얻기 전에는 STOP·완료 신호를 지우지 않고 종료 때 지운다. 기록된 pid가 살아 있지 않거나(강제 종료로 잠금이 남은 경우), 살아 있어도 실행 파일 이름이 다르면(다른 프로그램이 pid를 재사용) 낡은 잠금으로 보고 덮어쓴다. 이름은 Windows tasklist, 그 외 ps로 조회하며 조회에 실패하거나 이름이 없는 이전 형식이면 같은 프로세스로 보고 거부한다(두 엔진이 동시에 도는 쪽이 더 위험하므로).
-- 실행을 시작할 때 보관 기간(기본 30일, limits의 logRetentionDays로만 조정)이 지난 날짜 폴더의 autopilot_*.log·report_*.html만 지운다. 보관한 진행 기록 원본·완료 마커·날짜가 아닌 폴더는 건드리지 않고 링크는 따라가지 않으며, 실패해도 실행은 계속한다.
-- exit code가 0이 아니거나 result.is_error가 true이면 실패다. 5·15·30분 후 재시도하고 연속 4회 실패 시 exit 1로 중단한다.
-- rate_limit_event의 allowed* 상태는 정상이다. 한도 도달과 회차 실패가 함께 있고 미래 resetsAt이 있을 때만 실패로 세지 않고 리셋 1분 뒤까지 대기한다. 대기 후 작업 시간이 부족하면 종료한다. --extend-on-limit(앱 설정의 "사용량 한도")이면 대기하기 전에 대기 시간(초 단위 올림)만큼 종료 시각을 늦추고 `[사용량 한도] 종료 시각 연장 yyyy-MM-dd HH:mm:ss (+N분)` 줄을 남긴다(앱 파서가 이 줄로 종료 예정 시각을 갱신한다). 이때는 대기 전 남은 시간이 최소 남은 시간 이상이면 계속한다.
-- 회차 시한은 min(전체 종료 시각, 회차 시작 + 120분)이다. Windows는 taskkill /T /F, macOS/Linux는 별도 프로세스 그룹을 종료한다. 출력이 계속 와도 시한을 적용한다. 독립 세션으로 이탈한 프로세스까지 추적하지 않는다.
-- 프롬프트는 UTF-8 stdin으로 전달한다. shell에는 사용자 프롬프트를 삽입하지 않는다. Windows .cmd 래퍼 실행 인자도 검증한다.
-- stream-json을 줄 단위로 처리한다. stderr는 별도로 읽으며, CLI가 종료되면 손자 프로세스의 상속 파이프 EOF를 기다리지 않는다.
-- 회차가 끝나면 결과 줄(`[N회차] <결과>`)보다 먼저 새 commit마다 `[커밋] <짧은 hash> +<추가 줄> -<삭제 줄> <제목>` 한 줄을 남긴다(줄 수는 git show --shortstat에서 읽는다, gitUtil.getLineCounts). 앱은 이 줄을 열린 회차에 붙인다. 지침의 `진행 문장` 절은 세션이 작업 중 메시지를 1인칭 해요체로 짧게 쓰고, 검증으로 확인한 수치 변화가 있으면 `성과: <무엇> <이전> → <이후>` 한 줄을 남기게 한다. 앱은 시각 뒤나 4칸 들여 쓴 줄 맨 앞의 `성과:`를 state.gains로 모은다(Claude 출력이므로 표시에만 쓰고 제어에 쓰지 않는다). 도구 줄은 앱이 세어 state.work(도구 호출 수, 같은 경로는 한 번만 센 Read·Edit 계열 파일 수)로 보여준다.
-- 정상 회차의 전후로 HEAD의 파일 내용이 바뀌지 않았으면(새 commit이 없음) idle이다. 진행 기록은 저장소 밖이라 따로 제외하지 않는다. 연속 2회면 종료한다.
-- HTML 리포트는 실행 중 30초마다, 대기 진입과 종료 때 갱신한다. 실행 중에는 git status를 호출하지 않는다. 모든 외부 문자열을 HTML escape한다.
-
-## 설정과 기본값
-
-우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값). 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이고, 값을 바꾸면 README·지침·검증을 함께 맞춘다. model은 fallback이 sonnet이며 같은 모델이면 생략한다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다.
-
-종료 시각은 HH:mm만 받는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다. 정책 인자는 auto/self/todo/directed 별칭도 지원한다.
+- 하위 명령은 모두 --project가 필요하다.
+    - stop: 중단 요청
+    - set --model <m> --effort <e>: 실행 중 model·effort 변경
+    - reset-progress: 진행 기록 초기화
+    - status: 실행 상태 확인. 한 줄 JSON `{"running":true,"pid":N,"logFile":"..."}` 또는 `{"running":false}`
+- 앱은 stdout 로그를 줄 맨 앞의 형식으로 해석한다. 엔진은 로그 기록 호출 한 번을 제어 줄 한 줄로만 쓰고(헤더도 줄마다 호출), 줄바꿈 뒤의 본문(Claude 출력·stderr·오류 메시지)은 logUtil이 4칸 들여써서 제어 줄을 흉내 내지 못하게 한다.
+- 앱이 해석하는 줄은 형식을 지킨다.
+    - `[N회차] 시작 - 남은 시간 N분 (model X, effort Y)`: 회차 시작.
+    - `[커밋] <짧은 hash> +<추가 줄> -<삭제 줄> <제목>`: 회차가 끝나면 결과 줄보다 먼저 새 commit마다 한 줄. 앱이 열린 회차에 붙인다. 줄 수는 git show --shortstat에서 읽는다(gitUtil.getLineCounts).
+    - `[N회차] <결과>`: 회차 결과.
+    - `[사용량 한도] 종료 시각 연장 yyyy-MM-dd HH:mm:ss (+N분)`: 앱 파서가 이 줄로 종료 예정 시각을 갱신한다.
+    - `성과: <무엇> <이전> → <이후>`: 시각 뒤나 4칸 들여 쓴 줄 맨 앞. 앱이 state.gains로 모은다. Claude 출력이므로 표시에만 쓰고 제어에 쓰지 않는다.
+    - 도구 줄(`HH:MM:SS   > 이름 인자`): 앱이 세어 state.work(도구 호출 수, 같은 경로는 한 번만 센 Read·Edit 계열 파일 수)로 보여준다.
+- 형식을 바꾸면 desktop/CLAUDE.md의 "엔진 연동"에 적힌 로그 해석 세 곳과 그 검증을 함께 고친다. tests/checkAutopilot.js는 모든 시나리오에서 실제 엔진 로그를 desktop의 러너 파서로 읽어 회차 결과와 비교하므로, 형식이 어긋나면 CLI 검증이 실패한다.
 
 ## 코드 스타일
 
-포맷은 루트 .prettierrc(4칸 들여쓰기·큰따옴표·세미콜론·trailing comma 없음)를 따르고 구조는 기존 서비스 코드를 기준으로 한다. 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용한다. 함수는 get/run/parse/write/handle/kill 등 동작이 드러나게 이름 짓고 의미 없는 축약명을 피한다. 공개 서비스 함수는 try/catch, 오류 로그, STATUS_OK/STATUS_FAILED 반환을 갖춘다. 성공 데이터는 data, 오류는 error: { code, msg }에 담는다. CLI 오류에 HTTP 코드나 웹 서버 의존성을 추가하지 않는다. 유틸 내부 예외는 서비스 경계에서 처리하며 프로세스 종료와 finally 정리를 유지한다. ESM import/export와 const 화살표 함수를 쓴다. 함수 사이와 논리 블록(변수 선언군·검증·반환) 사이에는 빈 줄을 둔다. if는 한 줄이어도 중괄호를 쓰고 중첩 삼항 연산자는 쓰지 않는다. 오브젝트 필드는 key: value로 명시하고 shorthand를 쓰지 않는다. 서비스 함수는 준비·실행·결과 처리 단계로 나누고 재사용할 로직은 utils의 export default 라이브러리로 분리한다. 포맷터는 수정한 JS 파일만 지정한다. 기존 Electron 파일은 별도 요청 없이 전체 포맷하지 않는다. 주석은 복잡한 이유에만 최소한으로 한국어로 쓴다.
+- 포맷은 루트 .prettierrc(4칸 들여쓰기·큰따옴표·세미콜론·trailing comma 없음)를 따르고 구조는 기존 서비스 코드를 기준으로 한다.
+- 포맷터는 수정한 JS 파일만 지정한다(`npx prettier --write <파일>`). 기존 Electron 파일은 별도 요청 없이 전체 포맷하지 않는다(format:desktop은 요청이 있을 때만 쓴다).
+- 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용한다. 함수는 get/run/parse/write/handle/kill 등 동작이 드러나게 이름 짓고 의미 없는 축약명을 피한다.
+- const 화살표 함수를 쓴다. 엔진과 tests는 ESM(import/export)이고, desktop 메인 프로세스(.cjs)는 CommonJS(require), viewFormat.js·renderer.js는 브라우저 클래식 스크립트이므로 각 파일의 기존 방식을 따른다.
+- 공개 서비스 함수는 try/catch, 오류 로그, STATUS_OK/STATUS_FAILED 반환을 갖춘다. 성공 데이터는 data, 오류는 error: { code, msg }에 담는다. CLI 오류에 HTTP 코드나 웹 서버 의존성을 추가하지 않는다.
+- 서비스 함수는 준비·실행·결과 처리 단계로 나누고 재사용할 로직은 utils의 export default 라이브러리로 분리한다. 유틸 내부 예외는 서비스 경계에서 처리하며 프로세스 종료와 finally 정리를 유지한다.
+- 함수 사이와 논리 블록(변수 선언군·검증·반환) 사이에는 빈 줄을 둔다. if는 한 줄이어도 중괄호를 쓰고 중첩 삼항 연산자는 쓰지 않는다. 오브젝트 필드는 key: value로 명시하고 shorthand를 쓰지 않는다.
+- 주석은 복잡한 이유에만 최소한으로 한국어로 쓴다.
+- JS·Markdown·로그는 UTF-8이고 기존 BOM 문서도 읽는다. 기존 dirty 작업은 보존한다.
 
-JS·Markdown·로그는 UTF-8이고 기존 BOM 문서도 읽는다. 기존 dirty 작업은 보존한다.
+## 엔진 규칙 (autopilot/)
+
+아래 .autopilot/progress/ 경로는 대상 프로젝트 안의 작업 폴더다.
+
+### 구조
+
+- 진입점은 autopilot/core/autopilot_loop.js다. ESM이고 런타임 외부 의존성이 없으며 Electron 44에 들어 있는 Node 24에서 실행한다.
+- autopilot/package.json은 엔진이 앱·대상 프로젝트의 module 설정과 무관하게 ESM으로 읽히게 하는 선언이다. 패키지의 resources/engine/에도 복사되므로 지우지 않는다.
+- 실행 서비스는 autopilot/src/services/autopilotService.js다(runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset).
+- 공통 로직은 autopilot/src/utils/의 라이브러리로 분리한다(settingsUtil·cliUtil·promptUtil·progressUtil·reportUtil·gitUtil·processUtil·streamUtil·dateUtil·fileUtil·logUtil·util은 이름이 역할이다). 지침·정책 본문은 guideText.js, 프로젝트·작업 폴더·진행 기록 경로와 회차 결과는 autopilotUtil, 상수는 config.js다.
+
+### 프로젝트와 작업 폴더
+
+- --project는 Git 저장소의 루트 폴더여야 한다(엔진이 확인).
+- 프로젝트 안의 .autopilot/은 progress/(로그·리포트·실행 신호)와 recycle_bin/을 두는 작업 폴더이며 엔진이 만들고 .gitignore(*)를 써서 프로젝트 git에서 제외한다(이미 있는 .gitignore는 건드리지 않는다). 중첩 .git은 두지 않는다.
+- 실행을 시작할 때 보관 기간(기본 30일, limits의 logRetentionDays로만 조정)이 지난 날짜 폴더의 autopilot_*.log·report_*.html만 지운다. 보관한 진행 기록 원본·완료 마커·날짜가 아닌 폴더는 건드리지 않고 링크는 따라가지 않으며, 실패해도 실행은 계속한다.
+
+### 예약 작업
+
+- 앱이 userData/tasks.md에 쓰고 --tasks-file로 넘긴다(긴 텍스트라 인자로 넘기지 않는다). 엔진이 시작할 때 한 번 읽어 매 회차 프롬프트의 <TASKS> 블록에 넣는다.
+- 지시개선은 작업이 비어 있으면 시작하지 않는다.
+
+### 진행 기록
+
+- 진행 기록은 프로젝트 저장소가 아니라 앱 데이터 폴더의 %APPDATA%/AutoPilot/projects/<프로젝트 폴더명>-<실제 경로 SHA-256 앞 8자>/AUTOPILOT_PROGRESS.md 하나다(autopilotUtil.getProgressFile, 정리되는 임시 폴더는 쓰지 않는다). 같은 프로젝트의 다음 실행이 이어받는다.
+- 인수인계는 이 파일 하나로 유지한다. 날짜별로 나누지 않는다.
+- 첫 실행이면 엔진이 PROGRESS_TEMPLATE으로 만들어 두고, 경로는 프롬프트와 로그 헤더(Progress)로 알린다.
+- 세션은 이 파일을 갱신하되 commit하지 않는다.
+- 줄 수는 매 회차 시작 때 확인한다(하루 동안 문서가 커지는 것을 막기 위해서다). 100줄(PROGRESS_MAX_LINES)을 초과하면 원본을 .autopilot/progress/<시작 날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md에 보관하고, 보관 성공 시에만 정리를 지시한다. 정리 지시는 현재 상태·미완료·주의사항·다음 작업과 최근 완료 5건을 유지하고 전체를 60줄(PROGRESS_TARGET_LINES) 안팎으로 줄이게 한다. 상한까지 바로 다시 차서 정리가 반복되지 않도록 목표를 상한보다 낮게 둔다.
+- 정리 지시가 실패한 회차는 같은 지시를 이어가고(재보관하지 않는다), 지시 후 다음 회차에도 상한을 넘으면 줄 수가 상한 이하로 내려갈 때까지 다시 지시하지 않는다.
+- 작업이 모두 끝난 실행(지시개선의 TODO_COMPLETE 인정, 연속 idle 종료)은 종료할 때 진행 기록 원본을 progress/<날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md에 보관하고 초기 상태(progressUtil의 PROGRESS_TEMPLATE과 보관 경로 한 줄)로 되돌린다. 진행 기록이 저장소 밖에 있어 commit 안 된 변경이 남지 않으므로 종료 때 바로 한다. 시각 도달·회차 상한·실패·중단 종료는 이어갈 내용이 있어 그대로 둔다. 이미 초기 상태(비었거나 템플릿뿐이거나 안내 한 줄만 있음)면 아무것도 하지 않는다. reset-progress 명령(앱의 진행 기록 초기화 버튼)은 같은 동작을 지금 하며 실행 중이면 거부한다.
+- 어느 경우든 보관에 실패하면 원본을 유지한다.
+
+### 세션 실행과 프롬프트
+
+- 실제 세션은 claude -p로 실행한다.
+- 프롬프트는 UTF-8 stdin으로 전달한다. shell에는 사용자 프롬프트를 삽입하지 않는다. Windows .cmd 래퍼 실행 인자도 검증한다.
+- 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·예약 작업·진행 기록 경로·정책·남은 시간·작업 수 상한을 명시한다.
+- AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
+- guideText.js의 `진행 문장` 절은 세션이 작업 중 메시지를 1인칭 해요체로 짧게 쓰고, 검증으로 확인한 수치 변화가 있으면 `성과:` 한 줄을 남기게 한다.
+- Claude 세션과 그 하위 프로세스에 ELECTRON_RUN_AS_NODE를 넘기지 않는다(autopilotUtil.getRunEnv가 지운다). 넘기면 대상 프로젝트의 electron 실행이 깨진다.
+- stream-json을 줄 단위로 처리한다. stderr는 별도로 읽으며, CLI가 종료되면 손자 프로세스의 상속 파이프 EOF를 기다리지 않는다.
+
+### 실행 신호 파일
+
+모두 .autopilot/progress/ 안에 둔다.
+
+- STOP: 시작 시 지우고, 있으면 현재 회차 후 종료한다. 대기 중에도 감지한다.
+- TODO_COMPLETE: 실제 경로는 progress/<실행 시작 날짜>/TODO_COMPLETE다. 시작 시 이전 마커를 지우고, 성공한 지시개선 회차 뒤에만 완료 신호로 인정한다.
+- ROUND_OPTIONS.json: set이 RUNNING 잠금의 pid가 살아 있을 때만 model·effort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES·EFFORT_LEVELS이고 깨진 파일·허용되지 않은 값은 무시한다.
+- RUNNING: 첫 줄에 실행 중인 pid, 둘째 줄에 실행 파일 이름, 셋째 줄에 이번 실행의 로그 파일(로그 위치가 정해진 직후 임시 파일 교체로 덧붙인다)을 적어 같은 프로젝트의 동시 실행을 막고 앱이 연결할 수 있게 한다. status는 이 잠금을 아래 판정으로 해석한 결과다.
+    - 잠금을 얻기 전에는 STOP·완료 신호 같은 실행 상태를 건드리지 않고, 잠금은 종료 때 지운다.
+    - 기록된 pid가 살아 있지 않거나(강제 종료로 잠금이 남은 경우), 살아 있어도 실행 파일 이름이 다르면(다른 프로그램이 pid를 재사용) 낡은 잠금으로 보고 덮어쓴다.
+    - 이름은 Windows tasklist, 그 외 ps로 조회한다. 조회에 실패하거나 이름이 없는 이전 형식이면 같은 프로세스로 보고 거부한다(두 엔진이 동시에 도는 쪽이 더 위험하므로).
+
+### 회차 처리
+
+- 실패: exit code가 0이 아니거나 result.is_error가 true이면 실패다. 5·15·30분 후 재시도하고 연속 4회 실패 시 exit 1로 중단한다.
+- 사용량 한도: rate_limit_event의 allowed* 상태는 정상이다. 한도 도달과 회차 실패가 함께 있고 미래 resetsAt이 있을 때만 실패로 세지 않고 리셋 1분 뒤까지 대기한다. 대기 후 작업 시간이 부족하면 종료한다.
+- --extend-on-limit(앱 설정의 "사용량 한도")이면 대기하기 전에 대기 시간(초 단위 올림)만큼 종료 시각을 늦추고 `[사용량 한도] 종료 시각 연장` 줄을 남긴다. 이때는 대기 전 남은 시간이 최소 남은 시간 이상이면 계속한다.
+- 시한: 회차 시한은 min(전체 종료 시각, 회차 시작 + 120분)이다. 출력이 계속 와도 시한을 적용한다. 프로세스 종료는 Windows가 taskkill /T /F, macOS/Linux가 별도 프로세스 그룹 종료다. 독립 세션으로 이탈한 프로세스까지 추적하지 않는다.
+- idle: 정상 회차의 전후로 HEAD의 파일 내용이 바뀌지 않았으면(새 commit이 없음) idle이다. 진행 기록은 저장소 밖이라 따로 제외하지 않는다. 연속 2회면 종료한다.
+- 리포트: HTML 리포트는 실행 중 30초마다, 대기 진입과 종료 때 갱신한다. 실행 중에는 git status를 호출하지 않는다. 모든 외부 문자열을 HTML escape한다.
+
+### 설정과 기본값
+
+- 우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값).
+- 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이다. 값을 바꾸면 README·지침·검증을 함께 맞춘다.
+- model은 fallback이 sonnet이며 같은 모델이면 생략한다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다.
+- 종료 시각은 HH:mm만 받는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.
+- 정책 인자는 auto/self/todo/directed 별칭도 지원한다.

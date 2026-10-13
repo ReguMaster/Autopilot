@@ -24,7 +24,8 @@ app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256");
 // 로컬 파일만 로드하므로 프록시 탐색이 필요 없다.
 app.commandLine.appendSwitch("no-proxy-server");
 app.enableSandbox();
-app.setAppUserModelId("com.autopilot.desktop");
+// 개발 실행(electron.exe)이 알림을 띄우면 Electron이 같은 ID로 시작 메뉴에 Electron.lnk를 만들고, 작업표시줄은 그 바로가기 아이콘을 쓴다. 패키지 앱과 ID를 나눠 충돌을 막는다.
+app.setAppUserModelId(app.isPackaged ? "com.autopilot.desktop" : "com.autopilot.desktop.dev");
 
 let isQuitting = false;
 
