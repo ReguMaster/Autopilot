@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoPilot 시안 - 위젯</title>
+<script>
+    const syncScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+    syncScreen();
+    addEventListener("hashchange", syncScreen);
+</script>
+<style>
+@font-face {
+    font-family: "Pretendard";
+    src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+    font-weight: 45 920;
+}
+
+:root {
+    --text: #ffffff;
+    --text-2: rgba(255, 255, 255, 0.9);
+    --text-3: rgba(255, 255, 255, 0.86);
+    --rim: rgba(255, 255, 255, 0.6);
+    --opus: #d9822b;
+    --warn: #ffd27a;
+    --add: #b9f3c9;
+    --del: #ffc4bb;
+    --cell: 168px;
+    --gap: 16px;
+    --radius: 22px;
+    --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+    --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "D2Coding", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #12306a;
+    color: var(--text);
+    font: 400 13px/1.45 var(--sans);
+    font-variant-numeric: tabular-nums;
+    word-break: keep-all;
+    -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+svg { display: block; flex: none; }
+
+.i {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+code { font-family: var(--mono); font-variant-ligatures: none; }
+
+/* 하늘 */
+.sky {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    transform-origin: 50% 35%;
+}
+
+/* 유리: 왼쪽 위에서 오는 빛 하나를 기준으로 림과 반사를 둔다 */
+.glass {
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+    backdrop-filter: blur(26px) saturate(1.6) brightness(var(--dim, 0.7));
+    box-shadow:
+        inset 0 1px 0.5px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 0.5px rgba(255, 255, 255, 0.14),
+        inset 0 0 18px rgba(255, 255, 255, 0.06),
+        0 1px 2px rgba(6, 16, 48, 0.16),
+        0 16px 32px -18px rgba(6, 16, 48, 0.6);
+}
+
+.glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(155deg, var(--rim), rgba(255, 255, 255, 0.14) 30%, rgba(255, 255, 255, 0.04) 58%, rgba(255, 255, 255, 0.28) 86%, rgba(255, 255, 255, 0.46));
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+/* 창 헤더 */
+.titlebar {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    padding: 0 6px 0 16px;
+    -webkit-app-region: drag;
+}
+
+.logo { height: 17px; filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
+
+.where { display: flex; align-items: baseline; gap: 7px; font-size: 13px; text-shadow: 0 1px 2px rgba(6, 16, 48, 0.4); }
+.where b { font-weight: 650; }
+.where span { color: var(--text-2); font-size: 12px; }
+
+.controls { display: flex; align-items: center; gap: 4px; margin-left: auto; -webkit-app-region: no-drag; }
+.pair { display: flex; margin-right: 8px; padding: 2px; border-radius: 999px; }
+
+.win {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 28px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+}
+
+.pair .win { width: 32px; height: 26px; }
+.win svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.win:hover { background: rgba(255, 255, 255, 0.16); }
+.win.close:hover { background: #e5484d; }
+
+[data-screen="settings"] #settings-toggle,
+[data-screen="profile"] #profile-toggle {
+    background: rgba(255, 255, 255, 0.92);
+    color: #12306a;
+    box-shadow: 0 2px 6px -2px rgba(6, 16, 48, 0.5);
+}
+
+/* 위젯 격자: 작은 위젯 한 칸, 중간 2x1, 큰 2x2 */
+.board {
+    position: relative;
+    flex: 1;
+    display: grid;
+    place-content: center;
+    min-height: 0;
+    padding-bottom: 6px;
+}
+
+.grid,
+.sheets {
+    display: grid;
+    grid-template-columns: repeat(3, var(--cell));
+    grid-auto-rows: var(--cell);
+    gap: var(--gap);
+}
+
+.grid { transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 300ms; }
+
+.sheets {
+    position: absolute;
+    inset: 0;
+    place-content: center;
+    padding-bottom: 6px;
+    pointer-events: none;
+}
+
+.w {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 14px 15px 14px;
+    border-radius: var(--radius);
+}
+
+.w.large { grid-column: span 2; grid-row: span 2; padding: 16px 18px 16px; }
+.w.medium { grid-column: span 2; }
+
+/* 지평선 쪽 위젯은 뒤가 밝아서 흰 글자 대비를 위해 유리를 더 어둡게 받는다 */
+.w.low { --dim: 0.5; }
+
+.w, .sheet { text-shadow: 0 0.5px 1.5px rgba(6, 16, 48, 0.3); }
+
+.w-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 18px;
+    color: var(--text-2);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.w-head .i { width: 13px; height: 13px; color: var(--text); }
+.w-head .aside { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--text-3); font-size: 11.5px; font-weight: 500; }
+.w-head .aside .i { width: 11px; height: 11px; color: var(--text-3); }
+
+.capsule {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.capsule:hover { background: rgba(255, 255, 255, 0.26); }
+.capsule[disabled] { color: var(--text-3); background: rgba(255, 255, 255, 0.07); cursor: not-allowed; }
+.capsule.danger { color: var(--del); }
+
+/* 지금 회차 */
+.now .w-head .capsule { margin-left: auto; height: 22px; }
+
+.now-top { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 14px; }
+.now-top .big { font-size: 50px; }
+
+.big {
+    font-size: 44px;
+    font-weight: 620;
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.now-state { text-align: right; color: var(--text-2); font-size: 12.5px; line-height: 1.45; }
+.now-state b { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
+.now-state b i { width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22); }
+
+/* 00:30부터 07:00까지 회차 구간, 위의 점은 커밋 */
+.track {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 9px;
+    margin-top: 18px;
+    color: var(--text-3);
+    font-size: 11px;
+}
+
+.track .bar { position: relative; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); }
+.track .seg { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: rgba(255, 255, 255, 0.55); }
+.track .seg.live { background: #fff; }
+.track .commit { position: absolute; top: -6px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: #fff; }
+
+.calls {
+    margin: 16px 0 0;
+    padding: 11px 0 0;
+    border-top: 0.5px solid rgba(255, 255, 255, 0.3);
+    list-style: none;
+}
+
+.calls li {
+    display: grid;
+    grid-template-columns: 58px 38px 1fr;
+    align-items: baseline;
+    height: 25px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.calls time { color: var(--text-3); font-size: 11.5px; }
+.calls b { font: 600 12px var(--mono); }
+.calls code { overflow: hidden; color: var(--text-2); font-size: 12px; text-overflow: ellipsis; }
+
+.said {
+    margin: auto 0 0;
+    padding-top: 10px;
+    font-size: 15.5px;
+    font-weight: 500;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    text-wrap: pretty;
+}
+
+/* 남은 시간 */
+.clock .big { margin-top: auto; font-size: 34px; letter-spacing: -0.02em; }
+
+.clock-foot { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 10px; }
+.clock-foot span { color: var(--text-2); font-size: 11.5px; line-height: 1.4; }
+.clock-foot b { color: var(--text); font-weight: 600; }
+
+.ring { width: 40px; height: 40px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 5; }
+.ring .track { stroke: rgba(255, 255, 255, 0.2); }
+.ring .bar { stroke: #fff; stroke-linecap: round; }
+
+/* 커밋 */
+.commits-top { display: flex; align-items: flex-end; gap: 12px; margin-top: auto; }
+.commits-top .big { font-size: 44px; }
+.delta { display: grid; padding-bottom: 3px; font-size: 13px; font-weight: 650; line-height: 1.25; }
+.delta ins { color: var(--add); text-decoration: none; }
+.delta del { color: var(--del); text-decoration: none; }
+.commits-foot { margin-top: 10px; color: var(--text-2); font-size: 11.5px; line-height: 1.5; }
+.commits-foot code { display: block; color: var(--text-3); font-size: 11px; }
+
+/* 옵션 */
+.toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+
+.tg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 50px;
+    padding: 0 12px 0 9px;
+    border: 0;
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow:
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.65),
+        inset 0 0 0 0.5px rgba(255, 255, 255, 0.16);
+    text-align: left;
+}
+
+.tg:hover { background: rgba(255, 255, 255, 0.22); }
+
+.tg .disc {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.tg .disc .i { width: 15px; height: 15px; }
+.tg .disc .mark { width: 32px; height: 32px; }
+.tg .label { display: grid; flex: 1; min-width: 0; line-height: 1.2; }
+.tg small { color: var(--text-2); font-size: 11px; }
+.tg b { font-size: 14.5px; font-weight: 650; }
+.tg > .i { width: 11px; height: 11px; color: var(--text-2); }
+
+/* 모델만 Opus 색을 받는다: 흰 글자 대비를 지키려고 면은 유리로 두고 원판과 림만 물들인다 */
+.tg.model {
+    background: linear-gradient(180deg, rgba(255, 196, 140, 0.22), rgba(217, 130, 43, 0.16));
+    box-shadow:
+        inset 0 0.5px 0 rgba(255, 226, 190, 0.9),
+        inset 0 0 0 1px rgba(240, 160, 80, 0.55);
+}
+
+.tg.model .disc { background: none; box-shadow: 0 2px 6px -2px rgba(120, 50, 0, 0.6); border-radius: 50%; }
+
+.tg.locked { background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.2); cursor: default; }
+.tg.locked .disc { background: rgba(255, 255, 255, 0.1); }
+
+.steps { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.steps i { width: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.3); }
+.steps i:nth-child(1) { height: 5px; }
+.steps i:nth-child(2) { height: 7.5px; }
+.steps i:nth-child(3) { height: 10px; }
+.steps i:nth-child(4) { height: 12px; }
+.steps i:nth-child(5) { height: 14px; }
+.steps i.on { background: #fff; }
+
+/* 한도 */
+.quota-ring { position: relative; width: 92px; height: 92px; margin: auto auto 0; }
+.quota-ring .ring { width: 92px; height: 92px; }
+.quota-ring .ring circle { stroke-width: 9; }
+.quota-ring strong { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; font-weight: 640; letter-spacing: -0.02em; }
+.quota-ring strong small { display: inline; margin-left: 1px; color: inherit; }
+.quota-ring strong small { font-size: 14px; font-weight: 600; }
+.quota-foot { margin-top: 8px; color: var(--text-2); font-size: 11.5px; text-align: center; }
+
+/* 처리할 작업 */
+.todo { margin: auto 0 0; padding: 0; list-style: none; }
+
+.todo li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 26px 1fr auto;
+    align-items: center;
+    height: 31px;
+    font-size: 13.5px;
+}
+
+.todo li + li::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 26px;
+    right: 0;
+    border-top: 0.5px solid rgba(255, 255, 255, 0.24);
+}
+
+.todo .check {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    color: #22407a;
+}
+
+.todo .check .i { width: 11px; height: 11px; stroke-width: 2.2; }
+.todo .done .check + span { color: var(--text-2); }
+.todo .live .check { background: none; box-shadow: inset 0 0 0 1.5px #fff; }
+.todo .live .check::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.todo em { color: var(--text-3); font-size: 11.5px; font-style: normal; }
+.todo .live em { color: var(--text); font-weight: 600; }
+
+/* 종료 신호 */
+.stop {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 8px;
+    border: 0;
+    text-align: center;
+}
+
+.stop .knob {
+    display: grid;
+    place-items: center;
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background:
+        radial-gradient(90% 60% at 50% 105%, rgba(255, 255, 255, 0.3), transparent 70%),
+        rgba(255, 255, 255, 0.14);
+    box-shadow:
+        inset 1.5px 2px 1px -1px rgba(255, 255, 255, 0.85),
+        inset -1px -1.5px 1px -1px rgba(255, 255, 255, 0.4),
+        0 8px 18px -8px rgba(6, 16, 48, 0.6);
+}
+
+.stop .knob i { width: 18px; height: 18px; border-radius: 4.5px; background: #fff; box-shadow: 0 1px 2px rgba(6, 16, 48, 0.3); }
+.stop strong { font-size: 15px; font-weight: 650; }
+.stop small { margin-top: -6px; color: var(--text-2); font-size: 11.5px; }
+.stop:hover .knob { background-color: rgba(255, 255, 255, 0.22); }
+
+/* 시트: 위젯 편집처럼 격자에 맞춘 유리 판 */
+.scrim {
+    position: fixed;
+    inset: 40px 0 0;
+    z-index: 15;
+    background: rgba(8, 18, 50, 0.3);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 280ms;
+}
+
+[data-screen="settings"] .scrim,
+[data-screen="profile"] .scrim { opacity: 1; pointer-events: auto; }
+
+[data-screen="settings"] .grid,
+[data-screen="profile"] .grid { transform: scale(0.94); opacity: 0.45; }
+
+.sheets { z-index: 20; }
+
+.sheet {
+    display: flex;
+    flex-direction: column;
+    padding: 18px 18px 14px;
+    border-radius: var(--radius);
+    --dim: 0.52;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.1));
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(0.9);
+    transition: opacity 200ms ease-in, transform 220ms ease-in, visibility 0s 220ms;
+}
+
+#settings-panel { grid-column: 1 / span 3; grid-row: 1 / span 4; transform-origin: 90% 0; }
+#profile-panel { grid-column: 2 / span 2; grid-row: 1 / span 3; transform-origin: 70% 0; }
+
+[data-screen="settings"] #settings-panel,
+[data-screen="profile"] #profile-panel {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    pointer-events: auto;
+    transition: opacity 260ms ease-out, transform 460ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sheet-head { display: flex; align-items: center; gap: 8px; margin: 0 2px 12px; }
+.sheet-head .i { width: 16px; height: 16px; }
+.sheet-head h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.sheet-head .aside { margin-left: auto; color: var(--text-3); font-size: 12px; }
+
+.sheet h2 { margin: 0 4px 7px; color: var(--text-2); font-size: 12px; font-weight: 600; }
+.sheet h2:not(:first-of-type) { margin-top: 18px; }
+
+.inset {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow:
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.45),
+        inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+
+.inset > li {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    padding: 9px 14px;
+}
+
+.inset > li + li::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 14px;
+    right: 0;
+    border-top: 0.5px solid rgba(255, 255, 255, 0.2);
+}
+
+.inset .grow { flex: 1; min-width: 0; }
+.inset .path { display: block; overflow: hidden; font: 12.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.inset small, .footnote { display: block; color: var(--text-2); font-size: 11.5px; line-height: 1.45; }
+.footnote { margin: 6px 6px 0; }
+.inset strong { display: block; font-size: 13.5px; font-weight: 600; }
+
+.badge {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--text-2);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.link { width: 100%; padding: 0; border: 0; background: none; font-size: 13.5px; text-align: left; }
+.link.danger { color: var(--del); }
+.chev { width: 11px; height: 11px; color: var(--text-3); }
+
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.choices .tg { align-items: flex-start; height: auto; padding: 11px 12px 12px; }
+.choices .tg .label { gap: 3px; }
+.choices .tg small { font-size: 11.5px; line-height: 1.4; }
+.choices .tg.on { background: rgba(255, 255, 255, 0.24); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.5); }
+.choices .tg .tick { width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55); }
+.choices .tg.on .tick { display: grid; place-items: center; background: #fff; color: #1d3c78; box-shadow: none; }
+.choices .tg.on .tick .i { width: 10px; height: 10px; stroke-width: 2.4; }
+
+.switch {
+    position: relative;
+    flex: none;
+    width: 46px;
+    height: 27px;
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(110, 205, 140, 0.85), rgba(60, 170, 105, 0.85));
+    box-shadow: inset 0 1px 2px rgba(0, 30, 10, 0.25), inset 0 0 0 0.5px rgba(255, 255, 255, 0.3);
+}
+
+.switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #fff, #eef2f8);
+    box-shadow: 0 2px 5px rgba(6, 16, 48, 0.3);
+}
+
+.sheet-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding: 10px 4px 0;
+    color: var(--text-2);
+    font-size: 12px;
+}
+
+/* 프로필 */
+.me { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 12px; margin: 0 2px 14px; }
+
+.avatar {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    --dim: 1;
+    font-size: 21px;
+    font-weight: 650;
+}
+
+.me strong { display: block; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.me span span { color: var(--text-2); font-size: 12.5px; }
+.plan { align-self: start; margin-top: 4px; padding: 2px 9px; border-radius: 999px; --dim: 1; font-size: 11.5px; font-weight: 700; }
+
+.mini { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); font-size: 11.5px; font-weight: 700; }
+.tick-plain { width: 15px; height: 15px; stroke-width: 2; }
+.acct-actions { display: flex; gap: 6px; margin-top: 8px; }
+.acct-actions .danger { margin-left: auto; }
+
+.rings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 20px 8px 18px; text-align: center; }
+.rings .quota-ring { width: 92px; height: 92px; margin: 0 auto 10px; }
+.rings .quota-ring .ring { width: 92px; height: 92px; }
+.rings .quota-ring .ring circle { stroke-width: 8; }
+.rings .quota-ring strong { display: grid; font-size: 23px; }
+.rings .quota-ring strong small { font-size: 11px; }
+.rings b { display: block; font-size: 12px; font-weight: 600; }
+.rings > div > span { display: block; color: var(--text-2); font-size: 11px; line-height: 1.4; }
+.rings .warn .ring .bar { stroke: var(--warn); }
+.rings .warn strong { color: var(--warn); }
+
+/* 대표 모션: 잠금을 풀 때처럼 하늘은 천천히, 유리 판은 빠르게, 내용은 한 박자 늦게 자리를 잡는다 */
+.sky { animation: sky-in 1500ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.grid > .w { animation: slab-in 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--d) * 70ms + 100ms); }
+.grid > .w > * { animation: content-in 1000ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--d) * 70ms + 220ms); }
+
+@keyframes sky-in { from { transform: scale(1.1); } }
+@keyframes slab-in { from { opacity: 0; transform: scale(1.12); } }
+@keyframes content-in { from { opacity: 0; transform: translateY(10px) scale(1.04); } }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<svg class="sky" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+        <linearGradient id="sky-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#12306a" />
+            <stop offset="0.42" stop-color="#244e98" />
+            <stop offset="0.74" stop-color="#4a78c2" />
+            <stop offset="0.9" stop-color="#a59ac0" />
+            <stop offset="1" stop-color="#f0b8a6" />
+        </linearGradient>
+        <radialGradient id="moon-face" cx="0.38" cy="0.34" r="0.72">
+            <stop offset="0" stop-color="#fffdf2" />
+            <stop offset="0.78" stop-color="#ece5cb" />
+        </radialGradient>
+        <radialGradient id="moon-halo">
+            <stop offset="0" stop-color="#fff6dc" stop-opacity="0.32" />
+            <stop offset="1" stop-color="#fff6dc" stop-opacity="0" />
+        </radialGradient>
+        <mask id="moon-phase">
+            <circle cx="520" cy="104" r="25" fill="#fff" />
+            <circle cx="532" cy="96" r="23" fill="#000" />
+        </mask>
+        <filter id="wash" x="-40%" y="-80%" width="180%" height="260%"><feGaussianBlur stdDeviation="16" /></filter>
+        <filter id="wash-soft" x="-40%" y="-80%" width="180%" height="260%"><feGaussianBlur stdDeviation="8" /></filter>
+    </defs>
+    <rect width="600" height="800" fill="url(#sky-fill)" />
+    <g fill="#fff">
+        <circle cx="18" cy="96" r="1" opacity="0.8" />
+        <circle cx="584" cy="72" r="1.1" opacity="0.8" />
+        <circle cx="300" cy="52" r="0.8" opacity="0.6" />
+        <circle cx="392" cy="236" r="1" opacity="0.75" />
+        <circle cx="210" cy="420" r="0.9" opacity="0.6" />
+        <circle cx="20" cy="330" r="0.9" opacity="0.6" />
+        <circle cx="586" cy="404" r="1" opacity="0.7" />
+        <circle cx="140" cy="236" r="0.8" opacity="0.6" />
+        <circle cx="24" cy="560" r="0.8" opacity="0.5" />
+        <circle cx="582" cy="590" r="0.8" opacity="0.45" />
+        <circle cx="120" cy="140" r="1.2" opacity="0.7" />
+        <circle cx="260" cy="300" r="1.2" opacity="0.6" />
+        <circle cx="100" cy="500" r="1.1" opacity="0.5" />
+    </g>
+    <circle cx="520" cy="104" r="70" fill="url(#moon-halo)" />
+    <circle cx="520" cy="104" r="25" fill="url(#moon-face)" mask="url(#moon-phase)" />
+    <g filter="url(#wash)" fill="#dfe7f7">
+        <ellipse cx="160" cy="330" rx="170" ry="34" opacity="0.3" />
+        <ellipse cx="470" cy="420" rx="150" ry="26" opacity="0.24" />
+        <ellipse cx="90" cy="150" rx="110" ry="20" opacity="0.18" />
+    </g>
+    <g filter="url(#wash-soft)">
+        <ellipse cx="110" cy="318" rx="70" ry="13" fill="#f4f7ff" opacity="0.3" />
+        <ellipse cx="520" cy="410" rx="60" ry="11" fill="#f4f7ff" opacity="0.26" />
+    </g>
+    <g filter="url(#wash)">
+        <ellipse cx="300" cy="790" rx="320" ry="44" fill="#f8d2c2" opacity="0.4" />
+        <ellipse cx="110" cy="720" rx="150" ry="22" fill="#e8c9d6" opacity="0.32" />
+        <ellipse cx="500" cy="700" rx="130" ry="20" fill="#cfd7ee" opacity="0.3" />
+    </g>
+</svg>
+
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <symbol id="mark-opus" viewBox="0 0 24 24">
+        <rect width="24" height="24" rx="12" fill="#d9822b" />
+        <path d="M12 6.4l4.8 2.8v5.6L12 17.6l-4.8-2.8V9.2Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.3" stroke-linejoin="round" />
+        <path d="M7.2 9.2 12 12l4.8-2.8M12 12v5.6" fill="none" stroke="#fff" stroke-width="1.3" stroke-linejoin="round" />
+    </symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+    <symbol id="i-chev" viewBox="0 0 12 12"><path d="M4.5 3 7.5 6l-3 3" /></symbol>
+    <symbol id="i-down" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+    <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+    <symbol id="i-pulse" viewBox="0 0 16 16"><path d="M1.5 8.5h3l2-5 3 9 2-4h3" /></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /><path d="M8 4.8V8l2.2 1.4" /></symbol>
+    <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.7" /><circle cx="4.5" cy="12.5" r="1.7" /><circle cx="11.5" cy="5.5" r="1.7" /><path d="M4.5 5.2v5.6M11.5 7.2c0 2.6-3 3-6.4 4" /></symbol>
+    <symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.5 5h6M12 5h1.5M2.5 11h1.5M7.5 11h6" /><circle cx="10.2" cy="5" r="1.8" /><circle cx="5.8" cy="11" r="1.8" /></symbol>
+    <symbol id="i-gauge" viewBox="0 0 16 16"><path d="M2.6 11.5a6 6 0 1 1 10.8 0" /><path d="M8 9.2l2.4-3" /></symbol>
+    <symbol id="i-checklist" viewBox="0 0 16 16"><path d="M2.5 4.2l1.3 1.3 2.2-2.4M2.5 10.2l1.3 1.3 2.2-2.4M8.5 4.5h5M8.5 10.5h5" /></symbol>
+    <symbol id="i-policy" viewBox="0 0 20 20"><path d="M6.2 13.4a4 4 0 1 1 0-6.8l7.6 6.8a4 4 0 1 0 0-6.8l-7.6 6.8" /></symbol>
+    <symbol id="i-gear" viewBox="0 0 12 12"><path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" /><circle cx="6" cy="6" r="1.6" /></symbol>
+    <symbol id="i-person" viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></symbol>
+</svg>
+
+<header class="titlebar">
+    <img class="logo" src="../../logo.png" alt="AutoPilot">
+    <p class="where" style="margin: 0"><b>shop-api</b><span>ai/autopilot</span></p>
+    <div class="controls">
+        <div class="pair glass">
+            <button type="button" class="win" id="profile-toggle" data-panel="profile" aria-label="프로필" title="프로필"><svg viewBox="0 0 12 12"><use href="#i-person" /></svg></button>
+            <button type="button" class="win" id="settings-toggle" data-panel="settings" aria-label="설정" title="설정"><svg viewBox="0 0 12 12"><use href="#i-gear" /></svg></button>
+        </div>
+        <button type="button" class="win" aria-label="최소화" title="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+        <button type="button" class="win" aria-label="최대화" title="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+        <button type="button" class="win close" aria-label="닫기" title="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+    </div>
+</header>
+
+<main class="board">
+    <div class="grid">
+        <article class="w large now glass" style="--d: 0" aria-label="지금 회차">
+            <header class="w-head"><svg class="i"><use href="#i-pulse" /></svg>지금 회차<button type="button" class="capsule">전체 기록</button></header>
+            <div class="now-top">
+                <strong class="big">3회차</strong>
+                <p class="now-state" style="margin: 0"><b><i></i>진행 중</b><br>02:08부터 12분째</p>
+            </div>
+            <div class="track" aria-label="회차 기록: 1회차 00:30–01:22 커밋 2개, 2회차 01:23–02:07 커밋 1개, 3회차 02:08부터">
+                <span>00:30</span>
+                <div class="bar">
+                    <i class="seg" style="left: 0; width: 13.3%"></i>
+                    <i class="seg" style="left: 13.6%; width: 11.3%"></i>
+                    <i class="seg live" style="left: 25.1%; width: 3.1%"></i>
+                    <i class="commit" style="left: 6.2%"></i>
+                    <i class="commit" style="left: 11.6%"></i>
+                    <i class="commit" style="left: 23.3%"></i>
+                </div>
+                <span>07:00</span>
+            </div>
+            <ol class="calls">
+                <li><time>02:17:12</time><b>Grep</b><code>"searchOrders" src/admin</code></li>
+                <li><time>02:18:30</time><b>Read</b><code>src/admin/searchController.js</code></li>
+                <li><time>02:19:02</time><b>Edit</b><code>src/admin/searchController.js</code></li>
+                <li><time>02:19:31</time><b>Edit</b><code>migrations/20261014_add_search_index.sql</code></li>
+                <li><time>02:19:47</time><b>Bash</b><code>npm test -- admin</code></li>
+            </ol>
+            <p class="said">관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</p>
+        </article>
+
+        <article class="w clock glass" style="--d: 1" aria-label="남은 시간">
+            <header class="w-head"><svg class="i"><use href="#i-clock" /></svg>남은 시간</header>
+            <strong class="big">4:39:50</strong>
+            <div class="clock-foot">
+                <span><b>07:00</b> 종료<br>00:30 시작</span>
+                <svg class="ring" viewBox="0 0 40 40" aria-label="남은 시간 72%"><circle class="track" cx="20" cy="20" r="16" /><circle class="bar" cx="20" cy="20" r="16" pathLength="100" stroke-dasharray="72 100" /></svg>
+            </div>
+        </article>
+
+        <article class="w commits glass" style="--d: 2" aria-label="커밋">
+            <header class="w-head"><svg class="i"><use href="#i-branch" /></svg>커밋</header>
+            <div class="commits-top">
+                <strong class="big">3</strong>
+                <span class="delta"><ins>+240</ins><del>−49</del></span>
+            </div>
+            <p class="commits-foot" style="margin-bottom: 0">1회차 2개, 2회차 1개<code>ai/autopilot</code></p>
+        </article>
+
+        <article class="w medium options glass" style="--d: 2" aria-label="옵션">
+            <header class="w-head"><svg class="i"><use href="#i-sliders" /></svg>옵션<span class="aside">실행 중엔 모델과 Effort만 바꿔요</span></header>
+            <div class="toggles">
+                <button type="button" class="tg model"><span class="disc"><svg class="mark"><use href="#mark-opus" /></svg></span><span class="label"><small>모델</small><b>Opus</b></span><svg class="i"><use href="#i-down" /></svg></button>
+                <button type="button" class="tg"><span class="disc"><span class="steps" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></span><span class="label"><small>Effort</small><b>High</b></span><svg class="i"><use href="#i-down" /></svg></button>
+                <div class="tg locked" title="실행 중에는 바꿀 수 없어요"><span class="disc"><svg class="i" viewBox="0 0 20 20"><use href="#i-policy" /></svg></span><span class="label"><small>개선 정책</small><b>자율개선</b></span><svg class="i"><use href="#i-lock" /></svg></div>
+                <div class="tg locked" title="실행 중에는 바꿀 수 없어요"><span class="disc"><svg class="i"><use href="#i-clock" /></svg></span><span class="label"><small>종료 시각</small><b>07:00</b></span><svg class="i"><use href="#i-lock" /></svg></div>
+            </div>
+        </article>
+
+        <article class="w quota glass" style="--d: 3" aria-label="5시간 한도">
+            <header class="w-head"><svg class="i"><use href="#i-gauge" /></svg>5시간 한도</header>
+            <div class="quota-ring">
+                <svg class="ring" viewBox="0 0 92 92"><circle class="track" cx="46" cy="46" r="38" /><circle class="bar" cx="46" cy="46" r="38" pathLength="100" stroke-dasharray="42 100" /></svg>
+                <strong><span>42<small>%</small></span></strong>
+            </div>
+            <p class="quota-foot" style="margin-bottom: 0">03:00 리셋, 40분 후</p>
+        </article>
+
+        <article class="w medium todo-w low glass" style="--d: 3" aria-label="처리할 작업">
+            <header class="w-head"><svg class="i"><use href="#i-checklist" /></svg>처리할 작업<span class="aside"><svg class="i"><use href="#i-lock" /></svg>실행 중 잠김</span></header>
+            <ol class="todo">
+                <li class="done"><span class="check"><svg class="i"><use href="#i-check" /></svg></span><span>주문 목록 API에 페이지네이션 추가</span><em>1회차</em></li>
+                <li class="done"><span class="check"><svg class="i"><use href="#i-check" /></svg></span><span>결제 실패 시 재시도 로직 점검</span><em>1, 2회차</em></li>
+                <li class="live"><span class="check"></span><span>관리자 화면 검색 속도 개선</span><em>3회차</em></li>
+            </ol>
+        </article>
+
+        <button type="button" class="w stop low glass" style="--d: 4" title="이번 회차가 끝나면 멈춰요">
+            <span class="knob"><i></i></span>
+            <strong>종료 신호</strong>
+            <small>이번 회차 후 멈춰요</small>
+        </button>
+    </div>
+
+    <div class="sheets">
+        <section class="sheet glass" id="settings-panel" aria-label="설정">
+            <div class="sheet-head"><svg class="i" viewBox="0 0 12 12"><use href="#i-gear" /></svg><h1>설정</h1></div>
+
+            <h2>대상 프로젝트</h2>
+            <ul class="inset">
+                <li>
+                    <svg class="i"><use href="#i-folder" /></svg>
+                    <span class="grow"><span class="path">C:\Users\dev\Projects\shop-api</span><small>실행 중에는 바꿀 수 없어요</small></span>
+                    <button type="button" class="capsule" disabled><svg class="i" style="width: 11px; height: 11px"><use href="#i-lock" /></svg>폴더 선택</button>
+                </li>
+            </ul>
+
+            <h2>Claude 데이터 폴더</h2>
+            <ul class="inset">
+                <li>
+                    <svg class="i"><use href="#i-folder" /></svg>
+                    <span class="grow" style="display: flex; align-items: center; gap: 8px"><span class="path">C:\Users\dev\.claude</span><span class="badge">자동 감지</span></span>
+                    <button type="button" class="capsule">폴더 변경</button>
+                    <button type="button" class="capsule">자동 감지</button>
+                </li>
+            </ul>
+            <p class="footnote">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+
+            <h2>개선 정책</h2>
+            <div class="choices" role="radiogroup" aria-label="개선 정책">
+                <div class="tg on" role="radio" aria-checked="true"><span class="label"><b>자율개선</b><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span><span class="tick"><svg class="i"><use href="#i-check" /></svg></span></div>
+                <div class="tg" role="radio" aria-checked="false"><span class="label"><b>지시개선</b><small>적어 둔 작업만 처리하고 끝나요.</small></span><span class="tick"></span></div>
+            </div>
+            <p class="footnote" style="display: flex; align-items: center; gap: 5px"><svg class="i" style="width: 11px; height: 11px"><use href="#i-lock" /></svg>실행 중에는 바꿀 수 없어요</p>
+
+            <h2>사용량 한도</h2>
+            <ul class="inset">
+                <li>
+                    <span class="grow"><strong>대기한 시간만큼 종료 시각 연장</strong><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                    <button type="button" class="switch" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장"></button>
+                </li>
+            </ul>
+
+            <h2>기록</h2>
+            <ul class="inset">
+                <li><button type="button" class="link">전체 기록 보기</button><svg class="i chev"><use href="#i-chev" /></svg></li>
+                <li><button type="button" class="link">리포트 열기</button><svg class="i chev"><use href="#i-chev" /></svg></li>
+                <li><button type="button" class="link danger">진행 기록 초기화</button></li>
+            </ul>
+
+            <div class="sheet-foot"><span>AutoPilot</span><span>v0.1.0</span></div>
+        </section>
+
+        <section class="sheet glass" id="profile-panel" aria-label="프로필">
+            <div class="me">
+                <span class="avatar glass">개</span>
+                <span><strong>개발자</strong><span>dev@example.com</span></span>
+                <span class="plan glass">Max 20x</span>
+            </div>
+
+            <h2>계정</h2>
+            <ul class="inset" role="radiogroup" aria-label="계정 선택">
+                <li role="radio" aria-checked="true"><span class="mini">개</span><span class="grow"><strong>기본 계정</strong></span><svg class="i tick-plain"><use href="#i-check" /></svg></li>
+                <li role="radio" aria-checked="false"><span class="mini">회</span><span class="grow"><strong>회사</strong></span></li>
+            </ul>
+            <div class="acct-actions">
+                <button type="button" class="capsule"><svg class="i" style="width: 11px; height: 11px"><use href="#i-plus" /></svg>계정 추가</button>
+                <button type="button" class="capsule">다시 로그인</button>
+                <button type="button" class="capsule danger">제거</button>
+            </div>
+
+            <h2>사용량과 한도</h2>
+            <div class="inset rings">
+                <div>
+                    <div class="quota-ring"><svg class="ring" viewBox="0 0 92 92"><circle class="track" cx="46" cy="46" r="38" /><circle class="bar" cx="46" cy="46" r="38" pathLength="100" stroke-dasharray="42 100" /></svg><strong><span>42<small>%</small></span></strong></div>
+                    <b>5시간 한도</b><span>03:00 리셋<br>40분 후</span>
+                </div>
+                <div>
+                    <div class="quota-ring"><svg class="ring" viewBox="0 0 92 92"><circle class="track" cx="46" cy="46" r="38" /><circle class="bar" cx="46" cy="46" r="38" pathLength="100" stroke-dasharray="63 100" /></svg><strong><span>63<small>%</small></span></strong></div>
+                    <b>주간 한도</b><span>10월 16일 09:00<br>3일 후</span>
+                </div>
+                <div class="warn">
+                    <div class="quota-ring"><svg class="ring" viewBox="0 0 92 92"><circle class="track" cx="46" cy="46" r="38" /><circle class="bar" cx="46" cy="46" r="38" pathLength="100" stroke-dasharray="78 100" /></svg><strong><span>78<small>%</small></span></strong></div>
+                    <b>주간 한도 (Opus)</b><span>10월 16일 09:00<br>3일 후</span>
+                </div>
+            </div>
+
+            <div class="sheet-foot">
+                <span>02:18 기준</span>
+                <button type="button" class="capsule"><svg class="i" style="width: 11px; height: 11px"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </section>
+    </div>
+</main>
+
+<div class="scrim" data-close></div>
+
+<script>
+    document.querySelectorAll("[data-panel]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const panel = button.dataset.panel;
+
+            location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+        });
+    });
+
+    document.querySelector("[data-close]").addEventListener("click", () => (location.hash = "main"));
+    addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            location.hash = "main";
+        }
+    });
+</script>
+</body>
+</html>

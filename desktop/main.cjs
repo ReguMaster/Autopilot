@@ -6,8 +6,8 @@ const { createTray, showWindow } = require("./systemIntegration.cjs");
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
 const WINDOW_SCREEN_MARGIN = 40;
-const WINDOW_BACKGROUND = { day: "#2f78d0", night: "#121a3c" };
-const DAYLIGHT_HOURS = { from: 6, to: 19 };
+// 화면이 그려지기 전에 비치는 창 바탕색. 화면 바탕과 같은 흰색이다.
+const WINDOW_BACKGROUND = "#ffffff";
 const SMOKE_TEST_TIMEOUT_MS = 15000;
 
 const IS_DEV = process.argv.includes("-dev") || process.argv.includes("--dev");
@@ -58,13 +58,6 @@ const registerWindowControls = () => {
     });
 };
 
-// 화면이 그려지기 전에 비치는 창 바탕색. 하늘(sky.js)이 낮에는 파랗고 밤에는 짙으므로 시각에 맞춰 고른다.
-const getWindowBackground = () => {
-    const hour = new Date().getHours();
-
-    return hour >= DAYLIGHT_HOURS.from && hour < DAYLIGHT_HOURS.to ? WINDOW_BACKGROUND.day : WINDOW_BACKGROUND.night;
-};
-
 // 세로형 창. 작은 화면(예: 768px 노트북)에서는 작업 영역 안에 들어오도록 줄인다.
 const getWindowSize = () => {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -78,7 +71,7 @@ const createWindow = () => {
         ...getWindowSize(),
         minWidth: WINDOW_MIN_SIZE.width,
         minHeight: WINDOW_MIN_SIZE.height,
-        backgroundColor: getWindowBackground(),
+        backgroundColor: WINDOW_BACKGROUND,
         icon: path.join(__dirname, "../docs/icon.png"),
         frame: false,
         show: false,

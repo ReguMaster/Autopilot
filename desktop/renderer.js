@@ -1,9 +1,13 @@
 const MAX_LOG_LINES = 3000;
-const LIVE_LINES = 4;
-const LIVE_FADE_MS = 650;
-const LIVE_SHIFT_MS = 450;
-const LIVE_SHIFT_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const CLOCK_INTERVAL_MS = 1000;
+const STORY_PAST_LINES = 3;
+const FINISH_GAIN_LIMIT = 3;
+const FINISH_ROUND_LIMIT = 6;
+const NOW_MID_LENGTH = 45;
+const NOW_LONG_LENGTH = 80;
+// 지금 문장을 쓸어 드러내는 마스크의 부드러운 끝 폭(px)과 속도(px/ms)
+const REVEAL_FEATHER_PX = 96;
+const REVEAL_SPEED = 0.36;
 const FOLLOW_THRESHOLD_PX = 24;
 const LOG_FLUSH_MS = 50;
 const EMPTY_CLOCK = "--:--:--";
@@ -65,13 +69,42 @@ const elements = {
     windowMinimize: byId("window-minimize"),
     windowMaximize: byId("window-maximize"),
     windowClose: byId("window-close"),
-    content: document.querySelector(".content"),
-    hero: document.querySelector(".hero"),
+    projectName: byId("project-name"),
     badge: byId("status-badge"),
     clock: byId("clock"),
     clockLabel: byId("clock-label"),
     clockValue: byId("clock-value"),
     statPhase: byId("stat-phase"),
+    track: byId("track"),
+    trackStart: byId("track-start"),
+    trackBar: byId("track-bar"),
+    trackEnd: byId("track-end"),
+    greetTitle: byId("greet-title"),
+    greetLead: byId("greet-lead"),
+    storyPast: byId("story-past"),
+    outcome: byId("outcome"),
+    outcomeRound: byId("outcome-round"),
+    outcomeLabel: byId("outcome-label"),
+    outcomeHero: byId("outcome-hero"),
+    outcomeBefore: byId("outcome-before"),
+    outcomeBeforeUnit: byId("outcome-before-unit"),
+    outcomeAfter: byId("outcome-after"),
+    outcomeAfterUnit: byId("outcome-after-unit"),
+    nowLine: document.querySelector(".now"),
+    nowText: byId("now-text"),
+    nowTime: byId("now-time"),
+    workTools: byId("work-tools"),
+    workRead: byId("work-read"),
+    workEdited: byId("work-edited"),
+    workInsertions: byId("work-insertions"),
+    workDeletions: byId("work-deletions"),
+    workCommits: byId("work-commits"),
+    finishTitle: byId("finish-title"),
+    finishLead: byId("finish-lead"),
+    finishGains: byId("finish-gains"),
+    finishRounds: byId("finish-rounds"),
+    doneReport: byId("done-report"),
+    doneHistory: byId("done-history"),
     notice: byId("notice"),
     projectBanner: byId("project-banner"),
     bannerSelectProject: byId("banner-select-project"),
@@ -80,13 +113,13 @@ const elements = {
     bannerLogin: byId("banner-login"),
     form: byId("run-form"),
     mainAction: byId("main-action"),
+    mainActionLabel: byId("main-action-label"),
     effortControl: byId("effort-control"),
-    effortBars: byId("effort-control").querySelectorAll(".bars i"),
+    effortWaves: document.querySelectorAll("#effort-control .wave path, #effort-popover .wave path"),
     effort: byId("effort"),
     effortName: byId("effort-name"),
     effortPopover: byId("effort-popover"),
     effortOptions: byId("effort-popover").querySelectorAll("[data-level]"),
-    composer: document.querySelector(".composer"),
     modelChip: byId("model-chip"),
     modelChipMark: byId("model-chip-mark"),
     modelChipName: byId("model-chip-name"),
@@ -107,9 +140,10 @@ const elements = {
     timeUntil: byId("time-until"),
     extendOnLimit: byId("extend-on-limit"),
     tasks: byId("tasks"),
+    tasksCount: byId("tasks-count"),
+    tasksFirst: byId("tasks-first"),
     applyNote: byId("apply-note"),
     livePanel: byId("live-panel"),
-    live: byId("live"),
     history: byId("history"),
     scrim: document.querySelector(".scrim"),
     historyToggle: byId("history-toggle"),
@@ -157,6 +191,14 @@ let renderedAccountsKey = "";
 let loginHideTimer = 0;
 let isStartAfterLogin = false;
 
+const story = createStory();
+let renderedNowKey = "";
+let revealToken = 0;
+let renderedTrackKey = "";
+let renderedFinishKey = "";
+// 실행을 마친 뒤 다른 프로젝트를 고르면 지난 실행 대신 시작 화면을 보여준다. 새 실행이 시작되면 다시 마친 화면을 쓴다.
+let isFinishDismissed = false;
+
 /* 화면 움직임 */
 
 const replayAnimation = (element, className) => {
@@ -173,11 +215,6 @@ const swapText = (element, text) => {
 
     element.textContent = text;
     replayAnimation(element, "swap");
-};
-
-// 블러는 모델 선택 줄에서 시작한다.
-const updateVeil = () => {
-    document.documentElement.style.setProperty("--veil-top", `${Math.round(elements.composer.getBoundingClientRect().top)}px`);
 };
 
 // 서체와 첫 상태가 준비된 뒤에 화면을 차례로 드러낸다(그 전에는 CSS가 등장 애니메이션을 멈춰 둔다).
@@ -228,49 +265,129 @@ const scrollLogToEnd = () => {
     }
 };
 
-/* 최근 로그: 줄 단위로 떠오르고 오래된 줄은 흐려지며 빠진다 */
+/* 이야기: Claude의 문장과 도구 호출을 큰 문장 하나와 흐려지는 지난 문장으로 보여준다 */
 
-const createLiveLine = (entry) => {
-    const item = document.createElement("li");
+// 지금 문장을 줄 순서대로 부드러운 마스크로 쓸어 드러낸다. 글자 위치는 그대로라 움직임 줄이기 설정에서도 쓴다.
+const revealNowText = () => {
+    const token = ++revealToken;
+    const line = elements.nowLine;
+    const box = line.getBoundingClientRect();
+    const lineHeight = parseFloat(getComputedStyle(line).lineHeight);
+    const range = document.createRange();
+    const widths = [];
 
-    item.dataset.kind = getLineKind(entry);
-    item.textContent = entry.text;
+    range.selectNodeContents(line);
 
-    return item;
-};
+    for (const rect of range.getClientRects()) {
+        if (rect.width > 0) {
+            const index = Math.floor((rect.top + rect.height / 2 - box.top) / lineHeight);
 
-const fadeOutLiveLine = (item) => {
-    item.classList.add("out");
-
-    setTimeout(() => item.remove(), LIVE_FADE_MS);
-};
-
-const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-// 목록은 아래에 붙어 있어 새 줄이 붙으면 기존 줄이 한 줄만큼 순간이동한다. 붙이기 전 화면 위치(움직이는 중이면 그 위치)에서 새 위치로 이어서 옮긴다.
-const appendLiveLines = (entries) => {
-    const visibleLines = [...elements.live.children].filter((item) => !item.classList.contains("out"));
-    const newLines = entries.slice(-LIVE_LINES).map(createLiveLine);
-    const overflow = visibleLines.length + newLines.length - LIVE_LINES;
-    const anchor = elements.live.firstElementChild;
-    const beforeTop = anchor?.getBoundingClientRect().top;
-
-    elements.live.getAnimations().forEach((animation) => animation.cancel());
-    elements.live.append(...newLines);
-
-    for (const item of visibleLines.slice(0, Math.max(0, overflow))) {
-        fadeOutLiveLine(item);
+            widths[index] = Math.max(widths[index] || 0, rect.right - box.left);
+        }
     }
 
-    if (!anchor || reducedMotionQuery.matches) {
+    const lines = Array.from(widths, (width, index) => ({ top: index * lineHeight, width: (width || 0) + REVEAL_FEATHER_PX }));
+    const total = lines.reduce((sum, item) => sum + item.width, 0);
+    let startedAt = 0;
+
+    const paint = (now) => {
+        if (token !== revealToken) {
+            return;
+        }
+
+        startedAt = startedAt || now;
+
+        let travelled = (now - startedAt) * REVEAL_SPEED;
+        const layers = lines.map((item) => {
+            const edge = Math.min(travelled, item.width);
+
+            travelled -= edge;
+
+            return `linear-gradient(90deg, #000 ${edge - REVEAL_FEATHER_PX}px, rgb(0 0 0 / 0.35) ${edge - REVEAL_FEATHER_PX / 2}px, transparent ${edge}px) 0 ${item.top}px / 100% ${lineHeight}px no-repeat`;
+        });
+
+        if ((now - startedAt) * REVEAL_SPEED >= total) {
+            line.style.removeProperty("mask");
+
+            return;
+        }
+
+        line.style.setProperty("mask", layers.join(", "));
+        requestAnimationFrame(paint);
+    };
+
+    requestAnimationFrame(paint);
+};
+
+// 드러내는 중에 문장이 이어지면(여러 줄 메시지) 마스크가 새 줄을 가리므로 바로 다 보여준다.
+const stopReveal = () => {
+    revealToken++;
+    elements.nowLine.style.removeProperty("mask");
+};
+
+const createToolChip = (tool) => {
+    const chip = document.createElement("span");
+    const name = document.createElement("b");
+
+    chip.className = "tool";
+    name.textContent = tool.name;
+    chip.append(name, tool.detail);
+
+    return chip;
+};
+
+const PAST_CLASSES = ["far", "mid", "near"];
+
+const renderPast = (items) => {
+    const nodes = items.map((item, index) => {
+        const paragraph = document.createElement("p");
+
+        paragraph.className = PAST_CLASSES[PAST_CLASSES.length - items.length + index];
+        paragraph.dataset.id = item.id;
+        paragraph.append(...item.tools.map(createToolChip), item.text);
+
+        return paragraph;
+    });
+    const renderedIds = new Set([...elements.storyPast.children].map((paragraph) => paragraph.dataset.id));
+
+    // 새로 지난 문장이 된 줄만 한 번 맺힌다.
+    nodes.filter((node) => !renderedIds.has(node.dataset.id)).forEach((node) => node.classList.add("appear"));
+    elements.storyPast.replaceChildren(...nodes);
+};
+
+const getNowLength = (text) => {
+    if (text.length > NOW_LONG_LENGTH) {
+        return "long";
+    }
+
+    return text.length > NOW_MID_LENGTH ? "mid" : "";
+};
+
+// 기다리는 동안에는 기다리는 이유를 지금 문장으로 쓰고, 마지막 문장은 지난 문장으로 내린다.
+const renderStory = () => {
+    const waitSentence = currentState ? getWaitSentence(currentState) : "";
+    const lastItem = story.items.at(-1);
+    const nowItem = waitSentence ? null : lastItem;
+    const pastItems = (nowItem ? story.items.slice(0, -1) : story.items).slice(-STORY_PAST_LINES);
+    const text = waitSentence || nowItem?.text || "곧 첫 문장을 들려드릴게요.";
+    const key = waitSentence ? `wait:${waitSentence}` : `item:${nowItem?.id || 0}`;
+
+    renderPast(pastItems);
+    elements.nowTime.textContent = nowItem?.time || "";
+    elements.nowLine.dataset.length = getNowLength(text);
+
+    if (key === renderedNowKey) {
+        if (elements.nowText.textContent !== text) {
+            stopReveal();
+            elements.nowText.textContent = text;
+        }
+
         return;
     }
 
-    const shift = beforeTop - anchor.getBoundingClientRect().top;
-
-    if (shift > 0) {
-        elements.live.animate([{ translate: `0 ${shift}px` }, { translate: "0 0" }], { duration: LIVE_SHIFT_MS, easing: LIVE_SHIFT_EASING });
-    }
+    renderedNowKey = key;
+    elements.nowText.textContent = text;
+    revealNowText();
 };
 
 // 로그는 모아서 한 번에 DOM에 반영한다. 창이 최소화돼도 멈추지 않도록 rAF 대신 타이머를 쓴다. 사용자가 위로 스크롤한 상태면 따라가지 않는다.
@@ -297,7 +414,12 @@ const flushLogEntries = () => {
 
     updateLogCount();
     scrollLogToEnd();
-    appendLiveLines(entries);
+
+    for (const entry of entries) {
+        applyStoryEntry(story, entry);
+    }
+
+    renderStory();
 };
 
 const appendLogEntries = (entries) => {
@@ -322,7 +444,6 @@ const clearLog = () => {
         line.remove();
     }
 
-    elements.live.replaceChildren();
     elements.logEmpty.hidden = false;
 
     updateLogCount();
@@ -448,6 +569,38 @@ const showAccountFailure = (result) => {
 
 /* 계정 */
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+const createIcon = (className, symbolId) => {
+    const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+    const use = document.createElementNS(SVG_NAMESPACE, "use");
+
+    icon.setAttribute("class", className);
+    icon.setAttribute("aria-hidden", "true");
+    use.setAttribute("href", `#${symbolId}`);
+    icon.append(use);
+
+    return icon;
+};
+
+// 계정은 이름 첫 글자를 단 줄로 고른다(라디오 묶음).
+const createAccountOption = (account) => {
+    const option = document.createElement("button");
+    const initial = document.createElement("span");
+    const label = document.createElement("span");
+
+    option.type = "button";
+    option.className = "account-option";
+    option.dataset.id = account.id;
+    option.setAttribute("role", "radio");
+    initial.className = "initial";
+    initial.textContent = getAvatarLetter({ name: account.label, email: "" });
+    label.textContent = account.label;
+    option.append(initial, label, createIcon("icon tick", "icon-check"));
+
+    return option;
+};
+
 // 실행 중이거나 로그인 중에는 계정을 바꾸거나 추가·제거할 수 없다(메인 프로세스도 막는다).
 const renderAccountBar = () => {
     const { accounts, activeId } = accountsState;
@@ -456,13 +609,16 @@ const renderAccountBar = () => {
     const accountsKey = accounts.map((account) => `${account.id}:${account.label}`).join("|");
 
     if (accountsKey !== renderedAccountsKey) {
-        elements.accountSelect.replaceChildren(...accounts.map((account) => new Option(account.label, account.id)));
+        elements.accountSelect.replaceChildren(...accounts.map(createAccountOption));
         renderedAccountsKey = accountsKey;
     }
 
-    elements.accountSelect.value = activeId;
-    elements.accountSelect.disabled = isLocked;
-    elements.accountSelect.title = isIdle ? "" : "실행 중에는 계정을 바꿀 수 없어요.";
+    for (const option of elements.accountSelect.children) {
+        option.setAttribute("aria-checked", String(option.dataset.id === activeId));
+        option.disabled = isLocked;
+        option.title = isIdle ? "" : "실행 중에는 계정을 바꿀 수 없어요.";
+    }
+
     elements.accountAdd.disabled = isLocked || accounts.length >= MAX_ACCOUNT_COUNT;
     elements.accountLogin.disabled = isLocked;
     elements.accountRemove.disabled = isLocked || activeId === "default";
@@ -542,8 +698,14 @@ const applyAccountsPayload = (payload) => {
     renderActiveAccount();
 };
 
-const handleAccountSelect = async () => {
-    const result = await window.autopilot.selectAccount(elements.accountSelect.value);
+const handleAccountSelect = async (event) => {
+    const option = event.target.closest("[data-id]");
+
+    if (!option || option.disabled || option.dataset.id === accountsState.activeId) {
+        return;
+    }
+
+    const result = await window.autopilot.selectAccount(option.dataset.id);
 
     if (showAccountFailure(result)) {
         applyAccountsPayload(result.data);
@@ -678,13 +840,6 @@ const toggleHistory = () => {
     setHistoryOpen(!isHistoryOpen());
 };
 
-const handleLivePanelKey = (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        toggleHistory();
-    }
-};
-
 // 패널이 열린 채로 화면의 다른 곳을 누르거나 Esc를 누르면 닫는다.
 const handleOutsidePointer = (event) => {
     const name = getOpenPanel();
@@ -814,6 +969,205 @@ const getPhaseText = (state) => {
     return phase;
 };
 
+const getSinceText = (state) => {
+    return `${formatClock(state.startedAt)}부터 ${formatRemaining(Date.now() - state.startedAt)}째`;
+};
+
+// 따로 알릴 진행 단계가 없으면 실행 중에는 언제부터 얼마나 일했는지 보여준다.
+const renderStatusPhase = () => {
+    const state = currentState;
+    const phaseText = getPhaseText(state) || (state.status === "running" && state.startedAt ? getSinceText(state) : "");
+
+    elements.statPhase.hidden = !phaseText;
+    setText(elements.statPhase, phaseText);
+};
+
+const renderView = (state) => {
+    if (state.status !== "idle") {
+        isFinishDismissed = false;
+    }
+
+    document.body.dataset.view = getView(state, isFinishDismissed);
+};
+
+const renderGreeting = () => {
+    const greeting = getGreeting({ hour: new Date().getHours(), policy: elements.form.elements.policy.value, endTime: elements.endTime.value, hasProject: Boolean(settings.projectDir) });
+
+    setText(elements.greetTitle, greeting.title);
+    setText(elements.greetLead, greeting.lead);
+};
+
+// 실행 중에는 작업 칸 대신 잠긴 작업 요약 한 줄을 보여준다.
+const renderTasksSummary = () => {
+    const tasks = elements.tasks.value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    elements.tasksCount.textContent = tasks.length ? `작업 ${tasks.length}개` : "작업 없이";
+    elements.tasksFirst.textContent = tasks.length ? tasks.join(", ") : "스스로 개선점을 찾고 있어요";
+};
+
+const createTrackNode = (tag, className, properties, text = "") => {
+    const node = document.createElement(tag);
+
+    node.className = className;
+    node.textContent = text;
+
+    for (const [name, value] of Object.entries(properties)) {
+        node.style.setProperty(`--${name}`, String(value));
+    }
+
+    return node;
+};
+
+// 지금 위치는 매초 조금씩 움직이므로, 0.1% 넘게 바뀔 때만 다시 그린다.
+const renderTrack = () => {
+    const track = getTrack(currentState, Date.now());
+
+    elements.track.hidden = !track || document.body.dataset.view === "ready";
+
+    if (elements.track.hidden) {
+        return;
+    }
+
+    const key = JSON.stringify(track, (name, value) => (typeof value === "number" ? Math.round(value * 10) : value));
+
+    if (key === renderedTrackKey) {
+        return;
+    }
+
+    renderedTrackKey = key;
+    elements.trackStart.textContent = track.startText;
+    elements.trackEnd.textContent = track.endText;
+    elements.trackBar.setAttribute("aria-label", `${track.startText}부터 ${track.endText}까지, 회차 ${track.segments.length}개`);
+    elements.trackBar.replaceChildren(
+        ...track.segments.map((segment) => createTrackNode("i", segment.isLive ? "seg live" : "seg", { from: segment.from, to: segment.to })),
+        ...track.commits.map((commit) => Object.assign(createTrackNode("i", "commit", { at: commit.at }), { title: `커밋 ${commit.count}개` })),
+        ...(track.head === null ? [] : [createTrackNode("i", "head", { at: track.head })]),
+        ...track.labels.map((label) => createTrackNode("span", ["mark", label.isLive ? "live" : "", label.isEnd ? "end" : ""].join(" ").trim(), { at: label.at }, label.text))
+    );
+};
+
+const renderWork = (state) => {
+    const summary = getWorkSummary(state);
+
+    setText(elements.workTools, String(summary.toolCalls));
+    setText(elements.workRead, String(summary.filesRead));
+    setText(elements.workEdited, String(summary.filesEdited));
+    setText(elements.workInsertions, `+${summary.insertions}`);
+    setText(elements.workDeletions, `−${summary.deletions}`);
+    setText(elements.workCommits, `남긴 커밋 ${summary.commits}개`);
+};
+
+// 가장 최근 성과 줄을 크게 보여준다. "이전 → 이후" 형식이 아니면 문장만 보여준다.
+const renderOutcome = (state) => {
+    const gain = state.gains.at(-1);
+
+    elements.outcome.hidden = !gain;
+
+    if (!gain) {
+        return;
+    }
+
+    const parsed = parseGain(gain.text);
+    const before = splitFigure(parsed.before);
+    const after = splitFigure(parsed.after);
+
+    setText(elements.outcomeRound, `${gain.round}회차`);
+    setText(elements.outcomeLabel, parsed.label);
+    elements.outcomeHero.hidden = !parsed.after;
+    setText(elements.outcomeBefore, before.number);
+    setText(elements.outcomeBeforeUnit, before.unit);
+    setText(elements.outcomeAfter, after.number);
+    setText(elements.outcomeAfterUnit, after.unit);
+};
+
+const createFigure = (className, value) => {
+    const { number, unit } = splitFigure(value);
+    const figure = document.createElement("span");
+    const unitText = document.createElement("small");
+
+    figure.className = className;
+    unitText.textContent = unit;
+    figure.append(number, unitText);
+
+    return figure;
+};
+
+const createGainItem = (gain) => {
+    const item = document.createElement("li");
+    const what = document.createElement("span");
+    const note = document.createElement("small");
+    const parsed = parseGain(gain.text);
+
+    what.className = "what";
+    note.textContent = `${gain.round}회차`;
+    what.append(parsed.label, note);
+    item.append(what);
+
+    if (parsed.after) {
+        const figure = document.createElement("span");
+        const arrow = document.createElement("span");
+
+        figure.className = "figure num";
+        arrow.className = "to";
+        arrow.textContent = "→";
+        figure.append(createFigure("was", parsed.before), arrow, createFigure("is", parsed.after));
+        item.append(figure);
+    }
+
+    return item;
+};
+
+const createFinishRound = (round) => {
+    const item = document.createElement("li");
+    const name = document.createElement("b");
+    const body = document.createElement("span");
+    const lines = document.createElement("span");
+
+    name.textContent = `${round.round}회차`;
+
+    if (round.commits.length) {
+        const hashes = document.createElement("code");
+        const insertions = document.createElement("ins");
+        const deletions = document.createElement("del");
+
+        hashes.textContent = round.commits.map((commit) => commit.hash).join(" ");
+        insertions.textContent = `+${round.commits.reduce((sum, commit) => sum + commit.insertions, 0)}`;
+        deletions.textContent = `−${round.commits.reduce((sum, commit) => sum + commit.deletions, 0)}`;
+        body.append(`커밋 ${round.commits.length}개`, hashes);
+        lines.append(insertions, deletions);
+    } else {
+        body.textContent = round.outcome || "진행 중";
+    }
+
+    item.append(name, body, lines);
+
+    return item;
+};
+
+const renderFinish = (state) => {
+    if (document.body.dataset.view !== "done") {
+        return;
+    }
+
+    const key = JSON.stringify([state.endedAt, state.reason, state.rounds.length, state.gains.length]);
+
+    if (key === renderedFinishKey) {
+        return;
+    }
+
+    const finish = describeFinish(state);
+
+    renderedFinishKey = key;
+    elements.finishTitle.textContent = finish.title;
+    elements.finishLead.textContent = finish.lead;
+    elements.finishGains.hidden = !state.gains.length;
+    elements.finishGains.replaceChildren(...state.gains.slice(-FINISH_GAIN_LIMIT).reverse().map(createGainItem));
+    elements.finishRounds.replaceChildren(...state.rounds.slice(-FINISH_ROUND_LIMIT).map(createFinishRound));
+};
+
 const showNotice = (message, tone = "") => {
     elements.notice.textContent = message;
     elements.notice.dataset.tone = tone;
@@ -860,6 +1214,8 @@ const renderSettings = () => {
     const hasProject = Boolean(settings.projectDir);
 
     elements.projectPath.textContent = settings.projectDir || "선택한 폴더가 없어요.";
+    elements.projectName.textContent = hasProject ? settings.projectDir.split(/[\\/]/).filter(Boolean).pop() : "프로젝트 없음";
+    elements.projectName.title = settings.projectDir;
     elements.project.toggleAttribute("data-missing", !hasProject);
     elements.selectProject.textContent = hasProject ? "폴더 변경" : "폴더 선택";
     elements.projectBanner.hidden = hasProject;
@@ -899,6 +1255,8 @@ const renderPolicy = () => {
     for (const option of elements.policyOptions) {
         option.setAttribute("aria-pressed", String(option.dataset.policy === policy));
     }
+
+    renderGreeting();
 };
 
 const handlePolicyOptionClick = (event) => {
@@ -914,6 +1272,7 @@ const handlePolicyOptionClick = (event) => {
 const renderModelChip = () => {
     const model = elements.form.elements.model.value;
 
+    elements.modelChip.dataset.model = model;
     updateChip(elements.modelChip, elements.modelChipMark, elements.modelChipName, `mark-${model}`, MODEL_LABELS[model]);
 };
 
@@ -927,6 +1286,9 @@ const bindPopoverChips = () => {
 };
 
 /* 모델·Effort */
+
+// 단계가 높을수록 두 마루의 진폭이 커지는 물결. 알약과 목록이 같은 모양을 쓴다.
+const getWavePath = (level) => `M1 8q2-${(1 + level * 1.7).toFixed(1)} 4 0t4 0t4 0t4 0`;
 
 // 이름은 단계가 오른 쪽(아래에서)·내린 쪽(위에서)으로 들어온다.
 const renderEffort = () => {
@@ -948,8 +1310,8 @@ const renderEffort = () => {
         replayAnimation(elements.effortName, level > previousLevel ? "tick-up" : "tick-down");
     }
 
-    elements.effortBars.forEach((bar, index) => {
-        bar.classList.toggle("on", index <= level);
+    elements.effortWaves.forEach((path) => {
+        path.style.setProperty("d", `path("${getWavePath(Number(path.closest("[data-level]").dataset.level))}")`);
     });
 };
 
@@ -1078,6 +1440,7 @@ const renderEndTime = () => {
     setText(elements.timeHour, hour);
     setText(elements.timeMinute, minute);
     setText(elements.timeUntil, `지금부터 ${until}에 끝나요`);
+    renderGreeting();
 };
 
 // 바뀐 자리의 숫자만 바뀐 방향에서 미끄러져 들어오게 한다.
@@ -1134,7 +1497,7 @@ const renderMainAction = (state, hasProject) => {
     const config = MAIN_ACTIONS[state.status];
 
     elements.mainAction.dataset.action = config.action;
-    swapText(elements.mainAction, config.label);
+    swapText(elements.mainActionLabel, config.label);
     elements.mainAction.title = config.title;
     elements.mainAction.disabled = state.status === "idle" && !hasProject;
 };
@@ -1145,13 +1508,12 @@ const renderState = (state) => {
     const hasProject = Boolean(settings.projectDir);
     const isIdle = state.status === "idle";
     const phase = hasProject ? getRunPhase(state) : { label: "프로젝트 미선택", tone: "muted" };
-    const phaseText = getPhaseText(state);
 
     document.body.dataset.status = state.status;
+    renderView(state);
     swapText(elements.badge, getStatusText(state, phase));
     elements.badge.dataset.tone = phase.tone;
-    elements.statPhase.hidden = !phaseText;
-    swapText(elements.statPhase, phaseText);
+    renderStatusPhase();
 
     renderMainAction(state, hasProject);
 
@@ -1178,6 +1540,13 @@ const renderState = (state) => {
     renderRounds(state);
     renderAccountBar();
     renderClock();
+    renderTrack();
+    renderWork(state);
+    renderOutcome(state);
+    renderFinish(state);
+    renderGreeting();
+    renderTasksSummary();
+    renderStory();
 };
 
 const handleMainAction = async (event) => {
@@ -1205,6 +1574,7 @@ const handleSelectProject = async () => {
 
     if (result.status === STATUS_OK) {
         settings = result.data.settings;
+        isFinishDismissed = true;
 
         renderSettings();
         renderState(currentState);
@@ -1248,15 +1618,6 @@ const bindWindowControls = () => {
     elements.toggleDevtools.addEventListener("click", () => window.appWindow.toggleDevTools());
 };
 
-const bindLayoutWatchers = () => {
-    const observer = new ResizeObserver(updateVeil);
-
-    observer.observe(elements.hero);
-    window.addEventListener("resize", updateVeil);
-    elements.content.addEventListener("scroll", updateVeil, { passive: true });
-    updateVeil();
-};
-
 const initialize = async () => {
     revealWhenReady();
     bindWindowControls();
@@ -1277,7 +1638,6 @@ const initialize = async () => {
     renderSettings();
     renderState(snapshot.state);
     appendLogEntries(snapshot.logs);
-    bindLayoutWatchers();
 
     applyAccountsPayload((await window.autopilot.getAccounts()).data);
 
@@ -1305,7 +1665,7 @@ const initialize = async () => {
         setHistoryOpen(false);
     });
     elements.usageRefresh.addEventListener("click", handleRefreshAccount);
-    elements.accountSelect.addEventListener("change", handleAccountSelect);
+    elements.accountSelect.addEventListener("click", handleAccountSelect);
     elements.selectClaudeDir.addEventListener("click", () => handleClaudeDirChange(window.autopilot.selectClaudeDir));
     elements.resetClaudeDir.addEventListener("click", () => handleClaudeDirChange(window.autopilot.resetClaudeDir));
     elements.accountAdd.addEventListener("click", handleAccountAdd);
@@ -1318,7 +1678,8 @@ const initialize = async () => {
     elements.loginCancel.addEventListener("click", handleLoginCancel);
     elements.historyClose.addEventListener("click", () => setHistoryOpen(false));
     elements.livePanel.addEventListener("click", toggleHistory);
-    elements.livePanel.addEventListener("keydown", handleLivePanelKey);
+    elements.doneHistory.addEventListener("click", toggleHistory);
+    elements.doneReport.addEventListener("click", handleOpenReport);
     elements.clearLog.addEventListener("click", clearLog);
     elements.log.addEventListener("scroll", handleFollowByScroll);
     elements.effortPopover.addEventListener("click", handleEffortOptionClick);
@@ -1337,9 +1698,12 @@ const initialize = async () => {
     }
 
     bindEndTimePicker();
+    document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("window-hidden", document.hidden));
     setInterval(() => {
         renderClock();
         renderEndTime();
+        renderStatusPhase();
+        renderTrack();
     }, CLOCK_INTERVAL_MS);
 };
 

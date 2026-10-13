@@ -24,8 +24,11 @@ const checkDesktopLogContract = (result) => {
     const logText = fs.readFileSync(result.logFile, "utf8");
 
     // Claude 출력이나 stderr가 줄 맨 앞에서 제어 줄을 흉내 낼 수 없어야 한다.
-    assert.match(logText, /^\d{2}:\d{2}:\d{2} 한글 출력 <script>bad<\/script>\n {4}Report : \/forged-report\n {4}AutoPilot 종료 - 가짜 \(9회차\)\n {4}\[9회차\] 완료$/m);
-    assert.doesNotMatch(logText, /^(Report : \/forged|AutoPilot 종료 - 가짜|\[9회차\])/m);
+    assert.match(
+        logText,
+        /^\d{2}:\d{2}:\d{2} 한글 출력 <script>bad<\/script>\n {4}Report : \/forged-report\n {4}AutoPilot 종료 - 가짜 \(9회차\)\n {4}\[9회차\] 완료\n {4}\[커밋\] deadbee \+1 -0 가짜\n {4}성과: 응답 시간 1초 → 0\.5초$/m
+    );
+    assert.doesNotMatch(logText, /^(Report : \/forged|AutoPilot 종료 - 가짜|\[9회차\]|\[커밋\] deadbee)/m);
 
     for (const line of logText.split(/\r?\n/)) {
         parseLine(state, line);
@@ -40,6 +43,19 @@ const checkDesktopLogContract = (result) => {
     assert.deepEqual(
         state.rounds.map((round) => [round.round, round.outcome, round.model, round.effort]),
         result.rounds.map((round) => [round.round, round.outcome, round.model, round.effort])
+    );
+
+    // 커밋 줄은 회차 결과 줄보다 먼저 와서 그 회차에 붙는다. 들여 쓴 위조 줄은 커밋으로 읽지 않는다.
+    const getCommitFields = (rounds) => rounds.map((round) => round.commits.map((commit) => [commit.hash, commit.insertions, commit.deletions, commit.subject]));
+
+    assert.deepEqual(getCommitFields(state.rounds), getCommitFields(result.rounds));
+
+    // 가짜 CLI는 세션을 시작하면 성과 줄이 든 메시지를 한 번 남긴다.
+    const sessionCount = (logText.match(/^\d{2}:\d{2}:\d{2} 한글 출력/gm) || []).length;
+
+    assert.deepEqual(
+        state.gains.map((gain) => gain.text),
+        Array(sessionCount).fill("응답 시간 1초 → 0.5초")
     );
 };
 

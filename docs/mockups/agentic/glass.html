@@ -1,0 +1,1194 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 리퀴드 글래스</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --text: #ffffff;
+                --text-2: rgba(255, 255, 255, 0.82);
+                --text-3: rgba(255, 255, 255, 0.68);
+                --rim: rgba(255, 255, 255, 0.65);
+                --opus: #d9822b;
+                --danger: #ffb0a3;
+                --halo: 0 1px 2px rgba(6, 18, 48, 0.45), 0 0 14px rgba(6, 18, 48, 0.28);
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: #0f2a5c;
+                color: var(--text);
+                font: 400 14px/1.5 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid #fff;
+                outline-offset: 3px;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            /* 하늘 */
+            .sky {
+                position: fixed;
+                inset: 0;
+                z-index: -1;
+                width: 100%;
+                height: 100%;
+            }
+
+            .drift {
+                animation: drift 120s linear infinite alternate;
+            }
+
+            @keyframes drift {
+                to {
+                    transform: translateX(-26px);
+                }
+            }
+
+            /* 유리 재질: 위 왼쪽에서 오는 빛 하나를 기준으로 테두리와 하이라이트를 둔다 */
+            .glass {
+                position: relative;
+                isolation: isolate;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
+                backdrop-filter: blur(14px) saturate(175%) brightness(0.94);
+                box-shadow:
+                    inset 1.5px 1.5px 0.5px -0.5px rgba(255, 255, 255, 0.75),
+                    inset -1px -1px 0.5px -0.5px rgba(255, 255, 255, 0.4),
+                    inset 0 -12px 22px -14px rgba(255, 255, 255, 0.28),
+                    inset 0 10px 18px -14px rgba(255, 255, 255, 0.3),
+                    0 1px 1px rgba(6, 18, 48, 0.12),
+                    0 18px 36px -16px rgba(6, 18, 48, 0.55);
+            }
+
+            .glass::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                padding: 1px;
+                border-radius: inherit;
+                background: linear-gradient(150deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.18) 28%, rgba(255, 255, 255, 0.04) 52%, rgba(255, 255, 255, 0.22) 76%, rgba(255, 255, 255, 0.62));
+                -webkit-mask:
+                    linear-gradient(#000 0 0) content-box,
+                    linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask-composite: exclude;
+                pointer-events: none;
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                height: 40px;
+                padding: 0 6px 0 16px;
+                flex: none;
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 18px;
+                filter: invert(1);
+                mix-blend-mode: screen;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .pair {
+                display: flex;
+                padding: 2px;
+                margin-right: 8px;
+                border-radius: 999px;
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 28px;
+                border: 0;
+                border-radius: 999px;
+                background: none;
+                color: var(--text);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                filter: drop-shadow(0 1px 1px rgba(6, 18, 48, 0.4));
+            }
+
+            .pair .win {
+                width: 32px;
+                height: 26px;
+            }
+
+            .win:hover {
+                background: rgba(255, 255, 255, 0.14);
+            }
+
+            .win.close:hover {
+                background: #e5484d;
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: rgba(255, 255, 255, 0.92);
+                color: #14305f;
+                box-shadow: 0 2px 6px -2px rgba(6, 18, 48, 0.5);
+            }
+
+            [data-screen="settings"] #settings-toggle svg,
+            [data-screen="profile"] #profile-toggle svg {
+                filter: none;
+            }
+
+            /* 상태 */
+            .stage {
+                display: flex;
+                flex: 1;
+                flex-direction: column;
+                align-items: center;
+                min-height: 0;
+                padding: 8px 20px 22px;
+                text-shadow: var(--halo);
+            }
+
+            .where {
+                display: flex;
+                gap: 8px;
+                margin: 0;
+                color: var(--text-2);
+                font-size: 13px;
+            }
+
+            .where b {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .state {
+                margin: 10px 0 0;
+                font-size: 15px;
+                font-weight: 600;
+            }
+
+            .clock {
+                margin: 0;
+                font-size: 50px;
+                font-weight: 250;
+                line-height: 1.1;
+                letter-spacing: -0.02em;
+            }
+
+            .clock-sub {
+                margin: 0;
+                color: var(--text-2);
+                font-size: 13px;
+            }
+
+            /* 메인 버튼 */
+            .orb {
+                display: grid;
+                place-items: center;
+                align-content: center;
+                gap: 10px;
+                width: 176px;
+                height: 176px;
+                margin-top: 16px;
+                flex: none;
+                padding: 0;
+                border: 0;
+                border-radius: 50%;
+                background:
+                    radial-gradient(90% 55% at 50% 106%, rgba(255, 255, 255, 0.24), transparent 70%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+                backdrop-filter: url(#lens) saturate(118%) brightness(1.14);
+                box-shadow:
+                    inset 2px 2.5px 1px -1px rgba(255, 255, 255, 0.85),
+                    inset -1.5px -2px 1px -1px rgba(255, 255, 255, 0.45),
+                    inset 0 -26px 34px -24px rgba(255, 255, 255, 0.34),
+                    inset 0 22px 30px -26px rgba(255, 255, 255, 0.45),
+                    0 2px 2px rgba(6, 18, 48, 0.12),
+                    0 30px 50px -22px rgba(6, 18, 48, 0.62);
+            }
+
+            .orb::before {
+                padding: 1.5px;
+            }
+
+            /* 두께를 보이는 안쪽 반사선: 테두리 안쪽에 같은 방향의 빛을 한 번 더 둔다 */
+            .orb::after {
+                content: "";
+                position: absolute;
+                inset: 7px;
+                border-radius: 50%;
+                border: 1.5px solid rgba(255, 255, 255, 0.5);
+                -webkit-mask: linear-gradient(150deg, #000 8%, transparent 38%, transparent 70%, rgba(0, 0, 0, 0.55) 96%);
+                pointer-events: none;
+            }
+
+            .orb .stop {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                background: #fff;
+                box-shadow: 0 1px 2px rgba(6, 18, 48, 0.35);
+            }
+
+            .orb strong {
+                font-size: 19px;
+                font-weight: 650;
+                letter-spacing: -0.01em;
+            }
+
+            .orb:focus-visible {
+                outline-offset: 5px;
+            }
+
+            .summary {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                width: 100%;
+                max-width: 520px;
+                margin-top: 22px;
+                font-size: 13px;
+                color: var(--text-2);
+            }
+
+            .summary b {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .summary ins {
+                color: #b8f0c8;
+                text-decoration: none;
+            }
+
+            .summary del {
+                color: #ffc9c0;
+                text-decoration: none;
+            }
+
+            .summary .capsule {
+                margin-left: auto;
+                height: 28px;
+                text-shadow: none;
+            }
+
+            /* 로그 */
+            .log {
+                width: 100%;
+                max-width: 520px;
+                margin: 8px 0 0;
+                padding: 0;
+                list-style: none;
+                font-size: 13.5px;
+                line-height: 1.85;
+            }
+
+            .log li {
+                display: grid;
+                grid-template-columns: 62px 1fr;
+                gap: 12px;
+                white-space: nowrap;
+            }
+
+            .log time {
+                color: var(--text-3);
+                font-size: 12.5px;
+            }
+
+            .log b {
+                font-weight: 650;
+                margin-right: 6px;
+            }
+
+            .log li:nth-child(1) {
+                opacity: 0.5;
+            }
+            .log li:nth-child(2) {
+                opacity: 0.6;
+            }
+            .log li:nth-child(3) {
+                opacity: 0.7;
+            }
+            .log li:nth-child(4) {
+                opacity: 0.8;
+            }
+            .log li:nth-child(5) {
+                opacity: 0.9;
+            }
+
+            .log li.said {
+                margin-top: 4px;
+                font-size: 15px;
+                line-height: 1.55;
+                white-space: normal;
+                text-wrap: pretty;
+                animation: rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 500ms both;
+            }
+
+            .log li.said time {
+                padding-top: 2px;
+            }
+
+            @keyframes rise {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+            }
+
+            /* 작업 */
+            .tasks {
+                width: 100%;
+                max-width: 540px;
+                margin-top: auto;
+                padding: 11px 18px 12px;
+                border-radius: 20px;
+                text-shadow: none;
+            }
+
+            .tasks pre {
+                margin: 0;
+                color: var(--text-2);
+                font: 400 13.5px/1.6 var(--sans);
+                white-space: pre-wrap;
+            }
+
+            .tasks .locked {
+                position: absolute;
+                top: 10px;
+                right: 12px;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--text-3);
+                font-size: 12px;
+            }
+
+            /* 옵션 막대 */
+            .dock {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                width: 100%;
+                max-width: 540px;
+                height: 70px;
+                margin-top: 12px;
+                padding: 5px;
+                border-radius: 999px;
+                text-shadow: none;
+            }
+
+            /* 지평선의 밝은 분홍 위에서도 흰 글자가 읽히도록 뒤 배경을 낮춘다 */
+            .dock,
+            .tasks {
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+                backdrop-filter: blur(16px) saturate(140%) brightness(0.56);
+            }
+
+            .tab {
+                display: grid;
+                justify-items: center;
+                align-content: center;
+                gap: 3px;
+                border: 0;
+                border-radius: 999px;
+                background: none;
+                color: var(--text);
+            }
+
+            .tab .label {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 12.5px;
+                font-weight: 600;
+                text-shadow: 0 1px 3px rgba(6, 18, 48, 0.55);
+            }
+
+            .tab .label .icon {
+                width: 11px;
+                height: 11px;
+                opacity: 0.8;
+            }
+
+            .tab.model {
+                background: linear-gradient(180deg, rgba(217, 130, 43, 0.5), rgba(217, 130, 43, 0.3));
+                box-shadow:
+                    inset 1px 1px 0.5px -0.5px rgba(255, 220, 180, 0.85),
+                    inset -1px -1px 0.5px -0.5px rgba(255, 220, 180, 0.35),
+                    inset 0 -8px 14px -10px rgba(255, 200, 150, 0.45);
+            }
+
+            .tab .mark {
+                width: 22px;
+                height: 22px;
+                filter: drop-shadow(0 1px 2px rgba(6, 18, 48, 0.35));
+            }
+
+            .tab.locked {
+                cursor: default;
+            }
+
+            .tab.locked .label {
+                color: var(--text);
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2.5px;
+                height: 22px;
+                padding-bottom: 2px;
+            }
+
+            .bars i {
+                width: 4px;
+                border-radius: 2px;
+                background: rgba(255, 255, 255, 0.3);
+            }
+
+            .bars i:nth-child(1) {
+                height: 7px;
+            }
+            .bars i:nth-child(2) {
+                height: 10px;
+            }
+            .bars i:nth-child(3) {
+                height: 13px;
+            }
+            .bars i:nth-child(4) {
+                height: 16px;
+            }
+            .bars i:nth-child(5) {
+                height: 19px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: #fff;
+            }
+
+            .policy-icon {
+                width: 22px;
+                height: 22px;
+                fill: none;
+                stroke: #fff;
+                stroke-width: 1.6;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                filter: drop-shadow(0 1px 1px rgba(6, 18, 48, 0.4));
+            }
+
+            .tab .time {
+                font-size: 18px;
+                font-weight: 600;
+                line-height: 22px;
+                text-shadow: 0 1px 3px rgba(6, 18, 48, 0.55);
+            }
+
+            /* 시트 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 5;
+                background: rgba(6, 18, 48, 0.28);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 240ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+            }
+
+            .sheet {
+                position: fixed;
+                top: 46px;
+                right: 10px;
+                bottom: 10px;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                width: 400px;
+                padding: 16px 16px 14px;
+                border-radius: 28px;
+                background: linear-gradient(180deg, rgba(30, 58, 112, 0.5), rgba(24, 48, 96, 0.42));
+                backdrop-filter: blur(26px) saturate(170%);
+                opacity: 0;
+                visibility: hidden;
+                transform: translateX(24px) scale(0.98);
+                transform-origin: top right;
+                transition:
+                    opacity 200ms ease-in,
+                    transform 200ms ease-in,
+                    visibility 0s 200ms;
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                opacity: 1;
+                visibility: visible;
+                transform: none;
+                transition:
+                    opacity 280ms ease-out,
+                    transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            .sheet h1 {
+                margin: 0 4px 8px;
+                font-size: 22px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+            }
+
+            .sheet h2 {
+                margin: 0 6px 6px;
+                color: var(--text-3);
+                font-size: 12.5px;
+                font-weight: 600;
+            }
+
+            .inset {
+                margin: 0 0 10px;
+                padding: 0;
+                list-style: none;
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.1);
+                box-shadow:
+                    inset 1px 1px 0 -0.5px rgba(255, 255, 255, 0.4),
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+            }
+
+            .inset > li {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-height: 40px;
+                padding: 7px 14px;
+            }
+
+            .inset > li + li::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 14px;
+                right: 0;
+                height: 1px;
+                background: rgba(255, 255, 255, 0.13);
+            }
+
+            .inset .grow {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .inset .path {
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                font-family: "Cascadia Mono", Consolas, monospace;
+                font-size: 12.5px;
+            }
+
+            .inset small,
+            .footnote {
+                display: block;
+                color: var(--text-3);
+                font-size: 12px;
+                line-height: 1.45;
+            }
+
+            .footnote {
+                margin: -5px 8px 10px;
+            }
+
+            .badge {
+                padding: 1px 8px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.14);
+                color: var(--text-2);
+                font-size: 11.5px;
+                white-space: nowrap;
+            }
+
+            .capsule {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 30px;
+                padding: 0 13px;
+                border: 0;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.16);
+                box-shadow:
+                    inset 1px 1px 0.5px -0.5px rgba(255, 255, 255, 0.7),
+                    inset -1px -1px 0.5px -0.5px rgba(255, 255, 255, 0.3);
+                font-size: 12.5px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .capsule:hover {
+                background: rgba(255, 255, 255, 0.24);
+            }
+
+            .capsule[disabled] {
+                color: var(--text-3);
+                background: rgba(255, 255, 255, 0.06);
+                cursor: not-allowed;
+            }
+
+            .choice {
+                cursor: pointer;
+            }
+
+            .choice strong {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .tick {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                stroke: #fff;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .switch {
+                position: relative;
+                flex: none;
+                width: 50px;
+                height: 28px;
+                border: 0;
+                border-radius: 999px;
+                background: linear-gradient(180deg, rgba(120, 200, 140, 0.75), rgba(70, 170, 110, 0.75));
+                box-shadow:
+                    inset 0 1px 2px rgba(0, 30, 10, 0.25),
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+            }
+
+            .switch::after {
+                content: "";
+                position: absolute;
+                top: 2px;
+                right: 2px;
+                width: 32px;
+                height: 24px;
+                border-radius: 999px;
+                background: linear-gradient(180deg, #fff, #eef2f8);
+                box-shadow:
+                    inset 0 -1px 1px rgba(6, 18, 48, 0.08),
+                    0 2px 5px rgba(6, 18, 48, 0.3);
+            }
+
+            .link {
+                width: 100%;
+                padding: 0;
+                border: 0;
+                background: none;
+                font-size: 14px;
+                text-align: left;
+            }
+
+            .link.danger {
+                color: var(--danger);
+            }
+
+            .chev {
+                width: 12px;
+                height: 12px;
+                color: var(--text-3);
+            }
+
+            .sheet-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: auto;
+                padding: 0 6px;
+                color: var(--text-3);
+                font-size: 12.5px;
+            }
+
+            /* 프로필 */
+            .me {
+                display: grid;
+                grid-template-columns: 72px 1fr auto;
+                align-items: center;
+                gap: 14px;
+                margin: 0 4px 16px;
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 72px;
+                height: 72px;
+                border-radius: 50%;
+                font-size: 26px;
+                font-weight: 650;
+                text-shadow: 0 1px 3px rgba(6, 18, 48, 0.55);
+            }
+
+            .me strong {
+                display: block;
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+            }
+
+            .me small {
+                color: var(--text-2);
+                font-size: 13px;
+            }
+
+            .plan {
+                align-self: start;
+                margin-top: 6px;
+                padding: 3px 10px;
+                border-radius: 999px;
+                font-size: 12.5px;
+                font-weight: 700;
+            }
+
+            .mini {
+                display: grid;
+                place-items: center;
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.18);
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .actions {
+                display: flex;
+                gap: 6px;
+            }
+
+            .actions .danger {
+                margin-left: auto;
+                color: var(--danger);
+            }
+
+            .usage > li {
+                display: block;
+                padding: 14px 14px 14px;
+            }
+
+            .usage-top {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+            }
+
+            .usage-top span {
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .usage-top b {
+                font-size: 17px;
+                font-weight: 650;
+            }
+
+            .tube {
+                position: relative;
+                height: 18px;
+                margin: 7px 0 6px;
+                border-radius: 999px;
+                background: rgba(6, 18, 48, 0.22);
+                box-shadow:
+                    inset 0 1px 2px rgba(6, 18, 48, 0.35),
+                    inset 0 -1px 0 rgba(255, 255, 255, 0.25),
+                    0 0 0 1px rgba(255, 255, 255, 0.12);
+                overflow: hidden;
+            }
+
+            .tube i {
+                position: absolute;
+                inset: 2px auto 2px 2px;
+                width: calc(var(--v) - 4px);
+                border-radius: 999px;
+                background: linear-gradient(180deg, #ffffff, #dfe9fb 55%, #b9cdf0);
+                box-shadow:
+                    inset 0 -2px 2px rgba(60, 100, 170, 0.25),
+                    inset 0 1.5px 0 rgba(255, 255, 255, 0.9);
+            }
+
+            .tube::after {
+                content: "";
+                position: absolute;
+                inset: 2px 6px auto;
+                height: 3px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.35);
+            }
+
+            .warn .tube i {
+                background: linear-gradient(180deg, #ffe3bf, #ffbe73 55%, #f0973a);
+                box-shadow:
+                    inset 0 -2px 2px rgba(150, 70, 0, 0.25),
+                    inset 0 1.5px 0 rgba(255, 245, 230, 0.9);
+            }
+
+            .warn .usage-top b {
+                color: #ffc58a;
+            }
+
+            .usage small {
+                display: flex;
+                justify-content: space-between;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation: none !important;
+                    transition: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg class="sky" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+                <linearGradient id="sky-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#0f2a5c" />
+                    <stop offset="0.46" stop-color="#21467f" />
+                    <stop offset="0.76" stop-color="#3e6fb5" />
+                    <stop offset="0.94" stop-color="#9aa3c6" />
+                    <stop offset="1" stop-color="#e9b4a0" />
+                </linearGradient>
+                <radialGradient id="moon-face" cx="0.38" cy="0.34" r="0.72">
+                    <stop offset="0" stop-color="#fffdf2" />
+                    <stop offset="0.78" stop-color="#e9e2c8" />
+                </radialGradient>
+                <mask id="moon-phase">
+                    <circle cx="474" cy="112" r="22" fill="#fff" />
+                    <circle cx="485" cy="105" r="21" fill="#000" />
+                </mask>
+                <filter id="wash" x="-40%" y="-80%" width="180%" height="260%">
+                    <feGaussianBlur stdDeviation="16" />
+                </filter>
+                <filter id="wash-soft" x="-40%" y="-80%" width="180%" height="260%">
+                    <feGaussianBlur stdDeviation="9" />
+                </filter>
+            </defs>
+            <rect width="600" height="800" fill="url(#sky-fill)" />
+            <g fill="#fff">
+                <circle cx="62" cy="64" r="1.1" opacity="0.8" />
+                <circle cx="138" cy="118" r="0.8" opacity="0.6" />
+                <circle cx="214" cy="52" r="1" opacity="0.7" />
+                <circle cx="322" cy="88" r="0.7" opacity="0.5" />
+                <circle cx="388" cy="46" r="1.2" opacity="0.8" />
+                <circle cx="548" cy="70" r="0.9" opacity="0.6" />
+                <circle cx="30" cy="190" r="0.8" opacity="0.5" />
+                <circle cx="566" cy="196" r="0.8" opacity="0.45" />
+                <circle cx="96" cy="250" r="1" opacity="0.45" />
+                <circle cx="256" cy="168" r="0.7" opacity="0.4" />
+            </g>
+            <circle cx="474" cy="112" r="22" fill="url(#moon-face)" mask="url(#moon-phase)" />
+            <g class="drift">
+                <g filter="url(#wash)" fill="#dfe7f7">
+                    <ellipse cx="470" cy="290" rx="150" ry="34" opacity="0.32" />
+                    <ellipse cx="420" cy="312" rx="96" ry="22" opacity="0.28" />
+                    <ellipse cx="96" cy="200" rx="90" ry="18" opacity="0.18" />
+                    <ellipse cx="80" cy="470" rx="120" ry="22" opacity="0.14" />
+                </g>
+                <g filter="url(#wash-soft)">
+                    <ellipse cx="520" cy="276" rx="70" ry="16" fill="#f4f7ff" opacity="0.32" />
+                    <ellipse cx="380" cy="300" rx="44" ry="10" fill="#f4f7ff" opacity="0.26" />
+                </g>
+                <g filter="url(#wash)">
+                    <ellipse cx="300" cy="736" rx="300" ry="40" fill="#f6d1c2" opacity="0.3" />
+                    <ellipse cx="120" cy="690" rx="140" ry="20" fill="#e8c9d0" opacity="0.35" />
+                    <ellipse cx="500" cy="664" rx="120" ry="18" fill="#cfd7ee" opacity="0.32" />
+                </g>
+            </g>
+        </svg>
+
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <defs>
+                <!-- 가장자리만 기울기가 남은 변위 지도로 렌즈 굴절을 흉내 낸다 -->
+                <filter id="lens" x="0" y="0" width="176" height="176" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+                    <feImage
+                        x="0"
+                        y="0"
+                        width="176"
+                        height="176"
+                        preserveAspectRatio="none"
+                        result="map"
+                        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='176' height='176'%3E%3Cdefs%3E%3ClinearGradient id='r' x1='0' x2='1' y1='0' y2='0'%3E%3Cstop offset='0' stop-color='%23000'/%3E%3Cstop offset='1' stop-color='%23f00'/%3E%3C/linearGradient%3E%3ClinearGradient id='g' x1='0' x2='0' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%23000'/%3E%3Cstop offset='1' stop-color='%230f0'/%3E%3C/linearGradient%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='9'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='176' height='176' fill='url(%23r)'/%3E%3Crect width='176' height='176' fill='url(%23g)' style='mix-blend-mode:screen'/%3E%3Ccircle cx='88' cy='88' r='66' fill='rgb(128,128,0)' filter='url(%23b)'/%3E%3C/svg%3E"
+                    />
+                    <feDisplacementMap in="SourceGraphic" in2="map" scale="-46" xChannelSelector="R" yChannelSelector="G" result="bent" />
+                    <feGaussianBlur in="bent" stdDeviation="2.4" />
+                </filter>
+            </defs>
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-next" viewBox="0 0 12 12"><path d="M4.5 3 7.5 6l-3 3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <div class="controls">
+                <div class="pair glass">
+                    <button class="win" id="profile-toggle" aria-label="프로필">
+                        <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                    </button>
+                    <button class="win" id="settings-toggle" aria-label="설정">
+                        <svg viewBox="0 0 12 12">
+                            <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                            <circle cx="6" cy="6" r="1.6" />
+                        </svg>
+                    </button>
+                </div>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <main class="stage">
+            <p class="where"><b>shop-api</b><span>ai/autopilot</span></p>
+            <p class="state">3회차 진행 중</p>
+            <p class="clock">04:39:50</p>
+            <p class="clock-sub">07:00까지 남은 시간</p>
+
+            <button class="orb glass" type="button">
+                <span class="stop" aria-hidden="true"></span>
+                <strong>종료 신호</strong>
+            </button>
+
+            <div class="summary">
+                <span><b>1회차</b> 커밋 2개</span>
+                <span><b>2회차</b> 커밋 1개</span>
+                <span><ins>+240</ins> <del>−49</del></span>
+                <button class="capsule">전체 기록</button>
+            </div>
+
+            <ol class="log" aria-label="최근 로그">
+                <li><time>02:17:12</time><span><b>Grep</b>"searchOrders" src/admin</span></li>
+                <li><time>02:18:30</time><span><b>Read</b>src/admin/searchController.js</span></li>
+                <li><time>02:19:02</time><span><b>Edit</b>src/admin/searchController.js</span></li>
+                <li><time>02:19:31</time><span><b>Edit</b>migrations/20261014_add_search_index.sql</span></li>
+                <li><time>02:19:47</time><span><b>Bash</b>npm test -- admin</span></li>
+                <li class="said"><time>02:20:05</time><span>관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</span></li>
+            </ol>
+
+            <div class="tasks glass">
+                <pre aria-label="처리할 작업">주문 목록 API에 페이지네이션 추가
+결제 실패 시 재시도 로직 점검
+관리자 화면 검색 속도 개선</pre>
+                <span class="locked"><svg class="icon"><use href="#i-lock" /></svg>실행 중</span>
+            </div>
+
+            <nav class="dock glass" aria-label="실행 옵션">
+                <button class="tab model" aria-label="모델: Opus">
+                    <svg class="mark"><use href="#mark-opus" /></svg>
+                    <span class="label">Opus<svg class="icon"><use href="#i-chev" /></svg></span>
+                </button>
+                <button class="tab" aria-label="Effort: High">
+                    <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+                    <span class="label">High<svg class="icon"><use href="#i-chev" /></svg></span>
+                </button>
+                <div class="tab locked" title="실행 중에는 바꿀 수 없어요">
+                    <svg class="policy-icon" viewBox="0 0 20 20"><path d="M6.2 13.4a4 4 0 1 1 0-6.8l7.6 6.8a4 4 0 1 0 0-6.8l-7.6 6.8" /></svg>
+                    <span class="label"><svg class="icon"><use href="#i-lock" /></svg>자율개선</span>
+                </div>
+                <div class="tab locked" title="실행 중에는 바꿀 수 없어요">
+                    <span class="time">07:00</span>
+                    <span class="label"><svg class="icon"><use href="#i-lock" /></svg>4시간 39분</span>
+                </div>
+            </nav>
+        </main>
+
+        <div class="scrim"></div>
+
+        <aside class="sheet" id="settings-panel" aria-label="설정">
+            <h1>설정</h1>
+
+            <h2>대상 프로젝트</h2>
+            <ul class="inset">
+                <li>
+                    <svg class="icon"><use href="#i-folder" /></svg>
+                    <span class="grow"><span class="path" style="display: block">C:\Users\dev\Projects\shop-api</span><small>실행 중에는 바꿀 수 없어요</small></span>
+                    <button class="capsule" disabled>폴더 선택</button>
+                </li>
+            </ul>
+
+            <h2>Claude 데이터 폴더</h2>
+            <ul class="inset">
+                <li>
+                    <svg class="icon"><use href="#i-folder" /></svg>
+                    <span class="grow path">C:\Users\dev\.claude</span>
+                    <span class="badge">자동 감지</span>
+                </li>
+                <li>
+                    <button class="capsule">폴더 변경</button>
+                    <button class="capsule">자동 감지</button>
+                </li>
+            </ul>
+            <p class="footnote">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+
+            <h2>개선 정책</h2>
+            <ul class="inset" role="radiogroup" aria-label="개선 정책">
+                <li class="choice" role="radio" aria-checked="true">
+                    <span class="grow"><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                    <svg class="tick" viewBox="0 0 16 16"><use href="#i-check" /></svg>
+                </li>
+                <li class="choice" role="radio" aria-checked="false">
+                    <span class="grow"><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                </li>
+            </ul>
+
+            <h2>사용량 한도</h2>
+            <ul class="inset">
+                <li>
+                    <span class="grow"><strong style="display: block; font-size: 14px; font-weight: 600">대기한 시간만큼 종료 시각 연장</strong><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                    <button class="switch" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장"></button>
+                </li>
+            </ul>
+
+            <h2>기록</h2>
+            <ul class="inset">
+                <li><button class="link">전체 기록 보기</button><svg class="icon chev"><use href="#i-next" /></svg></li>
+                <li><button class="link">리포트 열기</button><svg class="icon chev"><use href="#i-next" /></svg></li>
+                <li><button class="link danger">진행 기록 초기화</button></li>
+            </ul>
+
+            <div class="sheet-foot"><span>AutoPilot</span><span>v0.1.0</span></div>
+        </aside>
+
+        <aside class="sheet" id="profile-panel" aria-label="프로필">
+            <div class="me">
+                <span class="avatar glass">개</span>
+                <span><strong>개발자</strong><small>dev@example.com</small></span>
+                <span class="plan glass">Max 20x</span>
+            </div>
+
+            <h2>계정</h2>
+            <ul class="inset" role="radiogroup" aria-label="계정 선택">
+                <li class="choice" role="radio" aria-checked="true">
+                    <span class="mini">개</span><span class="grow"><strong>기본 계정</strong></span>
+                    <svg class="tick" viewBox="0 0 16 16"><use href="#i-check" /></svg>
+                </li>
+                <li class="choice" role="radio" aria-checked="false">
+                    <span class="mini">회</span><span class="grow"><strong>회사</strong></span>
+                </li>
+                <li class="actions">
+                    <button class="capsule"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                    <button class="capsule">다시 로그인</button>
+                    <button class="capsule danger">제거</button>
+                </li>
+            </ul>
+
+            <h2>사용량과 한도</h2>
+            <ul class="inset usage">
+                <li style="--v: 42%">
+                    <div class="usage-top"><span>5시간 한도</span><b>42%</b></div>
+                    <div class="tube"><i></i></div>
+                    <small><span>03:00 리셋</span><span>40분 후</span></small>
+                </li>
+                <li style="--v: 63%">
+                    <div class="usage-top"><span>주간 한도</span><b>63%</b></div>
+                    <div class="tube"><i></i></div>
+                    <small><span>10월 16일 09:00 리셋</span><span>3일 후</span></small>
+                </li>
+                <li class="warn" style="--v: 78%">
+                    <div class="usage-top"><span>주간 한도 (Opus)</span><b>78%</b></div>
+                    <div class="tube"><i></i></div>
+                    <small><span>10월 16일 09:00 리셋</span><span>3일 후</span></small>
+                </li>
+            </ul>
+
+            <div class="sheet-foot">
+                <span>02:18 기준</span>
+                <button class="capsule"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </aside>
+    </body>
+</html>

@@ -8,6 +8,7 @@ import cliUtil from "../../autopilot/src/utils/cliUtil.js";
 import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import streamUtil from "../../autopilot/src/utils/streamUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
+import gitUtil from "../../autopilot/src/utils/gitUtil.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -213,6 +214,20 @@ const checkStreamEvent = () => {
     }
 };
 
+// 커밋 로그 줄의 +/− 줄 수는 git shortstat에서 읽는다. 단수형이나 빠진 항목은 0이다.
+const checkCommitLineCounts = () => {
+    const cases = [
+        [" 2 files changed, 5 insertions(+), 1 deletion(-)", { insertions: 5, deletions: 1 }],
+        [" 1 file changed, 1 insertion(+)", { insertions: 1, deletions: 0 }],
+        [" 1 file changed, 12 deletions(-)", { insertions: 0, deletions: 12 }],
+        ["", { insertions: 0, deletions: 0 }]
+    ];
+
+    for (const [stat, expected] of cases) {
+        assert.deepEqual(gitUtil.getLineCounts(stat), expected, stat);
+    }
+};
+
 // 진행 기록이 없으면 초기 내용을 만들고, 이미 있으면 건드리지 않는다.
 const checkProgressEnsure = (context) => {
     const { ensureProgressRecord, PROGRESS_TEMPLATE } = progressUtil;
@@ -342,5 +357,6 @@ export {
     checkRunEnv,
     checkProjectPaths,
     checkProgressArchive,
-    checkStreamEvent
+    checkStreamEvent,
+    checkCommitLineCounts
 };

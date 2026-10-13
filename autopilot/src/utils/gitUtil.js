@@ -39,6 +39,14 @@ const getCommitHashesSince = (runGitCommand, since) => {
     return output.split("\n").filter(Boolean);
 };
 
+// shortstat 예: "2 files changed, 5 insertions(+), 1 deletion(-)". 추가나 삭제가 없으면 그 부분이 빠진다.
+const getLineCounts = (stat) => {
+    return {
+        insertions: Number(stat.match(/(\d+) insertions?\(\+\)/)?.[1] || 0),
+        deletions: Number(stat.match(/(\d+) deletions?\(-\)/)?.[1] || 0)
+    };
+};
+
 // 이미 기록한 hash는 제외하고, 새로 찾은 commit은 recordedHashes에 추가한다.
 const collectNewCommits = (runGitCommand, since, recordedHashes) => {
     const output = runGitCommand(["log", `--since=${dateUtil.getDatetimeString(since)}`, "--format=%h%x09%s", "HEAD"]);
@@ -53,10 +61,13 @@ const collectNewCommits = (runGitCommand, since, recordedHashes) => {
 
         recordedHashes.add(hash);
 
+        const stat = runGitCommand(["show", "--shortstat", "--format=", hash]);
+
         commits.push({
             hash: hash,
             subject: subjectParts.join("\t"),
-            stat: runGitCommand(["show", "--shortstat", "--format=", hash])
+            stat: stat,
+            ...getLineCounts(stat)
         });
     }
 
@@ -80,4 +91,4 @@ const getShortStatus = (runGitCommand) => {
     return runGitCommand(["status", "--short"]);
 };
 
-export default { createGitRunner, assertGitProject, getHeadHash, getBranchName, getCommitHashesSince, collectNewCommits, hasWorkChanges, getRecentLog, getStatus, getShortStatus };
+export default { createGitRunner, assertGitProject, getHeadHash, getBranchName, getCommitHashesSince, getLineCounts, collectNewCommits, hasWorkChanges, getRecentLog, getStatus, getShortStatus };

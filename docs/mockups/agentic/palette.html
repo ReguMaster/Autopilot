@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoPilot 시안 - 커맨드 팔레트</title>
+<script>
+    const applyScreen = () => {
+        document.documentElement.dataset.screen = location.hash.slice(1) || "main";
+    };
+
+    applyScreen();
+    addEventListener("hashchange", applyScreen);
+</script>
+<style>
+    @font-face {
+        font-family: "Pretendard";
+        src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+        font-weight: 45 920;
+    }
+
+    :root {
+        --desk: #dfe3ea;
+        --panel: rgba(255, 255, 255, 0.94);
+        --line: #c9cfda;
+        --hair: #e4e8ee;
+        --ink: #1b1e24;
+        --muted: #5f6779;
+        --soft: #687083;
+        --accent: #2b59c3;
+        --accent-tint: #e8eefb;
+        --cap: #f1f3f6;
+        --cap-line: #d3d8e0;
+        --add: #1e7a46;
+        --del: #c0362c;
+        --warn: #b54708;
+        --ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Pretendard", "Malgun Gothic", sans-serif;
+        --mono: "Cascadia Mono", Consolas, "Pretendard", monospace;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        margin: 0;
+        height: 100%;
+    }
+
+    body {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--desk);
+        color: var(--ink);
+        font-family: var(--ui);
+        font-size: 14px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    h2,
+    h3,
+    p,
+    ul {
+        margin: 0;
+        padding: 0;
+        font: inherit;
+    }
+
+    ul {
+        list-style: none;
+    }
+
+    svg {
+        display: block;
+    }
+
+    .mono {
+        font-family: var(--mono);
+        font-size: 12.5px;
+    }
+
+    .muted {
+        color: var(--muted);
+    }
+
+    .add {
+        color: var(--add);
+    }
+
+    .del {
+        color: var(--del);
+    }
+
+    /* 바탕화면: 흐린 사진처럼 번진 두세 덩어리 */
+    .wallpaper {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        z-index: -1;
+    }
+
+    .wallpaper i {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(60px);
+    }
+
+    .wallpaper i:nth-child(1) {
+        width: 520px;
+        height: 380px;
+        left: -180px;
+        top: 360px;
+        background: #b9c5d8;
+    }
+
+    .wallpaper i:nth-child(2) {
+        width: 440px;
+        height: 300px;
+        right: -160px;
+        top: -80px;
+        background: #ece6dc;
+    }
+
+    .wallpaper i:nth-child(3) {
+        width: 300px;
+        height: 220px;
+        right: -40px;
+        bottom: -90px;
+        background: #c8d3cf;
+    }
+
+    /* 창 헤더 */
+    .titlebar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 40px;
+        padding: 0 4px 0 18px;
+        -webkit-app-region: drag;
+    }
+
+    .brand {
+        display: block;
+        height: 34px;
+        margin: 0 0 0 -10px;
+        mix-blend-mode: multiply;
+    }
+
+    .win {
+        display: flex;
+        gap: 2px;
+        -webkit-app-region: no-drag;
+    }
+
+    .tb {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 30px;
+        border-radius: 7px;
+        color: #3a4150;
+        border: 1px solid transparent;
+    }
+
+    .tb:hover {
+        background: rgba(255, 255, 255, 0.6);
+    }
+
+    .tb.close:hover {
+        background: #c42b1c;
+        color: #fff;
+    }
+
+    .tb-gap {
+        width: 8px;
+    }
+
+    [data-screen="settings"] .tb[data-panel="settings"],
+    [data-screen="profile"] .tb[data-panel="profile"] {
+        background: #fff;
+        border-color: var(--line);
+        color: var(--accent);
+        box-shadow: inset 0 -1px 0 var(--cap-line);
+    }
+
+    /* 팔레트 */
+    .palette {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        margin: 6px 18px 18px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.7) inset,
+            0 2px 4px rgba(40, 48, 66, 0.06),
+            0 22px 44px -18px rgba(40, 48, 66, 0.32);
+        backdrop-filter: blur(24px);
+        overflow: hidden;
+    }
+
+    .page {
+        display: none;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    [data-screen="main"] .page[data-page="main"],
+    [data-screen="settings"] .page[data-page="settings"],
+    [data-screen="profile"] .page[data-page="profile"] {
+        display: flex;
+    }
+
+    /* 입력 */
+    .input {
+        flex: none;
+        padding: 14px 18px 14px;
+        border-bottom: 1px solid var(--hair);
+    }
+
+    .scope {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 12.5px;
+    }
+
+    .scope .grow {
+        flex: 1;
+    }
+
+    .crumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--ink);
+        font-weight: 600;
+    }
+
+    .crumb .sep {
+        color: #9aa1b0;
+        font-weight: 400;
+    }
+
+    .crumb .here {
+        padding: 1px 8px;
+        background: var(--accent-tint);
+        color: var(--accent);
+        border-radius: 5px;
+    }
+
+    .task-lines {
+        font-size: 17px;
+        line-height: 28px;
+        letter-spacing: -0.01em;
+    }
+
+    .task-lines li {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+    }
+
+    .task-lines .text {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .task-lines .done .text {
+        color: var(--soft);
+    }
+
+    .task-lines .state {
+        flex: none;
+        font-size: 12.5px;
+        color: var(--muted);
+    }
+
+    .task-lines .now .state {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    .tokens {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+    }
+
+    .token {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 28px;
+        padding: 0 10px 0 8px;
+        background: #eef1f6;
+        border: 1px solid #d5dbe5;
+        border-radius: 7px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .token .key {
+        color: var(--muted);
+    }
+
+    .token .key b {
+        font-weight: 400;
+        color: #8a91a1;
+    }
+
+    .token .value {
+        font-weight: 600;
+    }
+
+    .token.locked {
+        background: transparent;
+        border-style: dashed;
+        color: var(--muted);
+    }
+
+    .token.locked .value {
+        color: var(--muted);
+    }
+
+    .token.locked svg {
+        color: #8a91a1;
+    }
+
+    .token.hint {
+        background: transparent;
+        border-color: transparent;
+        color: var(--muted);
+        padding-left: 4px;
+    }
+
+    .search {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 34px;
+        font-size: 17px;
+        color: #8a91a1;
+    }
+
+    .caret {
+        width: 2px;
+        height: 22px;
+        margin-right: -8px;
+        background: var(--accent);
+    }
+
+    /* 키캡 */
+    .kbd {
+        display: inline-grid;
+        place-items: center;
+        min-width: 22px;
+        height: 21px;
+        padding: 0 6px;
+        background: var(--cap);
+        border: 1px solid var(--cap-line);
+        border-bottom: 2px solid #bcc3ce;
+        border-radius: 5px;
+        color: #3a4150;
+        font: 600 11px/1 var(--ui);
+        white-space: nowrap;
+    }
+
+    .keys {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
+
+    /* 결과 목록 */
+    .results {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        padding: 6px 8px;
+    }
+
+    .group + .group {
+        margin-top: 4px;
+    }
+
+    .group-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: 8px 10px 4px;
+        font-size: 12.5px;
+        color: var(--muted);
+    }
+
+    .group-head b {
+        font-weight: 600;
+        color: var(--ink);
+    }
+
+    .row {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        align-items: center;
+        column-gap: 10px;
+        min-height: 34px;
+        padding: 5px 10px;
+        border-radius: 8px;
+    }
+
+    .row .main {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .row .main > * {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .row .main .wrap {
+        white-space: normal;
+        word-break: keep-all;
+    }
+
+    .row .tool {
+        flex: none;
+        width: 34px;
+        color: var(--muted);
+        font-size: 13px;
+    }
+
+    .row .meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 12.5px;
+        white-space: nowrap;
+    }
+
+    .row .meta .mono {
+        font-size: 12px;
+    }
+
+    .icon {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        background: #f1f3f6;
+        border: 1px solid var(--hair);
+        color: #3a4150;
+    }
+
+    .icon.ok {
+        background: #e7f3ec;
+        border-color: #cfe6d8;
+        color: var(--add);
+    }
+
+    .icon.plain {
+        background: transparent;
+        border-color: transparent;
+    }
+
+    .row.commit {
+        grid-template-columns: 24px 1fr auto;
+    }
+
+    .row.commit .main {
+        padding-left: 2px;
+    }
+
+    .row.commit .hash {
+        flex: none;
+        color: var(--muted);
+    }
+
+    .row .tag {
+        color: #8a91a1;
+    }
+
+    .row.selected {
+        background: var(--accent);
+        color: #fff;
+    }
+
+    .row.selected .muted,
+    .row.selected .tool,
+    .row.selected .meta {
+        color: rgba(255, 255, 255, 0.82);
+    }
+
+    .row.selected .icon {
+        background: rgba(255, 255, 255, 0.16);
+        border-color: rgba(255, 255, 255, 0.24);
+        color: #fff;
+    }
+
+    .row.selected .kbd {
+        background: rgba(255, 255, 255, 0.16);
+        border-color: rgba(255, 255, 255, 0.3);
+        border-bottom-color: rgba(255, 255, 255, 0.45);
+        color: #fff;
+    }
+
+    .row.say {
+        align-items: start;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .row.say .meta {
+        padding-top: 1px;
+    }
+
+    .row.danger .main {
+        color: var(--del);
+    }
+
+    /* 새 활동 줄이 위에 끼어든다 */
+    .row.enter {
+        animation: row-in 0.36s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+        animation-delay: var(--delay);
+        overflow: hidden;
+    }
+
+    @keyframes row-in {
+        from {
+            max-height: 0;
+            min-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+        }
+        to {
+            max-height: 64px;
+            opacity: 1;
+        }
+    }
+
+    /* 바닥줄 */
+    .footer {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 46px;
+        padding: 0 10px 0 16px;
+        border-top: 1px solid var(--hair);
+        background: rgba(246, 247, 250, 0.9);
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .footer .grow {
+        flex: 1;
+    }
+
+    .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+    }
+
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--add);
+        box-shadow: 0 0 0 3px #d9ecdf;
+    }
+
+    .clock {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .clock b {
+        font-weight: 600;
+    }
+
+    .action {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 6px 0 12px;
+        border-radius: 8px;
+    }
+
+    .action:hover {
+        background: rgba(27, 30, 36, 0.05);
+    }
+
+    .action.primary {
+        font-weight: 600;
+    }
+
+    .vr {
+        width: 1px;
+        height: 18px;
+        background: var(--line);
+    }
+
+    /* 설정·계정 페이지 */
+    .row.tall {
+        align-items: start;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .row.tall .icon {
+        margin-top: 1px;
+    }
+
+    .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+    }
+
+    .stack .sub {
+        color: var(--muted);
+        font-size: 12.5px;
+    }
+
+    .row.selected .stack .sub {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 7px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        font-size: 11.5px;
+        color: var(--muted);
+        font-weight: 600;
+    }
+
+    .row.selected .badge {
+        border-color: rgba(255, 255, 255, 0.45);
+        color: #fff;
+    }
+
+    .pill-btn {
+        height: 26px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+    }
+
+    .pill-btn[disabled] {
+        color: #9aa1b0;
+        background: transparent;
+        cursor: default;
+    }
+
+    .switch {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        border-radius: 10px;
+        background: var(--accent);
+    }
+
+    .switch::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+    }
+
+    .check {
+        color: var(--accent);
+    }
+
+    .row.selected .check {
+        color: #fff;
+    }
+
+    .avatar {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--ink);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .avatar.off {
+        background: #e4e8ee;
+        color: var(--muted);
+    }
+
+    .row.selected .avatar {
+        background: #fff;
+        color: var(--accent);
+    }
+
+    .meter {
+        position: relative;
+        width: 132px;
+        height: 6px;
+        border-radius: 3px;
+        background: #e4e8ee;
+        overflow: hidden;
+    }
+
+    .meter i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: var(--value);
+        background: var(--accent);
+        border-radius: 3px;
+    }
+
+    .who {
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        align-items: center;
+        column-gap: 12px;
+        margin: 6px 10px 4px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--hair);
+    }
+
+    .who b {
+        font-size: 17px;
+        font-weight: 650;
+    }
+
+    .avatar.big {
+        width: 44px;
+        height: 44px;
+        font-size: 17px;
+    }
+
+    .usage-row {
+        min-height: 54px;
+    }
+
+    .usage-row .meter {
+        width: 180px;
+    }
+
+    .usage-row .pct {
+        width: 38px;
+        text-align: right;
+        font-weight: 600;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .usage-row.warn .meter i {
+        background: #d97706;
+    }
+
+    .usage-row.warn .pct {
+        color: var(--warn);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .row.enter {
+            animation: none;
+        }
+    }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M3 13.2c.7-2.4 2.7-3.6 5-3.6s4.3 1.2 5 3.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-min" viewBox="0 0 16 16"><path d="M3.5 8.5h9" stroke="currentColor" stroke-width="1.2" /></symbol>
+    <symbol id="i-max" viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2" /></symbol>
+    <symbol id="i-close" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></symbol>
+    <symbol id="i-grep" viewBox="0 0 16 16"><circle cx="7" cy="7" r="3.8" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="m10 10 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-read" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /><path d="M6 8.5h4M6 11h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-edit" viewBox="0 0 16 16"><path d="m3 13 .6-2.8L10.4 3.4l2.2 2.2-6.8 6.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></symbol>
+    <symbol id="i-bash" viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+    <symbol id="i-say" viewBox="0 0 16 16"><path d="M3 4.5h10v6H7.5L4.5 13v-2.5H3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.5 8.4 2.8 2.8 6.2-6.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+    <symbol id="i-commit" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M1.5 8h4M10.5 8h4" stroke="currentColor" stroke-width="1.3" /></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" stroke-width="1.3" /></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.2h4.2l1.4 1.5H14v7.1H2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></symbol>
+    <symbol id="i-loop" viewBox="0 0 16 16"><path d="M12.5 6.5A4.8 4.8 0 0 0 3.6 6M3.5 9.5a4.8 4.8 0 0 0 8.9.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /><path d="M12.8 3.2v3.3H9.5M3.2 12.8V9.5h3.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+    <symbol id="i-list" viewBox="0 0 16 16"><path d="M5.5 4.5h8M5.5 8h8M5.5 11.5h8M2.5 4.5h.5M2.5 8h.5M2.5 11.5h.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><rect x="3" y="2.5" width="10" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-reset" viewBox="0 0 16 16"><path d="M3.5 5.5A5 5 0 1 1 3 9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /><path d="M3.2 2.5v3.2h3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-key" viewBox="0 0 16 16"><circle cx="5.5" cy="10.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="m7.3 8.7 5.2-5.2M10.5 5.5l1.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+    <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></symbol>
+</svg>
+
+<div class="wallpaper" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<header class="titlebar">
+    <img class="brand" src="../../logo.png" alt="AutoPilot" />
+    <div class="win">
+        <button class="tb" data-panel="profile" aria-label="계정"><svg width="16" height="16"><use href="#i-user" /></svg></button>
+        <button class="tb" data-panel="settings" aria-label="설정"><svg width="16" height="16"><use href="#i-gear" /></svg></button>
+        <span class="tb-gap"></span>
+        <button class="tb" aria-label="최소화"><svg width="16" height="16"><use href="#i-min" /></svg></button>
+        <button class="tb" aria-label="최대화"><svg width="16" height="16"><use href="#i-max" /></svg></button>
+        <button class="tb close" aria-label="닫기"><svg width="16" height="16"><use href="#i-close" /></svg></button>
+    </div>
+</header>
+
+<main class="palette">
+    <!-- 메인 -->
+    <section class="page" data-page="main" aria-label="실행">
+        <div class="input">
+            <div class="scope">
+                <span class="crumb">shop-api</span>
+                <span class="mono">ai/autopilot</span>
+                <span class="grow"></span>
+                <span>작업은 실행 중엔 잠겨요</span>
+            </div>
+            <ul class="task-lines" aria-label="처리할 작업">
+                <li class="done"><span class="text">주문 목록 API에 페이지네이션 추가</span><span class="state">1회차 완료</span></li>
+                <li class="done"><span class="text">결제 실패 시 재시도 로직 점검</span><span class="state">1·2회차 완료</span></li>
+                <li class="now"><span class="text">관리자 화면 검색 속도 개선</span><span class="state">3회차 진행 중</span></li>
+            </ul>
+            <div class="tokens" aria-label="실행 옵션">
+                <button class="token"><span class="key"><b>/</b>모델</span><span class="value">Opus</span></button>
+                <button class="token"><span class="key"><b>/</b>effort</span><span class="value">High</span></button>
+                <span class="token locked"><svg width="12" height="12"><use href="#i-lock" /></svg><span class="key"><b>/</b>정책</span><span class="value">자율개선</span></span>
+                <span class="token locked"><svg width="12" height="12"><use href="#i-lock" /></svg><span class="key"><b>/</b>종료</span><span class="value">07:00</span></span>
+                <span class="token hint"><span class="kbd">/</span>옵션 바꾸기</span>
+            </div>
+        </div>
+
+        <div class="results">
+            <div class="group">
+                <h2 class="group-head"><b>3회차 진행 중</b><span>02:08 시작, 12분 경과</span></h2>
+                <ul>
+                    <li class="row say selected enter" style="--delay: 1.15s">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-say" /></svg></span>
+                        <span class="main"><span class="wrap">관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</span></span>
+                        <span class="meta"><span class="keys"><span class="kbd">Enter</span></span>전체 로그</span>
+                    </li>
+                    <li class="row enter" style="--delay: 0.45s">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-bash" /></svg></span>
+                        <span class="main"><span class="tool">Bash</span><span class="mono">npm test -- admin</span></span>
+                        <span class="meta"><span class="mono">02:19:47</span></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-edit" /></svg></span>
+                        <span class="main"><span class="tool">Edit</span><span class="mono">migrations/20261014_add_search_index.sql</span></span>
+                        <span class="meta"><span class="mono">02:19:31</span></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-edit" /></svg></span>
+                        <span class="main"><span class="tool">Edit</span><span class="mono">src/admin/searchController.js</span></span>
+                        <span class="meta"><span class="mono">02:19:02</span></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-read" /></svg></span>
+                        <span class="main"><span class="tool">Read</span><span class="mono">src/admin/searchController.js</span></span>
+                        <span class="meta"><span class="mono">02:18:30</span></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-grep" /></svg></span>
+                        <span class="main"><span class="tool">Grep</span><span class="mono">"searchOrders" src/admin</span></span>
+                        <span class="meta"><span class="mono">02:17:12</span></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>회차 기록</b><span>커밋 3 <span class="add">+240</span> <span class="del">−49</span></span></h2>
+                <ul>
+                    <li class="row">
+                        <span class="icon ok"><svg width="14" height="14"><use href="#i-check" /></svg></span>
+                        <span class="main"><span>2회차 성공</span><span class="muted">커밋 1</span></span>
+                        <span class="meta"><span class="mono">01:23–02:07</span></span>
+                    </li>
+                    <li class="row commit">
+                        <span class="icon plain"><svg width="14" height="14"><use href="#i-commit" /></svg></span>
+                        <span class="main"><span class="mono hash">c51e8aa</span><span><span class="tag">[ap]</span> 결제 재시도 테스트 보강</span></span>
+                        <span class="meta mono"><span class="add">+56</span><span class="del">−12</span></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon ok"><svg width="14" height="14"><use href="#i-check" /></svg></span>
+                        <span class="main"><span>1회차 성공</span><span class="muted">커밋 2</span></span>
+                        <span class="meta"><span class="mono">00:30–01:22</span></span>
+                    </li>
+                    <li class="row commit">
+                        <span class="icon plain"><svg width="14" height="14"><use href="#i-commit" /></svg></span>
+                        <span class="main"><span class="mono hash">a3f9c21</span><span><span class="tag">[ap]</span> 주문 목록 API에 커서 페이지네이션 추가</span></span>
+                        <span class="meta mono"><span class="add">+142</span><span class="del">−21</span></span>
+                    </li>
+                    <li class="row commit">
+                        <span class="icon plain"><svg width="14" height="14"><use href="#i-commit" /></svg></span>
+                        <span class="main"><span class="mono hash">7be0d14</span><span><span class="tag">[ap]</span> 결제 재시도에 지수 백오프 적용</span></span>
+                        <span class="meta mono"><span class="add">+42</span><span class="del">−16</span></span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <span class="status"><span class="dot"></span>3회차 진행 중</span>
+            <span class="clock muted">남은 시간 <b class="clock">04:39:50</b></span>
+            <span class="grow"></span>
+            <button class="action primary">종료 신호<span class="keys"><span class="kbd">Ctrl</span><span class="kbd">Enter</span></span></button>
+            <span class="vr"></span>
+            <button class="action">설정<span class="keys"><span class="kbd">Ctrl</span><span class="kbd">,</span></span></button>
+        </footer>
+    </section>
+
+    <!-- 설정 -->
+    <section class="page" data-page="settings" aria-label="설정">
+        <div class="input">
+            <div class="search"><span class="crumb">AutoPilot<span class="sep">›</span><span class="here">설정</span></span><span class="caret"></span><span>설정 검색</span></div>
+        </div>
+
+        <div class="results">
+            <div class="group">
+                <h2 class="group-head"><b>폴더</b><span>실행 중엔 프로젝트를 바꿀 수 없어요</span></h2>
+                <ul>
+                    <li class="row tall">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-folder" /></svg></span>
+                        <span class="stack"><span>대상 프로젝트</span><span class="sub mono">C:\Users\dev\Projects\shop-api</span></span>
+                        <span class="meta"><button class="pill-btn" disabled>폴더 선택</button></span>
+                    </li>
+                    <li class="row tall">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-folder" /></svg></span>
+                        <span class="stack"><span>Claude 데이터 폴더 <span class="badge">자동 감지</span></span><span class="sub mono">C:\Users\dev\.claude</span><span class="sub">메모리·지침·스킬이 있는 .claude 폴더예요.<br />추가한 계정도 이 폴더의 데이터를 함께 써요.</span></span>
+                        <span class="meta"><button class="pill-btn">폴더 변경</button><button class="pill-btn">자동 감지</button></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>개선 정책</b></h2>
+                <ul>
+                    <li class="row tall selected">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-loop" /></svg></span>
+                        <span class="stack"><span>자율개선</span><span class="sub">작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요</span></span>
+                        <span class="meta"><svg class="check" width="16" height="16"><use href="#i-check" /></svg></span>
+                    </li>
+                    <li class="row tall">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-list" /></svg></span>
+                        <span class="stack"><span>지시개선</span><span class="sub">적어 둔 작업만 처리하고 끝나요</span></span>
+                        <span class="meta"></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>사용량 한도</b></h2>
+                <ul>
+                    <li class="row tall">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-plus" /></svg></span>
+                        <span class="stack"><span>대기한 시간만큼 종료 시각 연장</span><span class="sub">한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</span></span>
+                        <span class="meta"><span class="switch" role="switch" aria-checked="true"></span></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>기록</b></h2>
+                <ul>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-list" /></svg></span>
+                        <span class="main"><span>전체 기록 보기</span></span>
+                        <span class="meta"></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-doc" /></svg></span>
+                        <span class="main"><span>리포트 열기</span></span>
+                        <span class="meta"></span>
+                    </li>
+                    <li class="row danger">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-reset" /></svg></span>
+                        <span class="main"><span>진행 기록 초기화</span></span>
+                        <span class="meta">확인 후 지워요</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <span class="muted">AutoPilot v0.1.0</span>
+            <span class="grow"></span>
+            <span class="action">선택<span class="keys"><span class="kbd">Enter</span></span></span>
+            <span class="vr"></span>
+            <button class="action">뒤로<span class="keys"><span class="kbd">Esc</span></span></button>
+        </footer>
+    </section>
+
+    <!-- 계정 -->
+    <section class="page" data-page="profile" aria-label="계정">
+        <div class="input">
+            <div class="search"><span class="crumb">AutoPilot<span class="sep">›</span><span class="here">계정</span></span><span class="caret"></span><span>계정 검색</span></div>
+        </div>
+
+        <div class="results">
+            <div class="who">
+                <span class="avatar big">개</span>
+                <span class="stack"><b>개발자</b><span class="sub">dev@example.com</span></span>
+                <span class="badge">Max 20x</span>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>계정 선택</b></h2>
+                <ul>
+                    <li class="row selected">
+                        <span class="avatar">기</span>
+                        <span class="main"><span>기본 계정</span><span class="muted">사용 중</span></span>
+                        <span class="meta"><svg class="check" width="16" height="16"><use href="#i-check" /></svg></span>
+                    </li>
+                    <li class="row">
+                        <span class="avatar off">회</span>
+                        <span class="main"><span>회사</span></span>
+                        <span class="meta">전환<span class="keys"><span class="kbd">Enter</span></span></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>계정 관리</b></h2>
+                <ul>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-plus" /></svg></span>
+                        <span class="main"><span>계정 추가</span></span>
+                        <span class="meta"></span>
+                    </li>
+                    <li class="row">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-key" /></svg></span>
+                        <span class="main"><span>다시 로그인</span></span>
+                        <span class="meta"></span>
+                    </li>
+                    <li class="row danger">
+                        <span class="icon"><svg width="14" height="14"><use href="#i-minus" /></svg></span>
+                        <span class="main"><span>제거</span></span>
+                        <span class="meta">확인 후 지워요</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="group">
+                <h2 class="group-head"><b>사용량과 한도</b></h2>
+                <ul>
+                    <li class="row tall usage-row">
+                        <span class="icon plain"></span>
+                        <span class="stack"><span>5시간 한도</span><span class="sub">03:00 리셋, 40분 후</span></span>
+                        <span class="meta"><span class="meter" style="--value: 42%"><i></i></span><span class="pct">42%</span></span>
+                    </li>
+                    <li class="row tall usage-row">
+                        <span class="icon plain"></span>
+                        <span class="stack"><span>주간 한도</span><span class="sub">10월 16일 09:00 리셋, 3일 후</span></span>
+                        <span class="meta"><span class="meter" style="--value: 63%"><i></i></span><span class="pct">63%</span></span>
+                    </li>
+                    <li class="row tall usage-row warn">
+                        <span class="icon plain"></span>
+                        <span class="stack"><span>주간 한도 (Opus)</span><span class="sub">10월 16일 09:00 리셋, 3일 후</span></span>
+                        <span class="meta"><span class="meter" style="--value: 78%"><i></i></span><span class="pct">78%</span></span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <span class="muted">02:18 기준</span>
+            <span class="grow"></span>
+            <button class="action">새로 고침<span class="keys"><span class="kbd">Ctrl</span><span class="kbd">R</span></span></button>
+            <span class="vr"></span>
+            <button class="action">뒤로<span class="keys"><span class="kbd">Esc</span></span></button>
+        </footer>
+    </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,1785 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 생각과 손</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --app: #111c2b;
+                --mind: #142235;
+                --hand: #0e1724;
+                --raise: #1a2c43;
+                --text: #eef2f8;
+                --code: #b9c6d8;
+                --muted: #8b9bb2;
+                --hair: rgba(238, 242, 248, 0.08);
+                --read: #8fb8ff;
+                --edit: #f2b45a;
+                --bash: #c6a2ff;
+                --grep: #7fe0c4;
+                --add: #7ee2a8;
+                --del: #ff9c8f;
+                --split: 53.5%;
+                --serif: "Noto Serif KR", "Nanum Myeongjo", Batang, "바탕", serif;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--app);
+                color: var(--text);
+                font: 400 14px/1.5 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--read);
+                outline-offset: 2px;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            code {
+                font-family: var(--mono);
+                font-size: 0.86em;
+            }
+
+            ins,
+            del {
+                text-decoration: none;
+            }
+
+            ins {
+                color: var(--add);
+            }
+
+            del {
+                color: var(--del);
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                height: 40px;
+                padding: 0 6px 0 18px;
+                flex: none;
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 16px;
+                filter: invert(1);
+                mix-blend-mode: screen;
+            }
+
+            .repo {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                padding-left: 14px;
+                border-left: 1px solid var(--hair);
+                font-size: 13px;
+                line-height: 16px;
+            }
+
+            .repo b {
+                font-weight: 600;
+            }
+
+            .repo code {
+                color: var(--muted);
+                font-size: 11.5px;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .controls .sep {
+                width: 1px;
+                height: 16px;
+                margin: 0 8px;
+                background: var(--hair);
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 28px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                color: var(--muted);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .win:hover {
+                background: rgba(238, 242, 248, 0.07);
+                color: var(--text);
+            }
+
+            .win.close:hover {
+                background: #c4413f;
+                color: #fff;
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: var(--raise);
+                color: var(--text);
+                box-shadow: inset 0 0 0 1px rgba(143, 184, 255, 0.35);
+            }
+
+            /* 두 마음: 왼쪽 생각, 오른쪽 손 */
+            .minds {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                min-height: 0;
+                background: linear-gradient(90deg, var(--mind) var(--split), var(--hand) var(--split));
+            }
+
+            .heads {
+                display: grid;
+                grid-template-columns: var(--split) 1fr;
+                flex: none;
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .head {
+                padding: 10px 16px 11px 24px;
+            }
+
+            .hand-head {
+                padding-left: 30px;
+            }
+
+            .head p {
+                margin: 0;
+            }
+
+            .head-top {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                height: 22px;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .label {
+                color: var(--text);
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            .mind-head .label {
+                font-family: var(--serif);
+            }
+
+            .head-main {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                margin-top: 4px !important;
+                white-space: nowrap;
+            }
+
+            .head-main b {
+                font: 700 19px/1.3 var(--serif);
+            }
+
+            .head-main span {
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .head-main .remain {
+                margin-left: auto;
+                color: var(--muted);
+            }
+
+            .remain time {
+                color: var(--text);
+                font: 500 14px/1 var(--mono);
+            }
+
+            .ledger {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 22px;
+                margin-right: -6px;
+                padding: 0 6px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .ledger code {
+                font-size: 11.5px;
+            }
+
+            .ledger:hover {
+                background: rgba(238, 242, 248, 0.06);
+                color: var(--text);
+            }
+
+            .ledger .icon {
+                width: 11px;
+                height: 11px;
+            }
+
+            .counters {
+                display: flex;
+                align-items: baseline;
+                gap: 14px;
+                margin-top: 4px !important;
+                height: 25px;
+                color: var(--muted);
+                font-size: 12px;
+                white-space: nowrap;
+            }
+
+            .counters b {
+                display: inline-block;
+                margin-right: 5px;
+                color: var(--text);
+                font: 500 16px/1.3 var(--mono);
+            }
+
+            .counters b.tick {
+                animation: count-in 480ms ease-out;
+            }
+
+            @keyframes count-in {
+                from {
+                    opacity: 0.2;
+                }
+            }
+
+            /* 흐름 */
+            .stream {
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-end;
+                flex: 1;
+                min-height: 0;
+                margin: 0;
+                padding: 0 0 12px;
+                overflow: hidden;
+                list-style: none;
+                -webkit-mask: linear-gradient(to bottom, transparent, #000 22%);
+            }
+
+            .step {
+                display: grid;
+                grid-template-columns: var(--split) 1fr;
+                flex: none;
+                padding-bottom: 16px;
+                transition: opacity 420ms ease-in;
+            }
+
+            .step.leaving {
+                opacity: 0;
+            }
+
+            .thought {
+                padding: 0 40px 0 24px;
+            }
+
+            .thought time {
+                display: block;
+                height: 18px;
+                color: var(--muted);
+                font: 400 11px/18px var(--mono);
+            }
+
+            .step[data-d="0"] .thought time {
+                color: var(--edit);
+            }
+
+            .thought p {
+                margin: 0;
+                font-family: var(--serif);
+                text-wrap: pretty;
+                transform-origin: 0 0;
+                transition: color 500ms ease-out;
+            }
+
+            .step[data-d="0"] p {
+                color: var(--text);
+                font-size: 24px;
+                font-weight: 500;
+                line-height: 1.5;
+                letter-spacing: -0.01em;
+            }
+
+            .step[data-d="1"] p {
+                color: rgba(238, 242, 248, 0.82);
+                font-size: 18px;
+                line-height: 1.55;
+            }
+
+            .step[data-d="2"] p {
+                color: rgba(238, 242, 248, 0.68);
+                font-size: 16px;
+                line-height: 1.6;
+            }
+
+            .step[data-d="3"] p {
+                color: rgba(238, 242, 248, 0.56);
+                font-size: 15px;
+                line-height: 1.6;
+            }
+
+            .thought code {
+                font-size: 0.82em;
+            }
+
+            .unsaid {
+                color: transparent;
+            }
+
+            .caret {
+                display: inline-block;
+                width: 2px;
+                height: 0.92em;
+                margin: 0 1px;
+                vertical-align: -0.1em;
+                background: var(--edit);
+                animation: blink 1.1s steps(1) infinite;
+            }
+
+            .speaking .caret {
+                animation: none;
+            }
+
+            @keyframes blink {
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            .hand {
+                min-width: 0;
+                padding: 20px 16px 0 30px;
+                color: var(--code);
+                font: 400 11px/19px var(--mono);
+            }
+
+            .step[data-d="0"] .hand {
+                padding-top: 27px;
+            }
+
+            .step[data-d="1"] .hand {
+                padding-top: 22px;
+            }
+
+            .step[data-d="2"] .hand {
+                padding-top: 21px;
+            }
+
+            .line {
+                transition: opacity 160ms ease-out;
+            }
+
+            .line.pending {
+                opacity: 0;
+            }
+
+            .act {
+                display: grid;
+                grid-template-columns: 38px minmax(0, 1fr);
+                color: #d3dce8;
+            }
+
+            .act b {
+                font-weight: 600;
+            }
+
+            .act span {
+                overflow-wrap: anywhere;
+            }
+
+            [data-tool="Read"] > b {
+                color: var(--read);
+            }
+            [data-tool="Edit"] > b {
+                color: var(--edit);
+            }
+            [data-tool="Bash"] > b {
+                color: var(--bash);
+            }
+            [data-tool="Grep"] > b {
+                color: var(--grep);
+            }
+            [data-tool="결과"] > b {
+                color: var(--add);
+                font-family: var(--sans);
+                font-size: 11.5px;
+            }
+
+            .act.result span {
+                color: var(--add);
+                font-weight: 600;
+            }
+
+            .out {
+                padding-left: 38px;
+                color: var(--muted);
+                white-space: pre;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .out.add {
+                color: var(--add);
+            }
+
+            .out.del {
+                color: var(--del);
+            }
+
+            .out.note {
+                font-family: var(--sans);
+                font-size: 12px;
+            }
+
+            .cursor {
+                display: inline-block;
+                width: 7px;
+                height: 13px;
+                margin-left: 38px;
+                vertical-align: -2px;
+                background: var(--code);
+                animation: blink 0.9s steps(1) infinite;
+            }
+
+            .wires {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                overflow: visible;
+                pointer-events: none;
+            }
+
+            .wire {
+                fill: none;
+                stroke: rgba(185, 198, 216, 0.24);
+                stroke-width: 1;
+            }
+
+            .wire.now {
+                stroke: rgba(238, 242, 248, 0.62);
+            }
+
+            .node {
+                stroke: none;
+            }
+
+            /* 컴포저 */
+            .composer {
+                display: grid;
+                grid-template-columns: calc(53.5vw - 12px) 1fr;
+                flex: none;
+                margin: 12px;
+                border-radius: 14px;
+                background: var(--raise);
+                box-shadow: inset 0 0 0 1px var(--hair);
+            }
+
+            .cell {
+                display: grid;
+                grid-template-rows: 40px 50px;
+                min-width: 0;
+            }
+
+            .hand-cell {
+                border-left: 1px solid var(--hair);
+            }
+
+            .cell > div,
+            .cell > .stop-wrap {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+                padding: 0 12px;
+            }
+
+            .cell > div:first-child {
+                border-bottom: 1px solid var(--hair);
+                font-size: 13px;
+            }
+
+            .ticks {
+                display: flex;
+                gap: 3px;
+            }
+
+            .ticks i {
+                display: grid;
+                place-items: center;
+                width: 15px;
+                height: 15px;
+                border-radius: 50%;
+                background: rgba(126, 226, 168, 0.16);
+                color: var(--add);
+            }
+
+            .ticks i svg {
+                width: 9px;
+                height: 9px;
+                stroke-width: 2.2;
+            }
+
+            .ticks i.now {
+                background: none;
+                box-shadow: inset 0 0 0 1.5px var(--edit);
+            }
+
+            .ticks i.now::after {
+                content: "";
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: var(--edit);
+            }
+
+            .task-now {
+                overflow: hidden;
+                font-weight: 500;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            .lock {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                margin-left: auto;
+                color: var(--muted);
+                font-size: 12px;
+                white-space: nowrap;
+            }
+
+            .lock .icon,
+            .policy .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .policy {
+                color: var(--muted);
+                white-space: nowrap;
+            }
+
+            .policy b {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 32px;
+                padding: 0 10px;
+                border: 0;
+                border-radius: 999px;
+                background: rgba(238, 242, 248, 0.07);
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .pill:hover {
+                background: rgba(238, 242, 248, 0.12);
+            }
+
+            .pill .chev {
+                width: 11px;
+                height: 11px;
+                color: var(--muted);
+            }
+
+            .pill .mark {
+                width: 16px;
+                height: 16px;
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 13px;
+            }
+
+            .bars i {
+                width: 3px;
+                border-radius: 1px;
+                background: rgba(238, 242, 248, 0.22);
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7px;
+            }
+            .bars i:nth-child(3) {
+                height: 9px;
+            }
+            .bars i:nth-child(4) {
+                height: 11px;
+            }
+            .bars i:nth-child(5) {
+                height: 13px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: var(--text);
+            }
+
+            .stop {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                width: 100%;
+                height: 34px;
+                border: 0;
+                border-radius: 999px;
+                background: var(--text);
+                color: var(--app);
+                font-size: 13.5px;
+                font-weight: 650;
+            }
+
+            .stop:hover {
+                background: #fff;
+            }
+
+            .stop i {
+                width: 9px;
+                height: 9px;
+                border-radius: 2px;
+                background: currentColor;
+            }
+
+            /* 패널: 라벨은 생각 쪽, 조작은 손 쪽 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 5;
+                background: rgba(7, 13, 22, 0.55);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 220ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .sheet {
+                position: fixed;
+                top: 40px;
+                right: 0;
+                bottom: 0;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                width: 452px;
+                background: linear-gradient(90deg, var(--mind) 136px, var(--hand) 136px);
+                box-shadow:
+                    inset 1px 0 0 var(--hair),
+                    -30px 0 60px -30px rgba(2, 8, 14, 0.85);
+                visibility: hidden;
+                opacity: 0;
+                transition:
+                    opacity 160ms ease-in,
+                    visibility 0s 160ms;
+            }
+
+            .drop {
+                position: fixed;
+                top: 44px;
+                right: 167px;
+                z-index: 10;
+                width: 380px;
+                border-radius: 14px;
+                background: linear-gradient(90deg, var(--mind) 104px, var(--hand) 104px);
+                box-shadow:
+                    inset 0 0 0 1px var(--hair),
+                    0 28px 56px -18px rgba(2, 8, 14, 0.9);
+                overflow: hidden;
+                visibility: hidden;
+                opacity: 0;
+                transition:
+                    opacity 160ms ease-in,
+                    visibility 0s 160ms;
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                visibility: visible;
+                opacity: 1;
+                transition: opacity 220ms ease-out;
+            }
+
+            .row {
+                display: grid;
+                grid-template-columns: 136px minmax(0, 1fr);
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .drop .row {
+                grid-template-columns: 104px minmax(0, 1fr);
+            }
+
+            .row > h2,
+            .row > h3 {
+                margin: 0;
+                padding: 17px 14px 17px 22px;
+                font-family: var(--serif);
+                font-weight: 600;
+            }
+
+            .drop .row > h3 {
+                padding-left: 18px;
+            }
+
+            .row > h2 {
+                font-size: 22px;
+                font-weight: 700;
+                line-height: 1.3;
+            }
+
+            .row > h3 {
+                font-size: 14px;
+                line-height: 1.45;
+            }
+
+            .row > h3 small {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-top: 4px;
+                color: var(--muted);
+                font: 400 12px/1.4 var(--sans);
+            }
+
+            .row > h3 small .icon {
+                width: 11px;
+                height: 11px;
+            }
+
+            .row > div {
+                min-width: 0;
+                padding: 17px 20px 17px 18px;
+            }
+
+            .row.title-row > div {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .path {
+                display: block;
+                overflow: hidden;
+                color: var(--text);
+                font: 400 12.5px/1.6 var(--mono);
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            .path-line {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .badge {
+                flex: none;
+                padding: 1px 8px;
+                border-radius: 999px;
+                background: rgba(127, 224, 196, 0.12);
+                color: var(--grep);
+                font-size: 11.5px;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+
+            .desc {
+                margin: 4px 0 0;
+                color: var(--muted);
+                font-size: 12.5px;
+                line-height: 1.5;
+            }
+
+            .buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 10px;
+            }
+
+            .soft {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 30px;
+                padding: 0 11px;
+                border: 0;
+                border-radius: 8px;
+                background: rgba(238, 242, 248, 0.07);
+                box-shadow: inset 0 0 0 1px var(--hair);
+                font-size: 12.5px;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+
+            .soft:hover {
+                background: rgba(238, 242, 248, 0.12);
+            }
+
+            .soft[disabled] {
+                background: none;
+                color: var(--muted);
+                cursor: not-allowed;
+            }
+
+            .soft.danger {
+                color: var(--del);
+            }
+
+            .soft .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .option {
+                display: grid;
+                grid-template-columns: 26px 1fr;
+                padding: 2px 0;
+            }
+
+            .option + .option {
+                margin-top: 8px;
+            }
+
+            .option strong {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .option small {
+                display: block;
+                color: var(--muted);
+                font-size: 12.5px;
+                line-height: 1.45;
+            }
+
+            .option[aria-checked="false"] strong {
+                color: var(--code);
+                font-weight: 500;
+            }
+
+            .radio {
+                display: grid;
+                place-items: center;
+                width: 16px;
+                height: 16px;
+                margin-top: 2px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px rgba(238, 242, 248, 0.3);
+            }
+
+            [aria-checked="true"] > .radio {
+                box-shadow: inset 0 0 0 1.5px var(--read);
+            }
+
+            [aria-checked="true"] > .radio::after {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--read);
+            }
+
+            .switch-line {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            .switch-line strong {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .switch {
+                position: relative;
+                flex: none;
+                width: 38px;
+                height: 22px;
+                margin-top: 1px;
+                border: 0;
+                border-radius: 999px;
+                background: var(--add);
+            }
+
+            .switch::after {
+                content: "";
+                position: absolute;
+                top: 3px;
+                right: 3px;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: var(--hand);
+            }
+
+            .links {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 2px;
+            }
+
+            .link {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 28px;
+                padding: 0;
+                border: 0;
+                background: none;
+                color: var(--text);
+                font-size: 13.5px;
+            }
+
+            .link .icon {
+                width: 12px;
+                height: 12px;
+                color: var(--muted);
+            }
+
+            .link:hover {
+                color: var(--read);
+            }
+
+            .link.danger {
+                color: var(--del);
+            }
+
+            .link small {
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .row.foot {
+                margin-top: auto;
+                border-top: 1px solid var(--hair);
+                border-bottom: 0;
+            }
+
+            .row.foot > h3 {
+                font-family: var(--sans);
+                font-weight: 400;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .row.foot > div {
+                color: var(--muted);
+                font: 400 12px/1.5 var(--mono);
+                align-self: center;
+            }
+
+            /* 프로필 */
+            .me-row > h3 {
+                display: flex;
+                align-items: center;
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 46px;
+                height: 46px;
+                border-radius: 50%;
+                background: var(--raise);
+                box-shadow: inset 0 0 0 1px rgba(143, 184, 255, 0.35);
+                color: var(--text);
+                font: 700 19px/1 var(--serif);
+            }
+
+            .me {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 10px;
+            }
+
+            .me strong {
+                display: block;
+                font: 700 18px/1.35 var(--serif);
+            }
+
+            .me small {
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .plan {
+                flex: none;
+                margin-top: 3px;
+                padding: 1px 8px;
+                border-radius: 999px;
+                background: rgba(198, 162, 255, 0.14);
+                color: var(--bash);
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+
+            .account {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                height: 34px;
+                padding: 0;
+                border: 0;
+                background: none;
+                font-size: 14px;
+                text-align: left;
+            }
+
+            .account[aria-checked="false"] {
+                color: var(--code);
+            }
+
+            .initial {
+                display: grid;
+                place-items: center;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                background: rgba(238, 242, 248, 0.08);
+                color: var(--code);
+                font-size: 11.5px;
+                font-weight: 650;
+            }
+
+            .account[aria-checked="true"] .initial {
+                background: rgba(143, 184, 255, 0.16);
+                color: var(--read);
+            }
+
+            .account .tick {
+                width: 14px;
+                height: 14px;
+                margin-left: auto;
+                color: var(--read);
+                stroke-width: 2;
+            }
+
+            .meters {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .meters li + li {
+                margin-top: 12px;
+            }
+
+            .meter-top {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                font-size: 13.5px;
+            }
+
+            .meter-top b {
+                font: 500 13px/1.4 var(--mono);
+            }
+
+            .meter {
+                height: 5px;
+                margin: 6px 0 5px;
+                border-radius: 3px;
+                background: rgba(238, 242, 248, 0.09);
+                overflow: hidden;
+            }
+
+            .meter i {
+                display: block;
+                width: var(--v);
+                height: 100%;
+                border-radius: 3px;
+                background: var(--read);
+            }
+
+            .meters .warn .meter i {
+                background: var(--edit);
+            }
+
+            .meters .warn .meter-top b {
+                color: var(--edit);
+            }
+
+            .meters small {
+                display: flex;
+                justify-content: space-between;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .drop .row.foot > div {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                padding-top: 10px;
+                padding-bottom: 10px;
+                font: inherit;
+            }
+
+            .drop .row.foot > h3 {
+                align-self: center;
+            }
+
+            .sr-only {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                overflow: hidden;
+                clip-path: inset(50%);
+            }
+
+            /* 위치가 바뀌는 움직임은 줄인 모션 설정이 아닐 때만 쓴다. 타이핑·투명도·깜박임은 두 경우 모두 유지한다. */
+            @media (prefers-reduced-motion: no-preference) {
+                .line {
+                    transition:
+                        opacity 160ms ease-out,
+                        transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+                }
+
+                .line.pending {
+                    transform: translateX(-8px);
+                }
+
+                .sheet {
+                    transform: translateX(36px);
+                    transition:
+                        opacity 160ms ease-in,
+                        transform 160ms ease-in,
+                        visibility 0s 160ms;
+                }
+
+                .drop {
+                    transform: translateY(-6px);
+                    transition:
+                        opacity 160ms ease-in,
+                        transform 160ms ease-in,
+                        visibility 0s 160ms;
+                }
+
+                [data-screen="settings"] #settings-panel,
+                [data-screen="profile"] #profile-panel {
+                    transform: none;
+                    transition:
+                        opacity 220ms ease-out,
+                        transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="6" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-next" viewBox="0 0 12 12"><path d="M4.5 3 7.5 6l-3 3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="i-out" viewBox="0 0 16 16"><path d="M9.5 3H13v3.5M13 3 7.5 8.5M11.5 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1h2.5" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <span class="repo"><b>shop-api</b><code>ai/autopilot</code></span>
+            <div class="controls">
+                <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                    <svg viewBox="0 0 12 12">
+                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                        <circle cx="6" cy="6" r="1.6" />
+                    </svg>
+                </button>
+                <span class="sep"></span>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <main class="minds" aria-label="3회차 진행">
+            <div class="heads">
+                <section class="head mind-head" aria-label="생각">
+                    <p class="head-top"><span class="label">생각</span><span>00:30부터 1시간 50분째</span></p>
+                    <p class="head-main"><b>3회차</b><span>02:08부터 12분째</span><span class="remain"><time class="remain-time">04:39:50</time> 남음</span></p>
+                </section>
+                <section class="head hand-head" aria-label="손">
+                    <p class="head-top">
+                        <span class="label">손</span>
+                        <button class="ledger" type="button" aria-label="회차 기록과 전체 로그 열기">커밋 3개 <code><ins>+240</ins> <del>−49</del></code><svg class="icon"><use href="#i-next" /></svg></button>
+                    </p>
+                    <p class="counters"><span><b data-count="tools">186</b>도구 호출</span><span><b>41</b>읽은 파일</span><span><b data-count="tests">9</b>테스트</span></p>
+                </section>
+            </div>
+
+            <ol class="stream" aria-live="off"></ol>
+            <svg class="wires" aria-hidden="true"></svg>
+        </main>
+
+        <form class="composer" aria-label="작업과 실행 옵션" onsubmit="return false">
+            <div class="cell mind-cell">
+                <div title="실행 중에는 작업을 바꿀 수 없어요">
+                    <span class="ticks" aria-hidden="true">
+                        <i><svg class="icon"><use href="#i-check" /></svg></i>
+                        <i><svg class="icon"><use href="#i-check" /></svg></i>
+                        <i class="now"></i>
+                    </span>
+                    <span class="task-now">관리자 화면 검색 속도 개선</span>
+                    <span class="lock"><svg class="icon"><use href="#i-lock" /></svg>작업 2/3</span>
+                    <span class="sr-only">처리할 작업: 주문 목록 API에 페이지네이션 추가, 결제 실패 시 재시도 로직 점검, 관리자 화면 검색 속도 개선</span>
+                </div>
+                <div>
+                    <button type="button" class="pill" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                    <button type="button" class="pill" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                </div>
+            </div>
+            <div class="cell hand-cell">
+                <div class="policy" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>자율개선</b><span><b>07:00</b> 종료</span></div>
+                <div class="stop-wrap"><button type="submit" class="stop"><i aria-hidden="true"></i>종료 신호</button></div>
+            </div>
+        </form>
+
+        <div class="scrim"></div>
+
+        <aside class="sheet" id="settings-panel" aria-label="설정">
+            <div class="row title-row"><h2>설정</h2><div></div></div>
+
+            <div class="row">
+                <h3>대상 프로젝트<small><svg class="icon"><use href="#i-lock" /></svg>실행 중 잠김</small></h3>
+                <div>
+                    <span class="path">C:\Users\dev\Projects\shop-api</span>
+                    <div class="buttons"><button class="soft" disabled><svg class="icon"><use href="#i-folder" /></svg>폴더 선택</button></div>
+                </div>
+            </div>
+
+            <div class="row">
+                <h3>Claude 데이터 폴더</h3>
+                <div>
+                    <span class="path-line"><span class="path">C:\Users\dev\.claude</span><span class="badge">자동 감지</span></span>
+                    <p class="desc">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                    <div class="buttons"><button class="soft"><svg class="icon"><use href="#i-folder" /></svg>폴더 변경</button><button class="soft">자동 감지</button></div>
+                </div>
+            </div>
+
+            <div class="row">
+                <h3>개선 정책<small><svg class="icon"><use href="#i-lock" /></svg>실행 중 잠김</small></h3>
+                <div role="radiogroup" aria-label="개선 정책">
+                    <div class="option" role="radio" aria-checked="true" aria-disabled="true">
+                        <span class="radio"></span>
+                        <span><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                    </div>
+                    <div class="option" role="radio" aria-checked="false" aria-disabled="true">
+                        <span class="radio"></span>
+                        <span><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <h3>사용량 한도</h3>
+                <div class="switch-line">
+                    <span><strong>대기한 시간만큼 종료 시각 연장</strong><small class="desc">한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                    <button class="switch" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장"></button>
+                </div>
+            </div>
+
+            <div class="row">
+                <h3>기록</h3>
+                <div class="links">
+                    <button class="link">전체 기록 보기<svg class="icon"><use href="#i-next" /></svg></button>
+                    <button class="link">리포트 열기<svg class="icon"><use href="#i-out" /></svg></button>
+                    <button class="link danger">진행 기록 초기화</button>
+                </div>
+            </div>
+
+            <div class="row foot"><h3>앱 버전</h3><div>v0.1.0</div></div>
+        </aside>
+
+        <aside class="drop" id="profile-panel" aria-label="프로필">
+            <div class="row me-row">
+                <h3><span class="avatar">개</span></h3>
+                <div class="me">
+                    <span><strong>개발자</strong><small>dev@example.com</small></span>
+                    <span class="plan">Max 20x</span>
+                </div>
+            </div>
+
+            <div class="row">
+                <h3>계정</h3>
+                <div>
+                    <div role="radiogroup" aria-label="계정 선택">
+                        <button class="account" role="radio" aria-checked="true"><span class="initial">개</span>기본 계정<svg class="icon tick"><use href="#i-check" /></svg></button>
+                        <button class="account" role="radio" aria-checked="false"><span class="initial">회</span>회사</button>
+                    </div>
+                    <div class="buttons">
+                        <button class="soft"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                        <button class="soft">다시 로그인</button>
+                        <button class="soft danger">제거</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <h3>사용량과 한도</h3>
+                <div>
+                    <ul class="meters">
+                        <li style="--v: 42%">
+                            <div class="meter-top"><span>5시간 한도</span><b>42%</b></div>
+                            <div class="meter"><i></i></div>
+                            <small><span>03:00 리셋</span><span>40분 후</span></small>
+                        </li>
+                        <li style="--v: 63%">
+                            <div class="meter-top"><span>주간 한도</span><b>63%</b></div>
+                            <div class="meter"><i></i></div>
+                            <small><span>10월 16일 09:00 리셋</span><span>3일 후</span></small>
+                        </li>
+                        <li class="warn" style="--v: 78%">
+                            <div class="meter-top"><span>주간 한도 (Opus)</span><b>78%</b></div>
+                            <div class="meter"><i></i></div>
+                            <small><span>10월 16일 09:00 리셋</span><span>3일 후</span></small>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="row foot">
+                <h3>02:18 기준</h3>
+                <div><button class="soft"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button></div>
+            </div>
+        </aside>
+
+        <script>
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector(".scrim").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+
+            const STEPS = [
+                {
+                    time: "02:17:12",
+                    thought: "관리자 검색이 왜 느린지부터 찾아봤어요.",
+                    lines: [{ tool: "Grep", text: '"searchOrders" src/admin' }, { out: "searchController.js:23" }, { out: "routes.js:9" }, { out: "search.test.js:8" }]
+                },
+                {
+                    time: "02:18:30",
+                    thought: "읽어 보니 검색할 때마다 주문 표 전체를 훑고 있었어요.",
+                    lines: [{ tool: "Read", text: "src/admin/searchController.js" }, { out: "22  SELECT * FROM orders" }, { out: "23  WHERE lower(name)" }, { out: "24    LIKE '%' || $1 || '%'" }]
+                },
+                {
+                    time: "02:19:02",
+                    thought: "이름 앞부분으로 찾도록 쿼리를 고쳐서 인덱스를 탈 수 있게 했어요.",
+                    lines: [{ tool: "Edit", text: "src/admin/searchController.js" }, { del: "WHERE lower(name)" }, { del: "  LIKE '%' || $1 || '%'" }, { add: "WHERE name_lower" }, { add: "  LIKE $1 || '%'" }]
+                },
+                {
+                    time: "02:19:31",
+                    thought: "<code>name_lower</code> 인덱스를 만드는 마이그레이션을 더했어요.",
+                    lines: [{ tool: "Edit", text: "migrations/<wbr>20261014_add_search_index.sql" }, { add: "CREATE INDEX idx_name_lower" }, { add: "  ON orders (name_lower);" }]
+                },
+                {
+                    time: "02:19:47",
+                    thought: "테스트를 돌렸고 admin 테스트 24개가 모두 통과했어요.",
+                    lines: [{ tool: "Bash", text: "npm test -- admin" }, { out: "PASS admin/search.test.js" }, { out: "PASS admin/orders.test.js" }, { tally: 24, out: "Tests: {n} passed, 24 total" }]
+                },
+                {
+                    time: "02:20:05",
+                    thought: "관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.",
+                    lines: [{ tool: "결과", text: "1.2s → 0.2s", result: true }, { note: "6배 빨라졌어요" }]
+                },
+                {
+                    time: "지금",
+                    thought: "커밋하기 전에 바뀐 쿼리를 한 번 더 살펴보고 있어요.",
+                    lines: [{ tool: "Read", text: "src/admin/searchController.js" }, { out: "23  WHERE name_lower" }, { out: "24    LIKE $1 || '%'" }, { tool: "Bash", text: "git diff src/admin" }, { del: "WHERE lower(name)" }, { add: "WHERE name_lower" }, { cursor: true }]
+                }
+            ];
+
+            const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const stream = document.querySelector(".stream");
+            const wires = document.querySelector(".wires");
+            const minds = document.querySelector(".minds");
+            const counts = {};
+            const tally = { tools: 184, tests: 9 };
+            const toolColors = { Read: "#8fb8ff", Edit: "#f2b45a", Bash: "#c6a2ff", Grep: "#7fe0c4", 결과: "#7ee2a8" };
+
+            document.querySelectorAll("[data-count]").forEach((element) => (counts[element.dataset.count] = element));
+
+            const bump = (name) => {
+                const element = counts[name];
+
+                tally[name] += 1;
+                element.classList.remove("tick");
+                void element.offsetWidth;
+                element.textContent = tally[name];
+                element.classList.add("tick");
+            };
+
+            const lineMarkup = (line) => {
+                if (line.tool) {
+                    return `<div class="line act${line.result ? " result" : ""}" data-tool="${line.tool}"><b>${line.tool}</b><span>${line.text}</span></div>`;
+                }
+
+                if (line.cursor) {
+                    return `<div class="line"><i class="cursor"></i></div>`;
+                }
+
+                if (line.add) {
+                    return `<div class="line out add">+ ${line.add}</div>`;
+                }
+
+                if (line.del) {
+                    return `<div class="line out del">- ${line.del}</div>`;
+                }
+
+                if (line.note) {
+                    return `<div class="line out note">${line.note}</div>`;
+                }
+
+                return `<div class="line out">${line.tally ? line.out.replace("{n}", line.tally) : line.out}</div>`;
+            };
+
+            // 생각 문장은 처음부터 전체 길이를 투명하게 잡아 두고 한 글자씩 드러낸다. 그래서 타이핑 중에 줄이 밀리지 않는다.
+            const makeStep = (step, said) => {
+                const element = document.createElement("li");
+
+                element.className = "step";
+                element.innerHTML = `<div class="thought"><time>${step.time}</time><p><span class="said"></span><i class="caret" aria-hidden="true"></i><span class="unsaid"></span></p></div><div class="hand">${step.lines.map(lineMarkup).join("")}</div>`;
+                element.step = step;
+                element.querySelector(".unsaid").innerHTML = step.thought;
+
+                if (said) {
+                    element.querySelector(".said").innerHTML = step.thought;
+                    element.querySelector(".unsaid").textContent = "";
+                    element.querySelector(".caret").remove();
+                } else {
+                    element.querySelectorAll(".line").forEach((line) => line.classList.add("pending"));
+                }
+
+                return element;
+            };
+
+            const setDistances = () => {
+                const steps = [...stream.children];
+
+                steps.forEach((element, index) => (element.dataset.d = Math.min(steps.length - 1 - index, 3)));
+            };
+
+            // 줄인 모션이 아니면 새 단계가 붙을 때 기존 단계를 원래 자리에서 미끄러지게 옮긴다(FLIP).
+            const appendStep = (element) => {
+                const before = new Map([...stream.children].map((child) => [child, { top: child.getBoundingClientRect().top, size: parseFloat(getComputedStyle(child.querySelector("p")).fontSize) }]));
+
+                stream.querySelectorAll(".caret, .cursor").forEach((mark) => mark.remove());
+                stream.append(element);
+                setDistances();
+
+                if (reduceMotion) {
+                    return;
+                }
+
+                before.forEach((was, child) => {
+                    const paragraph = child.querySelector("p");
+                    const shift = was.top - child.getBoundingClientRect().top;
+                    const scale = was.size / parseFloat(getComputedStyle(paragraph).fontSize);
+
+                    child.animate([{ transform: `translateY(${shift}px)` }, { transform: "none" }], { duration: 620, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+
+                    if (scale !== 1) {
+                        paragraph.animate([{ transform: `scale(${scale})` }, { transform: "none" }], { duration: 620, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+                    }
+                });
+
+                element.animate([{ opacity: 0, transform: "translateY(18px)" }, { opacity: 1, transform: "none" }], { duration: 520, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+            };
+
+            const speak = async (element, ms) => {
+                const said = element.querySelector(".said");
+                const unsaid = element.querySelector(".unsaid");
+                const nodes = [...unsaid.childNodes];
+
+                element.classList.add("speaking");
+
+                for (const node of nodes) {
+                    if (node.nodeType !== Node.TEXT_NODE) {
+                        said.append(node);
+                        await sleep(ms * 3);
+                        continue;
+                    }
+
+                    const text = node.textContent;
+                    const typed = document.createTextNode("");
+
+                    said.append(typed);
+
+                    for (let length = 1; length <= text.length; length += 1) {
+                        typed.textContent = text.slice(0, length);
+                        node.textContent = text.slice(length);
+                        await sleep(text[length - 1] === " " ? ms * 1.7 : ms);
+                    }
+
+                    node.remove();
+                }
+
+                element.classList.remove("speaking");
+            };
+
+            const act = async (element, gaps) => {
+                const lines = [...element.querySelectorAll(".line")];
+
+                for (const [index, line] of lines.entries()) {
+                    const spec = element.step.lines[index];
+
+                    await sleep(gaps[index] ?? 110);
+                    line.classList.remove("pending");
+
+                    if (spec.tool && spec.tool !== "결과") {
+                        bump("tools");
+                    }
+
+                    if (spec.tool === "Bash" && spec.text.startsWith("npm test")) {
+                        bump("tests");
+                    }
+
+                    if (spec.tally) {
+                        for (let count = 1; count <= spec.tally; count += 1) {
+                            line.textContent = spec.out.replace("{n}", count);
+                            await sleep(34);
+                        }
+                    }
+                }
+            };
+
+            const runStep = async (index, typeMs, gaps) => {
+                const element = makeStep(STEPS[index], false);
+
+                appendStep(element);
+                await Promise.all([speak(element, typeMs), act(element, gaps)]);
+            };
+
+            // 연결선: 생각 문장의 첫 줄에서 경계를 넘어 손 쪽 세로줄로 이어지고, 도구를 부른 줄마다 눈금을 단다.
+            const drawWires = () => {
+                const box = minds.getBoundingClientRect();
+                const steps = [...stream.children];
+                const listBox = stream.getBoundingClientRect();
+                const border = box.width * 0.535;
+                const parts = [];
+
+                steps.forEach((element) => {
+                    const paragraph = element.querySelector("p");
+                    const firstLine = parseFloat(getComputedStyle(paragraph).lineHeight);
+                    const textTop = paragraph.getBoundingClientRect().top - box.top;
+                    const shown = [...element.querySelectorAll(".line:not(.pending)")];
+                    const opacity = parseFloat(getComputedStyle(element).opacity);
+
+                    if (!shown.length || textTop + firstLine < listBox.top - box.top) {
+                        return;
+                    }
+
+                    const ty = textTop + Math.min(firstLine, paragraph.offsetHeight) / 2;
+                    const rows = shown.map((line) => {
+                        const rect = line.getBoundingClientRect();
+
+                        return { y: rect.top - box.top + rect.height / 2, tool: line.dataset.tool };
+                    });
+                    const first = rows[0].y;
+                    const last = rows[rows.length - 1].y;
+                    const spine = border + 13;
+                    const start = border - 30;
+                    const live = element.dataset.d === "0";
+                    const bend = Math.min(10, Math.abs(first - ty) / 2);
+                    const direction = first >= ty ? 1 : -1;
+                    let path = `M${start} ${ty}H${spine - bend}`;
+
+                    if (Math.abs(first - ty) > 0.5) {
+                        path += `Q${spine} ${ty} ${spine} ${ty + bend * direction}V${first}`;
+                    }
+
+                    path += `V${Math.max(first, last)}`;
+
+                    parts.push(`<path class="wire${live ? " now" : ""}" style="opacity:${opacity}" d="${path}" />`);
+                    rows.forEach((row) => {
+                        if (!row.tool) {
+                            return;
+                        }
+
+                        parts.push(`<path class="wire${live ? " now" : ""}" style="opacity:${opacity}" d="M${spine} ${row.y}h6" />`);
+                        parts.push(`<circle class="node" cx="${spine + 9.5}" cy="${row.y}" r="2.5" fill="${toolColors[row.tool]}" style="opacity:${opacity}" />`);
+                    });
+                    parts.push(`<circle class="node" cx="${start}" cy="${ty}" r="2" fill="${live ? "#eef2f8" : "rgba(185,198,216,.45)"}" style="opacity:${opacity}" />`);
+                });
+
+                wires.innerHTML = parts.join("");
+                requestAnimationFrame(drawWires);
+            };
+
+            const play = async () => {
+                STEPS.slice(0, 6).forEach((step) => stream.append(makeStep(step, true)));
+
+                const now = makeStep(STEPS[6], false);
+
+                stream.append(now);
+                setDistances();
+                requestAnimationFrame(drawWires);
+                await sleep(700);
+                await Promise.all([speak(now, 82), act(now, [480, 140, 140, 700, 140, 140, 140])]);
+
+                while (true) {
+                    await sleep(5200);
+
+                    const replay = [...stream.children].slice(-3);
+
+                    replay.forEach((element) => element.classList.add("leaving"));
+                    await sleep(460);
+                    replay.forEach((element) => element.remove());
+
+                    await runStep(4, 62, [420, 160, 160, 200]);
+                    await sleep(1100);
+                    await runStep(5, 62, [520, 260]);
+                    await sleep(1100);
+                    await runStep(6, 70, [480, 140, 140, 700, 140, 140, 140]);
+                }
+            };
+
+            const remain = document.querySelector(".remain-time");
+            let seconds = 4 * 3600 + 39 * 60 + 52;
+
+            const paintRemain = () => {
+                const pad = (value) => String(value).padStart(2, "0");
+
+                remain.textContent = `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor((seconds % 3600) / 60))}:${pad(seconds % 60)}`;
+            };
+
+            paintRemain();
+            setInterval(() => {
+                seconds -= 1;
+                paintRemain();
+            }, 1000);
+
+            counts.tools.textContent = tally.tools;
+            play();
+        </script>
+    </body>
+</html>

@@ -1,0 +1,1621 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 퇴고</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Nanum+Pen+Script&family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            @property --strike {
+                syntax: "<color>";
+                inherits: false;
+                initial-value: rgba(194, 54, 47, 0);
+            }
+
+            :root {
+                --page: #ffffff;
+                --ink: #1a1d23;
+                --ink-2: #5e6573;
+                --rule: #e6e8ec;
+                --wash: #f3f4f7;
+                --red: #c2362f;
+                --blue: #2753c9;
+                --add: #1b7f45;
+                --warn: #a35a00;
+                --margin: 140px;
+                --gutter: 22px;
+                --serif: "Noto Serif KR", "Nanum Myeongjo", Batang, "바탕", serif;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --pen: "Nanum Pen Script", "Gaegu", "Segoe Print", "Malgun Gothic", cursive;
+                --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--page);
+                color: var(--ink);
+                font: 400 16px/1.7 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--blue);
+                outline-offset: 2px;
+                border-radius: 4px;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            code {
+                font-family: var(--mono);
+                font-size: 0.84em;
+            }
+
+            ins,
+            del {
+                text-decoration: none;
+            }
+
+            .plus {
+                color: var(--add);
+            }
+
+            .minus {
+                color: var(--red);
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                height: 40px;
+                padding: 0 6px 0 16px;
+                flex: none;
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 17px;
+                mix-blend-mode: multiply;
+            }
+
+            .live {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding-left: 14px;
+                border-left: 1px solid var(--rule);
+                color: var(--ink-2);
+                font-size: 13px;
+                line-height: 1;
+            }
+
+            .live b {
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                color: var(--ink);
+                font-weight: 600;
+            }
+
+            .live b::before {
+                content: "";
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--red);
+                animation: breathe 2.4s ease-in-out infinite;
+            }
+
+            @keyframes breathe {
+                50% {
+                    opacity: 0.25;
+                }
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 28px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                color: var(--ink-2);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .win:hover {
+                background: var(--wash);
+                color: var(--ink);
+            }
+
+            .win.close:hover {
+                background: #e5484d;
+                color: #fff;
+            }
+
+            .sep {
+                width: 1px;
+                height: 16px;
+                margin: 0 6px;
+                background: var(--rule);
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: #edf1fb;
+                color: var(--blue);
+                box-shadow: inset 0 -2px 0 var(--blue);
+            }
+
+            /* 원고 */
+            .page {
+                position: relative;
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+                padding: 18px 24px 0 32px;
+            }
+
+            .grid {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) var(--margin);
+                column-gap: var(--gutter);
+            }
+
+            .masthead {
+                align-items: end;
+            }
+
+            .masthead h1 {
+                margin: 0;
+                font: 700 28px/1.3 var(--serif);
+                letter-spacing: -0.02em;
+            }
+
+            .dek {
+                margin: 6px 0 0;
+                color: var(--ink-2);
+                font-size: 14.5px;
+                line-height: 1.6;
+            }
+
+            .dek b {
+                color: var(--ink);
+                font-weight: 600;
+            }
+
+            .meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 2px 16px;
+                margin: 6px 0 0;
+                color: var(--ink-2);
+                font-size: 13px;
+                line-height: 20px;
+            }
+
+            .meta span {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .meta .icon {
+                width: 13px;
+                height: 13px;
+            }
+
+            .tally {
+                margin: 0;
+                font-size: 12.5px;
+                line-height: 19px;
+            }
+
+            .tally div {
+                display: flex;
+                align-items: baseline;
+                gap: 4px;
+            }
+
+            .tally div::after {
+                content: "";
+                order: 1;
+                flex: 1;
+                min-width: 6px;
+                border-bottom: 1px dotted #c3c8d0;
+                transform: translateY(-4px);
+            }
+
+            .tally dt {
+                color: var(--ink-2);
+            }
+
+            .tally dd {
+                order: 2;
+                margin: 0;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .tally .revisions dt,
+            .tally .revisions dd {
+                color: var(--red);
+            }
+
+            .tally dd code {
+                font-size: 11.5px;
+                font-weight: 500;
+            }
+
+            .count {
+                display: inline-block;
+            }
+
+            .count.tick {
+                animation: count-in 520ms ease-out;
+            }
+
+            @keyframes count-in {
+                from {
+                    opacity: 0.15;
+                }
+            }
+
+            .page hr {
+                margin: 16px 0 12px;
+                border: 0;
+                border-top: 1px solid var(--rule);
+            }
+
+            /* 회차 */
+            .round + .round {
+                margin-top: 12px;
+            }
+
+            .round-head {
+                align-items: baseline;
+            }
+
+            .round-head h2 {
+                display: flex;
+                align-items: baseline;
+                gap: 9px;
+                margin: 0;
+                font: 700 18px/1.6 var(--serif);
+            }
+
+            .round-head small {
+                color: var(--ink-2);
+                font: 400 13px/1 var(--sans);
+            }
+
+            .round-head .state {
+                color: var(--red);
+                font-weight: 600;
+            }
+
+            .round-head .open-log {
+                margin-left: auto;
+                padding: 0;
+                border: 0;
+                background: none;
+                color: var(--blue);
+                font: 600 13px/1 var(--sans);
+            }
+
+            .margin-note {
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.4;
+            }
+
+            .margin-note .ok {
+                color: var(--add);
+                font-weight: 600;
+            }
+
+            .line {
+                align-items: baseline;
+            }
+
+            .line p {
+                margin: 0;
+            }
+
+            .commit {
+                display: inline-flex;
+                align-items: baseline;
+                gap: 6px;
+                color: var(--ink);
+                font: 400 12px/1 var(--mono);
+                white-space: nowrap;
+            }
+
+            .commit .icon {
+                align-self: center;
+                width: 12px;
+                height: 12px;
+                color: var(--ink-2);
+            }
+
+            .commit del {
+                margin-left: -2px;
+            }
+
+            /* 지금 고쳐 쓰는 문단 */
+            .draft-wrap {
+                margin-top: 2px;
+            }
+
+            .draft {
+                min-height: calc(5 * 1.8em);
+                margin: 0;
+                line-height: 1.8;
+            }
+
+            .draft .old {
+                --strike: rgba(194, 54, 47, 0);
+                background-image: linear-gradient(var(--strike), var(--strike));
+                background-repeat: no-repeat;
+                background-position: 0 58%;
+                background-size: 100% 2px;
+                text-decoration: none;
+                transition:
+                    --strike 320ms ease-out,
+                    color 320ms ease-out;
+            }
+
+            .rev.struck .old {
+                --strike: var(--red);
+                color: var(--ink-2);
+            }
+
+            .draft .new {
+                text-decoration: underline dotted var(--add);
+                text-decoration-thickness: 1.5px;
+                text-underline-offset: 5px;
+            }
+
+            .draft .fading {
+                opacity: 0;
+                transition: opacity 520ms ease-in;
+            }
+
+            .caret {
+                display: inline-block;
+                width: 2px;
+                height: 18px;
+                margin-left: 1px;
+                vertical-align: -3px;
+                background: var(--red);
+                animation: blink 1.05s steps(1) infinite;
+            }
+
+            .typing .caret,
+            .caret.hold {
+                animation: none;
+            }
+
+            @keyframes blink {
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            .notes {
+                position: relative;
+            }
+
+            .note {
+                position: absolute;
+                top: var(--top, 0);
+                left: 0;
+                right: -6px;
+                margin: 0;
+                color: var(--blue);
+                font: 400 23px/1 var(--pen);
+                letter-spacing: 0.01em;
+                opacity: 0;
+                transition: opacity 360ms ease-out;
+            }
+
+            .note.shown {
+                opacity: 1;
+            }
+
+            .note::before {
+                content: "";
+                position: absolute;
+                top: 3px;
+                left: calc(var(--gutter) / -2 - 1px);
+                width: 2px;
+                height: var(--span, 0);
+                border-radius: 2px;
+                background: var(--blue);
+                opacity: 0.55;
+                transform-origin: top;
+            }
+
+            .note .pen-text {
+                display: block;
+                padding-top: 2px;
+            }
+
+            .now {
+                display: flex;
+                gap: 10px;
+                margin: 10px 0 0;
+                color: var(--ink-2);
+                font-size: 14.5px;
+                line-height: 1.6;
+            }
+
+            .now b {
+                flex: none;
+                color: var(--red);
+                font-weight: 600;
+            }
+
+            /* 각주처럼 짧은 선 아래에 이 문단의 근거가 된 도구 호출을 단다 */
+            .sources {
+                position: relative;
+                margin: 18px 0 0;
+                padding: 10px 0 0;
+                list-style: none;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 21px;
+            }
+
+            .sources::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 44px;
+                border-top: 1px solid var(--ink);
+            }
+
+            .sources span {
+                display: flex;
+                min-width: 0;
+            }
+
+            .sources b {
+                flex: none;
+                width: 42px;
+                color: var(--ink);
+                font-weight: 600;
+            }
+
+            .sources code {
+                overflow: hidden;
+                font-size: 12px;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            .sources time {
+                font: 400 12px/21px var(--mono);
+            }
+
+            .when {
+                display: flex;
+                align-items: center;
+                height: 21px;
+            }
+
+            .pen-tag {
+                margin: 1px 0 0 10px;
+                color: var(--blue);
+                font: 400 21px/21px var(--pen);
+            }
+
+            /* 여백에 맞춘 도구 막대 */
+            .fade {
+                position: absolute;
+                inset: auto 0 0;
+                height: 66px;
+                background: linear-gradient(rgba(255, 255, 255, 0), #fff 60%);
+                pointer-events: none;
+            }
+
+            .dock {
+                position: absolute;
+                right: 24px;
+                bottom: 14px;
+                left: 32px;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) var(--margin);
+                column-gap: var(--gutter);
+                margin: 0;
+            }
+
+            .slip {
+                display: flex;
+                align-items: center;
+                gap: 1px;
+                height: 44px;
+                padding: 0 4px;
+                border: 1px solid var(--rule);
+                border-left: 3px solid var(--ink);
+                border-radius: 4px 10px 10px 4px;
+                background: #fff;
+                box-shadow:
+                    0 1px 2px rgba(26, 29, 35, 0.05),
+                    0 12px 28px -14px rgba(26, 29, 35, 0.28);
+                white-space: nowrap;
+            }
+
+            .tool {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                height: 34px;
+                padding: 0 6px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            .tool:hover {
+                background: var(--wash);
+            }
+
+            .tool .mark {
+                width: 17px;
+                height: 17px;
+            }
+
+            .tool .chev {
+                width: 10px;
+                height: 10px;
+                color: var(--ink-2);
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 13px;
+            }
+
+            .bars i {
+                width: 3px;
+                border-radius: 1px;
+                background: #d5d9df;
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7px;
+            }
+            .bars i:nth-child(3) {
+                height: 9px;
+            }
+            .bars i:nth-child(4) {
+                height: 11px;
+            }
+            .bars i:nth-child(5) {
+                height: 13px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: var(--ink);
+            }
+
+            .divider {
+                width: 1px;
+                height: 20px;
+                margin: 0 3px;
+                background: var(--rule);
+            }
+
+            .locked {
+                display: inline-flex;
+                align-items: center;
+                gap: 9px;
+                min-width: 0;
+                padding: 0 4px;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                cursor: default;
+            }
+
+            .locked .icon {
+                width: 12px;
+                height: 12px;
+                margin-right: -4px;
+            }
+
+            .locked b {
+                color: var(--ink);
+                font-weight: 600;
+            }
+
+            .stop {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                height: 44px;
+                border: 0;
+                border-radius: 10px;
+                background: var(--ink);
+                color: #fff;
+                font-size: 13.5px;
+                font-weight: 600;
+                box-shadow: 0 12px 28px -14px rgba(26, 29, 35, 0.5);
+            }
+
+            .stop i {
+                width: 9px;
+                height: 9px;
+                border-radius: 2px;
+                background: #fff;
+            }
+
+            .stop:hover {
+                background: #2c313b;
+            }
+
+            /* 여백 노트 패널 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 5;
+                background: rgba(26, 29, 35, 0.1);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 220ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .sheet {
+                position: fixed;
+                top: 40px;
+                right: 0;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                width: 412px;
+                max-height: calc(100% - 40px);
+                padding: 20px 24px 14px 22px;
+                border: 1px solid var(--rule);
+                border-width: 1px 0 1px 1px;
+                border-radius: 0 0 0 14px;
+                background: #fff;
+                box-shadow: -24px 0 48px -28px rgba(26, 29, 35, 0.35);
+                visibility: hidden;
+                opacity: 0;
+                transition:
+                    opacity 160ms ease-in,
+                    visibility 0s 160ms;
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                visibility: visible;
+                opacity: 1;
+                transition: opacity 220ms ease-out;
+            }
+
+            .sheet-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+                padding-bottom: 12px;
+            }
+
+            .sheet-head h2 {
+                margin: 0;
+                font: 700 22px/1.35 var(--serif);
+                letter-spacing: -0.01em;
+            }
+
+            .scribble {
+                color: var(--blue);
+                font: 400 20px/1 var(--pen);
+            }
+
+            .entry {
+                display: grid;
+                grid-template-columns: 84px minmax(0, 1fr);
+                column-gap: 18px;
+                padding: 14px 0;
+                border-top: 1px solid var(--rule);
+                font-size: 14px;
+                line-height: 1.55;
+            }
+
+            .entry > h3 {
+                position: relative;
+                margin: 0;
+                padding-top: 1px;
+                font: 600 13.5px/1.45 var(--serif);
+            }
+
+            .entry > h3 .lock-note {
+                display: block;
+                margin-top: 4px;
+                color: var(--red);
+                font: 400 18px/1 var(--pen);
+            }
+
+            .entry-body {
+                min-width: 0;
+            }
+
+            .path {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+            }
+
+            .path code {
+                overflow: hidden;
+                font-size: 12.5px;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            .tag {
+                flex: none;
+                padding: 0 7px;
+                border: 1px solid var(--rule);
+                border-radius: 5px;
+                color: var(--ink-2);
+                font-size: 11.5px;
+                line-height: 19px;
+                white-space: nowrap;
+            }
+
+            .hint {
+                margin: 4px 0 0;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.55;
+                text-wrap: pretty;
+            }
+
+            .acts {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 16px;
+                margin-top: 6px;
+            }
+
+            .act {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 0;
+                border: 0;
+                background: none;
+                color: var(--blue);
+                font-size: 13.5px;
+                font-weight: 600;
+                text-decoration: underline;
+                text-decoration-color: rgba(39, 83, 201, 0.3);
+                text-decoration-thickness: 1.5px;
+                text-underline-offset: 4px;
+            }
+
+            .act:hover {
+                text-decoration-color: var(--blue);
+            }
+
+            .act[disabled] {
+                color: var(--ink-2);
+                font-weight: 500;
+                text-decoration: none;
+                cursor: not-allowed;
+            }
+
+            .act.danger {
+                color: var(--red);
+                text-decoration-color: rgba(194, 54, 47, 0.3);
+            }
+
+            .act .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .choices {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .choice {
+                display: grid;
+                grid-template-columns: 24px 1fr;
+                padding: 2px 0;
+            }
+
+            .choice + .choice {
+                margin-top: 4px;
+            }
+
+            .choice strong {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .choice small {
+                display: block;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.5;
+            }
+
+            .choice[aria-checked="false"] strong {
+                color: var(--ink-2);
+                font-weight: 500;
+            }
+
+            .radio {
+                width: 15px;
+                height: 15px;
+                margin-top: 4px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px #b9bec8;
+            }
+
+            [aria-checked="true"] > .radio {
+                background: var(--ink);
+                box-shadow:
+                    inset 0 0 0 1.5px var(--ink),
+                    inset 0 0 0 4.5px #fff;
+            }
+
+            .check {
+                display: grid;
+                place-items: center;
+                width: 16px;
+                height: 16px;
+                margin-top: 3px;
+                border-radius: 4px;
+                background: var(--ink);
+                color: #fff;
+            }
+
+            .check .icon {
+                width: 12px;
+                height: 12px;
+                stroke-width: 2;
+            }
+
+            .sheet-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding-top: 12px;
+                border-top: 1px solid var(--rule);
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            /* 프로필 */
+            .me {
+                display: grid;
+                grid-template-columns: 84px minmax(0, 1fr) auto;
+                column-gap: 18px;
+                align-items: center;
+                padding: 4px 0 16px;
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 52px;
+                height: 52px;
+                border-radius: 50%;
+                background: var(--ink);
+                color: #fff;
+                font: 700 22px/1 var(--serif);
+            }
+
+            .me strong {
+                display: block;
+                font: 700 21px/1.3 var(--serif);
+            }
+
+            .me small {
+                color: var(--ink-2);
+                font-size: 13px;
+            }
+
+            .plan {
+                align-self: start;
+                margin-top: 4px;
+                padding: 1px 8px;
+                border: 1.5px solid var(--red);
+                border-radius: 5px;
+                color: var(--red);
+                font-size: 12px;
+                font-weight: 700;
+                transform: rotate(-3deg);
+            }
+
+            .account {
+                display: grid;
+                grid-template-columns: 24px 28px 1fr;
+                align-items: center;
+                padding: 3px 0;
+            }
+
+            .account .radio {
+                margin-top: 0;
+            }
+
+            .account strong {
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .account[aria-checked="false"] strong {
+                color: var(--ink-2);
+                font-weight: 500;
+            }
+
+            .mini {
+                display: grid;
+                place-items: center;
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                background: var(--wash);
+                color: var(--ink-2);
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .usage {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .usage li + li {
+                margin-top: 12px;
+            }
+
+            .usage-top {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .usage-top b {
+                font: 700 15px/1.4 var(--serif);
+            }
+
+            .meter {
+                position: relative;
+                height: 5px;
+                margin: 5px 0 4px;
+                border-radius: 3px;
+                background: var(--rule);
+                overflow: hidden;
+            }
+
+            .meter i {
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: var(--v);
+                border-radius: 3px;
+                background: var(--ink);
+            }
+
+            .usage .warn b {
+                color: var(--warn);
+            }
+
+            .usage .warn .meter i {
+                background: var(--warn);
+            }
+
+            .usage small {
+                display: block;
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            .usage .warn small {
+                color: var(--warn);
+            }
+
+            .sr-only {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                overflow: hidden;
+                clip-path: inset(50%);
+            }
+
+            /* 움직임은 줄인 모션 설정이 아닐 때만 더한다. 타이핑·투명도·캐럿은 두 경우 모두 유지한다. */
+            @media (prefers-reduced-motion: no-preference) {
+                .draft .old {
+                    --strike: var(--red);
+                    background-size: 0% 2px;
+                    transition:
+                        background-size 440ms cubic-bezier(0.55, 0, 0.3, 1),
+                        color 320ms ease-out;
+                }
+
+                .rev.struck .old {
+                    background-size: 100% 2px;
+                }
+
+                .note::before {
+                    transform: scaleY(0);
+                    transition: transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+                }
+
+                .note.shown::before {
+                    transform: none;
+                }
+
+                .count.tick {
+                    animation: count-rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1);
+                }
+
+                @keyframes count-rise {
+                    from {
+                        opacity: 0.15;
+                        transform: translateY(5px);
+                    }
+                }
+
+                .sheet {
+                    transform: translateX(28px);
+                    transition:
+                        opacity 160ms ease-in,
+                        transform 160ms ease-in,
+                        visibility 0s 160ms;
+                }
+
+                [data-screen="settings"] #settings-panel,
+                [data-screen="profile"] #profile-panel {
+                    transform: none;
+                    transition:
+                        opacity 220ms ease-out,
+                        transform 340ms cubic-bezier(0.16, 1, 0.3, 1);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5" /><circle cx="4.5" cy="12.5" r="1.5" /><circle cx="11.5" cy="5.5" r="1.5" /><path d="M4.5 5v6M11.5 7c0 2.5-2 3.2-7 4" /></symbol>
+            <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.2l2 1.3" /></symbol>
+            <symbol id="i-commit" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" /><path d="M1.5 8h3.9M10.6 8h3.9" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <span class="live"><b>3회차 진행 중</b><span><time class="remain">04:39:50</time> 남음</span></span>
+            <div class="controls">
+                <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                    <svg viewBox="0 0 12 12">
+                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                        <circle cx="6" cy="6" r="1.6" />
+                    </svg>
+                </button>
+                <span class="sep"></span>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <article class="page" aria-label="작업 원고">
+            <section class="grid masthead">
+                <div>
+                    <h1>10월 14일 밤의 원고</h1>
+                    <p class="dek">00:30부터 <b>1시간 50분째</b> 쉬지 않고 쓰고, 다시 읽고, 고치는 중이에요.</p>
+                    <p class="meta">
+                        <span><svg class="icon"><use href="#i-folder" /></svg>shop-api</span>
+                        <span><svg class="icon"><use href="#i-branch" /></svg><code>ai/autopilot</code></span>
+                        <span><svg class="icon"><use href="#i-clock" /></svg>07:00 종료</span>
+                    </p>
+                </div>
+                <dl class="tally" aria-label="일한 양">
+                    <div class="revisions"><dt>고쳐 쓴 문장</dt><dd><span class="count" data-count="revisions">11</span>번</dd></div>
+                    <div><dt>도구 호출</dt><dd><span class="count" data-count="tools">186</span>번</dd></div>
+                    <div><dt>읽은 파일</dt><dd>41개</dd></div>
+                    <div><dt>테스트</dt><dd>9번</dd></div>
+                    <div><dt>바뀐 줄</dt><dd><code class="plus">+240</code> <code class="minus">−49</code></dd></div>
+                </dl>
+            </section>
+
+            <hr />
+
+            <section class="round" aria-label="1회차">
+                <div class="grid round-head">
+                    <h2>1회차<small>00:30–01:22</small></h2>
+                    <span class="margin-note"><span class="ok">성공</span> 커밋 2개</span>
+                </div>
+                <div class="grid line">
+                    <p>주문 목록 API에 커서 페이지네이션을 넣었어요.</p>
+                    <span class="commit"><svg class="icon"><use href="#i-commit" /></svg>a3f9c21<ins class="plus">+142</ins><del class="minus">−21</del></span>
+                </div>
+                <div class="grid line">
+                    <p>결제가 실패하면 지수 백오프로 다시 시도하게 했어요.</p>
+                    <span class="commit"><svg class="icon"><use href="#i-commit" /></svg>7be0d14<ins class="plus">+42</ins><del class="minus">−16</del></span>
+                </div>
+            </section>
+
+            <section class="round" aria-label="2회차">
+                <div class="grid round-head">
+                    <h2>2회차<small>01:23–02:07</small></h2>
+                    <span class="margin-note"><span class="ok">성공</span> 커밋 1개</span>
+                </div>
+                <div class="grid line">
+                    <p>결제 재시도 테스트를 보강했어요.</p>
+                    <span class="commit"><svg class="icon"><use href="#i-commit" /></svg>c51e8aa<ins class="plus">+56</ins><del class="minus">−12</del></span>
+                </div>
+            </section>
+
+            <section class="round" aria-label="3회차">
+                <div class="grid round-head">
+                    <h2>3회차<small>02:08부터 12분째</small><small class="state">고쳐 쓰는 중</small><button class="open-log" type="button">전체 로그</button></h2>
+                    <span class="margin-note">도구 호출 <span class="count" data-count="round-tools">14</span>번</span>
+                </div>
+                <div class="grid draft-wrap">
+                    <p class="draft"><span>관리자 검색이 왜 느린지부터 찾아봤어요. </span><span class="rev struck" data-note="note-search"><s class="old" data-text="검색을 빠르게 고쳤어요.">검색을 빠르게 고쳤어요.</s> <ins class="new" data-text="이름 앞부분으로 찾도록 쿼리를 고쳐서 인덱스를 탈 수 있게 했어요.">이름 앞부분으로 찾도록 쿼리를 고쳐서 인덱스를 탈 수 있게 했어요.</ins></span><span data-text=" ">&#32;</span><code data-text="name_lower">name_lower</code><span data-text=" 인덱스를 만드는 마이그레이션도 더했어요."> 인덱스를 만드는 마이그레이션도 더했어요.</span><span data-text=" 응답 시간을 "> 응답 시간을 </span><span class="rev struck" data-note="note-speed"><s class="old" data-text="많이 줄였어요.">많이 줄였어요.</s> <ins class="new" data-text="1.2초에서 0.2초로 줄였어요.">1.2초에서 0.2초로 줄였어요.</ins></span></p>
+                    <div class="notes" aria-label="여백 메모">
+                        <p class="note shown" id="note-search"><span class="pen-text" data-text="근거: 주문 표 전체를 훑고 있었음">근거: 주문 표 전체를 훑고 있었음</span></p>
+                        <p class="note shown" id="note-speed"><span class="pen-text" data-text="검증: admin 테스트 24개 통과">검증: admin 테스트 24개 통과</span></p>
+                    </div>
+                </div>
+                <p class="now"><b>지금</b><span class="now-text">커밋하기 전에 바뀐 쿼리를 한 번 더 살펴보고 있어요.</span></p>
+                <ol class="sources" aria-label="이 문단의 출처">
+                    <li class="grid"><span><b>Grep</b><code>"searchOrders" src/admin</code></span><time>02:17:12</time></li>
+                    <li class="grid"><span><b>Read</b><code>src/admin/searchController.js</code></span><span class="when"><time>02:18:30</time><em class="pen-tag">근거</em></span></li>
+                    <li class="grid"><span><b>Edit</b><code>src/admin/searchController.js</code></span><time>02:19:02</time></li>
+                    <li class="grid"><span><b>Edit</b><code>migrations/20261014_add_search_index.sql</code></span><time>02:19:31</time></li>
+                    <li class="grid"><span><b>Bash</b><code>npm test -- admin</code></span><span class="when"><time>02:19:47</time><em class="pen-tag">검증</em></span></li>
+                </ol>
+            </section>
+
+            <div class="fade" aria-hidden="true"></div>
+
+            <form class="dock" aria-label="실행 옵션" onsubmit="return false">
+                <div class="slip">
+                    <button type="button" class="tool" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                    <button type="button" class="tool" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                    <span class="divider"></span>
+                    <span class="locked" title="실행 중에는 바꿀 수 없어요">
+                        <svg class="icon"><use href="#i-lock" /></svg>
+                        <b>자율개선</b>
+                        <span><b>07:00</b> 종료</span>
+                        <span title="주문 목록 API에 페이지네이션 추가, 결제 실패 시 재시도 로직 점검, 관리자 화면 검색 속도 개선">작업 2/3</span>
+                    </span>
+                </div>
+                <button type="submit" class="stop"><i aria-hidden="true"></i>종료 신호</button>
+            </form>
+        </article>
+
+        <div class="scrim"></div>
+
+        <aside class="sheet" id="settings-panel" aria-label="설정">
+            <div class="sheet-head">
+                <h2>설정</h2>
+                <span class="scribble">실행 중이라 몇 군데는 잠가 뒀어요</span>
+            </div>
+
+            <div class="entry">
+                <h3>대상 프로젝트<span class="lock-note">실행 중엔 잠김</span></h3>
+                <div class="entry-body">
+                    <div class="path"><code>C:\Users\dev\Projects\shop-api</code></div>
+                    <div class="acts"><button class="act" disabled>폴더 선택</button></div>
+                </div>
+            </div>
+
+            <div class="entry">
+                <h3>Claude 데이터 폴더</h3>
+                <div class="entry-body">
+                    <div class="path"><code>C:\Users\dev\.claude</code><span class="tag">자동 감지</span></div>
+                    <p class="hint">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                    <div class="acts"><button class="act">폴더 변경</button><button class="act">자동 감지</button></div>
+                </div>
+            </div>
+
+            <div class="entry">
+                <h3>개선 정책<span class="lock-note">실행 중엔 잠김</span></h3>
+                <ul class="choices" role="radiogroup" aria-label="개선 정책">
+                    <li class="choice" role="radio" aria-checked="true" aria-disabled="true">
+                        <span class="radio"></span>
+                        <span><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                    </li>
+                    <li class="choice" role="radio" aria-checked="false" aria-disabled="true">
+                        <span class="radio"></span>
+                        <span><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="entry">
+                <h3>사용량 한도</h3>
+                <div class="choice" role="checkbox" aria-checked="true" tabindex="0">
+                    <span class="check"><svg class="icon"><use href="#i-check" /></svg></span>
+                    <span><strong>대기한 시간만큼 종료 시각 연장</strong><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                </div>
+            </div>
+
+            <div class="entry">
+                <h3>기록</h3>
+                <div class="acts">
+                    <button class="act">전체 기록 보기</button>
+                    <button class="act">리포트 열기</button>
+                    <button class="act danger">진행 기록 초기화</button>
+                </div>
+            </div>
+
+            <div class="sheet-foot"><span>앱 버전</span><code>v0.1.0</code></div>
+        </aside>
+
+        <aside class="sheet" id="profile-panel" aria-label="프로필">
+            <div class="me">
+                <span class="avatar">개</span>
+                <span><strong>개발자</strong><small>dev@example.com</small></span>
+                <span class="plan">Max 20x</span>
+            </div>
+
+            <div class="entry">
+                <h3>계정</h3>
+                <div class="entry-body">
+                    <ul class="choices" role="radiogroup" aria-label="계정 선택">
+                        <li class="account" role="radio" aria-checked="true"><span class="radio"></span><span class="mini">개</span><strong>기본 계정</strong></li>
+                        <li class="account" role="radio" aria-checked="false"><span class="radio"></span><span class="mini">회</span><strong>회사</strong></li>
+                    </ul>
+                    <div class="acts">
+                        <button class="act"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                        <button class="act">다시 로그인</button>
+                        <button class="act danger">제거</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="entry">
+                <h3>사용량과 한도</h3>
+                <ul class="usage">
+                    <li>
+                        <div class="usage-top"><span>5시간 한도</span><b>42%</b></div>
+                        <div class="meter" style="--v: 42%"><i></i></div>
+                        <small>03:00 리셋, 40분 후</small>
+                    </li>
+                    <li>
+                        <div class="usage-top"><span>주간 한도</span><b>63%</b></div>
+                        <div class="meter" style="--v: 63%"><i></i></div>
+                        <small>10월 16일 09:00 리셋, 3일 후</small>
+                    </li>
+                    <li class="warn">
+                        <div class="usage-top"><span>주간 한도 (Opus)</span><b>78%</b></div>
+                        <div class="meter" style="--v: 78%"><i></i></div>
+                        <small>10월 16일 09:00 리셋, 3일 후</small>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sheet-foot">
+                <span>02:18 기준</span>
+                <button class="act"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </aside>
+
+        <script>
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector(".scrim").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const draft = document.querySelector(".draft");
+            const notesBox = document.querySelector(".notes");
+            const nowText = document.querySelector(".now-text");
+            const [searchRev, speedRev] = draft.querySelectorAll(".rev");
+            const plainUnits = [...draft.querySelectorAll(":scope > [data-text]")];
+            const caret = document.createElement("i");
+            const counts = {};
+            const tally = { revisions: 11, tools: 186, "round-tools": 14 };
+
+            caret.className = "caret";
+            caret.setAttribute("aria-hidden", "true");
+            document.querySelectorAll("[data-count]").forEach((element) => (counts[element.dataset.count] = element));
+
+            const bump = (name) => {
+                const element = counts[name];
+
+                tally[name] += 1;
+                element.classList.remove("tick");
+                void element.offsetWidth;
+                element.textContent = tally[name];
+                element.classList.add("tick");
+            };
+
+            const setCount = (name) => (counts[name].textContent = tally[name]);
+
+            const partsOf = (rev) => ({
+                old: rev.querySelector(".old"),
+                fresh: rev.querySelector(".new"),
+                note: document.getElementById(rev.dataset.note)
+            });
+
+            const typeText = async (element, ms) => {
+                const text = element.dataset.text;
+
+                draft.classList.add("typing");
+
+                for (let length = 1; length <= text.length; length += 1) {
+                    element.textContent = text.slice(0, length);
+                    element.append(caret);
+                    await sleep(text[length - 1] === " " ? ms * 1.8 : ms);
+                }
+
+                draft.classList.remove("typing");
+            };
+
+            // 메모는 고친 문장의 첫 줄 높이에 맞추고, 여백의 세로 선은 그 문장이 차지한 줄 수만큼 그린다.
+            const placeNote = (rev, previous) => {
+                const { note } = partsOf(rev);
+                const rects = [...rev.getClientRects()].filter((rect) => rect.width > 0);
+                const base = notesBox.getBoundingClientRect();
+
+                if (!rects.length) {
+                    return;
+                }
+
+                const lineTop = rects[0].top - base.top + 3;
+                const span = rects[rects.length - 1].bottom - rects[0].top - 6;
+                const floor = previous ? previous.offsetTop + previous.offsetHeight + 10 : 0;
+
+                note.style.setProperty("--top", `${Math.max(lineTop, floor)}px`);
+                note.style.setProperty("--span", `${span}px`);
+            };
+
+            const placeNotes = () => {
+                placeNote(searchRev, null);
+                placeNote(speedRev, partsOf(searchRev).note);
+            };
+
+            const strike = async (rev) => {
+                rev.classList.add("struck");
+                bump("revisions");
+                await sleep(380);
+            };
+
+            const pen = async (rev, previous) => {
+                const { note } = partsOf(rev);
+                const text = note.querySelector(".pen-text");
+                const full = text.dataset.text;
+
+                text.textContent = "";
+                placeNote(rev, previous);
+                note.classList.add("shown");
+
+                for (let length = 1; length <= full.length; length += 1) {
+                    text.textContent = full.slice(0, length);
+                    await sleep(full[length - 1] === " " ? 90 : 52);
+                }
+
+                bump("tools");
+                bump("round-tools");
+            };
+
+            const clearRev = (rev) => {
+                const { old, fresh, note } = partsOf(rev);
+
+                rev.classList.remove("struck");
+                old.textContent = "";
+                fresh.textContent = "";
+                note.classList.remove("shown");
+            };
+
+            const restCaret = () => nowText.append(caret);
+
+            const resetDraft = async () => {
+                const fading = [searchRev, speedRev, ...plainUnits];
+
+                caret.remove();
+                fading.forEach((element) => element.classList.add("fading"));
+                document.querySelectorAll(".note").forEach((note) => note.classList.remove("shown"));
+                await sleep(560);
+                plainUnits.forEach((unit) => (unit.textContent = ""));
+                clearRev(searchRev);
+                clearRev(speedRev);
+                fading.forEach((element) => element.classList.remove("fading"));
+                restCaret();
+            };
+
+            const reviseSearch = async () => {
+                const { old, fresh } = partsOf(searchRev);
+
+                await typeText(old, 42);
+                await sleep(520);
+                await strike(searchRev);
+                await sleep(240);
+                await typeText(fresh, 44);
+                await sleep(200);
+                await pen(searchRev, null);
+            };
+
+            const writeMigration = async () => {
+                for (const unit of plainUnits.slice(0, 3)) {
+                    await typeText(unit, 40);
+                }
+            };
+
+            const reviseSpeed = async () => {
+                const { old, fresh } = partsOf(speedRev);
+
+                await typeText(plainUnits[3], 46);
+                await typeText(old, 46);
+                await sleep(380);
+                await strike(speedRev);
+                await sleep(180);
+                await typeText(fresh, 62);
+                await sleep(200);
+                await pen(speedRev, partsOf(searchRev).note);
+            };
+
+            const holdAndReset = async () => {
+                restCaret();
+                await sleep(6500);
+                await resetDraft();
+                await sleep(1200);
+            };
+
+            // 첫 화면은 첫 번째 고쳐 쓰기가 끝난 상태에서 시작해, 두 번째 문장을 쓰고 긋고 다시 쓰는 장면부터 보여 준다.
+            const play = async () => {
+                const speed = partsOf(speedRev);
+
+                plainUnits[3].textContent = "";
+                clearRev(speedRev);
+                setCount("revisions");
+                setCount("tools");
+                setCount("round-tools");
+                placeNote(searchRev, null);
+                restCaret();
+                await sleep(120);
+                await reviseSpeed();
+                await holdAndReset();
+
+                while (true) {
+                    await reviseSearch();
+                    await sleep(500);
+                    await writeMigration();
+                    await sleep(420);
+                    await reviseSpeed();
+                    await holdAndReset();
+                }
+            };
+
+            const remain = document.querySelector(".remain");
+            let seconds = 4 * 3600 + 39 * 60 + 52;
+
+            const paintRemain = () => {
+                const pad = (value) => String(value).padStart(2, "0");
+
+                remain.textContent = `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor((seconds % 3600) / 60))}:${pad(seconds % 60)}`;
+            };
+
+            paintRemain();
+            setInterval(() => {
+                seconds -= 1;
+                paintRemain();
+            }, 1000);
+
+            addEventListener("resize", placeNotes);
+            document.fonts.addEventListener("loadingdone", placeNotes);
+            play();
+        </script>
+    </body>
+</html>

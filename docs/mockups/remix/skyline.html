@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 커밋 스카이라인</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --text: #ffffff;
+                --text-2: rgba(255, 255, 255, 0.84);
+                --text-3: rgba(255, 255, 255, 0.7);
+                --city: #0a1530;
+                --lit: #ffd48a;
+                --unlit: #2a3a66;
+                --roof: #ff7b6e;
+                --add: #a8efc0;
+                --halo: 0 1px 2px rgba(6, 14, 40, 0.5), 0 0 14px rgba(6, 14, 40, 0.3);
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: #0c1c40;
+                color: var(--text);
+                font: 400 14px/1.5 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid #fff;
+                outline-offset: 3px;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            code {
+                font-family: var(--mono);
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .sky {
+                position: fixed;
+                inset: 0;
+                z-index: -1;
+                width: 100%;
+                height: 100%;
+            }
+
+            /* 유리: 위 왼쪽에서 오는 빛 하나를 기준으로 림과 하이라이트를 둔다 */
+            .glass {
+                position: relative;
+                isolation: isolate;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.1));
+                backdrop-filter: blur(14px) saturate(160%) brightness(0.86);
+                box-shadow:
+                    inset 1.5px 1.5px 0.5px -0.5px rgba(255, 255, 255, 0.7),
+                    inset -1px -1px 0.5px -0.5px rgba(255, 255, 255, 0.35),
+                    inset 0 -12px 22px -14px rgba(255, 255, 255, 0.24),
+                    0 1px 1px rgba(6, 14, 40, 0.14),
+                    0 18px 36px -16px rgba(6, 14, 40, 0.6);
+            }
+
+            .glass::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                padding: 1px;
+                border-radius: inherit;
+                background: linear-gradient(150deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.14) 30%, rgba(255, 255, 255, 0.04) 55%, rgba(255, 255, 255, 0.2) 78%, rgba(255, 255, 255, 0.5));
+                -webkit-mask:
+                    linear-gradient(#000 0 0) content-box,
+                    linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask-composite: exclude;
+                pointer-events: none;
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                height: 40px;
+                padding: 0 6px 0 16px;
+                flex: none;
+                text-shadow: var(--halo);
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 17px;
+                filter: invert(1);
+                mix-blend-mode: screen;
+            }
+
+            .where {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: var(--text-2);
+                font-size: 13px;
+            }
+
+            .where b {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .where code {
+                font-size: 12px;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .pair {
+                display: flex;
+                padding: 2px;
+                margin-right: 8px;
+                border-radius: 999px;
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 28px;
+                border: 0;
+                border-radius: 999px;
+                background: none;
+                color: var(--text);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                filter: drop-shadow(0 1px 1px rgba(6, 14, 40, 0.4));
+            }
+
+            .pair .win {
+                width: 32px;
+                height: 26px;
+            }
+
+            .win:hover {
+                background: rgba(255, 255, 255, 0.14);
+            }
+
+            .win.close:hover {
+                background: #e5484d;
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: rgba(255, 255, 255, 0.92);
+                color: #102454;
+                box-shadow: 0 2px 6px -2px rgba(6, 14, 40, 0.5);
+            }
+
+            [data-screen="settings"] #settings-toggle svg,
+            [data-screen="profile"] #profile-toggle svg {
+                filter: none;
+            }
+
+            /* 하늘 위 */
+            .stage {
+                display: flex;
+                flex-direction: column;
+                padding: 10px 20px 0;
+            }
+
+            .top {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .status {
+                width: 262px;
+                padding: 13px 18px 14px;
+                border-radius: 22px;
+            }
+
+            .state {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin: 0;
+                font-size: 14px;
+                font-weight: 650;
+                text-shadow: var(--halo);
+            }
+
+            .state::before {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--lit);
+                box-shadow: 0 0 0 3px rgba(255, 212, 138, 0.22);
+            }
+
+            .state small {
+                color: var(--text-3);
+                font-size: 12.5px;
+                font-weight: 500;
+            }
+
+            .clock {
+                margin: 4px 0 0;
+                font-size: 46px;
+                font-weight: 250;
+                line-height: 1.05;
+                letter-spacing: -0.02em;
+                text-shadow: var(--halo);
+            }
+
+            .clock-sub {
+                margin: 3px 0 0;
+                color: var(--text-2);
+                font-size: 12.5px;
+            }
+
+            /* 메인 버튼 */
+            .orb {
+                display: grid;
+                place-items: center;
+                align-content: center;
+                gap: 8px;
+                width: 120px;
+                height: 120px;
+                flex: none;
+                margin-right: 4px;
+                padding: 0;
+                border: 0;
+                border-radius: 50%;
+                background:
+                    radial-gradient(90% 55% at 50% 106%, rgba(255, 255, 255, 0.22), transparent 70%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+                backdrop-filter: url(#lens) saturate(118%) brightness(1.12);
+                box-shadow:
+                    inset 2px 2.5px 1px -1px rgba(255, 255, 255, 0.85),
+                    inset -1.5px -2px 1px -1px rgba(255, 255, 255, 0.45),
+                    inset 0 -20px 26px -18px rgba(255, 255, 255, 0.34),
+                    inset 0 16px 22px -18px rgba(255, 255, 255, 0.45),
+                    0 2px 2px rgba(6, 14, 40, 0.12),
+                    0 24px 40px -18px rgba(6, 14, 40, 0.65);
+            }
+
+            .orb::after {
+                content: "";
+                position: absolute;
+                inset: 6px;
+                border: 1.5px solid rgba(255, 255, 255, 0.5);
+                border-radius: 50%;
+                -webkit-mask: linear-gradient(150deg, #000 8%, transparent 38%, transparent 70%, rgba(0, 0, 0, 0.55) 96%);
+                pointer-events: none;
+            }
+
+            .orb .stop {
+                width: 13px;
+                height: 13px;
+                border-radius: 3px;
+                background: #fff;
+                box-shadow: 0 1px 2px rgba(6, 14, 40, 0.35);
+            }
+
+            .orb strong {
+                font-size: 16px;
+                font-weight: 650;
+                text-shadow: 0 1px 3px rgba(6, 14, 40, 0.5);
+            }
+
+            .orb:focus-visible {
+                outline-offset: 5px;
+            }
+
+            /* 로그 */
+            .logwrap {
+                position: relative;
+                margin-top: 14px;
+            }
+
+            .log {
+                margin: 0;
+                padding: 0 4px;
+                list-style: none;
+                font-size: 13.5px;
+                line-height: 22px;
+                text-shadow: var(--halo);
+            }
+
+            .log li {
+                display: grid;
+                grid-template-columns: 62px 1fr;
+                gap: 10px;
+                white-space: nowrap;
+            }
+
+            .log time {
+                color: var(--text-3);
+                font-size: 12.5px;
+            }
+
+            .log b {
+                margin-right: 7px;
+                font-weight: 650;
+            }
+
+            .log li:nth-child(1) {
+                opacity: 0.68;
+            }
+            .log li:nth-child(2) {
+                opacity: 0.76;
+            }
+            .log li:nth-child(3) {
+                opacity: 0.84;
+            }
+            .log li:nth-child(4) {
+                opacity: 0.92;
+            }
+
+            .log li.said {
+                margin-top: 3px;
+                font-size: 14.5px;
+                font-weight: 500;
+                line-height: 1.5;
+                white-space: normal;
+                text-wrap: pretty;
+            }
+
+            .log li.said time {
+                padding-top: 2px;
+            }
+
+            .capsule {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 28px;
+                padding: 0 12px;
+                border: 0;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.16);
+                box-shadow:
+                    inset 1px 1px 0.5px -0.5px rgba(255, 255, 255, 0.7),
+                    inset -1px -1px 0.5px -0.5px rgba(255, 255, 255, 0.3);
+                font-size: 12.5px;
+                font-weight: 600;
+                white-space: nowrap;
+                text-shadow: none;
+            }
+
+            .capsule:hover {
+                background: rgba(255, 255, 255, 0.24);
+            }
+
+            .capsule[disabled] {
+                color: var(--text-3);
+                background: rgba(255, 255, 255, 0.06);
+                cursor: not-allowed;
+            }
+
+            .logwrap .capsule {
+                position: absolute;
+                top: -3px;
+                right: 0;
+            }
+
+            /* 작업과 옵션 */
+            .tasks {
+                margin-top: 14px;
+                padding: 9px 18px 10px;
+                border-radius: 18px;
+            }
+
+            .tasks pre {
+                margin: 0;
+                color: var(--text-2);
+                font: 400 13px/1.55 var(--sans);
+                white-space: pre-wrap;
+            }
+
+            .tasks .locked {
+                position: absolute;
+                top: 9px;
+                right: 14px;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--text-3);
+                font-size: 12px;
+            }
+
+            .dock {
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr 1.35fr;
+                height: 50px;
+                margin-top: 10px;
+                padding: 4px;
+                border-radius: 999px;
+            }
+
+            /* 지평선의 밝은 보라 위에서도 흰 글자가 읽히도록 뒤 배경을 낮춘다 */
+            .dock,
+            .tasks,
+            .status {
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.06));
+                backdrop-filter: blur(16px) saturate(140%) brightness(0.62);
+            }
+
+            .tab {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 7px;
+                min-width: 0;
+                border: 0;
+                border-radius: 999px;
+                background: none;
+                color: var(--text);
+                font-size: 13.5px;
+                font-weight: 600;
+                text-shadow: 0 1px 3px rgba(6, 14, 40, 0.5);
+                white-space: nowrap;
+            }
+
+            .tab:hover {
+                background: rgba(255, 255, 255, 0.12);
+            }
+
+            .tab + .tab {
+                position: relative;
+            }
+
+            .tab + .tab::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 12px;
+                bottom: 12px;
+                width: 1px;
+                background: rgba(255, 255, 255, 0.16);
+            }
+
+            .tab .mark {
+                width: 20px;
+                height: 20px;
+                filter: drop-shadow(0 1px 2px rgba(6, 14, 40, 0.35));
+            }
+
+            .tab .chev {
+                width: 10px;
+                height: 10px;
+                opacity: 0.8;
+            }
+
+            .tab.locked {
+                color: var(--text-2);
+                font-weight: 500;
+                cursor: default;
+            }
+
+            .tab.locked:hover {
+                background: none;
+            }
+
+            .tab.locked b {
+                color: var(--text);
+                font-weight: 650;
+            }
+
+            .tab.locked .icon {
+                width: 12px;
+                height: 12px;
+                opacity: 0.85;
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 15px;
+            }
+
+            .bars i {
+                width: 3.5px;
+                border-radius: 1.5px;
+                background: rgba(255, 255, 255, 0.3);
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7.5px;
+            }
+            .bars i:nth-child(3) {
+                height: 10px;
+            }
+            .bars i:nth-child(4) {
+                height: 12.5px;
+            }
+            .bars i:nth-child(5) {
+                height: 15px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: #fff;
+            }
+
+            /* 도시 */
+            .city {
+                position: fixed;
+                left: 0;
+                bottom: 0;
+                width: 100%;
+                height: 300px;
+                overflow: visible;
+            }
+
+            .bldg {
+                cursor: pointer;
+                outline: none;
+            }
+
+            .bldg .body {
+                fill: var(--city);
+            }
+
+            .bldg .edge {
+                fill: none;
+                stroke: rgba(255, 255, 255, 0.85);
+                stroke-width: 1.2;
+                opacity: 0;
+            }
+
+            .bldg.on .edge,
+            .bldg:focus-visible .edge {
+                opacity: 1;
+            }
+
+            .bldg .roof {
+                fill: var(--roof);
+            }
+
+            .win-lit {
+                fill: var(--lit);
+            }
+
+            .win-dark {
+                fill: var(--unlit);
+            }
+
+            .block-label {
+                fill: rgba(255, 255, 255, 0.78);
+                font: 600 11px var(--sans);
+                text-anchor: middle;
+            }
+
+            .block-label.now {
+                fill: var(--lit);
+            }
+
+            .steel {
+                fill: none;
+                stroke: var(--city);
+                stroke-width: 1.6;
+                stroke-linejoin: round;
+            }
+
+            .floor {
+                animation: settle 260ms ease-out both;
+            }
+
+            .floor.gone {
+                opacity: 0;
+                transition: opacity 400ms;
+            }
+
+            @keyframes settle {
+                from {
+                    opacity: 0.4;
+                    transform: translateY(-5px);
+                }
+            }
+
+            .trolley {
+                transform: translateX(var(--tx));
+                transition: transform 850ms cubic-bezier(0.45, 0, 0.3, 1);
+            }
+
+            .hook {
+                transform: translateY(calc(var(--drop) * 1px));
+                transition: transform 650ms cubic-bezier(0.45, 0, 0.3, 1);
+            }
+
+            .load.off,
+            .stack-top.off {
+                opacity: 0;
+            }
+
+            /* 커밋 툴팁 */
+            .tip {
+                position: fixed;
+                z-index: 2;
+                width: 214px;
+                padding: 9px 13px 10px;
+                border-radius: 14px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+                backdrop-filter: blur(12px) saturate(140%) brightness(0.6);
+                pointer-events: none;
+            }
+
+            /* 고른 건물과 툴팁을 잇는 짧은 지시선 */
+            .tip::after {
+                content: "";
+                position: absolute;
+                top: 15px;
+                left: -10px;
+                width: 10px;
+                height: 1.2px;
+                background: rgba(255, 255, 255, 0.85);
+            }
+
+            .tip.flip::after {
+                left: auto;
+                right: -10px;
+            }
+
+            .tip-head {
+                display: flex;
+                align-items: baseline;
+                gap: 10px;
+                font-size: 12.5px;
+            }
+
+            .tip-head code {
+                font-weight: 600;
+            }
+
+            .tip-head ins,
+            .tip-head del {
+                text-decoration: none;
+                font-family: var(--mono);
+                font-size: 12px;
+            }
+
+            .tip-head ins {
+                margin-left: auto;
+                color: var(--add);
+            }
+
+            .tip-head del {
+                color: #ffb0a6;
+            }
+
+            .tip p {
+                margin: 3px 0 0;
+                font-size: 13px;
+                line-height: 1.45;
+            }
+
+            .tip small {
+                display: block;
+                margin-top: 2px;
+                color: var(--text-3);
+                font-size: 12px;
+            }
+
+            /* 시트 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 5;
+                background: rgba(6, 14, 36, 0.34);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 240ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .sheet {
+                position: fixed;
+                top: 46px;
+                right: 10px;
+                bottom: 10px;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                width: 400px;
+                padding: 16px 16px 14px;
+                border-radius: 28px;
+                background: linear-gradient(180deg, rgba(28, 50, 104, 0.5), rgba(20, 36, 80, 0.46));
+                backdrop-filter: blur(26px) saturate(160%);
+                opacity: 0;
+                visibility: hidden;
+                transform: translateX(24px) scale(0.98);
+                transform-origin: top right;
+                transition:
+                    opacity 200ms ease-in,
+                    transform 200ms ease-in,
+                    visibility 0s 200ms;
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                opacity: 1;
+                visibility: visible;
+                transform: none;
+                transition:
+                    opacity 280ms ease-out,
+                    transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            .sheet h1 {
+                margin: 0 4px 10px;
+                font-size: 22px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+            }
+
+            .sheet h2 {
+                display: flex;
+                justify-content: space-between;
+                margin: 0 6px 6px;
+                color: var(--text-3);
+                font-size: 12.5px;
+                font-weight: 600;
+            }
+
+            .sheet h2 span {
+                font-weight: 500;
+            }
+
+            .inset {
+                margin: 0 0 12px;
+                padding: 0;
+                list-style: none;
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.09);
+                box-shadow:
+                    inset 1px 1px 0 -0.5px rgba(255, 255, 255, 0.4),
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+            }
+
+            .inset > li {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-height: 42px;
+                padding: 8px 14px;
+            }
+
+            .inset > li + li::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 14px;
+                right: 0;
+                height: 1px;
+                background: rgba(255, 255, 255, 0.13);
+            }
+
+            .grow {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .path {
+                display: block;
+                overflow: hidden;
+                font-size: 12.5px;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            .inset small,
+            .footnote {
+                display: block;
+                color: var(--text-3);
+                font-size: 12px;
+                line-height: 1.45;
+            }
+
+            .footnote {
+                margin: -6px 8px 12px;
+                text-wrap: pretty;
+            }
+
+            .badge {
+                padding: 1px 8px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.14);
+                color: var(--text-2);
+                font-size: 11.5px;
+                white-space: nowrap;
+            }
+
+            .choice {
+                cursor: pointer;
+            }
+
+            .choice strong {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .tick {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                stroke: var(--lit);
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .switch {
+                position: relative;
+                flex: none;
+                width: 48px;
+                height: 28px;
+                border: 0;
+                border-radius: 999px;
+                background: linear-gradient(180deg, #ffd48a, #f2b960);
+                box-shadow:
+                    inset 0 1px 2px rgba(80, 40, 0, 0.25),
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+            }
+
+            .switch::after {
+                content: "";
+                position: absolute;
+                top: 2px;
+                right: 2px;
+                width: 30px;
+                height: 24px;
+                border-radius: 999px;
+                background: linear-gradient(180deg, #fff, #eef2f8);
+                box-shadow: 0 2px 5px rgba(6, 14, 40, 0.3);
+            }
+
+            .link {
+                width: 100%;
+                padding: 0;
+                border: 0;
+                background: none;
+                font-size: 14px;
+                text-align: left;
+            }
+
+            .link.danger,
+            .capsule.danger {
+                color: #ffb0a6;
+            }
+
+            .chev-next {
+                width: 12px;
+                height: 12px;
+                color: var(--text-3);
+            }
+
+            .sheet-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: auto;
+                padding: 0 6px;
+                color: var(--text-3);
+                font-size: 12.5px;
+            }
+
+            /* 프로필 */
+            .me {
+                display: grid;
+                grid-template-columns: 60px 1fr auto;
+                align-items: center;
+                gap: 14px;
+                margin: 2px 4px 16px;
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                font-size: 23px;
+                font-weight: 650;
+            }
+
+            .me strong {
+                display: block;
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+            }
+
+            .me small {
+                color: var(--text-2);
+                font-size: 13px;
+            }
+
+            .plan {
+                align-self: start;
+                margin-top: 4px;
+                padding: 3px 10px;
+                border-radius: 999px;
+                font-size: 12.5px;
+                font-weight: 700;
+            }
+
+            .mini {
+                display: grid;
+                place-items: center;
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.16);
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .actions {
+                display: flex;
+                gap: 6px;
+            }
+
+            .actions .danger {
+                margin-left: auto;
+            }
+
+            .towers {
+                position: relative;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                padding: 18px 4px 14px;
+            }
+
+            /* 세 탑이 같은 땅에 서 있게 도시의 지면선을 한 줄 깐다 */
+            .towers::after {
+                content: "";
+                position: absolute;
+                top: 208px;
+                left: 14px;
+                right: 14px;
+                height: 1px;
+                background: rgba(255, 255, 255, 0.24);
+            }
+
+            .towers > li {
+                display: grid;
+                justify-items: center;
+                align-content: start;
+                min-height: 0;
+                padding: 0 4px;
+                text-align: center;
+            }
+
+            .towers > li + li::before {
+                display: none;
+            }
+
+            .tower {
+                width: 46px;
+                height: 190px;
+            }
+
+            .towers b {
+                margin-top: 10px;
+                font-size: 20px;
+                font-weight: 650;
+                line-height: 1.2;
+            }
+
+            .towers .name {
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            .towers small {
+                margin-top: 2px;
+            }
+
+            .towers .warn b {
+                color: var(--roof);
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation: none !important;
+                    transition: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg class="sky" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+                <linearGradient id="sky-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#0c1c40" />
+                    <stop offset="0.5" stop-color="#1c3670" />
+                    <stop offset="0.72" stop-color="#2a4d8f" />
+                    <stop offset="0.93" stop-color="#6b5a8e" />
+                </linearGradient>
+                <radialGradient id="moon-face" cx="0.38" cy="0.34" r="0.72">
+                    <stop offset="0" stop-color="#fffdf2" />
+                    <stop offset="0.78" stop-color="#ebe3c6" />
+                </radialGradient>
+                <radialGradient id="moon-halo">
+                    <stop offset="0" stop-color="#fff6dc" stop-opacity="0.18" />
+                    <stop offset="1" stop-color="#fff6dc" stop-opacity="0" />
+                </radialGradient>
+                <mask id="moon-phase">
+                    <circle cx="372" cy="92" r="19" fill="#fff" />
+                    <circle cx="382" cy="85" r="18" fill="#000" />
+                </mask>
+                <filter id="wash" x="-40%" y="-80%" width="180%" height="260%">
+                    <feGaussianBlur stdDeviation="16" />
+                </filter>
+                <filter id="wash-soft" x="-40%" y="-80%" width="180%" height="260%">
+                    <feGaussianBlur stdDeviation="8" />
+                </filter>
+            </defs>
+            <rect width="600" height="800" fill="url(#sky-fill)" />
+            <g fill="#fff">
+                <circle cx="318" cy="56" r="1.1" opacity="0.8" />
+                <circle cx="424" cy="150" r="0.8" opacity="0.6" />
+                <circle cx="300" cy="140" r="0.9" opacity="0.6" />
+                <circle cx="438" cy="62" r="0.7" opacity="0.5" />
+                <circle cx="404" cy="40" r="1.1" opacity="0.7" />
+                <circle cx="580" cy="190" r="0.8" opacity="0.5" />
+                <circle cx="588" cy="252" r="0.8" opacity="0.45" />
+                <circle cx="340" cy="186" r="0.7" opacity="0.4" />
+                <circle cx="180" cy="520" r="0.8" opacity="0.45" />
+                <circle cx="268" cy="556" r="0.7" opacity="0.4" />
+                <circle cx="120" cy="548" r="0.9" opacity="0.4" />
+            </g>
+            <circle cx="372" cy="92" r="46" fill="url(#moon-halo)" />
+            <circle cx="372" cy="92" r="19" fill="url(#moon-face)" mask="url(#moon-phase)" />
+            <g filter="url(#wash)" fill="#d8def3">
+                <ellipse cx="380" cy="168" rx="110" ry="18" opacity="0.22" />
+                <ellipse cx="90" cy="300" rx="120" ry="20" opacity="0.12" />
+                <ellipse cx="520" cy="320" rx="110" ry="18" opacity="0.12" />
+            </g>
+            <g filter="url(#wash-soft)" fill="#eef1fb">
+                <ellipse cx="420" cy="160" rx="54" ry="9" opacity="0.26" />
+                <ellipse cx="330" cy="174" rx="34" ry="6" opacity="0.2" />
+            </g>
+            <g filter="url(#wash)">
+                <ellipse cx="300" cy="752" rx="320" ry="56" fill="#8f76a6" opacity="0.5" />
+                <ellipse cx="120" cy="676" rx="150" ry="22" fill="#a58cb4" opacity="0.32" />
+                <ellipse cx="470" cy="640" rx="130" ry="20" fill="#8c86b8" opacity="0.3" />
+            </g>
+        </svg>
+
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <defs>
+                <!-- 가장자리만 기울기가 남은 변위 지도로 렌즈 굴절을 흉내 낸다 -->
+                <filter id="lens" x="0" y="0" width="120" height="120" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+                    <feImage
+                        x="0"
+                        y="0"
+                        width="120"
+                        height="120"
+                        preserveAspectRatio="none"
+                        result="map"
+                        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cdefs%3E%3ClinearGradient id='r' x1='0' x2='1' y1='0' y2='0'%3E%3Cstop offset='0' stop-color='%23000'/%3E%3Cstop offset='1' stop-color='%23f00'/%3E%3C/linearGradient%3E%3ClinearGradient id='g' x1='0' x2='0' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%23000'/%3E%3Cstop offset='1' stop-color='%230f0'/%3E%3C/linearGradient%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='6'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='120' height='120' fill='url(%23r)'/%3E%3Crect width='120' height='120' fill='url(%23g)' style='mix-blend-mode:screen'/%3E%3Ccircle cx='60' cy='60' r='45' fill='rgb(128,128,0)' filter='url(%23b)'/%3E%3C/svg%3E"
+                    />
+                    <feDisplacementMap in="SourceGraphic" in2="map" scale="-32" xChannelSelector="R" yChannelSelector="G" result="bent" />
+                    <feGaussianBlur in="bent" stdDeviation="2" />
+                </filter>
+                <clipPath id="below-trolley" clipPathUnits="userSpaceOnUse"><rect x="-60" y="45" width="120" height="260" /></clipPath>
+            </defs>
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-next" viewBox="0 0 12 12"><path d="M4.5 3 7.5 6l-3 3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <span class="where"><b>shop-api</b><code>ai/autopilot</code></span>
+            <div class="controls">
+                <div class="pair glass">
+                    <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                        <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                    </button>
+                    <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                        <svg viewBox="0 0 12 12">
+                            <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                            <circle cx="6" cy="6" r="1.6" />
+                        </svg>
+                    </button>
+                </div>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <main class="stage">
+            <section class="top" aria-label="실행 상태">
+                <div class="status glass">
+                    <p class="state">3회차 진행 중<small>02:08부터 12분째</small></p>
+                    <p class="clock">04:39:50</p>
+                    <p class="clock-sub">07:00까지 남은 시간</p>
+                </div>
+                <button class="orb glass" type="button">
+                    <span class="stop" aria-hidden="true"></span>
+                    <strong>종료 신호</strong>
+                </button>
+            </section>
+
+            <div class="logwrap">
+                <ol class="log" aria-label="최근 로그">
+                    <li><time>02:17:12</time><span><b>Grep</b>"searchOrders" src/admin</span></li>
+                    <li><time>02:18:30</time><span><b>Read</b>src/admin/searchController.js</span></li>
+                    <li><time>02:19:02</time><span><b>Edit</b>src/admin/searchController.js</span></li>
+                    <li><time>02:19:31</time><span><b>Edit</b>migrations/20261014_add_search_index.sql</span></li>
+                    <li><time>02:19:47</time><span><b>Bash</b>npm test -- admin</span></li>
+                    <li class="said"><time>02:20:05</time><span>관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</span></li>
+                </ol>
+                <button class="capsule" type="button">전체 기록</button>
+            </div>
+
+            <div class="tasks glass">
+                <pre aria-label="처리할 작업">주문 목록 API에 페이지네이션 추가
+결제 실패 시 재시도 로직 점검
+관리자 화면 검색 속도 개선</pre>
+                <span class="locked"><svg class="icon"><use href="#i-lock" /></svg>실행 중</span>
+            </div>
+
+            <nav class="dock glass" aria-label="실행 옵션">
+                <button class="tab" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                <button class="tab" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                <span class="tab locked" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>자율개선</b></span>
+                <span class="tab locked" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>07:00</b>4시간 39분</span>
+            </nav>
+        </main>
+
+        <svg class="city" viewBox="0 0 600 300" preserveAspectRatio="xMidYMax meet" role="group" aria-label="커밋 스카이라인. 건물 높이는 추가한 줄 수, 빨간 지붕은 지운 줄 수예요.">
+            <g class="blocks"></g>
+
+            <g class="site" aria-label="3회차 공사 중">
+                <g class="stack">
+                    <rect x="340" y="254" width="76" height="14" fill="#13224a" stroke="#0a1530" />
+                    <rect class="stack-top" x="340" y="240" width="76" height="14" fill="#13224a" stroke="#0a1530" />
+                </g>
+                <g class="rising"></g>
+                <g class="next-floor">
+                    <rect class="steel" x="430.5" y="0.5" width="75" height="13.5" />
+                    <path class="steel" d="M430.5 14L468 0.5L505.5 14M449 0.5V14M487 0.5V14" stroke-width="1.1" />
+                </g>
+
+                <path class="steel" d="M548 268V40M558 268V40M548 268L558 254L548 240L558 226L548 212L558 198L548 184L558 170L548 156L558 142L548 128L558 114L548 100L558 86L548 72L558 58L548 44" />
+                <path class="steel" d="M330 32H592M330 40H548M330 32L342 40L354 32L366 40L378 32L390 40L402 32L414 40L426 32L438 40L450 32L462 40L474 32L486 40L498 32L510 40L522 32L534 40L546 32M553 12L330 32M553 12L592 32M548 40L553 12L558 40" />
+                <rect x="576" y="34" width="16" height="16" fill="#0a1530" />
+                <rect x="536" y="40" width="12" height="11" rx="1.5" fill="#0a1530" />
+                <circle cx="553" cy="10" r="2.2" fill="#ff7b6e" />
+
+                <g class="rig" style="--tx: 468px; --drop: 22">
+                    <g class="trolley">
+                        <rect x="-8" y="40" width="16" height="5" rx="1" fill="#0a1530" />
+                        <g clip-path="url(#below-trolley)">
+                            <g class="hook">
+                                <rect x="-0.7" y="-215" width="1.4" height="262" fill="#0a1530" />
+                                <path d="M-3 47h6v4l-3 3-3-3Z" fill="#0a1530" />
+                                <path d="M0 54L-30 57M0 54L30 57" stroke="#0a1530" stroke-width="1" />
+                                <g class="load">
+                                    <rect x="-38" y="57" width="76" height="13" fill="#13224a" stroke="#0a1530" />
+                                </g>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+
+            <rect x="0" y="268" width="600" height="32" fill="#0a1530" />
+            <rect x="0" y="268" width="600" height="1" fill="rgba(255,255,255,0.1)" />
+            <text class="block-label" x="107" y="288">1회차</text>
+            <text class="block-label" x="264" y="288">2회차</text>
+            <text class="block-label now" x="440" y="288">3회차 공사 중</text>
+        </svg>
+
+        <div class="tip glass" role="tooltip" aria-live="polite">
+            <div class="tip-head"><code>a3f9c21</code><ins>+142</ins><del>−21</del></div>
+            <p>[ap] 주문 목록 API에 커서 페이지네이션 추가</p>
+        </div>
+
+        <div class="scrim"></div>
+
+        <aside class="sheet glass" id="settings-panel" aria-label="설정">
+            <h1>설정</h1>
+
+            <h2>대상 프로젝트</h2>
+            <ul class="inset">
+                <li>
+                    <svg class="icon"><use href="#i-folder" /></svg>
+                    <span class="grow"><code class="path">C:\Users\dev\Projects\shop-api</code><small>실행 중에는 바꿀 수 없어요</small></span>
+                    <button class="capsule" disabled>폴더 선택</button>
+                </li>
+            </ul>
+
+            <h2>Claude 데이터 폴더</h2>
+            <ul class="inset">
+                <li>
+                    <svg class="icon"><use href="#i-folder" /></svg>
+                    <code class="grow path">C:\Users\dev\.claude</code>
+                    <span class="badge">자동 감지</span>
+                </li>
+                <li>
+                    <button class="capsule">폴더 변경</button>
+                    <button class="capsule">자동 감지</button>
+                </li>
+            </ul>
+            <p class="footnote">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+
+            <h2>개선 정책<span>실행 중에는 잠겨요</span></h2>
+            <ul class="inset" role="radiogroup" aria-label="개선 정책">
+                <li class="choice" role="radio" aria-checked="true">
+                    <span class="grow"><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                    <svg class="tick" viewBox="0 0 16 16"><use href="#i-check" /></svg>
+                </li>
+                <li class="choice" role="radio" aria-checked="false">
+                    <span class="grow"><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                </li>
+            </ul>
+
+            <h2>사용량 한도</h2>
+            <ul class="inset">
+                <li>
+                    <span class="grow"><strong style="display: block; font-size: 14px; font-weight: 600">대기한 시간만큼 종료 시각 연장</strong><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                    <button class="switch" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장"></button>
+                </li>
+            </ul>
+
+            <h2>기록</h2>
+            <ul class="inset">
+                <li><button class="link">전체 기록 보기</button><svg class="icon chev-next"><use href="#i-next" /></svg></li>
+                <li><button class="link">리포트 열기</button><svg class="icon chev-next"><use href="#i-next" /></svg></li>
+                <li><button class="link danger">진행 기록 초기화</button></li>
+            </ul>
+
+            <div class="sheet-foot"><span>AutoPilot</span><span>v0.1.0</span></div>
+        </aside>
+
+        <aside class="sheet glass" id="profile-panel" aria-label="프로필">
+            <div class="me">
+                <span class="avatar glass">개</span>
+                <span><strong>개발자</strong><small>dev@example.com</small></span>
+                <span class="plan glass">Max 20x</span>
+            </div>
+
+            <h2>계정</h2>
+            <ul class="inset" role="radiogroup" aria-label="계정 선택">
+                <li class="choice" role="radio" aria-checked="true">
+                    <span class="mini">개</span><span class="grow"><strong>기본 계정</strong></span>
+                    <svg class="tick" viewBox="0 0 16 16"><use href="#i-check" /></svg>
+                </li>
+                <li class="choice" role="radio" aria-checked="false">
+                    <span class="mini">회</span><span class="grow"><strong>회사</strong></span>
+                </li>
+                <li class="actions">
+                    <button class="capsule"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                    <button class="capsule">다시 로그인</button>
+                    <button class="capsule danger">제거</button>
+                </li>
+            </ul>
+
+            <h2>사용량과 한도</h2>
+            <ul class="inset towers">
+                <li>
+                    <svg class="tower" data-value="42" viewBox="0 0 46 190" role="img" aria-label="42%"></svg>
+                    <b>42%</b>
+                    <span class="name">5시간 한도</span>
+                    <small>03:00 리셋<br />40분 후</small>
+                </li>
+                <li>
+                    <svg class="tower" data-value="63" viewBox="0 0 46 190" role="img" aria-label="63%"></svg>
+                    <b>63%</b>
+                    <span class="name">주간 한도</span>
+                    <small>10월 16일 09:00<br />리셋, 3일 후</small>
+                </li>
+                <li class="warn">
+                    <svg class="tower" data-value="78" data-warn viewBox="0 0 46 190" role="img" aria-label="78%"></svg>
+                    <b>78%</b>
+                    <span class="name">주간 한도 (Opus)</span>
+                    <small>10월 16일 09:00<br />리셋, 3일 후</small>
+                </li>
+            </ul>
+
+            <div class="sheet-foot">
+                <span>02:18 기준</span>
+                <button class="capsule"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </aside>
+
+        <script>
+            const SVG_NS = "http://www.w3.org/2000/svg";
+            const GROUND = 268;
+            const FLOOR = 14;
+            const WIDTH = 76;
+            const LINE_PX = 1.1;
+
+            const COMMITS = [
+                { hash: "a3f9c21", message: "[ap] 주문 목록 API에 커서 페이지네이션 추가", added: 142, deleted: 21, x: 28 },
+                { hash: "7be0d14", message: "[ap] 결제 재시도에 지수 백오프 적용", added: 42, deleted: 16, x: 110 },
+                { hash: "c51e8aa", message: "[ap] 결제 재시도 테스트 보강", added: 56, deleted: 12, x: 226 }
+            ];
+
+            const makeRect = (parent, attrs) => {
+                const rect = document.createElementNS(SVG_NS, "rect");
+
+                Object.entries(attrs).forEach(([key, value]) => rect.setAttribute(key, value));
+                parent.appendChild(rect);
+
+                return rect;
+            };
+
+            // 창마다 고정 씨앗으로 켜짐을 정해 다시 그려도 같은 야경이 나온다
+            const isLit = (seed, floor, column) => ((floor + 3) * 73 + (column + 1) * 151 + seed * 37) % 97 < 46;
+
+            const drawWindows = (parent, x, bodyTop, seed, litAll) => {
+                for (let floor = 0; GROUND - (floor + 1) * FLOOR + 4 >= bodyTop + 3; floor++) {
+                    for (let column = 0; column < 4; column++) {
+                        const lit = litAll === undefined ? isLit(seed, floor, column) : litAll;
+
+                        makeRect(parent, { x: x + 8 + column * 17, y: GROUND - (floor + 1) * FLOOR + 4, width: 9, height: 7, class: lit ? "win-lit" : "win-dark" });
+                    }
+                }
+            };
+
+            const blocks = document.querySelector(".blocks");
+
+            COMMITS.forEach((commit, index) => {
+                const group = document.createElementNS(SVG_NS, "g");
+                const bodyTop = GROUND - Math.round(commit.added * LINE_PX);
+                const roofTop = bodyTop - Math.round(commit.deleted * LINE_PX);
+
+                group.setAttribute("class", "bldg");
+                group.setAttribute("tabindex", "0");
+                group.setAttribute("aria-label", `${commit.hash} ${commit.message}, ${commit.added}줄 추가, ${commit.deleted}줄 삭제`);
+                group.dataset.index = index;
+                makeRect(group, { class: "body", x: commit.x, y: roofTop, width: WIDTH, height: GROUND - roofTop });
+                makeRect(group, { class: "roof", x: commit.x, y: roofTop, width: WIDTH, height: bodyTop - roofTop });
+                drawWindows(group, commit.x, bodyTop, index + 1);
+                makeRect(group, { class: "edge", x: commit.x - 2, y: roofTop - 2, width: WIDTH + 4, height: GROUND - roofTop + 2 });
+                blocks.appendChild(group);
+            });
+
+            const tip = document.querySelector(".tip");
+
+            const showTip = (group) => {
+                const commit = COMMITS[group.dataset.index];
+                const box = group.getBoundingClientRect();
+                const flip = box.right + 12 + tip.offsetWidth > innerWidth - 8;
+
+                document.querySelectorAll(".bldg.on").forEach((other) => other.classList.remove("on"));
+                group.classList.add("on");
+                tip.querySelector("code").textContent = commit.hash;
+                tip.querySelector("ins").textContent = `+${commit.added}`;
+                tip.querySelector("del").textContent = `−${commit.deleted}`;
+                tip.querySelector("p").textContent = commit.message;
+                tip.classList.toggle("flip", flip);
+                tip.style.setProperty("left", `${flip ? box.left - 12 - tip.offsetWidth : box.right + 12}px`);
+                tip.style.setProperty("top", `${box.top}px`);
+            };
+
+            document.querySelectorAll(".bldg").forEach((group) => {
+                group.addEventListener("mouseenter", () => showTip(group));
+                group.addEventListener("focus", () => showTip(group));
+            });
+            showTip(document.querySelector(".bldg"));
+
+            // 사용량 탑: 아래층부터 쓴 만큼 창이 켜진다
+            document.querySelectorAll(".tower").forEach((tower) => {
+                const ROWS = 17;
+                const HEIGHT = 190;
+                const litRows = Math.round((Number(tower.dataset.value) * ROWS) / 100);
+                const litFill = tower.hasAttribute("data-warn") ? "#ff7b6e" : "#ffd48a";
+
+                makeRect(tower, { x: 0, y: 0, width: 46, height: HEIGHT, fill: "#0a1530" });
+                makeRect(tower, { x: 0, y: 0, width: 46, height: 1.5, fill: "rgba(255,255,255,0.35)" });
+
+                for (let row = 0; row < ROWS; row++) {
+                    for (let column = 0; column < 3; column++) {
+                        makeRect(tower, { x: 7 + column * 12, y: HEIGHT - (row + 1) * 11, width: 8, height: 6.5, fill: row < litRows ? litFill : "#2a3a66" });
+                    }
+                }
+            });
+
+            // 대표 모션: 3회차 공사장에서 크레인이 한 층씩 올려 건물이 자란다
+            const rig = document.querySelector(".rig");
+            const load = rig.querySelector(".load");
+            const stackTop = document.querySelector(".stack-top");
+            const rising = document.querySelector(".rising");
+            const BUILD_X = 468;
+            const STACK_X = 378;
+            const REST = 22;
+            const FIRST_FLOORS = 4;
+            const LAST_FLOORS = 8;
+            const LOAD_BOTTOM = 70;
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            const moveTrolley = (x) => rig.style.setProperty("--tx", `${x}px`);
+            const moveHook = (drop) => rig.style.setProperty("--drop", drop);
+
+            const addFloor = (animate) => {
+                const level = rising.children.length;
+                const group = document.createElementNS(SVG_NS, "g");
+                const top = GROUND - (level + 1) * FLOOR;
+
+                group.setAttribute("class", animate ? "floor" : "");
+                makeRect(group, { x: 430, y: top, width: WIDTH, height: FLOOR, fill: "#0a1530" });
+
+                for (let column = 0; column < 4; column++) {
+                    makeRect(group, { x: 438 + column * 17, y: top + 4, width: 9, height: 7, class: level < 2 && column === 1 ? "win-lit" : "win-dark" });
+                }
+
+                rising.appendChild(group);
+            };
+
+            const buildingTop = () => GROUND - rising.children.length * FLOOR;
+            const nextFloor = document.querySelector(".next-floor");
+            const placeFrame = () => nextFloor.setAttribute("transform", `translate(0 ${buildingTop() - FLOOR})`);
+
+            for (let floor = 0; floor < FIRST_FLOORS; floor++) {
+                addFloor(false);
+            }
+
+            placeFrame();
+            // 움직임을 줄인 환경에서도 공사 중으로 읽히도록 짐을 다음 층 자리 바로 위에 멈춰 둔다
+            moveHook(buildingTop() - FLOOR - LOAD_BOTTOM - 8);
+
+            const runCrane = async () => {
+                await sleep(1200);
+
+                while (true) {
+                    moveHook(buildingTop() - LOAD_BOTTOM);
+                    await sleep(700);
+                    load.classList.add("off");
+                    addFloor(true);
+                    placeFrame();
+                    stackTop.classList.remove("off");
+                    moveHook(REST);
+                    await sleep(700);
+
+                    if (rising.children.length >= LAST_FLOORS) {
+                        await sleep(2600);
+                        [...rising.children].slice(FIRST_FLOORS).forEach((floor) => floor.classList.add("gone"));
+                        await sleep(420);
+                        [...rising.children].slice(FIRST_FLOORS).forEach((floor) => floor.remove());
+                        placeFrame();
+                    }
+
+                    moveTrolley(STACK_X);
+                    await sleep(900);
+                    moveHook(240 - LOAD_BOTTOM + 14);
+                    await sleep(700);
+                    stackTop.classList.add("off");
+                    load.classList.remove("off");
+                    moveHook(REST);
+                    await sleep(700);
+                    moveTrolley(BUILD_X);
+                    await sleep(900);
+                }
+            };
+
+            if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                runCrane();
+            }
+
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector(".scrim").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+        </script>
+    </body>
+</html>

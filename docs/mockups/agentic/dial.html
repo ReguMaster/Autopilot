@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안: 바우하우스 다이얼</title>
+        <script>
+            const setScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            setScreen();
+            addEventListener("hashchange", setScreen);
+        </script>
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --ground: #e9edf2;
+                --paper: #ffffff;
+                --ink: #000000;
+                --ink-soft: #3f4650;
+                --red: #e63b2e;
+                --red-ink: #c22a1f;
+                --blue: #1f4fbf;
+                --yellow: #f2c230;
+                --rule: #000000;
+                --sans: "Pretendard", "Segoe UI Variable", "Segoe UI", sans-serif;
+                --digits: "Bahnschrift", "Segoe UI", sans-serif;
+                --mono: "Cascadia Mono", "Consolas", "Nanum Gothic Coding", monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+            }
+
+            body {
+                height: 100vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                background: var(--ground);
+                color: var(--ink);
+                font: 14px/1.45 var(--sans);
+                -webkit-font-smoothing: antialiased;
+                word-break: keep-all;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+            }
+
+            :focus-visible {
+                outline: 3px solid var(--blue);
+                outline-offset: 2px;
+            }
+
+            .num {
+                font-family: var(--digits);
+                font-variant-numeric: tabular-nums;
+            }
+
+            .lock {
+                width: 9px;
+                height: 11px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.4;
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                flex: none;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                padding: 0 6px 0 18px;
+                -webkit-app-region: drag;
+            }
+
+            .wordmark {
+                font-size: 16px;
+                font-weight: 820;
+                letter-spacing: -0.01em;
+            }
+
+            .clock-now {
+                margin-left: 8px;
+                font-size: 12.5px;
+                color: var(--ink-soft);
+            }
+
+            .clock-now .num {
+                font-size: 13.5px;
+                color: var(--ink);
+            }
+
+            .window-buttons {
+                display: flex;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .wbtn {
+                width: 34px;
+                height: 30px;
+                display: grid;
+                place-items: center;
+                padding: 0;
+                border: 0;
+                background: transparent;
+                cursor: pointer;
+            }
+
+            .wbtn svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: var(--ink);
+                stroke-width: 1.5;
+                stroke-linecap: square;
+            }
+
+            .wbtn:hover {
+                background: var(--paper);
+            }
+
+            .wbtn.close:hover {
+                background: var(--red);
+            }
+
+            .wbtn.close:hover svg {
+                stroke: var(--paper);
+            }
+
+            [data-screen="settings"] .wbtn.settings,
+            [data-screen="profile"] .wbtn.profile {
+                background: var(--ink);
+            }
+
+            [data-screen="settings"] .wbtn.settings svg,
+            [data-screen="profile"] .wbtn.profile svg {
+                stroke: var(--paper);
+            }
+
+            /* 다이얼 영역 */
+            .stage {
+                flex: none;
+                display: grid;
+                grid-template-columns: 380px 1fr;
+                height: 368px;
+                padding: 0 18px 0 22px;
+            }
+
+            .dial {
+                position: relative;
+                width: 380px;
+                height: 368px;
+            }
+
+            .dial svg {
+                position: absolute;
+                inset: 0;
+            }
+
+            .dial-center {
+                position: absolute;
+                left: 190px;
+                top: 188px;
+                transform: translate(-50%, -50%);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+
+            .dial-center .label {
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--ink-soft);
+            }
+
+            .remaining {
+                font-size: 54px;
+                font-weight: 840;
+                line-height: 1;
+                letter-spacing: -0.03em;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .state {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                margin-top: 8px;
+                font-size: 15px;
+                font-weight: 700;
+            }
+
+            .state::before {
+                content: "";
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: var(--red);
+            }
+
+            .stop {
+                margin-top: 14px;
+                height: 40px;
+                padding: 0 22px;
+                border: 0;
+                background: var(--ink);
+                font-size: 15px;
+                font-weight: 760;
+                color: var(--paper);
+                cursor: pointer;
+                box-shadow: 4px 4px 0 var(--red);
+            }
+
+            .stop:active {
+                transform: translate(2px, 2px);
+                box-shadow: 2px 2px 0 var(--red);
+            }
+
+            .dial text {
+                font-family: var(--digits);
+                font-size: 12px;
+                fill: var(--ink);
+            }
+
+            .dial text.edge {
+                font-family: var(--sans);
+                font-size: 12.5px;
+                font-weight: 700;
+            }
+
+            /* 회차 범례 */
+            .legend {
+                display: flex;
+                flex-direction: column;
+                padding-top: 30px;
+            }
+
+            .round {
+                display: grid;
+                grid-template-columns: 14px 1fr auto;
+                column-gap: 9px;
+                padding: 9px 0 10px;
+                border-top: 2px solid var(--ink);
+            }
+
+            .round .swatch {
+                width: 14px;
+                height: 14px;
+                margin-top: 3px;
+                background: var(--blue);
+            }
+
+            .round.now .swatch {
+                background: var(--red);
+            }
+
+            .round b {
+                font-size: 15px;
+                font-weight: 800;
+            }
+
+            .round .count {
+                font-size: 13px;
+                font-weight: 700;
+                text-align: right;
+            }
+
+            .round.now .count {
+                color: var(--red-ink);
+            }
+
+            .round .commits::before {
+                content: "";
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                margin-right: 5px;
+                border-radius: 50%;
+                background: var(--ink);
+                vertical-align: 1px;
+            }
+
+            .round .when,
+            .round .detail {
+                grid-column: 2 / -1;
+                font-size: 12.5px;
+                color: var(--ink-soft);
+            }
+
+            .round .when {
+                font-family: var(--digits);
+            }
+
+            .round .detail code {
+                font: 12px var(--mono);
+                color: var(--ink);
+            }
+
+            .project {
+                margin-top: auto;
+                padding: 10px 0 2px;
+                border-top: 2px solid var(--ink);
+            }
+
+            .project b {
+                display: block;
+                font-size: 17px;
+                font-weight: 820;
+            }
+
+            .project .branch {
+                font: 12.5px/1.5 var(--mono);
+                color: var(--ink-soft);
+            }
+
+            .project .diff {
+                display: block;
+                font-size: 13px;
+                font-weight: 700;
+            }
+
+            .diff-add {
+                color: #1f6b3a;
+            }
+
+            .diff-del {
+                color: var(--red-ink);
+            }
+
+            /* 실행 옵션 토큰 */
+            .tokens {
+                flex: none;
+                display: grid;
+                grid-template-columns: 1fr 1.08fr 1.1fr 1fr;
+                margin: 6px 18px 0;
+                border: 2px solid var(--ink);
+                background: var(--paper);
+            }
+
+            .token {
+                display: grid;
+                grid-template-columns: 34px 1fr;
+                column-gap: 10px;
+                align-items: center;
+                min-height: 64px;
+                padding: 10px 10px;
+                border: 0;
+                border-left: 2px solid var(--ink);
+                background: transparent;
+                text-align: left;
+                cursor: pointer;
+            }
+
+            .token:first-child {
+                border-left: 0;
+            }
+
+            .token:hover {
+                background: #f4f6f9;
+            }
+
+            .token svg.shape {
+                grid-row: span 2;
+                width: 34px;
+                height: 34px;
+            }
+
+            .token .label {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--ink-soft);
+                line-height: 1.2;
+            }
+
+            .token .value {
+                font-size: 16px;
+                font-weight: 800;
+                line-height: 1.25;
+                white-space: nowrap;
+            }
+
+            .token[aria-disabled="true"] {
+                cursor: default;
+                background: repeating-linear-gradient(-45deg, transparent 0 6px, #eef1f5 6px 8px);
+            }
+
+            /* 작업과 로그 */
+            .lower {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 14px;
+                padding: 14px 18px 16px;
+            }
+
+            .block-head {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 4px;
+                font-size: 14px;
+                font-weight: 800;
+            }
+
+            .block-head .aside {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                margin-left: auto;
+                font-size: 12.5px;
+                font-weight: 600;
+                color: var(--ink-soft);
+            }
+
+            .tasks ol {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                counter-reset: task;
+            }
+
+            .tasks li {
+                display: grid;
+                grid-template-columns: 22px 1fr auto;
+                align-items: baseline;
+                height: 23px;
+                font-size: 14px;
+                counter-increment: task;
+            }
+
+            .tasks li::before {
+                content: counter(task);
+                font: 700 13px var(--digits);
+                color: var(--ink-soft);
+            }
+
+            .tasks .status {
+                font-size: 12.5px;
+                font-weight: 600;
+                color: var(--ink-soft);
+            }
+
+            .tasks li.now {
+                font-weight: 700;
+            }
+
+            .tasks li.now .status {
+                color: var(--red-ink);
+                font-weight: 700;
+            }
+
+            .log {
+                flex: 1;
+                min-height: 0;
+                padding: 10px 14px 10px;
+                background: var(--paper);
+                border-left: 6px solid var(--ink);
+            }
+
+            .text-button {
+                padding: 2px 0;
+                border: 0;
+                border-bottom: 2px solid var(--ink);
+                background: none;
+                font-size: 12.5px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .log ol {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                font: 12.5px/19px var(--mono);
+            }
+
+            .log li {
+                display: flex;
+                gap: 10px;
+                white-space: nowrap;
+            }
+
+            .log time {
+                color: var(--ink-soft);
+            }
+
+            .log .tool {
+                width: 34px;
+                font-weight: 700;
+                color: var(--blue);
+            }
+
+            .log li.said p {
+                margin: 2px 0 0;
+                font: 650 13.5px/19px var(--sans);
+                white-space: normal;
+            }
+
+            /* 패널 공통 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                background: rgba(233, 237, 242, 0.72);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .panel {
+                position: fixed;
+                top: 40px;
+                right: 0;
+                bottom: 0;
+                width: 452px;
+                display: flex;
+                flex-direction: column;
+                padding: 18px 22px 18px;
+                background: var(--paper);
+                border-left: 3px solid var(--ink);
+                box-shadow: -8px 0 0 var(--yellow);
+                visibility: hidden;
+                transform: translateX(calc(100% + 12px));
+                transition:
+                    transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+                    visibility 0s linear 0.3s;
+            }
+
+            #profile-panel {
+                box-shadow: -8px 0 0 var(--blue);
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                visibility: visible;
+                transform: none;
+                transition:
+                    transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+                    visibility 0s;
+            }
+
+            .panel h2 {
+                margin: 0 0 6px;
+                font-size: 26px;
+                font-weight: 840;
+                letter-spacing: -0.02em;
+                line-height: 1.1;
+            }
+
+            .section {
+                display: grid;
+                grid-template-columns: 22px 1fr;
+                column-gap: 12px;
+                padding: 13px 0;
+                border-top: 2px solid var(--ink);
+            }
+
+            .marker {
+                width: 18px;
+                height: 18px;
+                margin-top: 2px;
+            }
+
+            .section-title {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 15px;
+                font-weight: 800;
+            }
+
+            .section-title .aside {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                margin-left: auto;
+                font-size: 12.5px;
+                font-weight: 600;
+                color: var(--ink-soft);
+            }
+
+            .path {
+                display: block;
+                margin-top: 4px;
+                font: 13px/1.5 var(--mono);
+            }
+
+            .desc {
+                margin: 4px 0 0;
+                font-size: 13px;
+                color: var(--ink-soft);
+            }
+
+            .buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-top: 9px;
+            }
+
+            .btn {
+                height: 34px;
+                padding: 0 14px;
+                border: 2px solid var(--ink);
+                background: var(--paper);
+                font-size: 13px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .btn:hover {
+                background: var(--ground);
+            }
+
+            .btn:disabled {
+                border-style: dashed;
+                color: var(--ink-soft);
+                cursor: default;
+            }
+
+            .btn.danger {
+                border-color: var(--red);
+                color: var(--red-ink);
+            }
+
+            .btn.on {
+                background: var(--ink);
+                color: var(--paper);
+            }
+
+            .choices {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                margin-top: 9px;
+            }
+
+            .choice {
+                padding: 9px 11px 10px;
+                border: 2px solid var(--ink);
+                background: var(--paper);
+                text-align: left;
+                cursor: default;
+            }
+
+            .choice[aria-checked="true"] {
+                background: var(--yellow);
+            }
+
+            .choice b {
+                display: block;
+                font-size: 14.5px;
+                font-weight: 800;
+            }
+
+            .choice span {
+                display: block;
+                margin-top: 2px;
+                font-size: 12.5px;
+                line-height: 1.45;
+            }
+
+            .switch-row {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 14px;
+                align-items: center;
+                margin-top: 6px;
+            }
+
+            .switch-row b {
+                font-size: 14px;
+                font-weight: 700;
+            }
+
+            .switch {
+                position: relative;
+                width: 64px;
+                height: 34px;
+                padding: 0;
+                border: 0;
+                border-radius: 17px;
+                background: var(--ink);
+                cursor: pointer;
+            }
+
+            .switch::after {
+                content: "";
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                background: var(--yellow);
+            }
+
+            .version {
+                margin-top: auto;
+                font: 13px var(--digits);
+                color: var(--ink-soft);
+            }
+
+            /* 프로필 */
+            .accounts {
+                display: flex;
+                gap: 0;
+                margin-top: 10px;
+            }
+
+            .accounts .btn + .btn {
+                margin-left: -2px;
+            }
+
+            .accounts .btn.add {
+                margin-left: auto;
+            }
+
+            .who {
+                display: grid;
+                grid-template-columns: 60px 1fr auto;
+                gap: 14px;
+                align-items: center;
+                margin-top: 16px;
+            }
+
+            .avatar {
+                width: 60px;
+                height: 60px;
+                display: grid;
+                place-items: center;
+                border-radius: 50%;
+                background: var(--blue);
+                font-size: 24px;
+                font-weight: 800;
+                color: var(--paper);
+            }
+
+            .who .name {
+                font-size: 20px;
+                font-weight: 840;
+                line-height: 1.2;
+            }
+
+            .who .mail {
+                font-size: 13px;
+                color: var(--ink-soft);
+            }
+
+            .plan {
+                padding: 6px 10px;
+                background: var(--yellow);
+                font-size: 13px;
+                font-weight: 800;
+            }
+
+            .who + .buttons {
+                margin: 10px 0 14px 74px;
+            }
+
+            .usage {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+                padding-top: 14px;
+                border-top: 2px solid var(--ink);
+            }
+
+            .usage-title {
+                align-self: flex-start;
+                font-size: 15px;
+                font-weight: 800;
+            }
+
+            .usage svg text {
+                font-family: var(--sans);
+                font-size: 10.5px;
+                font-weight: 700;
+            }
+
+            .limits {
+                align-self: stretch;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .limits li {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .limits .key {
+                height: 6px;
+                margin-bottom: 7px;
+                background: var(--blue);
+            }
+
+            .limits li.caution .key {
+                background: var(--red);
+            }
+
+            .limits b {
+                font-size: 13.5px;
+                font-weight: 700;
+            }
+
+            .limits .pct {
+                font-size: 26px;
+                font-weight: 840;
+                line-height: 1.15;
+            }
+
+            .limits li.caution .pct {
+                color: var(--red-ink);
+            }
+
+            .limits .when {
+                font-size: 12.5px;
+                color: var(--ink-soft);
+                line-height: 1.4;
+            }
+
+            .panel-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: auto;
+                padding-top: 12px;
+                border-top: 2px solid var(--ink);
+                font-size: 13px;
+                color: var(--ink-soft);
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    transition: none !important;
+                    animation: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol id="lock" viewBox="0 0 9 11"><rect x="0.8" y="4.6" width="7.4" height="5.6" rx="1" /><path d="M2.4 4.6V3.2a2.1 2.1 0 0 1 4.2 0v1.4" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+                <circle cx="11" cy="11" r="9" fill="none" stroke="#000" stroke-width="2.5" />
+                <path d="M11 2 A9 9 0 0 1 20 11" fill="none" stroke="#e63b2e" stroke-width="2.5" />
+                <path d="M11 11 L18 6" stroke="#000" stroke-width="2.5" />
+            </svg>
+            <span class="wordmark">AutoPilot</span>
+            <span class="clock-now">지금 <span class="num">02:20:10</span></span>
+            <nav class="window-buttons" aria-label="창">
+                <button type="button" class="wbtn profile" aria-label="프로필" title="프로필" data-panel="profile">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.6c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button type="button" class="wbtn settings" aria-label="설정" title="설정" data-panel="settings">
+                    <svg viewBox="0 0 12 12"><path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" /><circle cx="6" cy="6" r="1.6" /></svg>
+                </button>
+                <button type="button" class="wbtn" aria-label="최소화" title="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button type="button" class="wbtn" aria-label="최대화" title="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" /></svg></button>
+                <button type="button" class="wbtn close" aria-label="닫기" title="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </nav>
+        </header>
+
+        <section class="stage">
+            <div class="dial">
+                <svg id="dial-svg" width="380" height="368" viewBox="0 0 380 368" role="img" aria-label="00:30부터 07:00까지 실행 다이얼. 1, 2회차 끝, 3회차 진행 중, 지금 02:20"></svg>
+                <div class="dial-center">
+                    <span class="label">남은 시간</span>
+                    <span class="remaining">4:39:50</span>
+                    <span class="state">3회차 진행 중</span>
+                    <button type="button" class="stop">종료 신호</button>
+                </div>
+            </div>
+
+            <div class="legend">
+                <div class="round">
+                    <span class="swatch"></span><b>1회차</b><span class="count commits">커밋 2</span>
+                    <span class="when">00:30–01:22</span>
+                    <span class="detail"><code>a3f9c21</code> <code>7be0d14</code></span>
+                </div>
+                <div class="round">
+                    <span class="swatch"></span><b>2회차</b><span class="count commits">커밋 1</span>
+                    <span class="when">01:23–02:07</span>
+                    <span class="detail"><code>c51e8aa</code></span>
+                </div>
+                <div class="round now">
+                    <span class="swatch"></span><b>3회차</b><span class="count">진행 중</span>
+                    <span class="when">02:08–</span>
+                    <span class="detail">12분 경과</span>
+                </div>
+                <div class="project">
+                    <b>shop-api</b>
+                    <span class="branch">ai/autopilot</span>
+                    <span class="diff"><span class="diff-add">+240</span> <span class="diff-del">−49</span></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="tokens" aria-label="실행 옵션">
+            <button type="button" class="token">
+                <svg class="shape" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="16" fill="#1f4fbf" /></svg>
+                <span class="label">모델</span>
+                <span class="value">Opus</span>
+            </button>
+            <button type="button" class="token">
+                <svg class="shape" viewBox="0 0 34 34" aria-hidden="true">
+                    <path d="M1 33 H7.4 V27.8 Z" fill="#000" />
+                    <path d="M7.4 33 H13.8 V22.6 L7.4 27.8 Z" fill="#000" />
+                    <path d="M13.8 33 H20.2 V17.4 L13.8 22.6 Z" fill="#000" />
+                    <path d="M20.2 33 H26.6 V12.2 L20.2 17.4 Z M26.6 33 H33 V7 L26.6 12.2 Z" fill="none" stroke="#000" stroke-width="1.6" stroke-linejoin="miter" />
+                </svg>
+                <span class="label">Effort</span>
+                <span class="value">High <span class="num" style="font-size: 12px; font-weight: 600; color: #3f4650">3/5</span></span>
+            </button>
+            <button type="button" class="token" aria-disabled="true">
+                <svg class="shape" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" fill="#f2c230" stroke="#000" stroke-width="2" /></svg>
+                <span class="label">개선 정책 <svg class="lock" aria-label="실행 중 잠김"><use href="#lock" /></svg></span>
+                <span class="value">자율개선</span>
+            </button>
+            <button type="button" class="token" aria-disabled="true">
+                <svg class="shape" viewBox="0 0 34 34" aria-hidden="true"><path d="M1 17 H30" stroke="#000" stroke-width="3" /><path d="M31.5 8 V26" stroke="#e63b2e" stroke-width="3" /></svg>
+                <span class="label">종료 시각 <svg class="lock" aria-label="실행 중 잠김"><use href="#lock" /></svg></span>
+                <span class="value num" style="font-weight: 700">07:00</span>
+            </button>
+        </section>
+
+        <div class="lower">
+            <section class="tasks" aria-label="처리할 작업">
+                <div class="block-head">처리할 작업<span class="aside"><svg class="lock"><use href="#lock" /></svg>실행 중에는 고칠 수 없어요</span></div>
+                <ol>
+                    <li><span>주문 목록 API에 페이지네이션 추가</span><span class="status">1회차 완료</span></li>
+                    <li><span>결제 실패 시 재시도 로직 점검</span><span class="status">1, 2회차 완료</span></li>
+                    <li class="now"><span>관리자 화면 검색 속도 개선</span><span class="status">3회차 진행 중</span></li>
+                </ol>
+            </section>
+
+            <section class="log" aria-label="최근 로그">
+                <div class="block-head">최근 로그<span class="aside"><button type="button" class="text-button">전체 기록 보기</button></span></div>
+                <ol>
+                    <li><time>02:17:12</time><span class="tool">Grep</span><span>"searchOrders" src/admin</span></li>
+                    <li><time>02:18:30</time><span class="tool">Read</span><span>src/admin/searchController.js</span></li>
+                    <li><time>02:19:02</time><span class="tool">Edit</span><span>src/admin/searchController.js</span></li>
+                    <li><time>02:19:31</time><span class="tool">Edit</span><span>migrations/20261014_add_search_index.sql</span></li>
+                    <li><time>02:19:47</time><span class="tool">Bash</span><span>npm test -- admin</span></li>
+                    <li class="said"><time>02:20:05</time><p>관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</p></li>
+                </ol>
+            </section>
+        </div>
+
+        <div class="scrim" data-panel="main"></div>
+
+        <aside id="settings-panel" class="panel" aria-label="설정">
+            <h2>설정</h2>
+
+            <div class="section">
+                <svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><rect x="1.5" y="1.5" width="15" height="15" fill="none" stroke="#000" stroke-width="3" /></svg>
+                <div>
+                    <div class="section-title">대상 프로젝트<span class="aside"><svg class="lock"><use href="#lock" /></svg>실행 중 잠김</span></div>
+                    <code class="path">C:\Users\dev\Projects\shop-api</code>
+                    <div class="buttons"><button type="button" class="btn" disabled>폴더 선택</button></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><rect x="1.5" y="1.5" width="15" height="15" fill="none" stroke="#000" stroke-width="3" /><rect x="1.5" y="9" width="15" height="7.5" fill="#000" /></svg>
+                <div>
+                    <div class="section-title">Claude 데이터 폴더<span class="aside">자동 감지</span></div>
+                    <code class="path">C:\Users\dev\.claude</code>
+                    <p class="desc">메모리, 지침, 스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                    <div class="buttons">
+                        <button type="button" class="btn">폴더 변경</button>
+                        <button type="button" class="btn">자동 감지</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><rect x="1" y="1" width="16" height="16" fill="#f2c230" stroke="#000" stroke-width="2" /></svg>
+                <div>
+                    <div class="section-title">개선 정책<span class="aside"><svg class="lock"><use href="#lock" /></svg>실행 중 잠김</span></div>
+                    <div class="choices" role="radiogroup" aria-label="개선 정책">
+                        <div class="choice" role="radio" aria-checked="true"><b>자율개선</b><span>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</span></div>
+                        <div class="choice" role="radio" aria-checked="false"><b>지시개선</b><span>적어 둔 작업만 처리하고 끝나요.</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><path d="M0 9 H15" stroke="#000" stroke-width="3" /><path d="M16.5 3 V15" stroke="#e63b2e" stroke-width="3" /></svg>
+                <div>
+                    <div class="section-title">사용량 한도</div>
+                    <div class="switch-row">
+                        <b>대기한 시간만큼 종료 시각 연장</b>
+                        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장"></button>
+                    </div>
+                    <p class="desc">한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5 A6.5 6.5 0 1 1 2.5 9" fill="none" stroke="#1f4fbf" stroke-width="4" /></svg>
+                <div>
+                    <div class="section-title">기록</div>
+                    <div class="buttons">
+                        <button type="button" class="btn">전체 기록 보기</button>
+                        <button type="button" class="btn">리포트 열기</button>
+                        <button type="button" class="btn danger" disabled>진행 기록 초기화</button>
+                    </div>
+                </div>
+            </div>
+
+            <span class="version">AutoPilot v0.1.0</span>
+        </aside>
+
+        <aside id="profile-panel" class="panel" aria-label="프로필">
+            <h2>프로필</h2>
+
+            <div class="accounts" role="radiogroup" aria-label="계정 선택">
+                <button type="button" class="btn on" role="radio" aria-checked="true">기본 계정</button>
+                <button type="button" class="btn" role="radio" aria-checked="false">회사</button>
+                <button type="button" class="btn add">계정 추가</button>
+            </div>
+
+            <div class="who">
+                <span class="avatar" aria-hidden="true">개</span>
+                <div>
+                    <div class="name">개발자</div>
+                    <div class="mail">dev@example.com</div>
+                </div>
+                <span class="plan">Max 20x</span>
+            </div>
+            <div class="buttons">
+                <button type="button" class="btn">다시 로그인</button>
+                <button type="button" class="btn">제거</button>
+            </div>
+
+            <div class="usage">
+                <span class="usage-title">사용량과 한도</span>
+                <svg id="usage-svg" width="232" height="232" viewBox="0 0 196 196" role="img" aria-label="5시간 한도 42%, 주간 한도 63%, 주간 한도 Opus 78% 경고"></svg>
+                <ul class="limits">
+                    <li><span class="key"></span><b>5시간 한도</b><span class="pct">42%</span><span class="when">03:00 리셋<br />40분 후</span></li>
+                    <li><span class="key"></span><b>주간 한도</b><span class="pct">63%</span><span class="when">10월 16일 09:00 리셋<br />3일 후</span></li>
+                    <li class="caution"><span class="key"></span><b>주간 한도 (Opus)</b><span class="pct">78%</span><span class="when">10월 16일 09:00 리셋<br />3일 후</span></li>
+                </ul>
+            </div>
+
+            <div class="panel-foot">
+                <span>02:18 기준</span>
+                <button type="button" class="btn">새로 고침</button>
+            </div>
+        </aside>
+
+        <script>
+            const RUN_MINUTES = 390;
+            const CENTER = { x: 190, y: 188 };
+            const RING = 146;
+            const toRadians = (degrees) => ((degrees - 90) * Math.PI) / 180;
+            const toAngle = (minutes) => (minutes / RUN_MINUTES) * 360;
+
+            const getPoint = (radius, degrees, center = CENTER) => ({
+                x: center.x + radius * Math.cos(toRadians(degrees)),
+                y: center.y + radius * Math.sin(toRadians(degrees))
+            });
+
+            const getArcPath = (radius, from, to, center = CENTER) => {
+                const start = getPoint(radius, from, center);
+                const end = getPoint(radius, to, center);
+                const large = to - from > 180 ? 1 : 0;
+
+                return `M${start.x.toFixed(2)} ${start.y.toFixed(2)} A${radius} ${radius} 0 ${large} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+            };
+
+            const drawDial = () => {
+                const svg = document.getElementById("dial-svg");
+                const hours = [30, 90, 150, 210, 270, 330];
+                const commits = [36, 49, 94];
+                let markup = `<circle cx="${CENTER.x}" cy="${CENTER.y}" r="168" fill="#ffffff" />
+                    <circle cx="${CENTER.x}" cy="${CENTER.y}" r="${RING}" fill="none" stroke="#e9edf2" stroke-width="24" />
+                    <path d="${getArcPath(RING, 0, toAngle(52))}" fill="none" stroke="#1f4fbf" stroke-width="24" />
+                    <path d="${getArcPath(RING, toAngle(53) + 0.8, toAngle(97))}" fill="none" stroke="#1f4fbf" stroke-width="24" />
+                    <path id="live-arc" fill="none" stroke="#e63b2e" stroke-width="24" />`;
+
+                hours.forEach((minutes, index) => {
+                    const angle = toAngle(minutes);
+                    const inner = getPoint(124, angle);
+                    const outer = getPoint(132, angle);
+                    const label = getPoint(112, angle);
+
+                    markup += `<line x1="${inner.x}" y1="${inner.y}" x2="${outer.x}" y2="${outer.y}" stroke="#000" stroke-width="2" />
+                        <text x="${label.x}" y="${label.y + 4}" text-anchor="middle">0${index + 1}</text>`;
+                });
+
+                commits.forEach((minutes) => {
+                    const dot = getPoint(RING, toAngle(minutes));
+
+                    markup += `<circle cx="${dot.x}" cy="${dot.y}" r="4.5" fill="#000" stroke="#fff" stroke-width="2" />`;
+                });
+
+                const seamTop = getPoint(174, 0);
+
+                markup += `<line x1="${CENTER.x}" y1="${CENTER.y - 128}" x2="${seamTop.x}" y2="${seamTop.y}" stroke="#000" stroke-width="3" />
+                    <text class="edge" x="${CENTER.x - 8}" y="14" text-anchor="end">07:00 종료</text>
+                    <text class="edge" x="${CENTER.x + 8}" y="14">00:30 시작</text>
+                    <g id="hand"><line x1="${CENTER.x}" y1="${CENTER.y - 124}" x2="${CENTER.x}" y2="${CENTER.y - 163}" stroke="#000" stroke-width="3" />
+                    <circle cx="${CENTER.x}" cy="${CENTER.y - 124}" r="4.5" fill="#000" /></g>`;
+
+                svg.innerHTML = markup;
+            };
+
+            const drawUsage = () => {
+                const svg = document.getElementById("usage-svg");
+                const center = { x: 98, y: 98 };
+                const rings = [
+                    { radius: 88, level: 42, color: "#1f4fbf", name: "5시간" },
+                    { radius: 66, level: 63, color: "#1f4fbf", name: "주간" },
+                    { radius: 44, level: 78, color: "#e63b2e", name: "Opus" }
+                ];
+                let markup = "";
+
+                rings.forEach(({ radius, level, color, name }) => {
+                    const end = (level / 100) * 360;
+                    const cap = getPoint(radius, end, center);
+
+                    markup += `<circle cx="${center.x}" cy="${center.y}" r="${radius}" fill="none" stroke="#e9edf2" stroke-width="16" />
+                        <path d="${getArcPath(radius, 0, end, center)}" fill="none" stroke="${color}" stroke-width="16" />
+                        <line x1="${cap.x}" y1="${cap.y}" x2="${getPoint(radius + 8, end, center).x}" y2="${getPoint(radius + 8, end, center).y}" stroke="#000" stroke-width="2" />
+                        <text x="92" y="${center.y - radius + 4}" text-anchor="end" font-family="Pretendard, sans-serif" font-size="10" font-weight="700">${name}</text>`;
+                });
+
+                markup += `<line x1="98" y1="0" x2="98" y2="58" stroke="#000" stroke-width="2" />`;
+                svg.innerHTML = markup;
+            };
+
+            drawDial();
+            drawUsage();
+
+            // 진행 중인 3회차 호(빨강)와 지금 바늘이 아주 천천히 자란다(보이도록 실제보다 빠르게).
+            const liveArc = document.getElementById("live-arc");
+            const hand = document.getElementById("hand");
+            const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const roundStart = toAngle(98) + 0.8;
+            const nowAngle = toAngle(110);
+            const startedAt = performance.now();
+
+            const drawLive = (time) => {
+                const angle = Math.min(nowAngle + ((time - startedAt) / 1000) * 0.12, 200);
+
+                liveArc.setAttribute("d", getArcPath(RING, roundStart, angle));
+                hand.setAttribute("transform", `rotate(${angle} ${CENTER.x} ${CENTER.y})`);
+
+                if (!reduceMotion) {
+                    requestAnimationFrame(drawLive);
+                }
+            };
+
+            drawLive(startedAt);
+
+            document.querySelectorAll("[data-panel]").forEach((element) =>
+                element.addEventListener("click", () => {
+                    const target = element.dataset.panel;
+
+                    location.hash = document.documentElement.dataset.screen === target ? "main" : target;
+                })
+            );
+        </script>
+    </body>
+</html>

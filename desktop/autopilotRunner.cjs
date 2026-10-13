@@ -21,6 +21,12 @@ const RETRY_PATTERN = /^(\d+)분 후 재시도/;
 const LIMIT_PATTERN = /^\[사용량 한도\] (.+)까지 대기/;
 const LIMIT_EXTEND_PATTERN = /^\[사용량 한도\] 종료 시각 연장 (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/;
 const FINISH_PATTERN = /^AutoPilot 종료 - (.+) \(\d+회차\)$/;
+const COMMIT_PATTERN = /^\[커밋\] (\S+) \+(\d+) -(\d+) ?(.*)$/;
+// Claude 출력은 엔진이 시각을 붙여 쓰고, 여러 줄이면 둘째 줄부터 4칸 들여 쓴다. 도구 호출은 시각 뒤에 "  > 이름 인자"다.
+const TOOL_PATTERN = /^\d{2}:\d{2}:\d{2} {3}> (\S+) ?(.*)$/;
+const GAIN_PATTERN = /^(?:\d{2}:\d{2}:\d{2} | {4})성과:\s*(.+)$/;
+const READ_TOOLS = new Set(["Read"]);
+const EDIT_TOOLS = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"]);
 
 const createInitialState = () => {
     return {
@@ -41,8 +47,32 @@ const createInitialState = () => {
         deadlineAt: 0,
         policy: "",
         logFile: "",
-        reportFile: ""
+        reportFile: "",
+        work: { toolCalls: 0, filesRead: 0, filesEdited: 0 },
+        gains: []
     };
+};
+
+// 같은 파일을 여러 번 읽거나 고쳐도 한 번만 센다. 경로 목록은 상태(IPC로 매번 보냄)에 넣지 않고 따로 둔다.
+const seenFiles = new WeakMap();
+
+const applyTool = (state, name, argument) => {
+    // 실행마다 상태의 일한 양이 0으로 초기화되므로, 첫 도구 호출에서 경로 목록도 새로 만든다.
+    if (!state.work.toolCalls || !seenFiles.has(state)) {
+        seenFiles.set(state, { read: new Set(), edited: new Set() });
+    }
+
+    const seen = seenFiles.get(state);
+
+    state.work.toolCalls++;
+
+    if (READ_TOOLS.has(name)) {
+        seen.read.add(argument);
+        state.work.filesRead = seen.read.size;
+    } else if (EDIT_TOOLS.has(name)) {
+        seen.edited.add(argument);
+        state.work.filesEdited = seen.edited.size;
+    }
 };
 
 const createFailure = (code, msg) => {
@@ -100,7 +130,7 @@ const applyRound = (state, round, text, isReplay) => {
         state.phase = `${round}회차 진행 중`;
         state.model = roundStart[1] || state.model;
         state.effort = roundStart[2] || state.effort;
-        state.rounds.push({ round: round, startedAt: Date.now(), endedAt: 0, outcome: "", model: state.model, effort: state.effort, timesKnown: !isReplay });
+        state.rounds.push({ round: round, startedAt: Date.now(), endedAt: 0, outcome: "", model: state.model, effort: state.effort, timesKnown: !isReplay, commits: [] });
 
         // 연결한 엔진은 앱이 set한 값이 없으므로 회차가 실제로 쓴 값을 요청 값으로 본다(앱 밖에서 바꾼 값도 반영된다).
         if (state.attached) {
@@ -166,6 +196,30 @@ const parseLine = (state, line, isReplay = false) => {
 
     if (finish) {
         state.reason = finish[1];
+
+        return;
+    }
+
+    const commit = line.match(COMMIT_PATTERN);
+
+    if (commit) {
+        state.rounds.findLast((item) => !item.endedAt)?.commits.push({ hash: commit[1], insertions: Number(commit[2]), deletions: Number(commit[3]), subject: commit[4] });
+
+        return;
+    }
+
+    const tool = line.match(TOOL_PATTERN);
+
+    if (tool) {
+        applyTool(state, tool[1], tool[2]);
+
+        return;
+    }
+
+    const gain = line.match(GAIN_PATTERN);
+
+    if (gain) {
+        state.gains.push({ round: state.round, text: gain[1].trim() });
     }
 };
 

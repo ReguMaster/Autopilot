@@ -15,8 +15,8 @@
         "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/sky.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js",
-        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/sky.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js"
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js"
     },
     "devDependencies": {
         "electron": "^44.6.0",

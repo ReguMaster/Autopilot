@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 숫자·코드 서체 비교</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+        <link href="https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css" rel="stylesheet" />
+        <link href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css" rel="stylesheet" />
+        <link href="https://cdn.jsdelivr.net/gh/joungkyun/font-d2coding/d2coding.css" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --ink: #1a1f36;
+                --ink-2: rgb(26 31 54 / 0.74);
+                --muted: #69708a;
+                --faint: #a2a7ba;
+                --hair: #e7e9f0;
+                --chip: #f1f2f7;
+                --accent: #3656d6;
+                --add: #1b7f4b;
+                --del: #c2372f;
+                --kr: "Pretendard", "Malgun Gothic", sans-serif;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                padding: 40px 24px 64px;
+                background: #f4f5f8;
+                color: var(--ink);
+                font: 14px/1.6 var(--kr);
+                word-break: keep-all;
+            }
+
+            main {
+                max-width: 1080px;
+                margin: 0 auto;
+            }
+
+            h1 {
+                margin: 0 0 6px;
+                font-size: 24px;
+                font-weight: 700;
+            }
+
+            h2 {
+                margin: 44px 0 4px;
+                font-size: 18px;
+                font-weight: 700;
+            }
+
+            .lead {
+                max-width: 68ch;
+                margin: 0 0 8px;
+                color: var(--muted);
+            }
+
+            .card {
+                display: grid;
+                grid-template-columns: 280px minmax(0, 1fr);
+                gap: 24px;
+                margin-top: 14px;
+                padding: 20px 22px;
+                border-radius: 14px;
+                background: #fff;
+                box-shadow: 0 0 0 1px var(--hair);
+            }
+
+            .card.pick {
+                box-shadow: 0 0 0 2px var(--accent);
+            }
+
+            .sample p,
+            .code-sample p {
+                margin: 0;
+            }
+
+            .about h3 {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 6px 8px;
+                margin: 0;
+                font-size: 16px;
+            }
+
+            .about p {
+                margin: 6px 0 0;
+                color: var(--ink-2);
+                font-size: 13px;
+            }
+
+            .about small {
+                display: block;
+                margin-top: 8px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .badge {
+                white-space: nowrap;
+                padding: 1px 8px;
+                border-radius: 999px;
+                background: var(--chip);
+                color: var(--ink-2);
+                font-size: 11px;
+                font-weight: 600;
+            }
+
+            .badge.now {
+                background: #e8edfb;
+                color: var(--accent);
+            }
+
+            .badge.fail {
+                background: #fdeceb;
+                color: var(--del);
+            }
+
+            /* 시안의 숫자 자리를 그대로 옮긴 견본. 숫자에만 후보 서체(--num)를 쓰고 한글은 Pretendard다 */
+            .sample {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 12px 28px;
+                align-items: center;
+                font-family: var(--kr);
+            }
+
+            .sample .status,
+            .sample .track,
+            .sample .work {
+                grid-column: 1 / -1;
+            }
+
+            .n {
+                font-family: var(--num), var(--kr);
+                font-variant-numeric: tabular-nums;
+            }
+
+            .status {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+                font-size: 13px;
+            }
+
+            .status b {
+                font-weight: 600;
+            }
+
+            .status span {
+                color: var(--muted);
+            }
+
+            .status .clock b {
+                margin-right: 4px;
+                color: var(--ink);
+            }
+
+            .track {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                align-items: center;
+                gap: 10px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .track i {
+                height: 3px;
+                border-radius: 2px;
+                background: linear-gradient(90deg, #c3c7d6 0 25%, var(--accent) 25% 28%, var(--chip) 28%);
+            }
+
+            .hero {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                font-size: 52px;
+                font-weight: 250;
+                line-height: 1;
+                letter-spacing: -0.035em;
+            }
+
+            .hero small {
+                margin-left: 2px;
+                font-family: var(--kr);
+                font-size: 22px;
+                font-weight: 400;
+                letter-spacing: 0;
+            }
+
+            .hero .was,
+            .hero .to {
+                color: var(--faint);
+            }
+
+            .hero .is {
+                color: var(--accent);
+            }
+
+            .work {
+                display: grid;
+                grid-template-columns: repeat(4, auto) 1fr;
+                align-items: baseline;
+                gap: 0 22px;
+                font-size: 18px;
+            }
+
+            .work small {
+                margin-left: 2px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .work .add {
+                color: var(--add);
+            }
+
+            .work .del {
+                margin-left: 6px;
+                color: var(--del);
+            }
+
+            .work .time {
+                justify-self: end;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .picker {
+                font-size: 34px;
+                letter-spacing: 0.02em;
+            }
+
+            .picker .colon {
+                margin: 0 4px;
+                color: var(--faint);
+            }
+
+            /* 코드 견본: 도구 칩, 해시, 경로, 로그 한 줄 */
+            .code-sample {
+                display: grid;
+                gap: 10px;
+                font-size: 13px;
+            }
+
+            .code-sample .m {
+                font-family: var(--mono), Consolas, monospace;
+            }
+
+            .tool {
+                display: inline-block;
+                margin-right: 6px;
+                padding: 1px 7px;
+                border-radius: 5px;
+                background: var(--chip);
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .tool b {
+                margin-right: 6px;
+                color: var(--ink);
+                font-weight: 500;
+            }
+
+            .log {
+                padding: 10px 12px;
+                border-radius: 8px;
+                background: #fafbfc;
+                font-size: 12px;
+                line-height: 1.75;
+                white-space: pre;
+                overflow-x: auto;
+            }
+
+            .log .dim {
+                color: var(--muted);
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>숫자·코드 서체 비교</h1>
+            <p class="lead">화면의 숫자 자리(상태 줄 시계, 진행선 시각, 성과 숫자, 일한 양, 종료 시각 고르기)에 후보 서체를 넣어 비교해요. 한글은 모두 Pretendard이고 숫자만 바뀌어요. 파란 테두리가 지금 앱에 들어간 서체예요.</p>
+
+            <h2>숫자·화면 서체</h2>
+            <p class="lead">Inter와 Geist는 한글이 없어 앱에서는 숫자·기호만 이 서체로 쓰고(unicode-range), 한글은 Pretendard가 맡아요. Wanted Sans와 SUIT는 한글까지 있는 서체라 바꾸면 화면 전체 서체가 바뀌어요.</p>
+            <div id="numbers"></div>
+
+            <h2>코드·경로·해시 서체</h2>
+            <p class="lead">도구 칩, 커밋 해시, 경로, 전체 기록 로그에만 쓰는 고정폭 서체예요.</p>
+            <div id="codes"></div>
+        </main>
+
+        <template id="number-sample">
+            <div class="sample">
+                <p class="status"><b>3회차 진행 중 <span><span class="n">21:32</span>부터 <span class="n">1</span>시간 <span class="n">50</span>분째</span></b><span class="clock"><b class="n">04:38:57</b>남은 시간</span></p>
+                <p class="track"><span class="n">21:32</span><i></i><span class="n">04:01</span></p>
+                <p class="hero"><span class="was n">1.2<small>초</small></span><span class="to">→</span><span class="is n">0.2<small>초</small></span></p>
+                <p class="work">
+                    <span><span class="n">186</span><small>번</small></span>
+                    <span><span class="n">41</span><small>개</small></span>
+                    <span><span class="n">17</span><small>개</small></span>
+                    <span><span class="add n">+240</span><span class="del n">−49</span></span>
+                    <span class="time n">02:20:10</span>
+                </p>
+                <p class="picker n">07<span class="colon">:</span>00</p>
+            </div>
+        </template>
+
+        <template id="code-sample">
+            <div class="code-sample">
+                <p><span class="tool m"><b>Read</b>searchController.js</span><span class="tool m"><b>Bash</b>npm test -- admin</span></p>
+                <p class="m">a3f9c21 7be0d14 c51e8aa &nbsp; C:\Users\dev\Projects\shop-api</p>
+                <p class="log m"><span class="dim">02:19:47   &gt;</span> Bash npm test -- admin
+02:20:05 테스트를 돌렸고 admin 테스트 24개가 모두 통과했어요.
+<span class="dim">[커밋]</span> a3f9c21 +142 -21 [ap] 주문 목록 API에 커서 페이지네이션 추가</p>
+            </div>
+        </template>
+
+        <script>
+            // [서체 이름(CSS), 표시 이름, 설명, 앱에 넣는 방법, 지금 쓰는지]
+            const NUMBER_FONTS = [
+                ["Pretendard", "Pretendard (고정폭 숫자)", "지금 앱에 적용한 서체예요. 한글과 숫자의 굵기·높이가 정확히 맞고, 고정폭 숫자(tnum)라 시계가 바뀌어도 흔들리지 않아요.", "이미 앱에 들어 있어요. 추가 용량 없음.", true],
+                ["Wanted Sans Variable", "Wanted Sans", "원티드가 만든 한글 서체예요. Pretendard보다 숫자 폭이 조금 넓고 둥글어서 시계와 큰 숫자가 부드럽고 요즘 앱 같은 인상이에요.", "SIL OFL. 한글 포함이라 화면 전체 서체를 바꾸게 되고, 가변 woff2를 넣으면 앱이 수 MB 커져요.", false],
+                ["SUIT Variable", "SUIT", "Pretendard와 비슷한 계열이지만 획 끝이 더 단정하고 숫자가 살짝 좁아요. 정보가 많은 화면에서 차분해요.", "SIL OFL. 한글 포함, 화면 전체 서체를 바꾸게 되고 앱이 수 MB 커져요.", false],
+                ["Inter", "Inter (숫자만)", "Linear 같은 제품에서 많이 쓰는 서체예요. 숫자 모양이 또렷하고 콜론 위치가 숫자 가운데에 맞아 시계가 특히 깔끔해요.", "SIL OFL. 숫자·기호만 잘라 넣으면 수십 KB예요. 한글은 Pretendard 그대로예요.", false],
+                ["Geist", "Geist (숫자만)", "Vercel의 서체예요. 기하학적이고 차가운 인상이라 '기계가 일하는 중' 느낌이 강해요. 큰 성과 숫자가 가장 단단해 보여요.", "SIL OFL. 숫자·기호만 잘라 넣으면 수십 KB예요. 한글은 Pretendard 그대로예요.", false]
+            ];
+            const CODE_FONTS = [
+                ["Cascadia Mono", "Cascadia Mono", "Windows에 기본으로 들어 있는 코딩 서체예요. 따로 넣지 않아도 되지만 글자 폭이 넓고 작은 크기에서 투박해요.", "Windows 기본. 추가 용량 없음.", true],
+                ["JetBrains Mono", "JetBrains Mono", "에디터에서 가장 널리 쓰는 코딩 서체 중 하나예요. 글자 높이가 커서 작은 크기에서도 잘 읽혀요.", "SIL OFL. woff2 하나 100KB 안팎.", false],
+                ["Geist Mono", "Geist Mono", "Geist와 짝인 고정폭 서체예요. 좁고 단정해서 도구 칩과 해시가 가장 세련돼 보여요. 숫자를 Geist로 고르면 함께 쓰기 좋아요.", "SIL OFL. woff2 하나 100KB 안팎.", false],
+                ["D2 coding", "D2Coding", "네이버의 한글 코딩 서체예요. 로그에 섞인 한글까지 고정폭으로 맞춰 줘요. 대신 인상이 조금 예스러워요.", "SIL OFL. 한글 포함이라 수 MB예요.", false]
+            ];
+
+            const renderFonts = (rootId, fonts, templateId, variable) => {
+                const root = document.getElementById(rootId);
+                const template = document.getElementById(templateId);
+
+                for (const [family, name, desc, bundle, isCurrent] of fonts) {
+                    const card = document.createElement("section");
+                    const about = document.createElement("div");
+                    const sample = template.content.firstElementChild.cloneNode(true);
+
+                    card.className = isCurrent ? "card pick" : "card";
+                    card.id = family.toLowerCase().replace(/\W+/g, "-");
+                    about.className = "about";
+                    about.innerHTML = `<h3>${name}${isCurrent ? '<span class="badge now">지금 적용</span>' : ""}<span class="badge" data-status>확인 중</span></h3><p>${desc}</p><small>${bundle}</small>`;
+                    sample.style.setProperty(variable, `"${family}"`);
+                    card.append(about, sample);
+                    root.append(card);
+
+                    // 서체를 실제로 불러왔는지 표시한다(못 불러오면 대체 서체로 보여 비교가 틀어진다).
+                    document.fonts.load(`16px "${family}"`, "0123").then((faces) => {
+                        const status = about.querySelector("[data-status]");
+                        const isLoaded = faces.length > 0 || family === "Cascadia Mono";
+
+                        status.textContent = isLoaded ? "불러옴" : "불러오지 못함";
+                        status.classList.toggle("fail", !isLoaded);
+                    });
+                }
+            };
+
+            renderFonts("numbers", NUMBER_FONTS, "number-sample", "--num");
+            renderFonts("codes", CODE_FONTS, "code-sample", "--mono");
+        </script>
+    </body>
+</html>

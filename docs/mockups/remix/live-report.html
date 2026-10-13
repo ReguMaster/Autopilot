@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 라이브 리포트</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --page: #ffffff;
+                --ink: #1a1d23;
+                --ink-2: #5e6573;
+                --rule: #e6e8ec;
+                --wash: #f3f4f7;
+                --accent: #2753c9;
+                --add: #1b7f45;
+                --del: #b8342c;
+                --warn: #a35a00;
+                --serif: "Noto Serif KR", "Nanum Myeongjo", Batang, "바탕", serif;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--page);
+                color: var(--ink);
+                font: 400 16px/1.7 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
+                border-radius: 4px;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            code,
+            .mono {
+                font-family: var(--mono);
+                font-size: 0.86em;
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                height: 40px;
+                padding: 0 6px 0 16px;
+                flex: none;
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 17px;
+                mix-blend-mode: multiply;
+            }
+
+            .live {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding-left: 14px;
+                border-left: 1px solid var(--rule);
+                color: var(--ink-2);
+                font-size: 13px;
+                line-height: 1;
+            }
+
+            .live b {
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                color: var(--accent);
+                font-weight: 600;
+            }
+
+            .live b::before {
+                content: "";
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: currentColor;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 28px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                color: var(--ink-2);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .win:hover {
+                background: var(--wash);
+                color: var(--ink);
+            }
+
+            .win.close:hover {
+                background: #e5484d;
+                color: #fff;
+            }
+
+            .sep {
+                width: 1px;
+                height: 16px;
+                margin: 0 6px;
+                background: var(--rule);
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: #e8edf8;
+                color: var(--accent);
+            }
+
+            /* 문서 */
+            .doc {
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+                padding: 26px 40px 0;
+            }
+
+            .doc h1 {
+                margin: 0;
+                font: 700 34px/1.25 var(--serif);
+                letter-spacing: -0.02em;
+            }
+
+            .meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 18px;
+                margin: 10px 0 0;
+                color: var(--ink-2);
+                font-size: 13.5px;
+                line-height: 20px;
+            }
+
+            .meta span {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .meta .icon {
+                width: 13px;
+                height: 13px;
+            }
+
+            .todo {
+                margin: 20px 0 0;
+                padding: 0;
+                list-style: none;
+                font-size: 15px;
+                line-height: 27px;
+            }
+
+            .todo li {
+                display: grid;
+                grid-template-columns: 26px 1fr auto;
+                align-items: center;
+            }
+
+            .box {
+                display: grid;
+                place-items: center;
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                background: var(--ink);
+                color: #fff;
+            }
+
+            .box .icon {
+                width: 12px;
+                height: 12px;
+                stroke-width: 2;
+            }
+
+            .todo .done .text {
+                color: var(--ink-2);
+            }
+
+            .todo .now .box {
+                background: none;
+                box-shadow: inset 0 0 0 1.5px var(--accent);
+            }
+
+            .todo .now .box::after {
+                content: "";
+                width: 6px;
+                height: 6px;
+                border-radius: 1.5px;
+                background: var(--accent);
+            }
+
+            .todo .where {
+                color: var(--ink-2);
+                font-size: 13px;
+            }
+
+            .todo .now .where {
+                color: var(--accent);
+                font-weight: 600;
+            }
+
+            .doc hr {
+                margin: 22px 0 22px;
+                border: 0;
+                border-top: 1px solid var(--rule);
+            }
+
+            .round + .round {
+                margin-top: 22px;
+            }
+
+            .round h2 {
+                display: flex;
+                align-items: baseline;
+                gap: 10px;
+                margin: 0 0 2px;
+                font: 700 20px/1.45 var(--serif);
+            }
+
+            .round h2 small {
+                color: var(--ink-2);
+                font: 400 13px/1 var(--sans);
+            }
+
+            .round h2 .ok {
+                color: var(--add);
+                font-weight: 600;
+            }
+
+            .round h2 .going {
+                color: var(--accent);
+                font-weight: 600;
+            }
+
+            .round h2 .open-log {
+                margin-left: auto;
+                padding: 0;
+                border: 0;
+                background: none;
+                color: var(--accent);
+                font: 600 13px/1 var(--sans);
+            }
+
+            .round ul {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .round > ul > li {
+                position: relative;
+                padding-left: 18px;
+            }
+
+            .round > ul > li + li {
+                margin-top: 2px;
+            }
+
+            .round > ul > li::before {
+                content: "";
+                position: absolute;
+                top: 13px;
+                left: 3px;
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: var(--ink);
+            }
+
+            .chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                height: 22px;
+                margin-left: 6px;
+                padding: 0 7px;
+                border: 1px solid var(--rule);
+                border-radius: 6px;
+                font: 400 12px/1 var(--mono);
+                vertical-align: 1px;
+                white-space: nowrap;
+            }
+
+            .chip ins,
+            .chip del {
+                text-decoration: none;
+            }
+
+            .chip ins {
+                color: var(--add);
+            }
+
+            .chip del {
+                margin-left: -3px;
+                color: var(--del);
+            }
+
+            /* 지금 쓰는 문단 */
+            .writing {
+                min-height: 54px;
+                margin: 0;
+            }
+
+            .caret {
+                display: inline-block;
+                width: 2px;
+                height: 19px;
+                margin-left: 2px;
+                vertical-align: -3px;
+                background: var(--accent);
+                animation: blink 1.05s steps(1) infinite;
+            }
+
+            .writing.typing .caret {
+                animation: none;
+            }
+
+            @keyframes blink {
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            .trail {
+                margin: 10px 0 0;
+                padding: 1px 0 1px 14px;
+                border-left: 2px solid var(--rule);
+                list-style: none;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 22px;
+            }
+
+            .trail li {
+                display: grid;
+                grid-template-columns: 38px 1fr auto;
+                gap: 6px;
+            }
+
+            .trail b {
+                font-weight: 600;
+            }
+
+            .trail code {
+                overflow: hidden;
+                font-size: 12px;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            /* 떠 있는 도구 막대 */
+            .fade {
+                position: fixed;
+                inset: auto 0 0;
+                height: 96px;
+                background: linear-gradient(rgba(255, 255, 255, 0), #fff 62%);
+                pointer-events: none;
+            }
+
+            .toolbar {
+                position: fixed;
+                bottom: 16px;
+                left: 50%;
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                padding: 5px;
+                border: 1px solid var(--rule);
+                border-radius: 14px;
+                background: #fff;
+                box-shadow:
+                    0 1px 2px rgba(26, 29, 35, 0.06),
+                    0 12px 30px -12px rgba(26, 29, 35, 0.24);
+                transform: translateX(-50%);
+                white-space: nowrap;
+            }
+
+            .tool {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 34px;
+                padding: 0 9px;
+                border: 0;
+                border-radius: 9px;
+                background: none;
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .tool:hover {
+                background: var(--wash);
+            }
+
+            .tool .mark {
+                width: 18px;
+                height: 18px;
+            }
+
+            .tool .chev {
+                width: 10px;
+                height: 10px;
+                color: var(--ink-2);
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 14px;
+            }
+
+            .bars i {
+                width: 3px;
+                border-radius: 1px;
+                background: var(--rule);
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7px;
+            }
+            .bars i:nth-child(3) {
+                height: 9px;
+            }
+            .bars i:nth-child(4) {
+                height: 11px;
+            }
+            .bars i:nth-child(5) {
+                height: 13px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: var(--ink);
+            }
+
+            .divider {
+                width: 1px;
+                height: 20px;
+                margin: 0 5px;
+                background: var(--rule);
+            }
+
+            .locked {
+                display: inline-flex;
+                align-items: center;
+                gap: 12px;
+                height: 34px;
+                padding: 0 8px;
+                color: var(--ink-2);
+                font-size: 13px;
+                cursor: default;
+            }
+
+            .locked .icon {
+                width: 13px;
+                height: 13px;
+                margin-right: -4px;
+            }
+
+            .locked b {
+                color: var(--ink);
+                font-weight: 600;
+            }
+
+            .stop {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                height: 34px;
+                margin-left: 2px;
+                padding: 0 13px;
+                border: 0;
+                border-radius: 9px;
+                background: var(--ink);
+                color: #fff;
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .stop i {
+                width: 9px;
+                height: 9px;
+                border-radius: 2px;
+                background: #fff;
+            }
+
+            .stop:hover {
+                background: #2c313b;
+            }
+
+            /* 문서 정보 시트 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 5;
+                background: rgba(26, 29, 35, 0.08);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 200ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .sheet {
+                position: fixed;
+                top: 46px;
+                right: 10px;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                width: 372px;
+                max-height: calc(100% - 56px);
+                padding: 20px 26px 16px;
+                border: 1px solid var(--rule);
+                border-radius: 12px;
+                background: #fff;
+                box-shadow:
+                    0 1px 2px rgba(26, 29, 35, 0.06),
+                    0 24px 48px -20px rgba(26, 29, 35, 0.3);
+                visibility: hidden;
+                transform: translateX(24px);
+                opacity: 0;
+                transition:
+                    opacity 160ms ease-in,
+                    transform 160ms ease-in,
+                    visibility 0s 160ms;
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                visibility: visible;
+                transform: none;
+                opacity: 1;
+                transition:
+                    opacity 220ms ease-out,
+                    transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            .sheet > h2 {
+                margin: 0 0 10px;
+                font: 700 22px/1.35 var(--serif);
+                letter-spacing: -0.01em;
+            }
+
+            .field {
+                padding: 13px 0;
+                border-top: 1px solid var(--rule);
+                font-size: 14px;
+                line-height: 1.55;
+            }
+
+            .field-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+                margin: 0 0 5px;
+            }
+
+            .field h3 {
+                margin: 0;
+                font-size: 13.5px;
+                font-weight: 650;
+            }
+
+            .note {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            .note .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .hint {
+                margin: 4px 0 0;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.55;
+                text-wrap: pretty;
+            }
+
+            .path {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .path code {
+                font-size: 12.5px;
+            }
+
+            .tag {
+                margin-left: auto;
+                padding: 1px 7px;
+                border: 1px solid var(--rule);
+                border-radius: 5px;
+                color: var(--ink-2);
+                font-size: 11.5px;
+                white-space: nowrap;
+            }
+
+            .acts {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 18px;
+                margin-top: 6px;
+            }
+
+            .act {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 0;
+                border: 0;
+                background: none;
+                color: var(--accent);
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .act:hover {
+                text-decoration: underline;
+                text-underline-offset: 3px;
+            }
+
+            .act[disabled] {
+                color: var(--ink-2);
+                font-weight: 500;
+                cursor: not-allowed;
+                text-decoration: none;
+            }
+
+            .act.danger {
+                color: var(--del);
+            }
+
+            .act .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .choices {
+                margin: 2px 0 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .choice {
+                display: grid;
+                grid-template-columns: 24px 1fr;
+                padding: 4px 0;
+            }
+
+            .choice strong {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .choice small {
+                display: block;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.5;
+            }
+
+            .radio {
+                width: 15px;
+                height: 15px;
+                margin-top: 4px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px #b9bec8;
+            }
+
+            [aria-checked="true"] > .radio {
+                box-shadow:
+                    inset 0 0 0 1.5px var(--ink),
+                    inset 0 0 0 4.5px #fff;
+                background: var(--ink);
+            }
+
+            .check {
+                display: grid;
+                place-items: center;
+                width: 16px;
+                height: 16px;
+                margin-top: 3px;
+                border-radius: 4px;
+                background: var(--accent);
+                color: #fff;
+            }
+
+            .check .icon {
+                width: 12px;
+                height: 12px;
+                stroke-width: 2;
+            }
+
+            .sheet-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: auto;
+                padding-top: 13px;
+                border-top: 1px solid var(--rule);
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            /* 프로필 */
+            .me {
+                display: grid;
+                grid-template-columns: 46px 1fr auto;
+                align-items: center;
+                gap: 14px;
+                margin: 2px 0 16px;
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 46px;
+                height: 46px;
+                border-radius: 50%;
+                background: var(--ink);
+                color: #fff;
+                font: 700 19px/1 var(--serif);
+            }
+
+            .me strong {
+                display: block;
+                font: 700 20px/1.3 var(--serif);
+            }
+
+            .me small {
+                color: var(--ink-2);
+                font-size: 13px;
+            }
+
+            .plan {
+                align-self: start;
+                margin-top: 3px;
+                padding: 2px 8px;
+                border: 1px solid var(--ink);
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .mini {
+                display: grid;
+                place-items: center;
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                background: var(--wash);
+                color: var(--ink-2);
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .account {
+                display: grid;
+                grid-template-columns: 24px 30px 1fr;
+                align-items: center;
+                padding: 3px 0;
+            }
+
+            .account .radio {
+                margin-top: 0;
+            }
+
+            .account strong {
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .usage {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .usage li + li {
+                margin-top: 12px;
+            }
+
+            .usage-line {
+                display: grid;
+                grid-template-columns: 112px 1fr 40px;
+                align-items: center;
+                gap: 12px;
+                font-size: 14px;
+            }
+
+            .usage-line span {
+                font-weight: 600;
+            }
+
+            .usage-line b {
+                font-weight: 650;
+                text-align: right;
+            }
+
+            .meter {
+                position: relative;
+                height: 6px;
+                border-radius: 3px;
+                background: var(--rule);
+                overflow: hidden;
+            }
+
+            .meter i {
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: var(--v);
+                border-radius: 3px;
+                background: var(--ink);
+            }
+
+            .usage .warn b {
+                color: var(--warn);
+            }
+
+            .usage .warn .meter i {
+                background: var(--warn);
+            }
+
+            .usage small {
+                display: block;
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation: none !important;
+                    transition: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5" /><circle cx="4.5" cy="12.5" r="1.5" /><circle cx="11.5" cy="5.5" r="1.5" /><path d="M4.5 5v6M11.5 7c0 2.5-2 3.2-7 4" /></symbol>
+            <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.2l2 1.3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <span class="live"><b>3회차 진행 중</b>07:00까지 04:39:50</span>
+            <div class="controls">
+                <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                    <svg viewBox="0 0 12 12">
+                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                        <circle cx="6" cy="6" r="1.6" />
+                    </svg>
+                </button>
+                <span class="sep"></span>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <article class="doc" aria-label="실행 리포트">
+            <h1>10월 14일 밤 작업</h1>
+            <p class="meta">
+                <span><svg class="icon"><use href="#i-folder" /></svg>shop-api</span>
+                <span><svg class="icon"><use href="#i-branch" /></svg><code>ai/autopilot</code></span>
+                <span><svg class="icon"><use href="#i-clock" /></svg>00:30 시작, 07:00 종료</span>
+            </p>
+
+            <ul class="todo" aria-label="처리할 작업">
+                <li class="done"><span class="box"><svg class="icon"><use href="#i-check" /></svg></span><span class="text">주문 목록 API에 페이지네이션 추가</span><span class="where">1회차</span></li>
+                <li class="done"><span class="box"><svg class="icon"><use href="#i-check" /></svg></span><span class="text">결제 실패 시 재시도 로직 점검</span><span class="where">1, 2회차</span></li>
+                <li class="now"><span class="box"></span><span class="text">관리자 화면 검색 속도 개선</span><span class="where">3회차 진행 중</span></li>
+            </ul>
+
+            <hr />
+
+            <section class="round">
+                <h2>1회차<small>00:30–01:22</small><small class="ok">성공</small><small>커밋 2개</small></h2>
+                <ul>
+                    <li>주문 목록 API에 커서 페이지네이션을 추가했어요.<span class="chip">a3f9c21<ins>+142</ins><del>−21</del></span></li>
+                    <li>결제 재시도에 지수 백오프를 적용했어요.<span class="chip">7be0d14<ins>+42</ins><del>−16</del></span></li>
+                </ul>
+            </section>
+
+            <section class="round">
+                <h2>2회차<small>01:23–02:07</small><small class="ok">성공</small><small>커밋 1개</small></h2>
+                <ul>
+                    <li>결제 재시도 테스트를 보강했어요.<span class="chip">c51e8aa<ins>+56</ins><del>−12</del></span></li>
+                </ul>
+            </section>
+
+            <section class="round">
+                <h2>3회차<small>02:08부터 12분째</small><small class="going">진행 중</small><button class="open-log" type="button">전체 로그</button></h2>
+                <p class="writing" aria-live="off"><span class="typed">관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</span><span class="caret" aria-hidden="true"></span></p>
+                <ol class="trail" aria-label="3회차 도구 호출">
+                    <li><b>Grep</b><code>"searchOrders" src/admin</code><time>02:17:12</time></li>
+                    <li><b>Read</b><code>src/admin/searchController.js</code><time>02:18:30</time></li>
+                    <li><b>Edit</b><code>src/admin/searchController.js</code><time>02:19:02</time></li>
+                    <li><b>Edit</b><code>migrations/20261014_add_search_index.sql</code><time>02:19:31</time></li>
+                    <li><b>Bash</b><code>npm test -- admin</code><time>02:19:47</time></li>
+                </ol>
+            </section>
+        </article>
+
+        <div class="fade" aria-hidden="true"></div>
+
+        <form class="toolbar" aria-label="실행 옵션" onsubmit="return false">
+            <button type="button" class="tool" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+            <button type="button" class="tool" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+            <span class="divider"></span>
+            <span class="locked" title="실행 중에는 바꿀 수 없어요">
+                <svg class="icon"><use href="#i-lock" /></svg>
+                <b>자율개선</b>
+                <span><b>07:00</b> 종료</span>
+                <span>작업 3개</span>
+            </span>
+            <span class="divider"></span>
+            <button type="submit" class="stop"><i aria-hidden="true"></i>종료 신호</button>
+        </form>
+
+        <div class="scrim"></div>
+
+        <aside class="sheet" id="settings-panel" aria-label="설정">
+            <h2>설정</h2>
+
+            <div class="field">
+                <div class="field-head">
+                    <h3>대상 프로젝트</h3>
+                    <span class="note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 바꿀 수 없어요</span>
+                </div>
+                <div class="path"><code>C:\Users\dev\Projects\shop-api</code></div>
+                <div class="acts"><button class="act" disabled>폴더 선택</button></div>
+            </div>
+
+            <div class="field">
+                <div class="field-head"><h3>Claude 데이터 폴더</h3></div>
+                <div class="path"><code>C:\Users\dev\.claude</code><span class="tag">자동 감지</span></div>
+                <p class="hint">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                <div class="acts"><button class="act">폴더 변경</button><button class="act">자동 감지</button></div>
+            </div>
+
+            <div class="field">
+                <div class="field-head">
+                    <h3>개선 정책</h3>
+                    <span class="note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 잠겨요</span>
+                </div>
+                <ul class="choices" role="radiogroup" aria-label="개선 정책">
+                    <li class="choice" role="radio" aria-checked="true">
+                        <span class="radio"></span>
+                        <span><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                    </li>
+                    <li class="choice" role="radio" aria-checked="false">
+                        <span class="radio"></span>
+                        <span><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="field">
+                <div class="field-head"><h3>사용량 한도</h3></div>
+                <div class="choice" role="checkbox" aria-checked="true" tabindex="0">
+                    <span class="check"><svg class="icon"><use href="#i-check" /></svg></span>
+                    <span><strong>대기한 시간만큼 종료 시각 연장</strong><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                </div>
+            </div>
+
+            <div class="field">
+                <div class="field-head"><h3>기록</h3></div>
+                <div class="acts">
+                    <button class="act">전체 기록 보기</button>
+                    <button class="act">리포트 열기</button>
+                    <button class="act danger">진행 기록 초기화</button>
+                </div>
+            </div>
+
+            <div class="sheet-foot"><span>AutoPilot</span><code>v0.1.0</code></div>
+        </aside>
+
+        <aside class="sheet" id="profile-panel" aria-label="프로필">
+            <div class="me">
+                <span class="avatar">개</span>
+                <span><strong>개발자</strong><small>dev@example.com</small></span>
+                <span class="plan">Max 20x</span>
+            </div>
+
+            <div class="field">
+                <div class="field-head"><h3>계정</h3></div>
+                <ul class="choices" role="radiogroup" aria-label="계정 선택">
+                    <li class="account" role="radio" aria-checked="true"><span class="radio"></span><span class="mini">개</span><strong>기본 계정</strong></li>
+                    <li class="account" role="radio" aria-checked="false"><span class="radio"></span><span class="mini">회</span><strong>회사</strong></li>
+                </ul>
+                <div class="acts">
+                    <button class="act"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                    <button class="act">다시 로그인</button>
+                    <button class="act danger">제거</button>
+                </div>
+            </div>
+
+            <div class="field">
+                <div class="field-head"><h3>사용량과 한도</h3></div>
+                <ul class="usage">
+                    <li>
+                        <div class="usage-line"><span>5시간 한도</span><span class="meter" style="--v: 42%"><i></i></span><b>42%</b></div>
+                        <small>03:00 리셋, 40분 후</small>
+                    </li>
+                    <li>
+                        <div class="usage-line"><span>주간 한도</span><span class="meter" style="--v: 63%"><i></i></span><b>63%</b></div>
+                        <small>10월 16일 09:00 리셋, 3일 후</small>
+                    </li>
+                    <li class="warn">
+                        <div class="usage-line"><span>주간 한도 (Opus)</span><span class="meter" style="--v: 78%"><i></i></span><b>78%</b></div>
+                        <small>10월 16일 09:00 리셋, 3일 후</small>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sheet-foot">
+                <span>02:18 기준</span>
+                <button class="act"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </aside>
+
+        <script>
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector(".scrim").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+
+            // 대표 모션: 3회차 마지막 문단이 한 글자씩 쓰이고, 다 쓰면 캐럿이 깜박인다
+            const writing = document.querySelector(".writing");
+            const typed = writing.querySelector(".typed");
+            const SENTENCE = typed.textContent;
+            const CHAR_MS = 36;
+
+            const playTyping = () => {
+                let length = 0;
+
+                typed.textContent = "";
+                writing.classList.add("typing");
+
+                const step = () => {
+                    length += 1;
+                    typed.textContent = SENTENCE.slice(0, length);
+
+                    if (length < SENTENCE.length) {
+                        setTimeout(step, SENTENCE[length - 1] === " " ? CHAR_MS * 2 : CHAR_MS);
+                        return;
+                    }
+
+                    writing.classList.remove("typing");
+                    setTimeout(playTyping, 7000);
+                };
+
+                setTimeout(step, 300);
+            };
+
+            if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                playTyping();
+            }
+        </script>
+    </body>
+</html>

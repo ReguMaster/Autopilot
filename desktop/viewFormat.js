@@ -195,3 +195,332 @@ const getRoundTone = (outcome) => {
 
     return "warn";
 };
+
+/* 화면 상태: 시작 전(ready), 실행 중(run), 실행을 마친 뒤(done) */
+
+// 실행을 마친 뒤 다른 프로젝트를 고르면 지난 실행 대신 시작 화면을 보여준다(isFinishDismissed).
+const getView = (state, isFinishDismissed) => {
+    if (state.status !== "idle") {
+        return "run";
+    }
+
+    return state.endedAt && !isFinishDismissed ? "done" : "ready";
+};
+
+const isNightHour = (hour) => {
+    return hour >= 18 || hour < 5;
+};
+
+const getGreeting = ({ hour, policy, endTime, hasProject }) => {
+    if (!hasProject) {
+        return { title: "먼저 작업할 프로젝트를 골라 주세요.", lead: "Git 저장소의 루트 폴더를 고르면 바로 시작할 수 있어요." };
+    }
+
+    const end = endTime || DEFAULT_END_TIME;
+    const title = isNightHour(hour) ? "오늘 밤에는 무엇을 해 둘까요?" : "지금부터 무엇을 해 둘까요?";
+
+    if (policy === "todo") {
+        return { title: title, lead: `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` };
+    }
+
+    return { title: title, lead: `적어 주신 일을 ${end}까지 하나씩 해 두고, 남는 시간에는 스스로 고칠 곳을 찾아볼게요.` };
+};
+
+const getWorkSummary = (state) => {
+    const commits = state.rounds.flatMap((round) => round.commits || []);
+
+    return {
+        toolCalls: state.work.toolCalls,
+        filesRead: state.work.filesRead,
+        filesEdited: state.work.filesEdited,
+        commits: commits.length,
+        insertions: commits.reduce((sum, commit) => sum + commit.insertions, 0),
+        deletions: commits.reduce((sum, commit) => sum + commit.deletions, 0)
+    };
+};
+
+// 엔진 종료 사유를 사용자에게 들려주는 문장으로 바꾼다. 모르는 사유는 그대로 보여준다.
+const FINISH_REASONS = [
+    [/^예정 시각 도달$/, (state) => `종료 시각 ${formatClock(state.deadlineAt)}에 맞춰 멈췄어요.`],
+    [/예약 작업 완료/, () => "적어 주신 일을 모두 마쳤어요."],
+    [/연속 새 commit 없음/, () => "더 고칠 만한 곳을 찾지 못해서 멈췄어요."],
+    [/^중단 요청$/, () => "말씀하신 대로 이번 회차를 마치고 멈췄어요."],
+    [/^강제 종료$/, () => "커밋하지 않은 변경은 작업 폴더에 남아 있을 수 있어요."],
+    [/연속 \d+회 실패/, () => "연속으로 실패해서 멈췄어요. 전체 기록에서 이유를 확인해 주세요."],
+    [/사용량 한도/, () => "사용량 한도 때문에 더 이어 가지 못했어요."],
+    [/회차 상한/, () => "정해진 회차를 모두 채웠어요."]
+];
+
+const describeFinish = (state) => {
+    const tone = getRunPhase(state).tone;
+    const hour = new Date(state.endedAt).getHours();
+    const roundCount = state.rounds.length;
+    const commitCount = getWorkSummary(state).commits;
+    const reasonText = FINISH_REASONS.find(([pattern]) => pattern.test(state.reason))?.[1](state) || (state.reason ? `종료 사유: ${state.reason}` : "");
+    let title = "일을 마쳤어요.";
+    let work = `${roundCount}회차 동안 일했지만 커밋으로 남길 만한 변경은 없었어요.`;
+
+    if (tone === "danger") {
+        title = "도중에 멈췄어요.";
+    } else if (tone === "warn") {
+        title = "여기까지 하고 멈췄어요.";
+    } else if (hour >= 5 && hour < 12) {
+        title = "좋은 아침이에요.";
+    }
+
+    if (!roundCount) {
+        work = "회차를 시작하기 전에 멈췄어요.";
+    } else if (commitCount) {
+        work = `${roundCount}회차 동안 쉬지 않고 일해서 커밋 ${commitCount}개를 남겼어요.`;
+    }
+
+    return { title: title, lead: reasonText ? `${work} ${reasonText}` : work };
+};
+
+// 회차 사이에 기다리는 동안에는 마지막 문장 대신 기다리는 이유를 들려준다.
+const getWaitSentence = (state) => {
+    if (state.status === "stopping") {
+        return "종료 신호를 받았어요. 이번 회차를 마치는 대로 멈출게요.";
+    }
+
+    if (state.phase === "시작 중") {
+        return "준비하고 있어요. 곧 첫 회차를 시작할게요.";
+    }
+
+    const retry = state.phase.match(/^(\d+)분 후 재시도 대기$/);
+
+    if (retry) {
+        return `잠깐 문제가 생겼어요. ${retry[1]}분 뒤에 다시 해 볼게요.`;
+    }
+
+    const limit = state.phase.match(/^사용량 한도 대기 \((\d{2}:\d{2})/);
+
+    return limit ? `사용량 한도에 닿아서 잠깐 쉬고 있어요. ${limit[1]}에 다시 이어서 할게요.` : "";
+};
+
+/* 회차 진행선: 실행 시작부터 종료 예정 시각까지를 100으로 놓고 회차 구간·커밋·지금 위치를 퍼센트로 정한다 */
+
+const TRACK_LABEL_GAP = 9;
+const TRACK_LABEL_END = 86;
+
+const getTrack = (state, nowMs) => {
+    if (!state.startedAt || !state.deadlineAt) {
+        return null;
+    }
+
+    const isRunning = state.status !== "idle";
+    const lastMs = isRunning ? nowMs : state.endedAt;
+    const span = Math.max(1, Math.max(state.deadlineAt, lastMs) - state.startedAt);
+    const toPercent = (ms) => Math.min(100, Math.max(0, ((ms - state.startedAt) / span) * 100));
+    // 연결하면서 이미 쓰인 로그로 읽은 회차는 시각을 몰라 그리지 않는다.
+    const rounds = state.rounds.filter((round) => round.timesKnown);
+    const segments = rounds.map((round) => ({ from: toPercent(round.startedAt), to: toPercent(round.endedAt || lastMs), isLive: isRunning && !round.endedAt }));
+    const labels = [];
+
+    rounds.forEach((round, index) => {
+        const label = { at: segments[index].from, text: `${round.round}회차`, isLive: segments[index].isLive, isEnd: segments[index].from > TRACK_LABEL_END };
+
+        // 짧은 회차가 이어지면 이름이 겹치므로 건너뛰되, 지금 회차 이름은 앞 이름을 밀어내고 남긴다.
+        if (labels.length && label.at - labels.at(-1).at < TRACK_LABEL_GAP) {
+            if (!label.isLive) {
+                return;
+            }
+
+            labels.pop();
+        }
+
+        labels.push(label);
+    });
+
+    return {
+        segments: segments,
+        commits: rounds.filter((round) => round.endedAt && round.commits?.length).map((round) => ({ at: toPercent(round.endedAt), count: round.commits.length })),
+        labels: labels,
+        head: isRunning ? toPercent(nowMs) : null,
+        startText: formatClock(state.startedAt),
+        endText: formatClock(state.deadlineAt)
+    };
+};
+
+/* 이야기: 엔진 로그의 Claude 문장과 도구 호출을 읽어, 도구 호출 뒤에 이어지는 문장 단위(beat)로 묶는다 */
+
+const STORY_LIMIT = 6;
+const STORY_TOOL_LIMIT = 4;
+const STORY_DETAIL_LENGTH = 32;
+const STORY_TOOL_PATTERN = /^(\d{2}:\d{2}:\d{2}) {3}> (\S+) ?(.*)$/;
+// 시각 뒤가 [로 시작하면 엔진의 알림 줄([세션]·[결과]·[사용량 한도])이다.
+const STORY_SAY_PATTERN = /^(\d{2}:\d{2}:\d{2}) (?!\[)(.+)$/;
+const STORY_MORE_PATTERN = /^ {4}(.*)$/;
+const STORY_GAIN_PATTERN = /^성과:\s*(.+)$/;
+const STORY_RUN_START_PATTERN = /^\[앱\] (엔진을 시작했어요|이미 실행 중인 엔진)/;
+const PATH_TOOLS = ["Read", "Edit", "MultiEdit", "Write", "NotebookEdit"];
+
+const shortenText = (text, length) => {
+    return text.length > length ? `${text.slice(0, length - 1)}…` : text;
+};
+
+// 마크다운 강조와 목록 기호는 화면 문장에서 뺀다.
+const cleanStoryText = (text) => {
+    return text
+        .replace(/\*\*|__|`/g, "")
+        .replace(/^\s*(?:#+|[-*]|\d+\.)\s+/, "")
+        .trim();
+};
+
+const parseStoryLine = (text) => {
+    const tool = text.match(STORY_TOOL_PATTERN);
+
+    if (tool) {
+        return { type: "tool", time: tool[1], name: tool[2], argument: tool[3] };
+    }
+
+    const head = text.match(STORY_SAY_PATTERN);
+    const more = head ? null : text.match(STORY_MORE_PATTERN);
+    const body = head ? head[2] : more?.[1];
+
+    if (body === undefined) {
+        return null;
+    }
+
+    const gain = body.match(STORY_GAIN_PATTERN);
+
+    if (gain) {
+        return { type: "gain", time: head ? head[1] : "", text: gain[1].trim() };
+    }
+
+    return head ? { type: "say", time: head[1], text: cleanStoryText(body) } : { type: "more", text: cleanStoryText(body) };
+};
+
+const getFileName = (argument) => {
+    return argument.split(/[\\/]/).filter(Boolean).pop() || "";
+};
+
+const getToolDetail = (name, argument) => {
+    return PATH_TOOLS.includes(name) ? getFileName(argument) : shortenText(argument, STORY_DETAIL_LENGTH);
+};
+
+// git commit 메시지에 test가 들어갈 수 있어 commit을 먼저 본다.
+const BASH_PHRASES = [
+    [/\bgit commit\b/, "지금까지 한 일을 커밋으로 남기고 있어요."],
+    [/\b(test|tests|jest|vitest|mocha|pytest)\b/, "테스트를 돌려 보고 결과를 기다리고 있어요."],
+    [/\bgit (status|diff|log|show)\b/, "바뀐 내용을 git으로 다시 살펴보고 있어요."],
+    [/\b(build|lint|tsc|typecheck)\b/, "빌드와 검사를 돌려 보고 있어요."],
+    [/\b(npm|pnpm|yarn) (install|ci|add)\b/, "필요한 패키지를 준비하고 있어요."]
+];
+
+// Claude가 문장을 남기기 전에 도구만 부르는 동안 보여줄 문장. 파일 이름 뒤에는 받침에 따라 바뀌는 조사를 붙이지 않는다.
+const describeTool = (name, argument) => {
+    const file = getFileName(argument);
+    const target = file ? `${file} 파일을` : "파일을";
+
+    if (name === "Read") {
+        return `${target} 차근차근 읽어 보고 있어요.`;
+    }
+
+    if (name === "Edit" || name === "MultiEdit" || name === "NotebookEdit") {
+        return `${target} 조심스럽게 고치고 있어요.`;
+    }
+
+    if (name === "Write") {
+        return `${target} 새로 쓰고 있어요.`;
+    }
+
+    if (name === "Grep") {
+        return argument ? `코드에서 ${shortenText(argument, 24)} 흔적을 찾아보고 있어요.` : "코드에서 흔적을 찾아보고 있어요.";
+    }
+
+    if (name === "Glob") {
+        return "어떤 파일들이 있는지 둘러보고 있어요.";
+    }
+
+    if (name === "Bash") {
+        return BASH_PHRASES.find(([pattern]) => pattern.test(argument))?.[1] || "터미널에서 명령을 실행하고 있어요.";
+    }
+
+    if (name === "WebFetch" || name === "WebSearch") {
+        return "필요한 자료를 찾아 읽고 있어요.";
+    }
+
+    if (name === "TodoWrite") {
+        return "할 일을 차례로 정리하고 있어요.";
+    }
+
+    if (name === "Task" || name === "Agent") {
+        return "도우미에게 일을 나눠 맡기고 있어요.";
+    }
+
+    return `${name} 도구로 일하고 있어요.`;
+};
+
+const createStory = () => {
+    return { items: [], lastType: "", nextId: 1 };
+};
+
+const pushStoryItem = (story, item) => {
+    story.items.push({ ...item, id: story.nextId++ });
+    story.items.splice(0, Math.max(0, story.items.length - STORY_LIMIT));
+};
+
+// 문장(say)은 앞서 부른 도구들을 칩으로 달고, 도구만 온 동안에는 앱이 지은 문장(isPhrase)을 보여주다가 Claude의 문장이 오면 바꾼다.
+// 여러 줄 메시지의 둘째 줄부터(more)는 바로 앞 문장에 잇는다. 성과 줄은 상태(gains)가 따로 모으므로 이야기에 넣지 않는다.
+const applyStoryEntry = (story, { stream, text }) => {
+    if (stream === "app" && STORY_RUN_START_PATTERN.test(text)) {
+        Object.assign(story, { items: [], lastType: "" });
+
+        return;
+    }
+
+    if (stream !== "out") {
+        return;
+    }
+
+    const line = parseStoryLine(text);
+    const lastItem = story.items.at(-1);
+    const isMessageLine = story.lastType === "say" || story.lastType === "more";
+
+    if (!line) {
+        story.lastType = "";
+
+        return;
+    }
+
+    if (line.type === "tool") {
+        const tool = { name: line.name, detail: getToolDetail(line.name, line.argument) };
+        const phrase = describeTool(line.name, line.argument);
+
+        if (lastItem?.isPhrase) {
+            Object.assign(lastItem, { tools: [...lastItem.tools, tool].slice(-STORY_TOOL_LIMIT), text: phrase, time: line.time });
+        } else {
+            pushStoryItem(story, { tools: [tool], text: phrase, isPhrase: true, time: line.time });
+        }
+    } else if (line.type === "say" && line.text) {
+        if (lastItem?.isPhrase) {
+            // 새 문장이므로 화면에서 다시 드러나도록 id를 바꾼다.
+            Object.assign(lastItem, { text: line.text, isPhrase: false, time: line.time, id: story.nextId++ });
+        } else {
+            pushStoryItem(story, { tools: [], text: line.text, isPhrase: false, time: line.time });
+        }
+    } else if (line.type === "more" && isMessageLine && lastItem && !lastItem.isPhrase && line.text) {
+        lastItem.text = `${lastItem.text} ${line.text}`;
+    }
+
+    // 메시지 중간의 성과 줄 뒤에도 같은 메시지가 이어진다.
+    story.lastType = line.type === "gain" && !line.time && isMessageLine ? "more" : line.type;
+};
+
+/* 성과 줄: "<무엇> <이전> → <이후>" 형식이면 숫자를 크게 보여주고, 아니면 문장 그대로 보여준다 */
+
+const GAIN_CHANGE_PATTERN = /^(.*?)\s*(\S+)\s*(?:→|->)\s*(\S+)$/;
+const FIGURE_PATTERN = /^([-+]?\d[\d,.]*)(.*)$/;
+
+const parseGain = (text) => {
+    const change = text.match(GAIN_CHANGE_PATTERN);
+
+    return change ? { label: change[1], before: change[2], after: change[3] } : { label: text, before: "", after: "" };
+};
+
+const splitFigure = (value) => {
+    const figure = value.match(FIGURE_PATTERN);
+
+    return figure ? { number: figure[1], unit: figure[2] } : { number: value, unit: "" };
+};

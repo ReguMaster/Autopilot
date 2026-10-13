@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoPilot 리디자인 시안</title>
+  <style>
+    @font-face { font-family: "Pretendard"; src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations"); font-weight: 45 920; }
+    :root { --ink: #1c2230; --muted: #5d6677; --line: #d5dae3; --bg: #e9ecf1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 40px 24px 64px; background: var(--bg); color: var(--ink); font: 14px/1.6 "Pretendard", "Malgun Gothic", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; letter-spacing: -0.01em; }
+    .lead { margin: 0 0 20px; max-width: 64ch; color: var(--muted); }
+    .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 44px; padding: 0; list-style: none; }
+    .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+    .toc a:hover, .toc a:focus-visible { border-color: var(--ink); outline: none; }
+    section { margin: 0 0 56px; scroll-margin-top: 24px; }
+    .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 4px; }
+    h2 { margin: 0; font-size: 18px; font-weight: 750; }
+    .head a { margin-left: auto; color: var(--muted); font-size: 13px; }
+    .desc { margin: 0 0 14px; max-width: 72ch; color: var(--muted); }
+    .frames { display: flex; flex-wrap: wrap; gap: 20px; }
+    figure { margin: 0; }
+    .window { position: relative; width: 300px; height: 400px; overflow: hidden; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(20 30 50 / 0.12), 0 8px 28px rgb(20 30 50 / 0.14); }
+    .window iframe, .window img { position: absolute; inset: 0; width: 600px; height: 800px; border: 0; transform: scale(0.5); transform-origin: 0 0; }
+    .window img { width: 300px; height: 400px; transform: none; object-fit: cover; }
+    figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    figcaption a { color: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>AutoPilot 리디자인 3차 시안</h1>
+  <p class="lead">2차에서 고른 라이브 리포트(7)와 생각의 흐름(8)을 바탕으로, 열심히 일하는 느낌과 감성, AI의 대단함을 강조해 새로 그린 10종이에요. 맨 위에 고른 두 시안을 기준으로 두었어요. 각 칸은 600×800 창을 절반으로 줄인 것이고, 제목 옆 링크로 원래 크기로 열 수 있어요.</p>
+  <ul id="toc" class="toc"></ul>
+  <div id="list"></div>
+</main>
+<script>
+  // [파일 경로, 제목 앞 표시, 이름, 설명]
+  const CONCEPTS = [
+    ["../remix/live-report", "기준 7", "라이브 리포트", "2차에서 고른 시안이에요. 에이전트가 아침에 볼 보고서를 실시간으로 써 내려가요."],
+    ["../remix/thinking", "기준 8", "생각의 흐름", "2차에서 고른 시안이에요. 로그를 큰 문장으로 풀어 흘리고, 도구 호출은 문장 안의 칩이에요."],
+    ["journal", "1", "밤의 일기", "에이전트가 1인칭으로 쓰는 새벽 일기예요. 지금 쓰는 문장이 잉크 캐럿과 함께 써져요."],
+    ["pulse", "2", "작업 맥박", "도구 호출 하나하나가 심전도처럼 튀는 활동 파형과, 올라가는 처리량 숫자로 쉬지 않는 모습을 보여줘요."],
+    ["letter", "3", "아침에 읽을 편지", "개발자님께 쓰는 편지예요. 스탠드 불빛 아래에서 지금 이 순간의 문장이 써지고 있어요."],
+    ["mind-map", "4", "생각 지도", "질문에서 원인, 수정, 검증, 결과로 이어지는 추론 노드가 자라나요."],
+    ["manuscript", "5", "원고지", "원고지 칸을 한 글자씩 채우고, 커밋은 여백에 빨간 도장으로 찍혀요."],
+    ["subtitles", "6", "다큐멘터리 자막", "AI가 일하는 다큐멘터리처럼 레터박스, 장 제목, 자막, 하단 자막으로 보여줘요."],
+    ["proofread", "7", "퇴고", "썼다가 줄을 긋고 더 정확하게 고쳐 쓰고, 여백에 근거와 검증을 메모해요."],
+    ["two-minds", "8", "생각과 손", "왼쪽은 차분한 생각, 오른쪽은 빠르게 흐르는 실제 작업이고, 둘이 선으로 이어져요."],
+    ["lab-notes", "9", "실험 노트", "가설, 관찰, 조치, 검증, 결과 순서로 실험 노트를 채우고 1.2초와 0.2초를 막대로 비교해요."],
+    ["aura", "10", "인텔리전스 오라", "일하는 동안 창 테두리에 빛이 천천히 흐르는 실험안이에요. 글자에는 빛을 넣지 않았어요."]
+  ];
+  const SCREENS = [["main", "메인"], ["settings", "설정"], ["profile", "프로필"]];
+
+  const toc = document.getElementById("toc");
+  const list = document.getElementById("list");
+
+  CONCEPTS.forEach(([path, mark, name, desc]) => {
+    const id = path.split("/").pop();
+    const label = `${mark}. ${name}`;
+    const frames = SCREENS.map(([screen, caption]) => {
+      const view = `<iframe src="${path}.html#${screen}" title="${name} ${caption}" loading="lazy"></iframe>`;
+      return `<figure><div class="window">${view}</div><figcaption><a href="${path}.html#${screen}">${caption}</a></figcaption></figure>`;
+    }).join("");
+
+    toc.insertAdjacentHTML("beforeend", `<li><a href="#${id}">${label}</a></li>`);
+    list.insertAdjacentHTML("beforeend", `<section id="${id}"><div class="head"><h2>${label}</h2><a href="${path}.html#main">원래 크기로 열기</a></div><p class="desc">${desc}</p><div class="frames">${frames}</div></section>`);
+  });
+</script>
+</body>
+</html>

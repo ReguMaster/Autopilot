@@ -14,7 +14,8 @@ import {
     checkRunEnv,
     checkProjectPaths,
     checkProgressArchive,
-    checkStreamEvent
+    checkStreamEvent,
+    checkCommitLineCounts
 } from "./lib/unitChecks.js";
 import {
     createScenarioRunner,
@@ -54,6 +55,7 @@ const checkAutopilot = async () => {
         checkProjectPaths(context);
         checkProgressArchive(context);
         checkStreamEvent();
+        checkCommitLineCounts();
         checkRunFilePrune(context);
         checkProgressEnsure(context);
         checkProgressReset(context);

@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoPilot 시안 - 라이트 TUI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding:wght@400;700&display=swap" />
+<script>
+    const applyScreen = () => {
+        document.documentElement.dataset.screen = location.hash.slice(1) || "main";
+    };
+
+    applyScreen();
+    addEventListener("hashchange", applyScreen);
+</script>
+<style>
+    :root {
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --dim: #6e7781;
+        --blue: #0969da;
+        --magenta: #8250df;
+        --green: #1a7f37;
+        --yellow: #9a6700;
+        --red: #cf222e;
+        --sel: #ddf4ff;
+        --rule: #d0d7de;
+        --faint: #d8dee4;
+        --chrome: #f6f8fa;
+        --row: 22px;
+        --mono: "Cascadia Mono", "Nanum Gothic Coding", "Malgun Gothic", Consolas, monospace;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        margin: 0;
+        height: 100%;
+    }
+
+    body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: var(--row);
+        font-variant-ligatures: none;
+    }
+
+    button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 1px;
+    }
+
+    h2,
+    h3,
+    p,
+    ol,
+    ul {
+        margin: 0;
+        padding: 0;
+        font: inherit;
+    }
+
+    ol,
+    ul {
+        list-style: none;
+    }
+
+    .dim {
+        color: var(--dim);
+    }
+    .blue {
+        color: var(--blue);
+    }
+    .magenta {
+        color: var(--magenta);
+    }
+    .green {
+        color: var(--green);
+    }
+    .yellow {
+        color: var(--yellow);
+    }
+    .red {
+        color: var(--red);
+    }
+    b {
+        font-weight: 700;
+    }
+
+    /* 터미널 탭 바 = 창 헤더 */
+    .titlebar {
+        flex: none;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        height: 40px;
+        padding: 0 0 0 8px;
+        background: var(--chrome);
+        border-bottom: 1px solid var(--rule);
+        -webkit-app-region: drag;
+    }
+
+    .tab {
+        position: relative;
+        top: 1px;
+        display: flex;
+        align-items: center;
+        gap: 1ch;
+        height: 32px;
+        padding: 0 2ch 0 1.5ch;
+        background: var(--bg);
+        border: 1px solid var(--rule);
+        border-bottom-color: var(--bg);
+        border-radius: 6px 6px 0 0;
+    }
+
+    .tab-prompt {
+        color: var(--blue);
+        font-weight: 700;
+    }
+
+    .win {
+        display: flex;
+        align-self: stretch;
+        align-items: stretch;
+        -webkit-app-region: no-drag;
+    }
+
+    .tb {
+        min-width: 44px;
+        padding: 0 1.2ch;
+        color: var(--fg);
+    }
+
+    .tb:hover {
+        background: #eaeef2;
+    }
+
+    .tb.text {
+        display: flex;
+        align-items: center;
+        gap: 0.8ch;
+        margin: 6px 2px;
+        padding: 0 1ch;
+        min-width: 0;
+        border: 1px solid transparent;
+        border-radius: 4px;
+    }
+
+    .tb.text kbd {
+        color: var(--dim);
+    }
+
+    [data-screen="settings"] .tb[data-panel="settings"],
+    [data-screen="profile"] .tb[data-panel="profile"] {
+        background: var(--sel);
+        border-color: var(--blue);
+        color: var(--blue);
+    }
+
+    [data-screen="settings"] .tb[data-panel="settings"] kbd,
+    [data-screen="profile"] .tb[data-panel="profile"] kbd {
+        color: var(--blue);
+    }
+
+    .tb-gap {
+        width: 1ch;
+    }
+
+    .tb.close:hover {
+        background: var(--red);
+        color: #fff;
+    }
+
+    kbd {
+        font: inherit;
+    }
+
+    /* 패널(창) */
+    .panes {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 0;
+        padding: 14px 8px 8px;
+    }
+
+    .pane {
+        position: relative;
+        flex: none;
+        padding: 7px 1.5ch 5px;
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+    }
+
+    .pane.focused {
+        border-color: var(--blue);
+    }
+
+    .pane-title,
+    .pane-aux {
+        position: absolute;
+        top: -11px;
+        padding: 0 1ch;
+        background: var(--bg);
+        line-height: 20px;
+        white-space: nowrap;
+    }
+
+    .pane-title {
+        left: 1ch;
+        font-weight: 700;
+    }
+
+    .focused > .pane-title {
+        color: var(--blue);
+    }
+
+    .pane-aux {
+        right: 1ch;
+        color: var(--dim);
+    }
+
+    .pane-aux kbd {
+        color: var(--blue);
+    }
+
+    /* 상태 */
+    .status {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        column-gap: 2ch;
+    }
+
+    .status .line {
+        display: flex;
+        gap: 1ch;
+        white-space: nowrap;
+    }
+
+    .status .wide {
+        grid-column: 1 / -1;
+    }
+
+    .stop {
+        grid-row: 1 / 3;
+        grid-column: 2;
+        align-self: center;
+        display: flex;
+        align-items: center;
+        gap: 1.5ch;
+        height: 32px;
+        padding: 0 2ch;
+        background: var(--fg);
+        color: #fff;
+        border-radius: 3px;
+        font-weight: 700;
+    }
+
+    .stop kbd {
+        padding: 0 0.6ch;
+        background: #fff;
+        color: var(--fg);
+        border-radius: 2px;
+        line-height: 18px;
+    }
+
+    .stop:hover {
+        background: #32383f;
+    }
+
+    .gauge-line {
+        display: flex;
+        gap: 1ch;
+    }
+
+    .gauge {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: pre;
+        letter-spacing: 0;
+    }
+
+    .gauge .fill {
+        color: var(--blue);
+    }
+
+    .gauge .rest {
+        color: #afb8c1;
+    }
+
+    /* 로그 */
+    .log {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding-top: 8px;
+    }
+
+    .log ol {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        overflow: hidden;
+    }
+
+    .log li {
+        display: grid;
+        grid-template-columns: 9ch 6ch 1fr;
+    }
+
+    .log li[hidden] {
+        display: none;
+    }
+
+    .log time {
+        color: var(--dim);
+    }
+
+    .log .tool {
+        color: var(--magenta);
+    }
+
+    .log .say {
+        color: var(--fg);
+    }
+
+    .log li.start {
+        color: var(--dim);
+    }
+
+    .log li.start span {
+        grid-column: 2 / -1;
+    }
+
+    .log .text {
+        overflow-wrap: anywhere;
+    }
+
+    .cursor {
+        display: inline-block;
+        width: 1ch;
+        height: 16px;
+        margin-left: 1ch;
+        vertical-align: -3px;
+        background: var(--fg);
+        animation: blink 1.06s steps(1) infinite;
+    }
+
+    @keyframes blink {
+        50% {
+            opacity: 0;
+        }
+    }
+
+    /* 회차 */
+    .rounds li {
+        display: grid;
+        grid-template-columns: 2ch 1fr auto;
+        white-space: nowrap;
+    }
+
+    .rounds .head {
+        display: flex;
+        gap: 1.5ch;
+    }
+
+    .rounds .commit {
+        grid-template-columns: 2ch 8ch 1fr 11ch;
+    }
+
+    .rounds .commit .msg {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .rounds .diff {
+        text-align: right;
+    }
+
+    /* 작업 */
+    .tasks li {
+        display: grid;
+        grid-template-columns: 4ch 1fr auto;
+        white-space: nowrap;
+    }
+
+    .tasks li.done .what {
+        color: var(--dim);
+    }
+
+    /* 옵션 */
+    .options {
+        display: grid;
+        grid-template-columns: 10ch 1fr auto;
+        white-space: nowrap;
+    }
+
+    .options .label {
+        color: var(--dim);
+    }
+
+    .choices {
+        display: flex;
+        gap: 2.5ch;
+    }
+
+    .radio {
+        display: inline-flex;
+        gap: 1ch;
+    }
+
+    .radio .mark {
+        color: var(--dim);
+    }
+
+    .radio.on {
+        font-weight: 700;
+    }
+
+    .radio.on .mark {
+        color: var(--blue);
+    }
+
+    .locked .choices,
+    .locked .value {
+        color: var(--dim);
+    }
+
+    .locked .radio.on .mark {
+        color: var(--dim);
+    }
+
+    .lock {
+        color: var(--dim);
+    }
+
+    .effort {
+        display: flex;
+        gap: 2ch;
+    }
+
+    .effort .cells {
+        letter-spacing: 0.25ch;
+    }
+
+    .effort .cells .fill {
+        color: var(--blue);
+    }
+
+    .effort .cells .rest {
+        color: var(--faint);
+    }
+
+    .effort .levels span {
+        padding: 0 0.5ch;
+        color: var(--dim);
+    }
+
+    .effort .levels .on {
+        background: var(--sel);
+        color: var(--blue);
+        font-weight: 700;
+    }
+
+    /* 단축키 막대 */
+    .keys {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 2ch;
+        height: 28px;
+        padding: 0 1.5ch;
+        background: var(--chrome);
+        border-top: 1px solid var(--rule);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .keys kbd {
+        color: var(--blue);
+        font-weight: 700;
+        margin-right: 0.6ch;
+    }
+
+    .keys .off,
+    .keys .off kbd {
+        color: #8c959f;
+        font-weight: 400;
+    }
+
+    .keys[data-for] {
+        display: none;
+    }
+
+    [data-screen="main"] .keys[data-for="main"],
+    [data-screen="settings"] .keys[data-for="dialog"],
+    [data-screen="profile"] .keys[data-for="dialog"] {
+        display: flex;
+    }
+
+    /* 대화 상자 */
+    .overlay {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 14px 14px 0;
+        background-color: rgba(255, 255, 255, 0.86);
+        background-image: radial-gradient(rgba(31, 35, 40, 0.22) 0.7px, transparent 1px);
+        background-size: 4px 4px;
+    }
+
+    [data-screen="settings"] .overlay[data-for="settings"],
+    [data-screen="profile"] .overlay[data-for="profile"] {
+        display: flex;
+    }
+
+    .dialog {
+        position: relative;
+        width: 100%;
+        padding: 14px 2ch 12px;
+        background: var(--bg);
+        border: 3px double var(--fg);
+        box-shadow: 1ch 10px 0 rgba(31, 35, 40, 0.13);
+    }
+
+    .dialog > .pane-title {
+        top: -12px;
+        color: var(--fg);
+    }
+
+    .dialog > .pane-aux {
+        top: -12px;
+    }
+
+    .dlg-section + .dlg-section {
+        margin-top: 12px;
+    }
+
+    .dlg-section h3 {
+        font-weight: 700;
+    }
+
+    .dlg-section h3 .dim {
+        font-weight: 400;
+    }
+
+    .dlg-row {
+        display: flex;
+        align-items: baseline;
+        gap: 1.5ch;
+        padding-left: 2ch;
+        white-space: nowrap;
+    }
+
+    .dlg-row.focus {
+        margin: 0 -1ch;
+        padding-left: 3ch;
+        padding-right: 1ch;
+        background: var(--sel);
+    }
+
+    .dlg-row .grow {
+        flex: 1;
+    }
+
+    .note {
+        padding-left: 2ch;
+        color: var(--dim);
+    }
+
+    .note.indent {
+        padding-left: 6ch;
+    }
+
+    .tbtn {
+        color: var(--blue);
+        white-space: nowrap;
+    }
+
+    .tbtn:hover {
+        background: var(--sel);
+    }
+
+    .tbtn[disabled] {
+        color: #8c959f;
+        cursor: default;
+    }
+
+    .tbtn.danger {
+        color: var(--red);
+    }
+
+    .policy-row {
+        display: grid;
+        grid-template-columns: 4ch 9ch 1fr;
+        padding-left: 2ch;
+    }
+
+    .policy-row.focus {
+        margin: 0 -1ch;
+        padding-left: 3ch;
+        background: var(--sel);
+    }
+
+    .policy-row .what {
+        color: var(--dim);
+        white-space: normal;
+    }
+
+    .policy-row.focus .what {
+        color: var(--fg);
+    }
+
+    .check {
+        color: var(--blue);
+        font-weight: 700;
+    }
+
+    .dlg-foot {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 12px;
+        padding-top: 6px;
+        border-top: 1px dashed var(--rule);
+        color: var(--dim);
+    }
+
+    /* 프로필 */
+    .who {
+        display: grid;
+        grid-template-columns: 6ch 1fr auto;
+        column-gap: 2ch;
+        align-items: center;
+        margin-top: 4px;
+        padding-left: 2ch;
+    }
+
+    .avatar {
+        grid-row: 1 / 3;
+        display: grid;
+        place-items: center;
+        height: 40px;
+        background: var(--fg);
+        color: #fff;
+        font-weight: 700;
+        border-radius: 3px;
+    }
+
+    .plan {
+        grid-row: 1 / 3;
+        grid-column: 3;
+        padding: 0 1ch;
+        border: 1px solid var(--magenta);
+        color: var(--magenta);
+        border-radius: 3px;
+    }
+
+    .usage li {
+        display: grid;
+        grid-template-columns: 17ch 1fr 5ch;
+        column-gap: 1ch;
+        padding-left: 2ch;
+    }
+
+    .usage li + li {
+        margin-top: 4px;
+    }
+
+    .usage .pct {
+        text-align: right;
+        font-weight: 700;
+    }
+
+    .usage .when {
+        grid-column: 2 / -1;
+        color: var(--dim);
+    }
+
+    .usage .warn .gauge .fill,
+    .usage .warn .pct {
+        color: var(--yellow);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .cursor {
+            animation: none;
+        }
+    }
+</style>
+</head>
+<body>
+<header class="titlebar">
+    <div class="tab"><span class="tab-prompt">&gt;_</span><span>autopilot</span><span class="dim">shop-api</span></div>
+    <div class="win">
+        <button class="tb text" data-panel="profile">계정</button>
+        <button class="tb text" data-panel="settings">설정</button>
+        <span class="tb-gap"></span>
+        <button class="tb" aria-label="최소화">─</button>
+        <button class="tb" aria-label="최대화">□</button>
+        <button class="tb close" aria-label="닫기">×</button>
+    </div>
+</header>
+
+<main class="panes">
+    <section class="pane status" aria-label="상태">
+        <h2 class="pane-title">상태</h2>
+        <div class="line"><span class="yellow">●</span><b>3회차 진행 중</b><span class="dim">12분 경과</span></div>
+        <button class="stop"><kbd>s</kbd>종료 신호</button>
+        <div class="line">남은 시간<b>04:39:50</b><span class="dim">지금 02:20:10</span></div>
+        <div class="line wide gauge-line"><span class="dim">00:30</span><span class="gauge" data-pct="28.2"></span><span class="dim">07:00</span></div>
+        <div class="line wide"><span>shop-api</span><span class="green">ai/autopilot</span><span class="blue">C:\Users\dev\Projects\shop-api</span></div>
+    </section>
+
+    <section class="pane log focused" aria-label="로그">
+        <h2 class="pane-title">로그 3회차</h2>
+        <span class="pane-aux"><kbd>l</kbd> 전체 로그</span>
+        <ol>
+            <li class="start"><time>02:07</time><span>2회차 성공, 커밋 1</span></li>
+            <li class="start"><time>02:08</time><span>3회차 시작 (model Opus, effort High)</span></li>
+            <li><time>02:17:12</time><span class="tool">Grep</span><span class="text">"searchOrders" <span class="blue">src/admin</span></span></li>
+            <li><time>02:18:30</time><span class="tool">Read</span><span class="text blue">src/admin/searchController.js</span></li>
+            <li><time>02:19:02</time><span class="tool">Edit</span><span class="text blue">src/admin/searchController.js</span></li>
+            <li><time>02:19:31</time><span class="tool">Edit</span><span class="text blue">migrations/20261014_add_search_index.sql</span></li>
+            <li class="live"><time>02:19:47</time><span class="tool">Bash</span><span class="text">npm test -- admin</span></li>
+            <li class="live stream"><time>02:20:05</time><span class="say">●</span><span class="text"><span class="said">관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</span><span class="cursor" aria-hidden="true"></span></span></li>
+        </ol>
+    </section>
+
+    <section class="pane rounds" aria-label="회차">
+        <h2 class="pane-title">회차</h2>
+        <span class="pane-aux">커밋 3 <span class="green">+240</span> <span class="red">−49</span></span>
+        <ul>
+            <li><span class="green">✓</span><span class="head"><b>1회차</b><span class="dim">00:30–01:22</span><span class="green">성공</span><span class="dim">커밋 2</span></span></li>
+            <li class="commit"><span></span><span class="yellow">a3f9c21</span><span class="msg"><span class="dim">[ap]</span> 주문 목록 API에 커서 페이지네이션 추가</span><span class="diff"><span class="green">+142</span> <span class="red">−21</span></span></li>
+            <li class="commit"><span></span><span class="yellow">7be0d14</span><span class="msg"><span class="dim">[ap]</span> 결제 재시도에 지수 백오프 적용</span><span class="diff"><span class="green">+42</span> <span class="red">−16</span></span></li>
+            <li><span class="green">✓</span><span class="head"><b>2회차</b><span class="dim">01:23–02:07</span><span class="green">성공</span><span class="dim">커밋 1</span></span></li>
+            <li class="commit"><span></span><span class="yellow">c51e8aa</span><span class="msg"><span class="dim">[ap]</span> 결제 재시도 테스트 보강</span><span class="diff"><span class="green">+56</span> <span class="red">−12</span></span></li>
+            <li><span class="yellow">●</span><span class="head"><b>3회차</b><span class="dim">02:08–</span><span class="yellow">진행 중</span><span class="dim">12분 경과</span></span></li>
+        </ul>
+    </section>
+
+    <section class="pane tasks" aria-label="처리할 작업">
+        <h2 class="pane-title">처리할 작업</h2>
+        <span class="pane-aux">실행 중엔 잠겨요</span>
+        <ul>
+            <li class="done"><span class="green">[x]</span><span class="what">주문 목록 API에 페이지네이션 추가</span><span class="dim">1회차 완료</span></li>
+            <li class="done"><span class="green">[x]</span><span class="what">결제 실패 시 재시도 로직 점검</span><span class="dim">1·2회차 완료</span></li>
+            <li><span class="yellow">[~]</span><span class="what">관리자 화면 검색 속도 개선</span><span class="yellow">3회차 진행 중</span></li>
+        </ul>
+    </section>
+
+    <section class="pane options" aria-label="실행 옵션">
+        <h2 class="pane-title">옵션</h2>
+        <span class="pane-aux">모델, effort는 다음 회차부터 적용돼요</span>
+        <span class="label">모델</span>
+        <span class="choices"><span class="radio"><span class="mark">( )</span>Fable</span><span class="radio on"><span class="mark">(•)</span>Opus</span><span class="radio"><span class="mark">( )</span>Sonnet</span><span class="radio"><span class="mark">( )</span>Haiku</span></span>
+        <span></span>
+        <span class="label">effort</span>
+        <span class="effort"><span class="cells"><span class="fill">███</span><span class="rest">██</span></span><span class="levels"><span>Low</span><span>Medium</span><span class="on">High</span><span>XHigh</span><span>Max</span></span></span>
+        <span></span>
+        <span class="label">개선 정책</span>
+        <span class="choices locked"><span class="radio on"><span class="mark">(•)</span>자율개선</span><span class="radio"><span class="mark">( )</span>지시개선</span></span>
+        <span class="lock">[잠김]</span>
+        <span class="label">종료 시각</span>
+        <span class="locked"><span class="value"><b>07:00</b> 4시간 39분 남음</span></span>
+        <span class="lock">[잠김]</span>
+    </section>
+
+    <div class="overlay" data-for="settings">
+        <section class="dialog" role="dialog" aria-label="설정">
+            <h2 class="pane-title">설정</h2>
+            <span class="pane-aux"><kbd>Esc</kbd> 닫기</span>
+
+            <div class="dlg-section">
+                <h3>대상 프로젝트 <span class="dim">실행 중엔 잠겨요</span></h3>
+                <div class="dlg-row"><span class="blue grow">C:\Users\dev\Projects\shop-api</span><button class="tbtn" disabled>[ 폴더 선택 ]</button></div>
+            </div>
+
+            <div class="dlg-section">
+                <h3>Claude 데이터 폴더 <span class="dim">자동 감지</span></h3>
+                <div class="dlg-row"><span class="blue grow">C:\Users\dev\.claude</span><button class="tbtn">[ 폴더 변경 ]</button><button class="tbtn">[ 자동 감지 ]</button></div>
+                <p class="note">메모리·지침·스킬이 있는 .claude 폴더예요.<br />추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+            </div>
+
+            <div class="dlg-section">
+                <h3>개선 정책</h3>
+                <div class="policy-row focus"><span class="check">(•)</span><b>자율개선</b><span class="what">작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요</span></div>
+                <div class="policy-row"><span class="dim">( )</span><span>지시개선</span><span class="what">적어 둔 작업만 처리하고 끝나요</span></div>
+            </div>
+
+            <div class="dlg-section">
+                <h3>사용량 한도</h3>
+                <div class="dlg-row"><span class="check">[x]</span><span>대기한 시간만큼 종료 시각 연장</span></div>
+                <p class="note indent">한도에 걸려 리셋까지 기다리면 그 시간만큼<br />종료 시각을 늦춰요.</p>
+            </div>
+
+            <div class="dlg-section">
+                <h3>기록</h3>
+                <div class="dlg-row"><button class="tbtn">[ 전체 기록 보기 ]</button><button class="tbtn">[ 리포트 열기 ]</button><button class="tbtn danger">[ 진행 기록 초기화 ]</button></div>
+            </div>
+
+            <div class="dlg-foot"><span>AutoPilot v0.1.0</span></div>
+        </section>
+    </div>
+
+    <div class="overlay" data-for="profile">
+        <section class="dialog" role="dialog" aria-label="계정">
+            <h2 class="pane-title">계정</h2>
+            <span class="pane-aux"><kbd>Esc</kbd> 닫기</span>
+
+            <div class="dlg-section">
+                <h3>계정 선택</h3>
+                <div class="policy-row focus"><span class="check">(•)</span><b>기본 계정</b><span class="what">사용 중</span></div>
+                <div class="policy-row"><span class="dim">( )</span><span>회사</span><span class="what"></span></div>
+                <div class="dlg-row"><button class="tbtn">[ 계정 추가 ]</button><button class="tbtn">[ 다시 로그인 ]</button><button class="tbtn danger">[ 제거 ]</button></div>
+            </div>
+
+            <div class="dlg-section">
+                <div class="who">
+                    <span class="avatar">개</span>
+                    <b>개발자</b>
+                    <span class="plan">Max 20x</span>
+                    <span class="blue">dev@example.com</span>
+                </div>
+            </div>
+
+            <div class="dlg-section">
+                <h3 class="dlg-row" style="padding-left: 0">사용량과 한도<span class="grow"></span><span class="dim">02:18 기준</span><button class="tbtn">[ 새로 고침 ]</button></h3>
+                <ul class="usage">
+                    <li><span>5시간 한도</span><span class="gauge" data-pct="42"></span><span class="pct">42%</span><span class="when">03:00 리셋, 40분 후</span></li>
+                    <li><span>주간 한도</span><span class="gauge" data-pct="63"></span><span class="pct">63%</span><span class="when">10월 16일 09:00 리셋, 3일 후</span></li>
+                    <li class="warn"><span>주간 한도 (Opus)</span><span class="gauge" data-pct="78"></span><span class="pct">78%</span><span class="when">10월 16일 09:00 리셋, 3일 후</span></li>
+                </ul>
+            </div>
+        </section>
+    </div>
+</main>
+
+<footer class="keys" data-for="main">
+    <span class="off"><kbd>Enter</kbd>시작</span>
+    <span><kbd>s</kbd>종료 신호</span>
+    <span><kbd>m</kbd>모델</span>
+    <span><kbd>e</kbd>effort</span>
+    <span class="off"><kbd>p</kbd>정책</span>
+    <span class="off"><kbd>t</kbd>종료 시각</span>
+    <span><kbd>,</kbd>설정</span>
+    <span><kbd>u</kbd>계정</span>
+</footer>
+<footer class="keys" data-for="dialog">
+    <span><kbd>↑↓</kbd>이동</span>
+    <span><kbd>Space</kbd>선택</span>
+    <span><kbd>Enter</kbd>실행</span>
+    <span><kbd>Tab</kbd>다음 칸</span>
+    <span><kbd>Esc</kbd>닫기</span>
+</footer>
+
+<script>
+    const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+
+    const getCharWidth = () => {
+        const probe = document.createElement("span");
+
+        probe.textContent = "0".repeat(100);
+        probe.style.setProperty("position", "absolute");
+        probe.style.setProperty("visibility", "hidden");
+        document.body.append(probe);
+
+        const width = probe.getBoundingClientRect().width / 100;
+
+        probe.remove();
+        return width;
+    };
+
+    const drawGauges = () => {
+        const charWidth = getCharWidth();
+
+        document.querySelectorAll(".gauge").forEach((gauge) => {
+            const cells = Math.max(4, Math.floor(gauge.getBoundingClientRect().width / charWidth));
+            const eighths = Math.round((Number(gauge.dataset.pct) / 100) * cells * 8);
+            const full = Math.floor(eighths / 8);
+            const part = EIGHTHS[eighths % 8];
+            const rest = cells - full - (part ? 1 : 0);
+
+            gauge.innerHTML = `<span class="fill">${"█".repeat(full)}${part}</span><span class="rest">${"░".repeat(rest)}</span>`;
+        });
+    };
+
+    const playLiveLog = () => {
+        const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const [bashLine, sayLine] = document.querySelectorAll(".log li.live");
+        const said = sayLine.querySelector(".said");
+        const fullText = said.textContent;
+
+        if (reduced) {
+            return;
+        }
+
+        bashLine.hidden = true;
+        sayLine.hidden = true;
+        setTimeout(() => {
+            bashLine.hidden = false;
+        }, 500);
+        setTimeout(() => {
+            let shown = 0;
+
+            said.textContent = "";
+            sayLine.hidden = false;
+
+            // 스트리밍처럼 몇 글자씩 끊어 붙인다
+            const timer = setInterval(() => {
+                shown = Math.min(fullText.length, shown + 3);
+                said.textContent = fullText.slice(0, shown);
+
+                if (shown >= fullText.length) {
+                    clearInterval(timer);
+                }
+            }, 28);
+        }, 1100);
+    };
+
+    const start = () => {
+        drawGauges();
+        playLiveLog();
+    };
+
+    document.fonts.ready.then(start);
+    addEventListener("hashchange", drawGauges);
+</script>
+</body>
+</html>

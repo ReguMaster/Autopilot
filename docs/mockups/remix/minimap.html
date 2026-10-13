@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoPilot 시안 - 미니맵</title>
+<script>
+    const syncScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+    syncScreen();
+    addEventListener("hashchange", syncScreen);
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: "Pretendard";
+    src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+    font-weight: 45 920;
+}
+
+:root {
+    --strip: #161b25;
+    --editor: #1e2430;
+    --surface: #262d3b;
+    --raised: #2e3647;
+    --line: #313a4c;
+    --text: #e6eaf2;
+    --soft: #b9c1cf;
+    --muted: #8b95a7;
+    --accent: #6cb6ff;
+    --add: #3fb950;
+    --add-bg: rgba(63, 185, 80, 0.15);
+    --del: #f85149;
+    --del-text: #ff7b72;
+    --del-bg: rgba(248, 81, 73, 0.14);
+    --warn: #e3b341;
+    --map: #1a202b;
+    --map-width: 150px;
+    --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Nanum Gothic Coding", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--editor);
+    color: var(--text);
+    font: 400 14px/1.45 var(--sans);
+    word-break: keep-all;
+    -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+p, h1, h2, h3, ol, ul { margin: 0; }
+ol, ul { padding: 0; list-style: none; }
+code, .mono { font-family: var(--mono); font-variant-ligatures: none; }
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+svg { display: block; flex: none; }
+
+.icon {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+ins { color: var(--add); text-decoration: none; }
+del { color: var(--del-text); text-decoration: none; }
+
+/* 창 헤더 */
+.titlebar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 6px 0 16px;
+    background: var(--strip);
+    -webkit-app-region: drag;
+}
+
+.logo {
+    height: 13px;
+    filter: invert(1) grayscale(1);
+    mix-blend-mode: screen;
+    opacity: 0.85;
+}
+
+.crumb {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-left: 14px;
+    padding-left: 14px;
+    border-left: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.crumb b { color: var(--text); font-weight: 650; }
+.crumb code { font-size: 12px; }
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+    -webkit-app-region: no-drag;
+}
+
+.controls button {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 30px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+}
+
+.controls button:hover { background: var(--raised); color: var(--text); }
+.controls .close:hover { background: #c93c37; color: #fff; }
+.controls .sep { width: 1px; height: 16px; margin: 0 5px; background: var(--line); }
+.controls svg { stroke-width: 1.25; }
+
+[data-screen="settings"] #settings-toggle,
+[data-screen="profile"] #profile-toggle {
+    background: var(--raised);
+    color: var(--accent);
+    box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* 상태 줄 */
+.status {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 16px;
+    background: var(--strip);
+}
+
+.state { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.state i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.status .since { color: var(--muted); font-size: 12.5px; }
+.status .remain { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+.status .remain b { margin-left: 8px; color: var(--text); font: 500 15px var(--mono); }
+
+/* 에디터 탭 줄 */
+.tabrow {
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--map-width);
+    height: 32px;
+    background: var(--strip);
+}
+
+.tabs { display: flex; min-width: 0; }
+
+.tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 0 12px;
+    border: 0;
+    border-right: 1px solid #222937;
+    background: none;
+    color: var(--muted);
+    font: 12px var(--mono);
+    white-space: nowrap;
+}
+
+.tab .name { overflow: hidden; text-overflow: ellipsis; }
+.tab.on { flex: none; }
+.tab .stat { flex: none; font-size: 11px; }
+
+.tab.on,
+[data-screen="settings"] .tab-settings {
+    background: var(--editor);
+    color: var(--text);
+}
+
+.tab.on::before,
+[data-screen="settings"] .tab-settings::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: var(--accent);
+}
+
+[data-screen="settings"] .tab.on { background: none; color: var(--muted); }
+[data-screen="settings"] .tab.on::before { display: none; }
+
+.tab .typing-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.tab-settings { display: none; font-family: var(--sans); font-size: 12.5px; font-weight: 600; }
+.tab-settings a { display: grid; color: var(--muted); }
+[data-screen="settings"] .tab-settings { display: flex; flex: none; }
+
+.map-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px 0 12px;
+    border-left: 1px solid var(--line);
+    background: var(--map);
+    font: 11px var(--mono);
+}
+
+[data-screen="settings"] .map-head { visibility: hidden; }
+
+.link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: 600 12px var(--sans);
+}
+
+.link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* 작업대: 왼쪽은 diff와 로그, 오른쪽은 밤 전체의 미니맵 */
+.workbench {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--map-width);
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.editor { grid-column: 1; grid-row: 1; min-width: 0; }
+
+.crumbs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 14px 0 16px;
+    color: var(--muted);
+    font: 11.5px var(--mono);
+}
+
+.crumbs b { color: var(--soft); font-weight: 500; }
+.crumbs .sepr { color: #5b6578; }
+
+.editing {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    color: var(--accent);
+    font: 600 12px var(--sans);
+}
+
+.editing i { width: 2px; height: 12px; background: var(--accent); animation: blink 1s steps(1) infinite; }
+
+.hunk {
+    padding: 2px 16px;
+    background: rgba(108, 182, 255, 0.07);
+    color: var(--muted);
+    font: 11.5px/18px var(--mono);
+}
+
+/* 타이핑 중에도 아래 로그 패널이 움직이지 않도록 diff 전체 높이를 미리 잡는다 */
+.lines { min-height: calc(14 * 21px + 8px); padding: 2px 0 6px; font: 11.5px/21px var(--mono); }
+
+.line {
+    display: grid;
+    grid-template-columns: 30px 30px 16px minmax(0, 1fr);
+    white-space: pre;
+}
+
+.line[hidden] { display: none; }
+
+.line .n {
+    padding-right: 6px;
+    text-align: right;
+    color: #687388;
+    font-size: 10.5px;
+    user-select: none;
+}
+
+.line .s { text-align: center; color: var(--muted); }
+.line.add { background: var(--add-bg); }
+.line.add .s { color: var(--add); }
+.line.del { background: var(--del-bg); }
+.line.del .s { color: var(--del); }
+.line.add .n { color: #8fbf98; }
+.line.del .n { color: #d79b97; }
+
+.code-wrap { display: flex; align-items: center; min-width: 0; overflow: hidden; }
+
+.code {
+    display: inline-block;
+    overflow: hidden;
+    max-width: calc(var(--n, 999) * 1ch);
+}
+
+.caret { display: none; width: 7px; height: 15px; background: var(--accent); }
+.line.typing .caret { display: inline-block; }
+
+.k { color: #dcbdfb; }
+.f { color: #f69d50; }
+.str { color: #96d0ff; }
+.num { color: var(--accent); }
+.p { color: var(--soft); }
+
+/* 로그 패널 */
+.output {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    border-top: 1px solid var(--line);
+    padding: 0 16px;
+}
+
+.output-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 30px;
+    font-size: 12px;
+}
+
+.output-head span {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    color: var(--text);
+    font-weight: 600;
+    box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+.log li {
+    display: grid;
+    grid-template-columns: 62px 40px minmax(0, 1fr);
+    gap: 6px;
+    font: 11.5px/20px var(--mono);
+    color: var(--soft);
+}
+
+.log time { color: var(--muted); }
+.log b { color: var(--text); font-weight: 600; }
+.log code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.log .say { grid-template-columns: 62px minmax(0, 1fr); margin-top: 4px; }
+.log .say p { color: var(--text); font: 13px/20px var(--sans); text-wrap: pretty; }
+
+/* 미니맵 */
+.minimap {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    position: relative;
+    border-left: 1px solid var(--line);
+    background: var(--map);
+}
+
+.map {
+    position: absolute;
+    inset: 4px 10px 8px 12px;
+}
+
+.map i {
+    position: absolute;
+    left: 0;
+    height: 1px;
+}
+
+.map i.add { background: rgba(63, 185, 80, 0.85); }
+.map i.del { background: rgba(248, 81, 73, 0.85); }
+.map i.later { opacity: 0; }
+.map i.past { opacity: 0.62; }
+
+/* 새 줄은 지금 회차 색(파랑)으로 들어와 추가 줄 색으로 가라앉는다 */
+.map i.fresh { background: var(--accent); }
+.map i.settle { transition: background-color 900ms ease-out; }
+
+.map .caret-mark {
+    position: absolute;
+    left: -9px;
+    width: 3px;
+    height: 7px;
+    margin-top: -3px;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: 0;
+    transition: top 120ms ease-out, opacity 300ms;
+}
+
+.map .caret-mark.on { opacity: 1; }
+
+.map .round {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 16px;
+    color: var(--soft);
+    font: 600 11px var(--sans);
+    cursor: default;
+}
+
+.map .round .mono { font-weight: 400; font-size: 10px; color: var(--muted); }
+.map .round.live { color: var(--accent); }
+
+.map .file {
+    position: absolute;
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    height: 11px;
+    color: #7c8699;
+    font: 9px/11px var(--mono);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.map .file::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 1px;
+    margin-right: 4px;
+    vertical-align: middle;
+    background: #4a5468;
+}
+
+.map .file.current { color: var(--soft); }
+
+.viewport {
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    border: 1px solid rgba(108, 182, 255, 0.5);
+    border-radius: 2px;
+    background: rgba(108, 182, 255, 0.1);
+    transition: height 160ms ease-out;
+    pointer-events: none;
+}
+
+/* 작업과 옵션 */
+.composer {
+    flex: none;
+    padding: 10px 16px 12px;
+    border-top: 1px solid var(--line);
+    background: var(--map);
+}
+
+.tasks-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 2px;
+    font-size: 12.5px;
+}
+
+.tasks-head b { font-size: 13px; }
+
+.lock-note { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.lock-note .icon { width: 11px; height: 11px; }
+
+.task-list li {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    height: 23px;
+    font-size: 13px;
+}
+
+.task-list .icon { color: var(--add); stroke-width: 1.8; }
+.task-list .done span { color: var(--muted); }
+.task-list .dot { width: 8px; height: 8px; margin-left: 2px; border-radius: 50%; background: var(--accent); }
+.task-list em { color: var(--muted); font-size: 12px; font-style: normal; }
+.task-list .now em { color: var(--accent); font-weight: 600; }
+
+.options { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #3c475c;
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.chip:hover { border-color: var(--accent); }
+.chip .key { color: var(--muted); font-size: 12px; font-weight: 500; }
+.chip .chev { width: 9px; height: 9px; color: var(--muted); }
+
+.chip.locked {
+    border-style: dashed;
+    background: transparent;
+    color: var(--soft);
+    font-weight: 500;
+    cursor: default;
+}
+
+.chip.locked:hover { border-color: #3c475c; }
+.chip.locked .icon { width: 11px; height: 11px; color: var(--muted); }
+
+.steps { display: inline-flex; align-items: flex-end; gap: 2px; }
+.steps i { width: 4px; border-radius: 1px; background: #4a5368; }
+.steps i:nth-child(1) { height: 5px; }
+.steps i:nth-child(2) { height: 7px; }
+.steps i:nth-child(3) { height: 9px; }
+.steps i:nth-child(4) { height: 11px; }
+.steps i:nth-child(5) { height: 13px; }
+.steps i:nth-child(-n + 3) { background: var(--accent); }
+
+.stop {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    margin-left: auto;
+    padding: 0 14px 0 13px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--text);
+    color: #161b25;
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.stop i { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
+.stop:hover { background: #fff; }
+
+/* 설정: 에디터의 설정 탭 */
+.settings-page {
+    position: fixed;
+    inset: 112px 0 0;
+    z-index: 15;
+    display: none;
+    padding: 2px 20px 0;
+    background: var(--editor);
+}
+
+[data-screen="settings"] .settings-page { display: block; }
+
+.set-group {
+    margin: 16px 0 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.set {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 16px;
+    padding: 11px 0;
+    border-bottom: 1px solid #29303f;
+}
+
+.set:last-child { border-bottom: 0; }
+.set h3 { font-size: 13.5px; font-weight: 650; }
+.set p { margin-top: 2px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.set .control { display: flex; align-items: flex-start; gap: 6px; }
+.set .wide { grid-column: 1 / -1; }
+
+.path {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--strip);
+    color: var(--soft);
+    font: 12px var(--mono);
+}
+
+.path .badge { margin-left: auto; color: var(--accent); font: 600 11.5px var(--sans); }
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 11px;
+    border: 1px solid #46516a;
+    border-radius: 5px;
+    background: var(--raised);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.btn:hover { border-color: var(--text); }
+.btn:disabled { border-style: dashed; background: transparent; color: var(--muted); cursor: not-allowed; }
+.btn.danger { border-color: rgba(248, 81, 73, 0.45); background: transparent; color: var(--del-text); }
+.btn .icon { width: 11px; height: 11px; }
+
+.radios { display: grid; gap: 4px; }
+
+.radio {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 5px;
+}
+
+.radio.on { background: rgba(108, 182, 255, 0.1); }
+.radio .o { width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #6b768a; }
+.radio.on .o { box-shadow: inset 0 0 0 1.5px var(--accent), inset 0 0 0 4px var(--editor), inset 0 0 0 8px var(--accent); }
+.radio b { font-size: 13px; }
+.radio p { margin: 0; }
+
+.toggle {
+    position: relative;
+    display: block;
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--accent);
+}
+
+.toggle::after {
+    content: "";
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--editor);
+}
+
+.version { padding: 12px 0; color: var(--muted); font: 11.5px var(--mono); }
+
+/* 계정: 탭 줄에서 내려오는 메뉴 */
+.scrim {
+    position: fixed;
+    inset: 40px 0 0;
+    z-index: 18;
+    background: rgba(14, 18, 26, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s;
+}
+
+[data-screen="profile"] .scrim { opacity: 1; pointer-events: auto; }
+
+.menu {
+    position: fixed;
+    top: 38px;
+    right: 8px;
+    z-index: 40;
+    width: 360px;
+    padding: 6px;
+    border: 1px solid #435069;
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 18px 40px rgba(8, 10, 16, 0.55);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-6px);
+    transition: opacity 0.16s, transform 0.16s ease-out, visibility 0s 0.16s;
+}
+
+[data-screen="profile"] .menu {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity 0.16s, transform 0.16s ease-out;
+}
+
+.who {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 10px;
+}
+
+.avatar {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #13233a;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.who b { display: block; font-size: 15px; }
+.who .email { color: var(--muted); font: 12px var(--mono); }
+
+.plan {
+    padding: 2px 8px;
+    border: 1px solid #4f5d78;
+    border-radius: 4px;
+    color: var(--soft);
+    font-size: 11.5px;
+    font-weight: 700;
+}
+
+.menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--line); }
+
+.menu-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px 2px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.menu-label .link { display: inline-flex; align-items: center; gap: 4px; }
+.menu-label .link .icon { width: 11px; height: 11px; }
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 30px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    font-size: 13px;
+    text-align: left;
+}
+
+.item:hover { background: var(--raised); }
+.item .check { color: var(--accent); stroke-width: 1.8; }
+.item .spacer { width: 13px; }
+.item.danger { color: var(--del-text); }
+
+.item-row { display: flex; gap: 2px; padding: 2px 0; }
+.item-row .item { width: auto; }
+.item-row .danger { margin-left: auto; }
+
+/* 사용량: 위에서부터 차오르는 세로 미니맵 */
+.quotas {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 6px 8px 8px;
+}
+
+.quota-name { font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+.qmap {
+    position: relative;
+    height: 78px;
+    margin: 6px 0 6px;
+    border-radius: 3px;
+    background: var(--map);
+    overflow: hidden;
+}
+
+.qmap i {
+    position: absolute;
+    left: 6px;
+    height: 2px;
+    background: #353e50;
+}
+
+.qmap i.used { background: var(--accent); }
+.quota.warn .qmap i.used { background: var(--warn); }
+
+.qmap::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--v);
+    height: 1px;
+    background: rgba(230, 234, 242, 0.55);
+}
+
+.quota b { display: block; font: 600 17px/1.2 var(--mono); }
+.quota.warn b { color: var(--warn); }
+.quota small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+
+@keyframes blink { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <symbol id="i-lock" viewBox="0 0 12 12"><rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" /></symbol>
+    <symbol id="i-caret" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" /></symbol>
+    <symbol id="i-check" viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5" /></symbol>
+    <symbol id="i-x" viewBox="0 0 12 12"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" /></symbol>
+    <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5" /><circle cx="4.5" cy="12.5" r="1.5" /><circle cx="11.5" cy="5.5" r="1.5" /><path d="M4.5 5v6M11.5 7c0 2.5-2 3.2-7 4" /></symbol>
+</svg>
+
+<header class="titlebar">
+    <img class="logo" src="../../logo.png" alt="AutoPilot">
+    <div class="crumb">
+        <b>shop-api</b>
+        <svg class="icon" viewBox="0 0 16 16"><use href="#i-branch" /></svg>
+        <code>ai/autopilot</code>
+    </div>
+    <div class="controls">
+        <button type="button" id="profile-toggle" data-panel="profile" aria-label="계정" title="계정">
+            <svg class="icon" viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+        </button>
+        <button type="button" id="settings-toggle" data-panel="settings" aria-label="설정" title="설정">
+            <svg class="icon" viewBox="0 0 12 12"><path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" /><circle cx="6" cy="6" r="1.6" /></svg>
+        </button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" aria-label="최소화" title="최소화"><svg class="icon" viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+        <button type="button" aria-label="최대화" title="최대화"><svg class="icon" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+        <button type="button" class="close" aria-label="닫기" title="닫기"><svg class="icon" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+    </div>
+</header>
+
+<div class="status">
+    <span class="state"><i aria-hidden="true"></i>3회차 진행 중</span>
+    <span class="since">02:08부터 12분째</span>
+    <span class="remain">남은 시간<b>04:39:50</b></span>
+</div>
+
+<div class="tabrow">
+    <div class="tabs" role="tablist" aria-label="3회차에서 바뀐 파일">
+        <button type="button" class="tab on" role="tab" aria-selected="true"><i class="typing-dot" aria-label="고치는 중"></i><span class="name">searchController.js</span><span class="stat"><ins data-count="tab-add">+6</ins> <del>−4</del></span></button>
+        <button type="button" class="tab" role="tab" aria-selected="false" title="migrations/20261014_add_search_index.sql"><span class="name">20261014_add_search_index.sql</span><span class="stat"><ins>+4</ins></span></button>
+        <div class="tab tab-settings" role="tab" aria-selected="true">
+            설정
+            <a href="#main" aria-label="설정 닫기"><svg class="icon" viewBox="0 0 12 12"><use href="#i-x" /></svg></a>
+        </div>
+    </div>
+    <div class="map-head">
+        <span title="오늘 밤 바뀐 줄 전체"><ins data-count="night-add">+250</ins> <del>−53</del></span>
+        <button type="button" class="link">회차 기록</button>
+    </div>
+</div>
+
+<main class="workbench">
+    <section class="editor" aria-label="src/admin/searchController.js 변경 내용">
+        <div class="crumbs">
+            <span>src</span><span class="sepr">/</span><span>admin</span><span class="sepr">/</span><b>searchController.js</b>
+            <span class="editing"><i></i>3회차가 고치는 중</span>
+        </div>
+        <div class="hunk">@@ -38,8 +38,10 @@ searchOrders</div>
+        <div class="lines">
+            <div class="line"><span class="n">38</span><span class="n">38</span><span class="s"> </span><span class="code-wrap"><span class="code"><span class="k">async function</span> <span class="f">searchOrders</span><span class="p">(</span>req, res<span class="p">) {</span></span></span></div>
+            <div class="line del"><span class="n">39</span><span class="n"></span><span class="s">-</span><span class="code-wrap"><span class="code">  <span class="k">const</span> q = <span class="f">String</span><span class="p">(</span>req.query.q || <span class="str">""</span><span class="p">)</span>.<span class="f">trim</span><span class="p">();</span></span></span></div>
+            <div class="line add"><span class="n"></span><span class="n">39</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">const</span> q = <span class="f">toSearchKey</span><span class="p">(</span>req.query.q<span class="p">);</span></span></span></div>
+            <div class="line add"><span class="n"></span><span class="n">40</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">const</span> limit = <span class="f">clampLimit</span><span class="p">(</span>req.query.limit<span class="p">);</span></span></span></div>
+            <div class="line"><span class="n">40</span><span class="n">41</span><span class="s"> </span><span class="code-wrap"><span class="code">  <span class="k">if</span> <span class="p">(</span>!q<span class="p">)</span> <span class="k">return</span> res.<span class="f">json</span><span class="p">({</span> items: <span class="p">[] });</span></span></span></div>
+            <div class="line del"><span class="n">41</span><span class="n"></span><span class="s">-</span><span class="code-wrap"><span class="code">  <span class="k">const</span> sql = <span class="str">"SELECT * FROM orders"</span> +</span></span></div>
+            <div class="line del"><span class="n">42</span><span class="n"></span><span class="s">-</span><span class="code-wrap"><span class="code">    <span class="str">" WHERE customer_name LIKE ?"</span><span class="p">;</span></span></span></div>
+            <div class="line del"><span class="n">43</span><span class="n"></span><span class="s">-</span><span class="code-wrap"><span class="code">  <span class="k">const</span> rows = <span class="k">await</span> db.<span class="f">query</span><span class="p">(</span>sql, <span class="p">[</span><span class="str">`%${q}%`</span><span class="p">]);</span></span></span></div>
+            <div class="line add typed"><span class="n"></span><span class="n">42</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">const</span> sql = <span class="str">`SELECT id, customer_name, status</span></span><i class="caret"></i></span></div>
+            <div class="line add typed"><span class="n"></span><span class="n">43</span><span class="s">+</span><span class="code-wrap"><span class="code"><span class="str">    FROM orders WHERE name_lower LIKE ?</span></span><i class="caret"></i></span></div>
+            <div class="line add typed"><span class="n"></span><span class="n">44</span><span class="s">+</span><span class="code-wrap"><span class="code"><span class="str">    ORDER BY name_lower LIMIT ?`</span><span class="p">;</span></span><i class="caret"></i></span></div>
+            <div class="line add typed"><span class="n"></span><span class="n">45</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">const</span> rows = <span class="k">await</span> db.<span class="f">query</span><span class="p">(</span>sql, <span class="p">[</span><span class="str">`${q}%`</span>, limit<span class="p">]);</span></span><i class="caret"></i></span></div>
+            <div class="line"><span class="n">44</span><span class="n">46</span><span class="s"> </span><span class="code-wrap"><span class="code">  res.<span class="f">json</span><span class="p">({</span> items: rows <span class="p">});</span></span></span></div>
+            <div class="line"><span class="n">45</span><span class="n">47</span><span class="s"> </span><span class="code-wrap"><span class="code"><span class="p">}</span></span></span></div>
+        </div>
+    </section>
+
+    <section class="output" aria-label="3회차 로그">
+        <div class="output-head">
+            <span>3회차 로그</span>
+            <button type="button" class="link">전체 로그</button>
+        </div>
+        <ol class="log">
+            <li><time>02:17:12</time><b>Grep</b><code>"searchOrders" src/admin</code></li>
+            <li><time>02:18:30</time><b>Read</b><code>src/admin/searchController.js</code></li>
+            <li><time>02:19:02</time><b>Edit</b><code>src/admin/searchController.js</code></li>
+            <li><time>02:19:31</time><b>Edit</b><code>migrations/20261014_add_search_index.sql</code></li>
+            <li><time>02:19:47</time><b>Bash</b><code>npm test -- admin</code></li>
+            <li class="say"><time>02:20:05</time><p>관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</p></li>
+        </ol>
+    </section>
+
+    <aside class="minimap" aria-label="오늘 밤 바뀐 줄 전체, 회차와 파일 순서">
+        <div class="map" aria-hidden="true"></div>
+    </aside>
+</main>
+
+<section class="composer" aria-label="작업과 실행 옵션">
+    <div class="tasks-head">
+        <b>처리할 작업</b>
+        <span class="lock-note"><svg class="icon" viewBox="0 0 12 12"><use href="#i-lock" /></svg>실행 중에는 바꿀 수 없어요</span>
+    </div>
+    <ol class="task-list">
+        <li class="done"><svg class="icon" viewBox="0 0 12 12"><use href="#i-check" /></svg><span>주문 목록 API에 페이지네이션 추가</span><em>1회차</em></li>
+        <li class="done"><svg class="icon" viewBox="0 0 12 12"><use href="#i-check" /></svg><span>결제 실패 시 재시도 로직 점검</span><em>1, 2회차</em></li>
+        <li class="now"><i class="dot" aria-hidden="true"></i><span>관리자 화면 검색 속도 개선</span><em>3회차 진행 중</em></li>
+    </ol>
+    <div class="options">
+        <button type="button" class="chip"><span class="key">모델</span>Opus<svg class="icon chev" viewBox="0 0 10 10"><use href="#i-caret" /></svg></button>
+        <button type="button" class="chip"><span class="key">Effort</span><span class="steps" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev" viewBox="0 0 10 10"><use href="#i-caret" /></svg></button>
+        <span class="chip locked" title="실행 중에는 바꿀 수 없어요">자율개선<svg class="icon" viewBox="0 0 12 12"><use href="#i-lock" /></svg></span>
+        <span class="chip locked" title="실행 중에는 바꿀 수 없어요">07:00 종료<svg class="icon" viewBox="0 0 12 12"><use href="#i-lock" /></svg></span>
+        <button type="button" class="stop"><i aria-hidden="true"></i>종료 신호</button>
+    </div>
+</section>
+
+<section class="settings-page" aria-label="설정">
+    <h2 class="set-group">프로젝트</h2>
+    <div class="set">
+        <div><h3>대상 프로젝트</h3><p>실행 중에는 바꿀 수 없어요</p></div>
+        <div class="control"><button type="button" class="btn" disabled><svg class="icon" viewBox="0 0 12 12"><use href="#i-lock" /></svg>폴더 선택</button></div>
+        <div class="path wide">C:\Users\dev\Projects\shop-api</div>
+    </div>
+    <div class="set">
+        <div><h3>Claude 데이터 폴더</h3><p>메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p></div>
+        <div class="control"><button type="button" class="btn">폴더 변경</button><button type="button" class="btn">자동 감지</button></div>
+        <div class="path wide">C:\Users\dev\.claude<span class="badge">자동 감지</span></div>
+    </div>
+
+    <h2 class="set-group">실행</h2>
+    <div class="set">
+        <div><h3>개선 정책</h3><p>실행 중에는 바꿀 수 없어요</p></div>
+        <div></div>
+        <div class="radios wide" role="radiogroup" aria-label="개선 정책">
+            <div class="radio on" role="radio" aria-checked="true"><span class="o"></span><div><b>자율개선</b><p>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요</p></div></div>
+            <div class="radio" role="radio" aria-checked="false"><span class="o"></span><div><b>지시개선</b><p>적어 둔 작업만 처리하고 끝나요</p></div></div>
+        </div>
+    </div>
+    <div class="set">
+        <div><h3>대기한 시간만큼 종료 시각 연장</h3><p>사용량 한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</p></div>
+        <div class="control"><span class="toggle" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장" tabindex="0"></span></div>
+    </div>
+
+    <h2 class="set-group">기록</h2>
+    <div class="set">
+        <div class="control wide">
+            <button type="button" class="btn">전체 기록 보기</button>
+            <button type="button" class="btn">리포트 열기</button>
+            <button type="button" class="btn danger">진행 기록 초기화</button>
+        </div>
+    </div>
+    <p class="version">AutoPilot v0.1.0</p>
+</section>
+
+<div class="scrim" data-close></div>
+
+<section class="menu" id="profile-panel" aria-label="계정">
+    <div class="who">
+        <span class="avatar">개</span>
+        <div><b>개발자</b><span class="email">dev@example.com</span></div>
+        <span class="plan">Max 20x</span>
+    </div>
+    <hr>
+    <div class="menu-label">계정</div>
+    <button type="button" class="item"><svg class="icon check" viewBox="0 0 12 12"><use href="#i-check" /></svg>기본 계정</button>
+    <button type="button" class="item"><span class="spacer"></span>회사</button>
+    <div class="item-row">
+        <button type="button" class="item"><svg class="icon" viewBox="0 0 12 12"><path d="M6 2.5v7M2.5 6h7" /></svg>계정 추가</button>
+        <button type="button" class="item"><svg class="icon" viewBox="0 0 12 12"><path d="M7 2.5h2.5v7H7M5 4l-2 2 2 2M3 6h5" /></svg>다시 로그인</button>
+        <button type="button" class="item danger"><svg class="icon" viewBox="0 0 12 12"><use href="#i-x" /></svg>제거</button>
+    </div>
+    <hr>
+    <div class="menu-label">
+        <span>사용량과 한도, 02:18 기준</span>
+        <button type="button" class="link"><svg class="icon" viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85M10 2v2.5H7.5" /></svg>새로 고침</button>
+    </div>
+    <div class="quotas">
+        <div class="quota" style="--v: 42%">
+            <span class="quota-name">5시간 한도</span>
+            <div class="qmap" data-used="0.42"></div>
+            <b>42%</b>
+            <small>03:00 리셋<br>40분 후</small>
+        </div>
+        <div class="quota" style="--v: 63%">
+            <span class="quota-name">주간 한도</span>
+            <div class="qmap" data-used="0.63"></div>
+            <b>63%</b>
+            <small>10월 16일 09:00<br>리셋, 3일 후</small>
+        </div>
+        <div class="quota warn" style="--v: 78%">
+            <span class="quota-name">주간 한도 (Opus)</span>
+            <div class="qmap" data-used="0.78"></div>
+            <b>78%</b>
+            <small>10월 16일 09:00<br>리셋, 3일 후</small>
+        </div>
+    </div>
+</section>
+
+<script>
+    document.querySelectorAll("[data-panel]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const panel = button.dataset.panel;
+
+            location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+        });
+    });
+
+    document.querySelector("[data-close]").addEventListener("click", () => (location.hash = "main"));
+
+    addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            location.hash = "main";
+        }
+    });
+
+    // 밤 전체의 변경. hunk는 [지운 줄, 더한 줄]이고 커밋 통계(+142 −21, +42 −16, +56 −12)와 합이 맞는다
+    const NIGHT = [
+        {
+            label: "1회차",
+            title: "00:30–01:22 성공, 커밋 2개",
+            files: [
+                { path: "src/orders/cursor.js", hunks: [[0, 46]] },
+                { path: "src/orders/listOrders.js", hunks: [[3, 9], [2, 18], [6, 31], [0, 8], [4, 8]] },
+                { path: "src/payments/backoff.js", hunks: [[2, 12]] },
+                { path: "src/payments/retry.js", hunks: [[5, 11], [6, 13], [3, 6]] },
+                { path: "test/orders/listOrders.test.js", hunks: [[2, 10], [4, 12]] }
+            ]
+        },
+        {
+            label: "2회차",
+            title: "01:23–02:07 성공, 커밋 1개",
+            files: [
+                { path: "test/helpers/fakeClock.js", hunks: [[0, 12]] },
+                { path: "test/payments/retry.test.js", hunks: [[4, 14], [5, 18], [3, 12]] }
+            ]
+        },
+        {
+            label: "3회차",
+            title: "02:08부터 진행 중",
+            live: true,
+            files: [
+                { path: "migrations/20261014_add_search_index.sql", hunks: [[0, 4]] },
+                { path: "src/admin/searchController.js", current: true }
+            ]
+        }
+    ];
+
+    const ROUND_HEIGHT = 18;
+    const FILE_HEIGHT = 12;
+    const HUNK_GAP = 2;
+    const ROUND_GAP = 6;
+    const CHAR_WIDTH = 1.9;
+
+    const map = document.querySelector(".map");
+    const diffLines = [...document.querySelectorAll(".lines .line")];
+    const typedLines = diffLines.filter((line) => line.classList.contains("typed"));
+
+    // 고정 씨앗으로 지난 회차 줄의 길이와 들여쓰기를 만든다(새로 고쳐도 같은 모양)
+    let seed = 7;
+    const nextRandom = () => {
+        seed = (seed * 16807) % 2147483647;
+
+        return seed / 2147483647;
+    };
+
+    const getFakeLine = () => ({ indent: Math.floor(nextRandom() * 4) * 2, length: 10 + Math.floor(nextRandom() * 44) });
+
+    // 지금 파일은 왼쪽 diff의 실제 줄로 그린다
+    const getCurrentHunks = () => {
+        const hunks = [];
+        let hunk = null;
+
+        diffLines.forEach((line) => {
+            const kind = line.classList.contains("add") ? "add" : line.classList.contains("del") ? "del" : "";
+
+            if (!kind) {
+                hunk = null;
+                return;
+            }
+
+            if (!hunk) {
+                hunk = [];
+                hunks.push(hunk);
+            }
+
+            const text = line.querySelector(".code").textContent;
+
+            hunk.push({ kind: kind, indent: text.length - text.trimStart().length, length: text.trim().length, source: line });
+        });
+
+        return hunks;
+    };
+
+    const toLines = (file) => {
+        if (file.current) {
+            return getCurrentHunks();
+        }
+
+        return file.hunks.map(([removed, added]) => [
+            ...Array.from({ length: removed }, () => ({ kind: "del", ...getFakeLine() })),
+            ...Array.from({ length: added }, () => ({ kind: "add", ...getFakeLine() }))
+        ]);
+    };
+
+    const rounds = NIGHT.map((round) => ({ ...round, files: round.files.map((file) => ({ ...file, lines: toLines(file) })) }));
+
+    const countLines = (round, kind) => round.files.flatMap((file) => file.lines.flat()).filter((line) => line.kind === kind).length;
+
+    const drawMap = () => {
+        const fileCount = rounds.reduce((sum, round) => sum + round.files.length, 0);
+        const hunkCount = rounds.reduce((sum, round) => sum + round.files.reduce((total, file) => total + file.lines.length, 0), 0);
+        const lineCount = rounds.reduce((sum, round) => sum + countLines(round, "add") + countLines(round, "del"), 0);
+        const fixed = rounds.length * (ROUND_HEIGHT + ROUND_GAP) + fileCount * FILE_HEIGHT + (hunkCount - fileCount) * HUNK_GAP;
+        const pitch = Math.min(2, (map.clientHeight - fixed) / lineCount);
+        const maxWidth = map.clientWidth;
+        let y = 0;
+
+        map.textContent = "";
+
+        rounds.forEach((round) => {
+            const label = document.createElement("div");
+
+            label.className = "round" + (round.live ? " live" : "");
+            label.title = round.title;
+            label.style.setProperty("top", `${Math.round(y)}px`);
+            label.innerHTML = `<span>${round.label}</span><span class="mono"><ins></ins> <del></del></span>`;
+            round.statElement = label.querySelector(".mono");
+            map.append(label);
+            y += ROUND_HEIGHT;
+
+            round.files.forEach((file) => {
+                const name = document.createElement("div");
+
+                name.className = "file" + (file.current ? " current" : "");
+                name.title = file.path;
+                name.textContent = file.path.split("/").pop();
+                name.style.setProperty("top", `${Math.round(y)}px`);
+                map.append(name);
+                file.top = y;
+                y += FILE_HEIGHT;
+
+                file.lines.forEach((hunk, index) => {
+                    if (index > 0) {
+                        y += HUNK_GAP;
+                    }
+
+                    hunk.forEach((line) => {
+                        const tick = document.createElement("i");
+
+                        tick.className = line.kind + (round.live ? "" : " past");
+                        tick.style.setProperty("top", `${Math.floor(y)}px`);
+                        tick.style.setProperty("margin-left", `${line.indent * CHAR_WIDTH}px`);
+                        tick.style.setProperty("width", `${Math.min(maxWidth - line.indent * CHAR_WIDTH, Math.max(4, line.length * CHAR_WIDTH))}px`);
+                        map.append(tick);
+                        line.tick = tick;
+                        line.bottom = y + pitch;
+                        y += pitch;
+                    });
+                });
+
+                file.bottom = y;
+            });
+
+            y += ROUND_GAP;
+        });
+
+        const viewport = document.createElement("div");
+        const current = rounds.at(-1).files.find((file) => file.current);
+
+        viewport.className = "viewport";
+        viewport.style.setProperty("top", `${Math.round(current.top) - 2}px`);
+        map.append(viewport);
+        current.viewport = viewport;
+
+        const caret = document.createElement("span");
+
+        caret.className = "caret-mark";
+        map.append(caret);
+        current.caret = caret;
+    };
+
+    const isShown = (line) => !line.source || !line.source.hidden;
+
+    // 회차 통계, 탭, 밤 전체 합계를 지금 보이는 줄로 다시 센다
+    const updateCounts = () => {
+        let nightAdd = 0;
+
+        rounds.forEach((round) => {
+            const lines = round.files.flatMap((file) => file.lines.flat()).filter(isShown);
+            const added = lines.filter((line) => line.kind === "add").length;
+            const removed = lines.filter((line) => line.kind === "del").length;
+
+            round.statElement.querySelector("ins").textContent = `+${added}`;
+            round.statElement.querySelector("del").textContent = `−${removed}`;
+            nightAdd += added;
+        });
+
+        const current = rounds.at(-1).files.find((file) => file.current);
+        const shown = current.lines.flat().filter(isShown);
+        const last = shown.at(-1);
+
+        document.querySelector('[data-count="tab-add"]').textContent = `+${shown.filter((line) => line.kind === "add").length}`;
+        document.querySelector('[data-count="night-add"]').textContent = `+${nightAdd}`;
+        current.viewport.style.setProperty("height", `${Math.ceil(last.bottom - current.top) + 4}px`);
+
+        current.lines.flat().forEach((line) => line.tick.classList.toggle("later", !isShown(line)));
+    };
+
+    const flashTick = (source) => {
+        const current = rounds.at(-1).files.find((file) => file.current);
+        const line = current.lines.flat().find((item) => item.source === source);
+
+        current.caret.style.setProperty("top", line.tick.style.top);
+        current.caret.classList.add("on");
+        line.tick.classList.remove("settle");
+        line.tick.classList.add("fresh");
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                line.tick.classList.add("settle");
+                line.tick.classList.remove("fresh");
+            });
+        });
+    };
+
+    const renumber = () => {
+        let next = 38;
+
+        diffLines.forEach((line) => {
+            if (line.hidden || line.classList.contains("del")) {
+                return;
+            }
+
+            line.children[1].textContent = next++;
+        });
+    };
+
+    // 대표 모션: 왼쪽 diff에 줄이 타이핑될 때마다 미니맵 맨 아래에 같은 줄의 눈금이 생긴다
+    const CHAR_MS = 15;
+
+    const playTyping = () => {
+        typedLines.forEach((line) => {
+            line.hidden = true;
+            line.style.setProperty("--n", 0);
+        });
+        renumber();
+        updateCounts();
+
+        let at = 400;
+
+        typedLines.forEach((line) => {
+            const length = line.querySelector(".code").textContent.length;
+
+            setTimeout(() => {
+                line.hidden = false;
+                line.classList.add("typing");
+                renumber();
+                updateCounts();
+                flashTick(line);
+            }, at);
+
+            for (let index = 1; index <= length; index++) {
+                setTimeout(() => line.style.setProperty("--n", index), at + index * CHAR_MS);
+            }
+
+            setTimeout(() => line.classList.remove("typing"), at + length * CHAR_MS + 120);
+            at += length * CHAR_MS + 180;
+        });
+
+        setTimeout(() => rounds.at(-1).files.find((file) => file.current).caret.classList.remove("on"), at + 1200);
+        setTimeout(playTyping, at + 6000);
+    };
+
+    const drawQuotas = () => {
+        document.querySelectorAll(".qmap").forEach((box) => {
+            const used = Number(box.dataset.used);
+            const rows = Math.floor(box.clientHeight / 3);
+
+            for (let index = 0; index < rows; index++) {
+                const tick = document.createElement("i");
+                const line = getFakeLine();
+
+                tick.className = index < Math.round(rows * used) ? "used" : "";
+                tick.style.setProperty("top", `${index * 3 + 1}px`);
+                tick.style.setProperty("margin-left", `${line.indent * 2}px`);
+                tick.style.setProperty("width", `${Math.min(box.clientWidth - 12 - line.indent * 2, line.length * 1.4)}px`);
+                box.append(tick);
+            }
+        });
+    };
+
+    // 서체·외부 리소스가 다 들어온 뒤 시작해야 타이핑 진행 상태가 매번 같은 시점에 보인다
+    addEventListener("load", () => {
+        drawMap();
+        drawQuotas();
+        updateCounts();
+
+        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            playTyping();
+        }
+    });
+</script>
+</body>
+</html>

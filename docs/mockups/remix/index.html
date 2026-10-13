@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoPilot 리디자인 시안</title>
+  <style>
+    @font-face { font-family: "Pretendard"; src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations"); font-weight: 45 920; }
+    :root { --ink: #1c2230; --muted: #5d6677; --line: #d5dae3; --bg: #e9ecf1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 40px 24px 64px; background: var(--bg); color: var(--ink); font: 14px/1.6 "Pretendard", "Malgun Gothic", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; letter-spacing: -0.01em; }
+    .lead { margin: 0 0 20px; max-width: 64ch; color: var(--muted); }
+    .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 44px; padding: 0; list-style: none; }
+    .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+    .toc a:hover, .toc a:focus-visible { border-color: var(--ink); outline: none; }
+    section { margin: 0 0 56px; scroll-margin-top: 24px; }
+    .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 4px; }
+    h2 { margin: 0; font-size: 18px; font-weight: 750; }
+    .head a { margin-left: auto; color: var(--muted); font-size: 13px; }
+    .desc { margin: 0 0 14px; max-width: 72ch; color: var(--muted); }
+    .frames { display: flex; flex-wrap: wrap; gap: 20px; }
+    figure { margin: 0; }
+    .window { position: relative; width: 300px; height: 400px; overflow: hidden; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(20 30 50 / 0.12), 0 8px 28px rgb(20 30 50 / 0.14); }
+    .window iframe, .window img { position: absolute; inset: 0; width: 600px; height: 800px; border: 0; transform: scale(0.5); transform-origin: 0 0; }
+    .window img { width: 300px; height: 400px; transform: none; object-fit: cover; }
+    figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    figcaption a { color: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>AutoPilot 리디자인 2차 시안</h1>
+  <p class="lead">1차에서 고른 라이브 리뷰(2), 에이전트 스레드(10), 리퀴드 글래스(12)의 느낌을 이어받아 새로 그린 20종이에요. 맨 위에 고른 세 시안을 기준으로 두었어요. 각 칸은 600×800 창을 절반으로 줄인 것이고, 제목 옆 링크로 원래 크기로 열 수 있어요.</p>
+  <ul id="toc" class="toc"></ul>
+  <div id="list"></div>
+</main>
+<script>
+  // [파일 경로, 제목 앞 표시, 이름, 설명]
+  const CONCEPTS = [
+    ["../agentic/diff", "기준 2", "라이브 리뷰", "1차에서 고른 시안이에요. 어두운 에디터에서 지금 회차가 고치는 diff가 한 줄씩 타이핑돼요."],
+    ["../agentic/thread", "기준 10", "에이전트 스레드", "1차에서 고른 시안이에요. 회차별 작업이 스레드로 흐르고, 아래에 옵션 알약이 붙은 컴포저가 있어요."],
+    ["../agentic/glass", "기준 12", "리퀴드 글래스", "1차에서 고른 시안이에요. 하늘 배경을 살리고 버튼과 옵션 막대를 두꺼운 유리로 바꿨어요."],
+    ["inline-diff", "1", "인라인 diff 스레드", "스레드(10)의 Edit 줄이 그 자리에서 작은 diff로 펼쳐져요(2). 지금 회차의 마지막 수정이 스레드 안에서 타이핑돼요."],
+    ["sky-thread", "2", "하늘 위 스레드", "밤하늘 위 큰 유리판 한 장에 스레드를 올렸어요(10+12). 컴포저는 따로 떠 있는 유리 캡슐이에요."],
+    ["night-editor", "3", "밤하늘 에디터", "diff 에디터가 어두운 유리 창이 되어 밤하늘에 떠 있어요(2+12). 회차 기록은 별자리로 이어져요."],
+    ["warp-blocks", "4", "블록 터미널", "Warp처럼 도구 호출 하나가 블록 하나예요(2+10). 명령과 짧은 출력이 블록마다 붙어요."],
+    ["ghost-text", "5", "고스트 텍스트", "파일 하나가 화면을 채우고, 에이전트의 다음 수정이 회색 고스트 텍스트로 나타났다가 확정돼요(2)."],
+    ["branch-review", "6", "브랜치 리뷰", "밤사이 브랜치를 코드 리뷰 페이지처럼 보여줘요(10+2). 타임라인, 커밋, 바뀐 파일 탭이 있어요."],
+    ["live-report", "7", "라이브 리포트", "에이전트가 아침에 볼 보고서를 실시간으로 써 내려가요(10). 지금 회차 문단이 타이핑 중이에요."],
+    ["thinking", "8", "생각의 흐름", "로그를 문장으로 풀어 크게 흘려요(10). 도구 호출은 문장 안의 작은 토큰이에요."],
+    ["notebook", "9", "노트북 셀", "회차 하나가 노트북 셀 하나예요(10+2). 지금 셀은 [*]로 실행 중이고 출력이 흘러나와요."],
+    ["island", "10", "다이내믹 아일랜드", "위쪽 검은 캡슐이 상태를 보여주고, 새 도구 호출이 오면 늘어났다 줄어요(12). 패널도 캡슐에서 펼쳐져요."],
+    ["spatial", "11", "공간 창", "visionOS처럼 유리 창과 장식 막대가 깊이를 두고 떠 있어요(12)."],
+    ["widgets", "12", "위젯", "남은 시간, 커밋, 한도, 옵션을 하늘 위 유리 위젯으로 나눴어요(12)."],
+    ["dawn-meter", "13", "새벽 게이지", "하늘 자체가 진행 막대예요. 오른쪽 눈금자를 따라 07:00 새벽에 가까워져요(12)."],
+    ["skyline", "14", "커밋 스카이라인", "커밋 하나가 건물 하나인 도시 실루엣이에요(12+2). 지금 회차 자리에는 건물이 올라가는 중이에요."],
+    ["now-playing", "15", "지금 재생 중", "음악 플레이어처럼 회차를 재생 막대로, 로그를 가사처럼 보여줘요(12)."],
+    ["lock-screen", "16", "잠금 화면", "자는 동안의 잠금 화면처럼 큰 시계, 라이브 활동, 커밋 알림 묶음을 보여줘요(12+10)."],
+    ["daylight-glass", "17", "낮의 유리", "밝은 아침 하늘 위 흰 유리에 스레드를 올린 라이트 모드예요(12+10)."],
+    ["minimap", "18", "미니맵", "왼쪽은 diff, 오른쪽은 밤새 바뀐 모든 줄을 담은 긴 미니맵이에요(2)."],
+    ["split-agent", "19", "코드와 대화", "Cursor처럼 위는 코드, 아래는 에이전트 대화예요(2+10). 지금 Edit 줄과 코드의 바뀐 줄이 함께 표시돼요."],
+    ["city-glass", "20", "도시의 밤", "같은 유리 재질을 밤 도시의 흐린 불빛 위에 올렸어요(12)."]
+  ];
+  const SCREENS = [["main", "메인"], ["settings", "설정"], ["profile", "프로필"]];
+
+  const toc = document.getElementById("toc");
+  const list = document.getElementById("list");
+
+  CONCEPTS.forEach(([path, mark, name, desc]) => {
+    const id = path.split("/").pop();
+    const label = `${mark}. ${name}`;
+    const frames = SCREENS.map(([screen, caption]) => {
+      const view = `<iframe src="${path}.html#${screen}" title="${name} ${caption}" loading="lazy"></iframe>`;
+      return `<figure><div class="window">${view}</div><figcaption><a href="${path}.html#${screen}">${caption}</a></figcaption></figure>`;
+    }).join("");
+
+    toc.insertAdjacentHTML("beforeend", `<li><a href="#${id}">${label}</a></li>`);
+    list.insertAdjacentHTML("beforeend", `<section id="${id}"><div class="head"><h2>${label}</h2><a href="${path}.html#main">원래 크기로 열기</a></div><p class="desc">${desc}</p><div class="frames">${frames}</div></section>`);
+  });
+</script>
+</body>
+</html>

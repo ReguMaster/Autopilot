@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 블록 터미널</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --bg: #1a2130;
+                --lift: #222b3d;
+                --field: #1e2636;
+                --hair: #2c3648;
+                --text: #e4e9f2;
+                --soft: #c3cbd9;
+                --muted: #8a96ab;
+                --accent: #7aa2ff;
+                --add: #56d364;
+                --del: #ff7b72;
+                --warn: #e3b341;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Pretendard", "Malgun Gothic", monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--bg);
+                color: var(--text);
+                font: 400 14px/1.5 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
+            }
+
+            p,
+            pre {
+                margin: 0;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            code,
+            .mono {
+                font-family: var(--mono);
+                font-size: 12.5px;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.4;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            ins {
+                color: var(--add);
+                text-decoration: none;
+            }
+
+            del {
+                color: var(--del);
+                text-decoration: none;
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                height: 40px;
+                padding: 0 6px 0 16px;
+                flex: none;
+                border-bottom: 1px solid var(--hair);
+                -webkit-app-region: drag;
+            }
+
+            /* 흰 바탕 로고를 뒤집고 색상만 되돌려 파란 속도선을 지킨다 */
+            .logo {
+                height: 17px;
+                filter: invert(1) hue-rotate(180deg);
+                mix-blend-mode: screen;
+            }
+
+            .where {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                height: 18px;
+                margin-left: 14px;
+                padding-left: 14px;
+                border-left: 1px solid var(--hair);
+                color: var(--muted);
+                font-size: 13px;
+            }
+
+            .where b {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .where .branch {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-left: 6px;
+                font-size: 12px;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .controls .sep {
+                width: 1px;
+                height: 16px;
+                margin: 0 6px;
+                background: var(--hair);
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 30px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                color: var(--soft);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.15;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .win:hover {
+                background: var(--lift);
+            }
+
+            .win.close:hover {
+                background: #e5484d;
+                color: #fff;
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: var(--lift);
+                color: var(--accent);
+                box-shadow: inset 0 0 0 1px var(--hair);
+            }
+
+            /* 블록 흐름 */
+            .stream {
+                position: relative;
+                display: flex;
+                flex: 1;
+                flex-direction: column;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            /* 끝난 회차: 접힌 블록 묶음 */
+            .groups {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .group {
+                display: grid;
+                grid-template-columns: 12px 14px auto 1fr auto 92px;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                height: 38px;
+                padding: 0 16px 0 14px;
+                border: 0;
+                border-bottom: 1px solid var(--hair);
+                background: none;
+                text-align: left;
+                font-size: 13.5px;
+            }
+
+            .group:hover {
+                background: var(--lift);
+            }
+
+            .group .chev {
+                width: 12px;
+                height: 12px;
+                color: var(--muted);
+            }
+
+            .group .ok {
+                width: 14px;
+                height: 14px;
+                color: var(--add);
+                stroke-width: 2;
+            }
+
+            .group b {
+                font-weight: 650;
+            }
+
+            .group .hashes {
+                display: flex;
+                gap: 8px;
+                margin-left: 6px;
+                color: var(--accent);
+                font-size: 12px;
+            }
+
+            .group .stat,
+            .block .stat {
+                display: flex;
+                gap: 6px;
+                font-family: var(--mono);
+                font-size: 12px;
+            }
+
+            .group time {
+                white-space: nowrap;
+                color: var(--muted);
+                font: 400 12px var(--mono);
+                text-align: right;
+            }
+
+            /* 지금 회차 머리 */
+            .divider {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                height: 34px;
+                padding: 0 10px 0 16px;
+                border-bottom: 1px solid var(--hair);
+                font-size: 13px;
+            }
+
+            .divider b {
+                font-weight: 650;
+            }
+
+            .divider span {
+                color: var(--muted);
+            }
+
+            .open-log {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                margin-left: auto;
+                padding: 3px 8px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .open-log:hover {
+                background: var(--lift);
+                color: var(--text);
+            }
+
+            /* 블록: 카드 없이 헤어라인으로만 나눈다 */
+            .blocks {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .block {
+                position: relative;
+                padding: 11px 16px 12px 20px;
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .block:last-child {
+                border-bottom: 0;
+            }
+
+            .block:hover {
+                background: rgba(34, 43, 61, 0.6);
+            }
+
+            .cmd {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                min-width: 0;
+                font-family: var(--mono);
+                font-size: 12.5px;
+                line-height: 20px;
+            }
+
+            .cmd b {
+                font-weight: 600;
+            }
+
+            .cmd code {
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+
+            .cmd .stat {
+                margin-left: 4px;
+            }
+
+            .cmd time {
+                margin-left: auto;
+                padding-left: 12px;
+                color: var(--muted);
+                font-size: 11.5px;
+            }
+
+            .out {
+                margin-top: 3px;
+                color: var(--muted);
+                font: 400 11.5px/18px var(--mono);
+                white-space: pre;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .out.note {
+                font-family: var(--sans);
+                font-size: 12.5px;
+            }
+
+            .out .path {
+                color: var(--soft);
+            }
+
+            .out .hit {
+                color: var(--text);
+            }
+
+            .diff {
+                display: block;
+                margin: 0 -16px 0 -6px;
+                padding: 0 16px 0 6px;
+            }
+
+            .diff.del {
+                color: var(--del);
+                background: rgba(255, 123, 114, 0.08);
+            }
+
+            .diff.add {
+                color: var(--add);
+                background: rgba(86, 211, 100, 0.08);
+            }
+
+            .diff .ln {
+                display: inline-block;
+                width: 3ch;
+                color: var(--muted);
+            }
+
+            .pass {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-family: var(--sans);
+                font-size: 13px;
+                color: var(--soft);
+            }
+
+            .pass .icon {
+                width: 13px;
+                height: 13px;
+                color: var(--add);
+                stroke-width: 2;
+            }
+
+            /* 가장 최근 블록: 왼쪽 강조 막대와 살짝 올린 바탕 */
+            .block.current {
+                padding-top: 12px;
+                padding-bottom: 14px;
+                background: var(--lift);
+            }
+
+            .block.current::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 3px;
+                background: var(--accent);
+            }
+
+            .block.current .cmd {
+                font-family: var(--sans);
+                font-size: 13px;
+            }
+
+            .block.current .mark {
+                align-self: center;
+                width: 16px;
+                height: 16px;
+            }
+
+            .block.current .cmd time {
+                font-family: var(--mono);
+            }
+
+            .reply {
+                min-height: 1.6em;
+                margin-top: 4px;
+                font-size: 14.5px;
+                line-height: 1.6;
+                text-wrap: pretty;
+            }
+
+            /* 대표 모션: 최신 블록의 출력이 흘러 들어오는 동안만 커서가 깜빡인다 */
+            .reply.streaming::after {
+                content: "";
+                display: inline-block;
+                width: 0.5em;
+                height: 1.05em;
+                margin-left: 2px;
+                vertical-align: -0.17em;
+                background: var(--accent);
+                animation: caret 900ms steps(1) infinite;
+            }
+
+            @keyframes caret {
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            /* 상태 줄 */
+            .status {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                height: 30px;
+                padding: 0 16px;
+                flex: none;
+                border-top: 1px solid var(--hair);
+                font-size: 12.5px;
+                color: var(--muted);
+            }
+
+            .status .live {
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--accent);
+            }
+
+            .status strong {
+                color: var(--text);
+                font-weight: 600;
+            }
+
+            .status .left {
+                margin-left: auto;
+            }
+
+            .status .clock {
+                color: var(--text);
+                font: 600 13px var(--mono);
+            }
+
+            /* 에이전트 입력 막대 */
+            .composer {
+                flex: none;
+                margin: 0 12px 12px;
+                border-radius: 10px;
+                background: var(--field);
+                box-shadow: inset 0 0 0 1px var(--hair);
+            }
+
+            .tasks {
+                position: relative;
+                display: grid;
+                grid-template-columns: 16px 1fr;
+                gap: 8px;
+                padding: 11px 14px 6px 12px;
+            }
+
+            .tasks > .icon {
+                margin-top: 3px;
+                width: 14px;
+                height: 14px;
+                color: var(--muted);
+            }
+
+            .tasks ol {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                font-size: 13.5px;
+                line-height: 22px;
+                color: var(--soft);
+            }
+
+            /* 각 줄 뒤의 회차 표시는 입력창의 자동 완성 글자처럼 흐리게 붙인다 */
+            .tasks .ghost {
+                margin-left: 10px;
+                color: var(--muted);
+                font: 400 11.5px var(--mono);
+            }
+
+            .tasks .now {
+                color: var(--text);
+            }
+
+            .tasks .now .ghost {
+                color: var(--accent);
+            }
+
+            .tasks .lock-note {
+                position: absolute;
+                top: 11px;
+                right: 14px;
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 22px;
+            }
+
+            .bar {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 8px 8px 10px;
+            }
+
+            .pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 30px;
+                padding: 0 9px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                box-shadow: inset 0 0 0 1px var(--hair);
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            button.pill:hover {
+                background: var(--lift);
+            }
+
+            .pill .chev {
+                width: 10px;
+                height: 10px;
+                color: var(--muted);
+            }
+
+            .pill .mark {
+                width: 16px;
+                height: 16px;
+            }
+
+            .pill.locked {
+                gap: 5px;
+                padding: 0 4px;
+                box-shadow: none;
+                color: var(--muted);
+                font-weight: 500;
+                cursor: default;
+            }
+
+            .pill.locked .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .pill.locked b {
+                color: var(--soft);
+                font-weight: 600;
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 13px;
+            }
+
+            .bars i {
+                width: 3px;
+                border-radius: 1px;
+                background: var(--hair);
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7px;
+            }
+            .bars i:nth-child(3) {
+                height: 9px;
+            }
+            .bars i:nth-child(4) {
+                height: 11px;
+            }
+            .bars i:nth-child(5) {
+                height: 13px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: var(--accent);
+            }
+
+            .action {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                height: 32px;
+                margin-left: auto;
+                padding: 0 12px;
+                border: 0;
+                border-radius: 6px;
+                background: var(--accent);
+                color: #10182b;
+                font-size: 13.5px;
+                font-weight: 650;
+            }
+
+            .action:hover {
+                background: #93b4ff;
+            }
+
+            .action .stop {
+                width: 9px;
+                height: 9px;
+                border-radius: 2px;
+                background: currentColor;
+            }
+
+            /* 패널 공통 */
+            .scrim {
+                position: fixed;
+                inset: 41px 0 0;
+                z-index: 5;
+                background: rgba(12, 16, 26, 0.55);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 160ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+            }
+
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 28px;
+                padding: 0 10px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                box-shadow: inset 0 0 0 1px var(--hair);
+                font-size: 12.5px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .btn:hover {
+                background: var(--lift);
+            }
+
+            .btn[disabled] {
+                color: var(--muted);
+                cursor: not-allowed;
+            }
+
+            .btn[disabled]:hover {
+                background: none;
+            }
+
+            .btn.danger {
+                color: var(--del);
+                box-shadow: inset 0 0 0 1px rgba(255, 123, 114, 0.4);
+            }
+
+            .btn .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .lock-note {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .lock-note .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            /* 설정: 화면 높이 전체를 쓰는 블록 목록 */
+            .drawer {
+                position: fixed;
+                top: 41px;
+                right: 0;
+                bottom: 0;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                width: min(476px, 100vw - 48px);
+                background: var(--bg);
+                box-shadow:
+                    -1px 0 0 var(--hair),
+                    -24px 0 48px -24px rgba(6, 9, 16, 0.6);
+                transform: translateX(100%);
+                visibility: hidden;
+                transition:
+                    transform 200ms ease-in,
+                    visibility 0s 200ms;
+            }
+
+            [data-screen="settings"] #settings-panel {
+                transform: none;
+                visibility: visible;
+                transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            .drawer-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                height: 44px;
+                padding: 0 16px 0 20px;
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .drawer-head h2 {
+                margin: 0;
+                font-size: 15px;
+                font-weight: 700;
+            }
+
+            .setting {
+                position: relative;
+                padding: 15px 16px 16px 20px;
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .setting:focus-within,
+            .setting:hover {
+                background: var(--lift);
+            }
+
+            .setting:focus-within::before,
+            .setting:hover::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 3px;
+                background: var(--accent);
+            }
+
+            .setting-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+            }
+
+            .setting h3 {
+                margin: 0;
+                font-size: 14px;
+                font-weight: 650;
+            }
+
+            .setting .desc {
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 12.5px;
+                line-height: 1.5;
+            }
+
+            .control {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 9px;
+            }
+
+            .field {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex: 1;
+                min-width: 0;
+                height: 30px;
+                padding: 0 10px;
+                border-radius: 6px;
+                background: var(--field);
+                box-shadow: inset 0 0 0 1px var(--hair);
+            }
+
+            .field code {
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                font-size: 12px;
+            }
+
+            .field .icon {
+                width: 13px;
+                height: 13px;
+                color: var(--muted);
+            }
+
+            .tag {
+                margin-left: auto;
+                color: var(--accent);
+                font-size: 11.5px;
+                white-space: nowrap;
+            }
+
+            .options {
+                display: grid;
+                gap: 2px;
+                margin: 8px 0 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .option {
+                display: grid;
+                grid-template-columns: 16px 1fr;
+                gap: 2px 10px;
+                padding: 6px 8px;
+                border-radius: 6px;
+            }
+
+            .option[aria-checked="true"] {
+                background: var(--field);
+                box-shadow: inset 0 0 0 1px var(--hair);
+            }
+
+            .radio {
+                margin-top: 3px;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px var(--muted);
+            }
+
+            [aria-checked="true"] > .radio {
+                box-shadow:
+                    inset 0 0 0 1.5px var(--accent),
+                    inset 0 0 0 4px var(--field),
+                    inset 0 0 0 7px var(--accent);
+            }
+
+            .option strong {
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .option small {
+                grid-column: 2;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .check-row {
+                display: grid;
+                grid-template-columns: 16px 1fr;
+                gap: 2px 10px;
+                align-items: start;
+            }
+
+            .check {
+                display: grid;
+                place-items: center;
+                width: 15px;
+                height: 15px;
+                margin-top: 2px;
+                border-radius: 4px;
+                background: var(--accent);
+                color: #10182b;
+            }
+
+            .check .icon {
+                width: 11px;
+                height: 11px;
+                stroke-width: 2.2;
+            }
+
+            .check-row strong {
+                font-size: 14px;
+                font-weight: 650;
+            }
+
+            .check-row .desc {
+                grid-column: 2;
+                margin-top: 0;
+            }
+
+            .rows {
+                margin: 8px 0 0;
+                padding: 0;
+                list-style: none;
+                border-radius: 6px;
+                box-shadow: inset 0 0 0 1px var(--hair);
+            }
+
+            .rows li + li {
+                border-top: 1px solid var(--hair);
+            }
+
+            .row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                height: 36px;
+                padding: 0 10px 0 12px;
+                border: 0;
+                background: none;
+                font-size: 13.5px;
+                text-align: left;
+            }
+
+            .row:hover {
+                background: var(--field);
+            }
+
+            .row .icon {
+                color: var(--muted);
+            }
+
+            .row .chevr {
+                width: 12px;
+                height: 12px;
+                margin-left: auto;
+            }
+
+            .row.danger,
+            .row.danger .icon {
+                color: var(--del);
+            }
+
+            .version {
+                border-bottom: 0;
+            }
+
+            .version code {
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            /* 프로필: 헤더에서 내려오는 메뉴 */
+            .dropdown {
+                position: fixed;
+                top: 44px;
+                right: 168px;
+                z-index: 10;
+                width: 340px;
+                border-radius: 10px;
+                background: var(--field);
+                box-shadow:
+                    inset 0 0 0 1px var(--hair),
+                    0 24px 48px -16px rgba(6, 9, 16, 0.7);
+                opacity: 0;
+                visibility: hidden;
+                transform: translateY(-4px);
+                transform-origin: top right;
+                transition:
+                    opacity 140ms ease-in,
+                    transform 140ms ease-in,
+                    visibility 0s 140ms;
+            }
+
+            [data-screen="profile"] #profile-panel {
+                opacity: 1;
+                visibility: visible;
+                transform: none;
+                transition:
+                    opacity 160ms ease-out,
+                    transform 160ms ease-out;
+            }
+
+            .who {
+                display: grid;
+                grid-template-columns: 40px 1fr auto;
+                gap: 12px;
+                align-items: center;
+                padding: 14px 14px 12px;
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: var(--accent);
+                color: #10182b;
+                font-size: 17px;
+                font-weight: 700;
+            }
+
+            .who strong {
+                display: block;
+                font-size: 15px;
+                font-weight: 700;
+            }
+
+            .who small {
+                color: var(--muted);
+                font: 400 12px var(--mono);
+            }
+
+            .plan {
+                align-self: start;
+                padding: 2px 7px;
+                border-radius: 5px;
+                box-shadow: inset 0 0 0 1px var(--hair);
+                color: var(--soft);
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .accounts {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                border-bottom: 1px solid var(--hair);
+            }
+
+            .account {
+                position: relative;
+                display: grid;
+                grid-template-columns: 24px 1fr auto;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                height: 38px;
+                padding: 0 14px;
+                border: 0;
+                border-bottom: 1px solid var(--hair);
+                background: none;
+                text-align: left;
+                font-size: 13.5px;
+            }
+
+            .account:hover {
+                background: var(--lift);
+            }
+
+            .account[aria-checked="true"] {
+                background: var(--lift);
+                font-weight: 600;
+            }
+
+            .account[aria-checked="true"]::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 3px;
+                background: var(--accent);
+            }
+
+            .mini {
+                display: grid;
+                place-items: center;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1px var(--hair);
+                color: var(--soft);
+                font-size: 11.5px;
+                font-weight: 700;
+            }
+
+            [aria-checked="true"] .mini {
+                background: var(--accent);
+                box-shadow: none;
+                color: #10182b;
+            }
+
+            .account .tick {
+                width: 14px;
+                height: 14px;
+                color: var(--accent);
+                stroke-width: 2;
+            }
+
+            .acct-actions {
+                display: flex;
+                gap: 6px;
+                padding: 10px 14px;
+            }
+
+            .acct-actions .danger {
+                margin-left: auto;
+            }
+
+            .meters {
+                margin: 0;
+                padding: 12px 14px 4px;
+                list-style: none;
+                border-top: 1px solid var(--hair);
+            }
+
+            .meters h3 {
+                margin: 0 0 8px;
+                color: var(--muted);
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            .meter + .meter {
+                margin-top: 12px;
+            }
+
+            .meter-top,
+            .meter-foot {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+            }
+
+            .meter-top span {
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            .meter-top b {
+                font: 600 12.5px var(--mono);
+            }
+
+            .meter-foot {
+                margin-top: 4px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            /* 터미널 진행 막대처럼 칸으로 나눈 가는 막대 */
+            .cells {
+                height: 6px;
+                margin-top: 6px;
+                background: linear-gradient(90deg, var(--fill, var(--accent)) var(--v), var(--hair) var(--v));
+                -webkit-mask: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+            }
+
+            .meter.warn {
+                --fill: var(--warn);
+            }
+
+            .meter.warn .meter-top b {
+                color: var(--warn);
+            }
+
+            .dropdown-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: 10px;
+                padding: 8px 14px;
+                border-top: 1px solid var(--hair);
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation: none !important;
+                    transition: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-next" viewBox="0 0 12 12"><path d="M4.5 3 7.5 6l-3 3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5" /><circle cx="4.5" cy="12.5" r="1.5" /><circle cx="11.5" cy="5.5" r="1.5" /><path d="M4.5 5v6M11.5 7c0 2.5-2 3.2-7 4" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="i-log" viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6" /></symbol>
+            <symbol id="i-report" viewBox="0 0 16 16"><path d="M4 2.5h5.5L12.5 5.5v8H4ZM9.5 2.5v3h3M6.5 9h4M6.5 11h3" /></symbol>
+            <symbol id="i-reset" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 3v3h3" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <div class="where">
+                <svg class="icon"><use href="#i-folder" /></svg>
+                <b>shop-api</b>
+                <span class="branch mono"><svg class="icon"><use href="#i-branch" /></svg>ai/autopilot</span>
+            </div>
+            <div class="controls">
+                <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                    <svg viewBox="0 0 12 12">
+                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                        <circle cx="6" cy="6" r="1.6" />
+                    </svg>
+                </button>
+                <span class="sep"></span>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <main class="stream" aria-label="회차 기록">
+            <ul class="groups">
+                <li>
+                    <button class="group" aria-expanded="false">
+                        <svg class="icon chev"><use href="#i-next" /></svg>
+                        <svg class="icon ok"><use href="#i-check" /></svg>
+                        <span><b>1회차</b> 성공, 커밋 2개</span>
+                        <span class="hashes mono"><span>a3f9c21</span><span>7be0d14</span></span>
+                        <span class="stat"><ins>+184</ins><del>−37</del></span>
+                        <time>00:30–01:22</time>
+                    </button>
+                </li>
+                <li>
+                    <button class="group" aria-expanded="false">
+                        <svg class="icon chev"><use href="#i-next" /></svg>
+                        <svg class="icon ok"><use href="#i-check" /></svg>
+                        <span><b>2회차</b> 성공, 커밋 1개</span>
+                        <span class="hashes mono"><span>c51e8aa</span></span>
+                        <span class="stat"><ins>+56</ins><del>−12</del></span>
+                        <time>01:23–02:07</time>
+                    </button>
+                </li>
+            </ul>
+
+            <div class="divider">
+                <b>3회차</b><span>02:08부터, 블록 6개</span>
+                <button class="open-log"><svg class="icon"><use href="#i-log" /></svg>전체 로그</button>
+            </div>
+
+            <ol class="blocks">
+                <li class="block">
+                    <div class="cmd"><b>Grep</b><code>"searchOrders" src/admin</code><time>02:17:12</time></div>
+                    <pre class="out"><span class="path">src/admin/routes.js:14</span>  router.get("/orders/search", <span class="hit">searchOrders</span>);
+<span class="path">src/admin/searchController.js:38</span>  async function <span class="hit">searchOrders</span>(req, res) {</pre>
+                </li>
+                <li class="block">
+                    <div class="cmd"><b>Read</b><code>src/admin/searchController.js</code><time>02:18:30</time></div>
+                    <p class="out note">86줄 읽음</p>
+                </li>
+                <li class="block">
+                    <div class="cmd"><b>Edit</b><code>src/admin/searchController.js</code><span class="stat"><ins>+2</ins><del>−1</del></span><time>02:19:02</time></div>
+                    <pre class="out"><span class="diff del"><span class="ln">41</span>- const sql = "SELECT * FROM orders WHERE customer_name LIKE ?";</span><span class="diff add"><span class="ln">41</span>+ const sql = `SELECT id, customer_name, status, created_at</span><span class="diff add"><span class="ln">42</span>+   FROM orders WHERE name_lower LIKE ?`;</span></pre>
+                </li>
+                <li class="block">
+                    <div class="cmd"><b>Edit</b><code>migrations/20261014_add_search_index.sql</code><span class="stat"><ins>+2</ins></span><time>02:19:31</time></div>
+                    <pre class="out"><span class="diff add"><span class="ln">1</span>+ ALTER TABLE orders ADD COLUMN name_lower TEXT;</span><span class="diff add"><span class="ln">2</span>+ CREATE INDEX idx_orders_name_lower ON orders (name_lower);</span></pre>
+                </li>
+                <li class="block">
+                    <div class="cmd"><b>Bash</b><code>npm test -- admin</code><time>02:19:47</time></div>
+                    <p class="out pass"><svg class="icon"><use href="#i-check" /></svg>admin 테스트 24개 통과</p>
+                </li>
+                <li class="block current" aria-current="true">
+                    <div class="cmd"><svg class="mark"><use href="#mark-opus" /></svg><b>Opus</b><time>02:20:05</time></div>
+                    <p class="reply" id="reply">관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</p>
+                </li>
+            </ol>
+        </main>
+
+        <div class="status" role="status">
+            <span class="live" aria-hidden="true"></span>
+            <strong>3회차 진행 중</strong>
+            <span>12분 경과</span>
+            <span class="left">남은 시간</span>
+            <span class="clock">04:39:50</span>
+            <span>07:00 종료</span>
+        </div>
+
+        <form class="composer" onsubmit="return false">
+            <div class="tasks" title="실행 중에는 바꿀 수 없어요">
+                <svg class="icon"><use href="#i-lock" /></svg>
+                <ol aria-label="처리할 작업">
+                    <li>주문 목록 API에 페이지네이션 추가<span class="ghost">1회차</span></li>
+                    <li>결제 실패 시 재시도 로직 점검<span class="ghost">1, 2회차</span></li>
+                    <li class="now">관리자 화면 검색 속도 개선<span class="ghost">3회차 진행 중</span></li>
+                </ol>
+                <span class="lock-note">실행 중에는 잠겨요</span>
+            </div>
+            <div class="bar">
+                <button type="button" class="pill" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                <button type="button" class="pill" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                <span class="pill locked" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>자율개선</b></span>
+                <span class="pill locked" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>07:00</b>4시간 39분</span>
+                <button type="submit" class="action"><span class="stop" aria-hidden="true"></span>종료 신호</button>
+            </div>
+        </form>
+
+        <div class="scrim"></div>
+
+        <aside class="drawer" id="settings-panel" aria-label="설정">
+            <div class="drawer-head"><h2>설정</h2></div>
+
+            <section class="setting">
+                <div class="setting-head">
+                    <h3>대상 프로젝트</h3>
+                    <span class="lock-note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 바꿀 수 없어요</span>
+                </div>
+                <div class="control">
+                    <div class="field"><svg class="icon"><use href="#i-folder" /></svg><code>C:\Users\dev\Projects\shop-api</code></div>
+                    <button class="btn" disabled>폴더 선택</button>
+                </div>
+            </section>
+
+            <section class="setting">
+                <div class="setting-head"><h3>Claude 데이터 폴더</h3></div>
+                <p class="desc">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                <div class="control">
+                    <div class="field"><svg class="icon"><use href="#i-folder" /></svg><code>C:\Users\dev\.claude</code><span class="tag">자동 감지</span></div>
+                    <button class="btn">폴더 변경</button>
+                    <button class="btn">자동 감지</button>
+                </div>
+            </section>
+
+            <section class="setting">
+                <div class="setting-head">
+                    <h3>개선 정책</h3>
+                    <span class="lock-note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 잠겨요</span>
+                </div>
+                <ul class="options" role="radiogroup" aria-label="개선 정책">
+                    <li class="option" role="radio" aria-checked="true" tabindex="0"><span class="radio"></span><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></li>
+                    <li class="option" role="radio" aria-checked="false" tabindex="-1"><span class="radio"></span><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></li>
+                </ul>
+            </section>
+
+            <section class="setting">
+                <div class="setting-head"><h3>사용량 한도</h3></div>
+                <div class="control">
+                    <label class="check-row">
+                        <span class="check" role="checkbox" aria-checked="true" tabindex="0"><svg class="icon"><use href="#i-check" /></svg></span>
+                        <strong>대기한 시간만큼 종료 시각 연장</strong>
+                        <span class="desc">한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="setting">
+                <div class="setting-head"><h3>기록</h3></div>
+                <ul class="rows">
+                    <li><button class="row"><svg class="icon"><use href="#i-log" /></svg>전체 기록 보기<svg class="icon chevr"><use href="#i-next" /></svg></button></li>
+                    <li><button class="row"><svg class="icon"><use href="#i-report" /></svg>리포트 열기<svg class="icon chevr"><use href="#i-next" /></svg></button></li>
+                    <li><button class="row danger"><svg class="icon"><use href="#i-reset" /></svg>진행 기록 초기화</button></li>
+                </ul>
+            </section>
+
+            <section class="setting version">
+                <div class="setting-head"><h3>앱 버전</h3><code>AutoPilot v0.1.0</code></div>
+            </section>
+        </aside>
+
+        <section class="dropdown" id="profile-panel" aria-label="프로필">
+            <div class="who">
+                <span class="avatar">개</span>
+                <span><strong>개발자</strong><small>dev@example.com</small></span>
+                <span class="plan">Max 20x</span>
+            </div>
+
+            <ul class="accounts" role="radiogroup" aria-label="계정 선택">
+                <li>
+                    <button class="account" role="radio" aria-checked="true">
+                        <span class="mini">개</span><span>기본 계정</span><svg class="icon tick"><use href="#i-check" /></svg>
+                    </button>
+                </li>
+                <li>
+                    <button class="account" role="radio" aria-checked="false"><span class="mini">회</span><span>회사</span><span></span></button>
+                </li>
+            </ul>
+            <div class="acct-actions">
+                <button class="btn"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                <button class="btn">다시 로그인</button>
+                <button class="btn danger">제거</button>
+            </div>
+
+            <ul class="meters" aria-label="사용량과 한도">
+                <li><h3>사용량과 한도</h3></li>
+                <li class="meter" style="--v: 42%">
+                    <div class="meter-top"><span>5시간 한도</span><b>42%</b></div>
+                    <div class="cells"></div>
+                    <div class="meter-foot"><span>03:00 리셋</span><span>40분 후</span></div>
+                </li>
+                <li class="meter" style="--v: 63%">
+                    <div class="meter-top"><span>주간 한도</span><b>63%</b></div>
+                    <div class="cells"></div>
+                    <div class="meter-foot"><span>10월 16일 09:00 리셋</span><span>3일 후</span></div>
+                </li>
+                <li class="meter warn" style="--v: 78%">
+                    <div class="meter-top"><span>주간 한도 (Opus)</span><b>78%</b></div>
+                    <div class="cells"></div>
+                    <div class="meter-foot"><span>10월 16일 09:00 리셋</span><span>3일 후</span></div>
+                </li>
+            </ul>
+
+            <div class="dropdown-foot">
+                <span>02:18 기준</span>
+                <button class="btn"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </section>
+
+        <script>
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector(".scrim").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+
+            // 대표 모션: 최신 블록의 출력이 몇 글자씩 흘러 들어온다
+            const reply = document.getElementById("reply");
+            const fullText = reply.textContent;
+            const CHAR_MS = 24;
+
+            const streamReply = () => {
+                let shown = 0;
+
+                reply.textContent = "";
+                reply.classList.add("streaming");
+
+                const timer = setInterval(() => {
+                    shown = Math.min(fullText.length, shown + 1 + Math.floor(Math.random() * 2));
+                    reply.textContent = fullText.slice(0, shown);
+
+                    if (shown === fullText.length) {
+                        clearInterval(timer);
+                        setTimeout(() => reply.classList.remove("streaming"), 500);
+                    }
+                }, CHAR_MS);
+            };
+
+            if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                setTimeout(streamReply, 350);
+                setInterval(streamReply, 9000);
+            }
+        </script>
+    </body>
+</html>

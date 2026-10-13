@@ -1,0 +1,1274 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 아침에 읽을 편지</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --desk: #1e2433;
+                --object: #2a3144;
+                --desk-text: #e9ecf2;
+                --desk-muted: #a3abbd;
+                --desk-hair: rgba(233, 236, 242, 0.1);
+                --lamp: #f3c99a;
+                --paper: #fafaf7;
+                --ink: #1f2a44;
+                --ink-2: #5a6478;
+                --pen: #23409a;
+                --rule: #e3e5ea;
+                --card-rule: #c9d5ea;
+                --card-red: #d0675f;
+                --add: #2b7a4b;
+                --del: #b0443a;
+                --warn: #9a5a12;
+                --serif: "Gowun Batang", "Nanum Myeongjo", Batang, "바탕", serif;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background:
+                    radial-gradient(ellipse 62% 40% at 84% 0%, rgba(243, 201, 154, 0.3), rgba(243, 201, 154, 0.1) 46%, transparent 76%),
+                    radial-gradient(ellipse 60% 40% at 10% 100%, rgba(8, 11, 20, 0.5), transparent 70%),
+                    var(--desk);
+                color: var(--desk-text);
+                font: 400 14px/1.5 var(--sans);
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--lamp);
+                outline-offset: 2px;
+                border-radius: 6px;
+            }
+
+            .paper :focus-visible {
+                outline-color: var(--pen);
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .sr-only {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                overflow: hidden;
+                clip-path: inset(50%);
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                height: 40px;
+                padding: 0 6px 0 18px;
+                flex: none;
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 16px;
+                filter: invert(1);
+                mix-blend-mode: screen;
+            }
+
+            .status {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding-left: 14px;
+                border-left: 1px solid var(--desk-hair);
+                color: var(--desk-muted);
+                font-size: 13px;
+                line-height: 16px;
+            }
+
+            .status b {
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                color: var(--desk-text);
+                font-weight: 600;
+            }
+
+            .status b::before {
+                content: "";
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--lamp);
+            }
+
+            .status time {
+                color: var(--desk-text);
+                font-weight: 500;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .controls .sep {
+                width: 1px;
+                height: 16px;
+                margin: 0 7px;
+                background: var(--desk-hair);
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 28px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                color: var(--desk-muted);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .win:hover {
+                background: rgba(233, 236, 242, 0.08);
+                color: var(--desk-text);
+            }
+
+            .win.close:hover {
+                background: #c4413f;
+                color: #fff;
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: rgba(250, 250, 247, 0.14);
+                color: #fff;
+                box-shadow: inset 0 0 0 1px rgba(250, 250, 247, 0.22);
+            }
+
+            /* 책상 위 편지 */
+            .desk {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                min-height: 0;
+                padding: 10px 28px 0;
+            }
+
+            .paper {
+                position: relative;
+                isolation: isolate;
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                padding: 26px 38px 0;
+                color: var(--ink);
+                font: 400 16px/1.8 var(--serif);
+            }
+
+            /* 종이 결: 가장자리만 살짝 일그러뜨려 손으로 뜯은 듯한 결을 낸다. 글자는 필터 밖에 둔다. */
+            .paper::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                background:
+                    radial-gradient(ellipse 70% 40% at 96% 0%, rgba(243, 201, 154, 0.09), transparent 70%),
+                    linear-gradient(to top right, rgba(30, 36, 51, 0.04), transparent 45%),
+                    var(--paper);
+                filter: url(#deckle) drop-shadow(0 1px 0 rgba(5, 8, 16, 0.35)) drop-shadow(0 18px 26px rgba(5, 8, 16, 0.45));
+            }
+
+            .paper p {
+                margin: 0;
+            }
+
+            .from {
+                color: var(--ink-2);
+                font-size: 13.5px;
+                line-height: 20px;
+                text-align: right;
+            }
+
+            .paper .salute {
+                margin-top: 6px;
+                font-size: 18px;
+                font-weight: 700;
+            }
+
+            .body {
+                display: grid;
+                gap: 11px;
+                margin-top: 8px;
+            }
+
+            .body p {
+                text-wrap: pretty;
+            }
+
+            .underline {
+                padding-bottom: 3px;
+                background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 8' preserveAspectRatio='none'%3E%3Cpath d='M2 5.2C40 3.6 92 3.2 128 4.1s56 1.4 70-.6' fill='none' stroke='%2323409A' stroke-width='1.6' stroke-linecap='round' opacity='.75'/%3E%3C/svg%3E")
+                    left bottom / 100% 7px no-repeat;
+                -webkit-box-decoration-break: clone;
+            }
+
+            /* 지금 쓰는 줄 */
+            .live {
+                min-height: 28.8px;
+                color: var(--pen);
+                transition: opacity 600ms ease;
+            }
+
+            .live.fade {
+                opacity: 0;
+            }
+
+            .live-text span {
+                animation: ink 320ms ease-out both;
+            }
+
+            @keyframes ink {
+                from {
+                    opacity: 0.08;
+                }
+            }
+
+            .nib {
+                display: inline-block;
+                width: 3.5px;
+                height: 1.12em;
+                margin-left: 3px;
+                vertical-align: -0.2em;
+                background: var(--pen);
+                clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
+                transform: skewX(-7deg);
+                animation: blink 1.1s steps(1) infinite;
+            }
+
+            .live.writing .nib {
+                animation: none;
+            }
+
+            @keyframes blink {
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            .paper .sign {
+                margin-top: 4px;
+                color: var(--pen);
+                font-size: 17px;
+                text-align: right;
+            }
+
+            .sign b {
+                font-weight: 700;
+            }
+
+            /* 추신: 커밋 */
+            .ps {
+                display: grid;
+                grid-template-columns: 40px 1fr;
+                margin-top: 14px;
+                padding-top: 12px;
+                border-top: 1px solid var(--rule);
+            }
+
+            .ps-mark {
+                font-weight: 700;
+            }
+
+            .ps ol {
+                margin: 3px 0 0;
+                padding: 0;
+                list-style: none;
+                font-size: 14.5px;
+                line-height: 25px;
+            }
+
+            .ps li {
+                display: grid;
+                grid-template-columns: 66px 1fr auto;
+                align-items: baseline;
+                gap: 8px;
+            }
+
+            .hash {
+                color: var(--pen);
+                font: 500 12.5px/1 var(--mono);
+            }
+
+            .diff {
+                display: flex;
+                gap: 6px;
+                font: 500 12.5px/1 var(--sans);
+                text-align: right;
+            }
+
+            .diff ins,
+            .diff del {
+                text-decoration: none;
+            }
+
+            .diff ins {
+                color: var(--add);
+            }
+
+            .diff del {
+                color: var(--del);
+            }
+
+            /* 여백 기록 */
+            .margin {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-top: auto;
+                padding: 12px 0 13px;
+                border-top: 1px dashed #cfd3dc;
+                color: var(--ink-2);
+                font: 400 12.5px/18px var(--sans);
+            }
+
+            .margin b {
+                color: var(--ink);
+                font-weight: 650;
+            }
+
+            .margin-link {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                margin: -4px -6px -4px auto;
+                padding: 4px 6px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                color: var(--pen);
+                font-size: 12.5px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .margin-link:hover {
+                background: #eef1f8;
+            }
+
+            .margin-link .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            /* 책상 위 도구 */
+            .tools {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin: 12px 0 14px;
+                white-space: nowrap;
+            }
+
+            .object {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                height: 34px;
+                padding: 0 11px;
+                border: 0;
+                border-radius: 999px;
+                background: var(--object);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                    0 6px 14px -6px rgba(3, 5, 10, 0.7);
+                color: var(--desk-text);
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            button.object:hover {
+                background: #333b50;
+            }
+
+            .object .mark {
+                width: 16px;
+                height: 16px;
+            }
+
+            .object .chev {
+                width: 11px;
+                height: 11px;
+                margin-left: -1px;
+                color: var(--desk-muted);
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 13px;
+            }
+
+            .bars i {
+                width: 3px;
+                border-radius: 1px;
+                background: rgba(233, 236, 242, 0.22);
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7px;
+            }
+            .bars i:nth-child(3) {
+                height: 9px;
+            }
+            .bars i:nth-child(4) {
+                height: 11px;
+            }
+            .bars i:nth-child(5) {
+                height: 13px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: var(--desk-text);
+            }
+
+            .locked {
+                display: inline-flex;
+                align-items: center;
+                gap: 11px;
+                margin-left: 6px;
+                color: var(--desk-muted);
+                font-size: 13px;
+                cursor: default;
+            }
+
+            .locked .icon {
+                width: 12px;
+                height: 12px;
+                margin-right: -5px;
+            }
+
+            .locked b {
+                color: var(--desk-text);
+                font-weight: 600;
+            }
+
+            .stop {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                height: 36px;
+                margin-left: auto;
+                padding: 0 15px 0 13px;
+                border: 0;
+                border-radius: 999px;
+                background: var(--paper);
+                box-shadow: 0 8px 16px -8px rgba(3, 5, 10, 0.8);
+                color: var(--ink);
+                font-size: 13.5px;
+                font-weight: 650;
+            }
+
+            .stop:hover {
+                background: #fff;
+            }
+
+            .stop i {
+                width: 10px;
+                height: 10px;
+                border-radius: 2px;
+                background: currentColor;
+            }
+
+            /* 패널 공통 */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 5;
+                background: rgba(12, 15, 24, 0.5);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 260ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .card {
+                position: fixed;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                background: var(--paper);
+                color: var(--ink);
+                box-shadow:
+                    0 1px 0 rgba(5, 8, 16, 0.3),
+                    0 26px 44px -18px rgba(3, 5, 10, 0.75);
+                opacity: 0;
+                visibility: hidden;
+                transition:
+                    opacity 180ms ease-in,
+                    visibility 0s 180ms;
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                opacity: 1;
+                visibility: visible;
+                transition: opacity 240ms ease-out;
+            }
+
+            .card h2 {
+                margin: 0;
+                font: 700 21px/1.3 var(--serif);
+            }
+
+            .note {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--ink-2);
+                font-size: 12px;
+                font-weight: 400;
+                white-space: nowrap;
+            }
+
+            .note .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .acts {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 16px;
+                margin-top: 6px;
+            }
+
+            .act {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 0;
+                border: 0;
+                background: none;
+                color: var(--pen);
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            .act:hover {
+                text-decoration: underline;
+                text-underline-offset: 3px;
+            }
+
+            .act[disabled] {
+                color: var(--ink-2);
+                font-weight: 500;
+                cursor: not-allowed;
+                text-decoration: none;
+            }
+
+            .act.danger {
+                color: var(--del);
+            }
+
+            .act .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .radio {
+                flex: none;
+                display: grid;
+                place-items: center;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px #aab1bf;
+            }
+
+            [aria-checked="true"] > .radio {
+                box-shadow: inset 0 0 0 1.5px var(--pen);
+            }
+
+            [aria-checked="true"] > .radio::after {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--pen);
+            }
+
+            /* 설정: 인덱스 카드 */
+            #settings-panel {
+                top: 50px;
+                right: 18px;
+
+                width: 404px;
+                border-radius: 3px;
+            }
+
+            .card-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                padding: 18px 24px 10px;
+                border-bottom: 1.5px solid var(--card-red);
+            }
+
+            .card-head small {
+                color: var(--ink-2);
+                font-size: 12px;
+            }
+
+            .lines {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                padding: 0 24px;
+            }
+
+            .line {
+                padding: 11px 0 12px;
+                border-bottom: 1px solid var(--card-rule);
+                font-size: 13.5px;
+                line-height: 1.5;
+            }
+
+            .line:last-child {
+                border-bottom: 0;
+            }
+
+            .line-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 3px;
+            }
+
+            .line h3 {
+                margin: 0;
+                font-size: 13.5px;
+                font-weight: 650;
+            }
+
+            .path {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 13.5px;
+            }
+
+            .tag {
+                margin-left: auto;
+                padding: 0 7px;
+                border: 1px solid var(--card-rule);
+                border-radius: 4px;
+                color: var(--ink-2);
+                font-size: 11.5px;
+                line-height: 19px;
+                white-space: nowrap;
+            }
+
+            .hint {
+                margin: 3px 0 0;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.55;
+            }
+
+            .choices {
+                display: grid;
+                gap: 6px;
+                margin: 4px 0 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .choice {
+                display: flex;
+                gap: 10px;
+            }
+
+            .choice .radio,
+            .choice .check {
+                margin-top: 3px;
+            }
+
+            .choice strong {
+                display: block;
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .choice small {
+                display: block;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                line-height: 1.5;
+            }
+
+            .choice[aria-checked="false"] strong {
+                color: var(--ink-2);
+                font-weight: 500;
+            }
+
+            .check {
+                flex: none;
+                display: grid;
+                place-items: center;
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                background: var(--pen);
+                color: #fff;
+            }
+
+            .check .icon {
+                width: 12px;
+                height: 12px;
+                stroke-width: 2;
+            }
+
+            .card-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 11px 24px 13px;
+                border-top: 1px solid var(--card-rule);
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            /* 프로필: 보내는 사람 카드 */
+            #profile-panel {
+                top: 50px;
+                right: 18px;
+                width: 372px;
+                border-radius: 4px;
+            }
+
+            .sender {
+                display: grid;
+                grid-template-columns: 50px 1fr auto;
+                align-items: center;
+                gap: 14px;
+                padding: 22px 22px 20px;
+            }
+
+            .monogram {
+                display: grid;
+                place-items: center;
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                box-shadow:
+                    inset 0 0 0 1.5px var(--pen),
+                    inset 0 0 0 4px var(--paper),
+                    inset 0 0 0 5px rgba(35, 64, 154, 0.35);
+                color: var(--pen);
+                font: 700 21px/1 var(--serif);
+            }
+
+            .sender strong {
+                display: block;
+                font: 700 19px/1.3 var(--serif);
+            }
+
+            .sender small {
+                color: var(--ink-2);
+                font-size: 13px;
+            }
+
+            .plan {
+                align-self: start;
+                margin-top: 2px;
+                padding: 2px 8px;
+                border: 1px solid var(--pen);
+                border-radius: 3px;
+                color: var(--pen);
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .perforation {
+                height: 0;
+                margin: 0 14px;
+                border-top: 1.5px dashed #c6ccd8;
+            }
+
+            .slip {
+                padding: 6px 22px 0;
+            }
+
+            .slip-section {
+                padding: 12px 0;
+            }
+
+            .slip-section + .slip-section {
+                border-top: 1px solid var(--rule);
+            }
+
+            .slip h3 {
+                margin: 0 0 6px;
+                font-size: 13px;
+                font-weight: 650;
+            }
+
+            .accounts {
+                display: flex;
+                gap: 8px;
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .account {
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                flex: 1;
+                height: 38px;
+                padding: 0 10px;
+                border-radius: 6px;
+                box-shadow: inset 0 0 0 1px var(--rule);
+                font-size: 13.5px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            .account[aria-checked="true"] {
+                box-shadow: inset 0 0 0 1.5px var(--pen);
+                color: var(--pen);
+            }
+
+            .account[aria-checked="false"] {
+                color: var(--ink-2);
+            }
+
+            .usage {
+                display: grid;
+                gap: 11px;
+                margin: 2px 0 0;
+                padding: 0;
+                list-style: none;
+            }
+
+            .usage-top {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                font-size: 13.5px;
+            }
+
+            .usage-top b {
+                font-weight: 650;
+            }
+
+            /* 사용량은 펜으로 그은 선: 점선 바탕 위에 비율만큼 긋는다 */
+            .stroke {
+                position: relative;
+                height: 6px;
+                margin: 5px 0 3px;
+                background: radial-gradient(circle, #c3c9d5 0.8px, transparent 1.2px) 0 50% / 5px 6px repeat-x;
+            }
+
+            .stroke i {
+                position: absolute;
+                left: 0;
+                top: 1px;
+                width: var(--v);
+                height: 4px;
+                border-radius: 2px;
+                background: var(--pen);
+            }
+
+            .usage small {
+                display: flex;
+                justify-content: space-between;
+                color: var(--ink-2);
+                font-size: 12px;
+            }
+
+            .usage .warn b {
+                color: var(--warn);
+            }
+
+            .usage .warn .stroke i {
+                background: var(--warn);
+            }
+
+            .slip-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 11px 22px 14px;
+                border-top: 1px solid var(--rule);
+                color: var(--ink-2);
+                font-size: 12.5px;
+            }
+
+            @media (prefers-reduced-motion: no-preference) {
+                .card {
+                    transform: translate(28px, 6px) rotate(1.4deg);
+                    transition:
+                        opacity 180ms ease-in,
+                        transform 200ms ease-in,
+                        visibility 0s 200ms;
+                }
+
+                [data-screen="settings"] #settings-panel,
+                [data-screen="profile"] #profile-panel {
+                    transform: none;
+                    transition:
+                        opacity 240ms ease-out,
+                        transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <filter id="deckle" x="-3%" y="-3%" width="106%" height="106%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" result="noise" />
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="3.2" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="6" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="i-lines" viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <span class="status"><b>3회차 진행 중</b><span>07:00까지 <time id="remain">04:39:50</time></span></span>
+            <div class="controls">
+                <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                    <svg viewBox="0 0 12 12">
+                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                        <circle cx="6" cy="6" r="1.6" />
+                    </svg>
+                </button>
+                <span class="sep"></span>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <main class="desk">
+            <article class="paper" aria-label="아침에 읽을 편지">
+                <p class="from">shop-api에서</p>
+                <p class="salute">개발자님,</p>
+
+                <div class="body">
+                    <p>지금은 새벽 2시 20분이에요. 밤 12시 반부터 쉬지 않고 일해서 세 번째 회차에 들어왔어요.</p>
+                    <p>첫 회차에는 주문 목록 API에 커서 페이지네이션을 넣고, 결제가 실패하면 지수 백오프로 다시 시도하게 했어요. 두 번째 회차에는 결제 재시도 테스트를 보강했어요. 적어 주신 일 셋 중 둘은 이렇게 마쳤어요.</p>
+                    <p>마지막 일은 관리자 검색이 왜 느린지부터 찾아봤어요. 코드를 읽어 보니 검색할 때마다 주문 표 전체를 훑고 있더라고요. 이름 앞부분으로 찾도록 쿼리를 고치고 name_lower 인덱스를 만드는 마이그레이션을 더했더니, admin 테스트 24개가 모두 통과했고 <span class="underline">응답 시간은 1.2초에서 0.2초로, 여섯 배 빨라졌어요.</span></p>
+                    <p class="live writing" aria-live="off"><span class="live-text"></span><i class="nib" aria-hidden="true"></i><span class="sr-only">지금은 커밋하기 전에 바뀐 쿼리를 한 번 더 살펴보고 있어요.</span></p>
+                </div>
+
+                <p class="sign">밤새 곁에서, <b>AutoPilot</b></p>
+
+                <div class="ps">
+                    <span class="ps-mark">P.S.</span>
+                    <div>
+                        <p>ai/autopilot 브랜치에 남긴 커밋이에요.</p>
+                        <ol aria-label="커밋">
+                            <li><span class="hash">a3f9c21</span><span>주문 목록 API에 커서 페이지네이션 추가</span><span class="diff"><ins>+142</ins><del>−21</del></span></li>
+                            <li><span class="hash">7be0d14</span><span>결제 재시도에 지수 백오프 적용</span><span class="diff"><ins>+42</ins><del>−16</del></span></li>
+                            <li><span class="hash">c51e8aa</span><span>결제 재시도 테스트 보강</span><span class="diff"><ins>+56</ins><del>−12</del></span></li>
+                        </ol>
+                    </div>
+                </div>
+
+                <footer class="margin">
+                    <span><b>1시간 50분</b>째, 도구 호출 <b id="tool-count">186</b>번, 읽은 파일 <b>41</b>개, 테스트 <b>9</b>번</span>
+                    <button class="margin-link" type="button"><svg class="icon"><use href="#i-lines" /></svg>전체 로그</button>
+                </footer>
+            </article>
+
+            <form class="tools" aria-label="실행 옵션" onsubmit="return false">
+                <button type="button" class="object" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                <button type="button" class="object" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                <span class="locked" title="실행 중에는 바꿀 수 없어요">
+                    <svg class="icon"><use href="#i-lock" /></svg>
+                    <b>자율개선</b>
+                    <span><b>07:00</b> 종료</span>
+                    <span>작업 3개</span>
+                </span>
+                <button type="submit" class="stop"><i aria-hidden="true"></i>종료 신호</button>
+            </form>
+        </main>
+
+        <div class="scrim"></div>
+
+        <aside class="card" id="settings-panel" aria-label="설정">
+            <div class="card-head">
+                <h2>설정</h2>
+
+            </div>
+            <div class="lines">
+                <div class="line">
+                    <div class="line-head">
+                        <h3>대상 프로젝트</h3>
+                        <span class="note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 바꿀 수 없어요</span>
+                    </div>
+                    <div class="path">C:\Users\dev\Projects\shop-api</div>
+                    <div class="acts"><button class="act" disabled>폴더 선택</button></div>
+                </div>
+
+                <div class="line">
+                    <div class="line-head"><h3>Claude 데이터 폴더</h3></div>
+                    <div class="path">C:\Users\dev\.claude<span class="tag">자동 감지</span></div>
+                    <p class="hint">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                    <div class="acts"><button class="act">폴더 변경</button><button class="act">자동 감지</button></div>
+                </div>
+
+                <div class="line">
+                    <div class="line-head">
+                        <h3>개선 정책</h3>
+                        <span class="note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 잠겨요</span>
+                    </div>
+                    <ul class="choices" role="radiogroup" aria-label="개선 정책">
+                        <li class="choice" role="radio" aria-checked="true" aria-disabled="true">
+                            <span class="radio"></span>
+                            <span><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                        </li>
+                        <li class="choice" role="radio" aria-checked="false" aria-disabled="true">
+                            <span class="radio"></span>
+                            <span><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="line">
+                    <div class="line-head"><h3>사용량 한도</h3></div>
+                    <div class="choice" role="checkbox" aria-checked="true" tabindex="0">
+                        <span class="check"><svg class="icon"><use href="#i-check" /></svg></span>
+                        <span><strong>대기한 시간만큼 종료 시각 연장</strong><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</small></span>
+                    </div>
+                </div>
+
+                <div class="line">
+                    <div class="line-head"><h3>기록</h3></div>
+                    <div class="acts">
+                        <button class="act">전체 기록 보기</button>
+                        <button class="act">리포트 열기</button>
+                        <button class="act danger">진행 기록 초기화</button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-foot"><span>앱 버전</span><span>v0.1.0</span></div>
+        </aside>
+
+        <aside class="card" id="profile-panel" aria-label="프로필">
+            <div class="sender">
+                <span class="monogram" aria-hidden="true">개</span>
+                <span><strong>개발자</strong><small>dev@example.com</small></span>
+                <span class="plan">Max 20x</span>
+            </div>
+            <div class="perforation"></div>
+            <div class="slip">
+                <div class="slip-section">
+                    <h3>계정</h3>
+                    <ul class="accounts" role="radiogroup" aria-label="계정 선택">
+                        <li class="account" role="radio" aria-checked="true" tabindex="0"><span class="radio"></span>기본 계정</li>
+                        <li class="account" role="radio" aria-checked="false" tabindex="-1"><span class="radio"></span>회사</li>
+                    </ul>
+                    <div class="acts">
+                        <button class="act"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                        <button class="act">다시 로그인</button>
+                        <button class="act danger">제거</button>
+                    </div>
+                </div>
+                <div class="slip-section">
+                    <h3>사용량과 한도</h3>
+                    <ul class="usage">
+                        <li style="--v: 42%">
+                            <div class="usage-top"><span>5시간 한도</span><b>42%</b></div>
+                            <div class="stroke"><i></i></div>
+                            <small><span>03:00 리셋</span><span>40분 후</span></small>
+                        </li>
+                        <li style="--v: 63%">
+                            <div class="usage-top"><span>주간 한도</span><b>63%</b></div>
+                            <div class="stroke"><i></i></div>
+                            <small><span>10월 16일 09:00 리셋</span><span>3일 후</span></small>
+                        </li>
+                        <li class="warn" style="--v: 78%">
+                            <div class="usage-top"><span>주간 한도 (Opus)</span><b>78%</b></div>
+                            <div class="stroke"><i></i></div>
+                            <small><span>10월 16일 09:00 리셋</span><span>3일 후</span></small>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="slip-foot">
+                <span>02:18 기준</span>
+                <button class="act"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button>
+            </div>
+        </aside>
+
+        <script>
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector(".scrim").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+
+            const remain = document.getElementById("remain");
+            let remainSeconds = 4 * 3600 + 39 * 60 + 50;
+
+            const tickRemain = () => {
+                const pad = (value) => String(value).padStart(2, "0");
+
+                remainSeconds -= 1;
+                remain.textContent = `${pad(Math.floor(remainSeconds / 3600))}:${pad(Math.floor(remainSeconds / 60) % 60)}:${pad(remainSeconds % 60)}`;
+            };
+
+            setTimeout(() => setInterval(tickRemain, 1000), 2200);
+
+            // 대표 모션: 지금 하는 일을 펜으로 한 글자씩 써 내려가고, 다 쓰면 잠시 두었다가 지우고 다시 쓴다
+            const live = document.querySelector(".live");
+            const liveText = live.querySelector(".live-text");
+            const toolCount = document.getElementById("tool-count");
+            const LINE = "지금은 커밋하기 전에 바뀐 쿼리를 한 번 더 살펴보고 있어요.";
+
+            // 같은 글자에서 늘 같은 간격이 나오게 해 캡처 시점의 진행 정도를 일정하게 둔다
+            const getPause = (index) => {
+                const char = LINE[index];
+                const jitter = ((index * 37) % 11) * 4;
+
+                if (char === "," || char === ".") {
+                    return 320;
+                }
+
+                if (char === " ") {
+                    return 110 + jitter;
+                }
+
+                return 58 + jitter;
+            };
+
+            const writeLine = (startDelay) => {
+                let index = 0;
+
+                liveText.textContent = "";
+                live.classList.remove("fade");
+                live.classList.add("writing");
+
+                const step = () => {
+                    const span = document.createElement("span");
+
+                    span.textContent = LINE[index];
+                    liveText.append(span);
+                    index += 1;
+
+                    if (index < LINE.length) {
+                        setTimeout(step, getPause(index - 1));
+                        return;
+                    }
+
+                    live.classList.remove("writing");
+                    setTimeout(() => (toolCount.textContent = String(Number(toolCount.textContent) + 1)), 1800);
+                    setTimeout(() => live.classList.add("fade"), 6400);
+                    setTimeout(() => writeLine(500), 7100);
+                };
+
+                setTimeout(step, startDelay);
+            };
+
+            writeLine(700);
+        </script>
+    </body>
+</html>

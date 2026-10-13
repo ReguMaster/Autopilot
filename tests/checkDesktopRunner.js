@@ -153,6 +153,13 @@ const main = async () => {
         return 130;
     }
 
+    console.log("12:00:01   > Read C:\\work\\demo\\search.js");
+    console.log("12:00:02   > Read C:\\work\\demo\\search.js");
+    console.log("12:00:03   > Edit C:\\work\\demo\\search.js");
+    console.log("12:00:04   > Bash npm test");
+    console.log("12:00:05 검색을 고쳤어요.");
+    console.log("    성과: 검색 응답 1.2초 → 0.2초");
+    console.log("[커밋] a3f9c21 +142 -21 [ap] 검색 개선");
     console.error("fake stderr 한글");
     console.log("[1회차] 완료");
     console.log("[2회차] 시작 - 남은 시간 200분");
@@ -234,6 +241,11 @@ const checkFinishedRun = async (testDir) => {
         ]
     );
     assert(state.rounds.every((round) => round.endedAt));
+    // 커밋은 결과 줄 전의 열린 회차에 붙고, 같은 파일은 한 번만 센다.
+    assert.deepEqual(state.rounds[0].commits, [{ hash: "a3f9c21", insertions: 142, deletions: 21, subject: "[ap] 검색 개선" }]);
+    assert.deepEqual(state.rounds[1].commits, []);
+    assert.deepEqual(state.work, { toolCalls: 4, filesRead: 1, filesEdited: 1 });
+    assert.deepEqual(state.gains, [{ round: 1, text: "검색 응답 1.2초 → 0.2초" }]);
     assert.equal(logs[0].stream, "app");
     assert(logs.some((entry) => entry.stream === "err" && entry.text === "fake stderr 한글"));
     assert(logs.some((entry) => entry.stream === "out" && entry.text === "[사용량 한도] 05:30까지 대기 (실패로 세지 않음)"));

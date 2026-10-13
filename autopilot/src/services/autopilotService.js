@@ -306,6 +306,11 @@ const runRound = async (context, loopState, remainingMinutes) => {
         outcome: outcome
     });
 
+    // 앱은 회차 결과 줄보다 먼저 온 커밋 줄을 그 회차에 붙인다.
+    for (const commit of commits) {
+        writeLog(`[커밋] ${commit.hash} +${commit.insertions} -${commit.deletions} ${commit.subject}`);
+    }
+
     writeLog(`[${round}회차] ${outcome}`);
 
     return { round: round, isFailed: isFailed, isRateLimited: isRateLimited, resetAt: sessionStats.resetAt };

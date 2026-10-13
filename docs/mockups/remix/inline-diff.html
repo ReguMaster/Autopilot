@@ -1,0 +1,1589 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 시안 — 인라인 diff 스레드</title>
+        <script>
+            const applyScreen = () => (document.documentElement.dataset.screen = location.hash.slice(1) || "main");
+            applyScreen();
+            addEventListener("hashchange", applyScreen);
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2-variations");
+                font-weight: 45 920;
+            }
+
+            :root {
+                --bg: #ffffff;
+                --surface: #f4f5f7;
+                --line: #e4e6ea;
+                --ink: #15171c;
+                --ink-2: #3a3f4a;
+                --muted: #6a7180;
+                --add-bg: #e7f6ec;
+                --add: #1a7f45;
+                --del-bg: #fdeded;
+                --del: #c4302b;
+                --warn: #d98a1c;
+                --warn-text: #9a5a00;
+                --accent: #2f6bff;
+                --gut: 76px;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: "Geist Mono", "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--bg);
+                color: var(--ink);
+                font: 400 14px/1.5 var(--sans);
+                font-variant-numeric: tabular-nums;
+                -webkit-font-smoothing: antialiased;
+                word-break: keep-all;
+            }
+
+            button {
+                font: inherit;
+                color: inherit;
+                cursor: pointer;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
+            }
+
+            code,
+            .mono {
+                font-family: var(--mono);
+                font-variant-ligatures: none;
+            }
+
+            ins {
+                color: var(--add);
+                text-decoration: none;
+            }
+
+            del {
+                color: var(--del);
+                text-decoration: none;
+            }
+
+            svg {
+                display: block;
+                flex: none;
+            }
+
+            .icon {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.4;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            /* 창 헤더 */
+            .titlebar {
+                position: relative;
+                z-index: 20;
+                display: flex;
+                align-items: center;
+                height: 40px;
+                padding: 0 6px 0 16px;
+                flex: none;
+                background: var(--bg);
+                -webkit-app-region: drag;
+            }
+
+            .logo {
+                height: 16px;
+                mix-blend-mode: multiply;
+            }
+
+            .where {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-left: 14px;
+                padding-left: 14px;
+                border-left: 1px solid var(--line);
+                height: 18px;
+                font-size: 13px;
+            }
+
+            .where b {
+                font-weight: 650;
+            }
+
+            .ref {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 1px 7px 1px 5px;
+                border-radius: 5px;
+                background: var(--surface);
+                color: var(--ink-2);
+                font: 400 11.5px/18px var(--mono);
+            }
+
+            .ref .icon {
+                width: 12px;
+                height: 12px;
+                color: var(--muted);
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: auto;
+                -webkit-app-region: no-drag;
+            }
+
+            .controls .sep {
+                width: 1px;
+                height: 16px;
+                margin: 0 6px;
+                background: var(--line);
+            }
+
+            .win {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 30px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                color: var(--ink-2);
+            }
+
+            .win svg {
+                width: 13px;
+                height: 13px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.15;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .win:hover {
+                background: var(--surface);
+            }
+
+            .win.close:hover {
+                background: #e5484d;
+                color: #fff;
+            }
+
+            [data-screen="settings"] #settings-toggle,
+            [data-screen="profile"] #profile-toggle {
+                background: var(--surface);
+                color: var(--accent);
+                box-shadow: inset 0 0 0 1px var(--line);
+            }
+
+            /* 실행 머리: 한 줄 상태와 밤 진행 선 */
+            .runhead {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                height: 50px;
+                padding: 0 16px 2px;
+                flex: none;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .runhead::after {
+                content: "";
+                position: absolute;
+                left: 0;
+                bottom: -1px;
+                width: 28.2%;
+                height: 2px;
+                background: var(--accent);
+            }
+
+            .state {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin: 0;
+                font-size: 16px;
+                font-weight: 700;
+                letter-spacing: -0.015em;
+            }
+
+            .live {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--accent);
+            }
+
+            .totals {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin: 0;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .totals .mono {
+                font-size: 12px;
+            }
+
+            .stat-blocks {
+                display: inline-flex;
+                gap: 2px;
+            }
+
+            .stat-blocks i {
+                width: 7px;
+                height: 7px;
+                border-radius: 1.5px;
+                background: var(--line);
+            }
+
+            .stat-blocks .a {
+                background: var(--add);
+            }
+
+            .stat-blocks .d {
+                background: var(--del);
+            }
+
+            .clock {
+                display: flex;
+                align-items: baseline;
+                gap: 7px;
+                margin-left: auto;
+            }
+
+            .clock b {
+                font: 500 20px/1 var(--mono);
+                letter-spacing: -0.03em;
+            }
+
+            .clock small {
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            /* 스레드: 왼쪽 거터에 시각·해시·줄 번호를 한 열로 둔다 */
+            .thread {
+                position: relative;
+                flex: 1;
+                min-height: 0;
+                padding: 0 0 6px;
+                overflow: hidden;
+            }
+
+            .thread::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: var(--gut);
+                z-index: 1;
+                width: 1px;
+                background: rgba(21, 23, 28, 0.09);
+                -webkit-mask: linear-gradient(#000 calc(100% - 64px), transparent);
+                pointer-events: none;
+            }
+
+            .round:first-child .band {
+                border-top: 0;
+            }
+
+            .band {
+                position: relative;
+                z-index: 2;
+                display: grid;
+                grid-template-columns: var(--gut) auto auto 1fr auto;
+                align-items: center;
+                column-gap: 10px;
+                width: 100%;
+                height: 30px;
+                margin: 0;
+                padding: 0 16px 0 0;
+                border: 0;
+                border-block: 1px solid var(--line);
+                background: var(--surface);
+                font-size: 13px;
+                text-align: left;
+            }
+
+            .round + .round .band {
+                margin-top: 6px;
+            }
+
+            .band .g {
+                display: flex;
+                justify-content: flex-end;
+                padding-right: 10px;
+            }
+
+            .band b {
+                font-size: 13.5px;
+                font-weight: 700;
+                margin-left: 2px;
+            }
+
+            .band .span {
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .band .result {
+                color: var(--add);
+                font-weight: 600;
+            }
+
+            .band .count {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .band .count .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .round.active .band {
+                background: var(--bg);
+                box-shadow: inset 2px 0 0 var(--accent);
+            }
+
+            .round.active .band .result {
+                color: var(--accent);
+            }
+
+            .row {
+                display: grid;
+                grid-template-columns: var(--gut) 1fr auto;
+                align-items: center;
+                column-gap: 12px;
+                height: 26px;
+                padding-right: 16px;
+                font-size: 13px;
+            }
+
+            .g {
+                padding-right: 10px;
+                text-align: right;
+                color: var(--muted);
+                font: 400 11.5px var(--mono);
+            }
+
+            .commit .msg {
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                color: var(--ink-2);
+            }
+
+            .stat {
+                display: flex;
+                gap: 6px;
+                font: 400 12px var(--mono);
+            }
+
+            .tool .call {
+                display: flex;
+                align-items: baseline;
+                gap: 10px;
+                min-width: 0;
+                font-size: 12.5px;
+            }
+
+            .tool .name {
+                flex: none;
+                width: 34px;
+                font-weight: 600;
+                color: var(--ink);
+            }
+
+            .tool .arg {
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                color: var(--ink-2);
+            }
+
+            .tool .out {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--add);
+                font-size: 12.5px;
+                font-weight: 600;
+            }
+
+            /* 인라인 diff */
+            .hunk {
+                margin: 0 0 4px;
+                border-block: 1px solid var(--line);
+                font: 400 12px/19px var(--mono);
+            }
+
+            .dl {
+                display: grid;
+                grid-template-columns: var(--gut) 14px 1fr;
+                column-gap: 12px;
+                height: 19px;
+                white-space: pre;
+                transition: background-color 180ms ease-out;
+            }
+
+            .dl .g {
+                font-size: 11px;
+                line-height: 19px;
+            }
+
+            .dl .s {
+                text-align: center;
+                color: var(--muted);
+            }
+
+            .dl.add {
+                background: var(--add-bg);
+            }
+
+            .dl.add .s,
+            .dl.add .g {
+                color: var(--add);
+            }
+
+            .dl.del {
+                background: var(--del-bg);
+            }
+
+            .dl.del .s,
+            .dl.del .g {
+                color: var(--del);
+            }
+
+            .code-wrap {
+                display: flex;
+                align-items: center;
+                min-width: 0;
+                color: var(--ink-2);
+            }
+
+            .code {
+                display: inline-block;
+                overflow: hidden;
+                max-width: calc(var(--n, 999) * 1ch);
+            }
+
+            .k {
+                color: var(--ink);
+                font-weight: 600;
+            }
+
+            .p {
+                color: var(--muted);
+            }
+
+            .caret {
+                display: none;
+                width: 2px;
+                height: 14px;
+                margin-left: 1px;
+                background: var(--accent);
+            }
+
+            .dl.typing .caret {
+                display: inline-block;
+            }
+
+            .armed .dl.typed:not(.shown) {
+                background: transparent;
+            }
+
+            .armed .dl.typed:not(.shown) > * {
+                visibility: hidden;
+            }
+
+            .hunk.rewind .dl.typed {
+                opacity: 0;
+                transition: opacity 260ms ease-in;
+            }
+
+            .said {
+                display: grid;
+                grid-template-columns: var(--gut) 1fr;
+                column-gap: 12px;
+                padding: 6px 16px 4px 0;
+            }
+
+            .said .g {
+                line-height: 22px;
+            }
+
+            .said p {
+                margin: 0;
+                font-size: 14px;
+                line-height: 22px;
+                text-wrap: pretty;
+            }
+
+            .waiting {
+                display: grid;
+                grid-template-columns: var(--gut) 1fr auto;
+                align-items: center;
+                column-gap: 12px;
+                height: 30px;
+                padding-right: 10px;
+                color: var(--muted);
+                font-size: 13px;
+            }
+
+            .waiting .g {
+                display: flex;
+                justify-content: flex-end;
+            }
+
+            .pending {
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px var(--accent);
+            }
+
+            .waiting .mono {
+                margin-left: 8px;
+                font-size: 11.5px;
+            }
+
+            .ghost {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 26px;
+                padding: 0 8px;
+                border: 0;
+                border-radius: 6px;
+                background: none;
+                color: var(--ink-2);
+                font-size: 12.5px;
+                font-weight: 600;
+            }
+
+            .ghost:hover {
+                background: var(--surface);
+            }
+
+            /* 컴포저: 작업·옵션 칸과 종료 버튼을 나눈 한 막대 */
+            .composer {
+                display: grid;
+                grid-template-columns: 1fr 104px;
+                flex: none;
+                margin: 8px 16px 14px;
+                border-radius: 12px;
+                background: var(--bg);
+                box-shadow:
+                    0 0 0 1px var(--line),
+                    0 14px 30px -20px rgba(21, 23, 28, 0.35);
+                overflow: hidden;
+            }
+
+            .tasks {
+                display: grid;
+                grid-template-columns: calc(var(--gut) - 16px) 1fr;
+                column-gap: 12px;
+                padding: 9px 12px 8px 0;
+            }
+
+            .tasks .g {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 2px;
+                padding-top: 3px;
+                font-family: var(--sans);
+                font-size: 11.5px;
+            }
+
+            .tasks pre {
+                margin: 0;
+                color: var(--ink-2);
+                font: 400 13px/19.5px var(--sans);
+                white-space: pre-wrap;
+            }
+
+            .opts {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                height: 42px;
+                padding: 0 6px;
+                border-top: 1px solid var(--line);
+            }
+
+            .pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 30px;
+                padding: 0 8px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .pill:hover {
+                background: var(--surface);
+            }
+
+            .pill .chev {
+                width: 10px;
+                height: 10px;
+                color: var(--muted);
+            }
+
+            .pill .mark {
+                width: 17px;
+                height: 17px;
+            }
+
+            .pill.locked {
+                color: var(--muted);
+                font-weight: 500;
+                cursor: default;
+            }
+
+            .pill.locked:hover {
+                background: none;
+            }
+
+            .pill.locked b {
+                color: var(--ink-2);
+                font-weight: 600;
+            }
+
+            .pill.locked .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .opts .div {
+                width: 1px;
+                height: 14px;
+                margin: 0 4px;
+                background: var(--line);
+            }
+
+            .bars {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 13px;
+            }
+
+            .bars i {
+                width: 3px;
+                border-radius: 1px;
+                background: var(--line);
+            }
+
+            .bars i:nth-child(1) {
+                height: 5px;
+            }
+            .bars i:nth-child(2) {
+                height: 7px;
+            }
+            .bars i:nth-child(3) {
+                height: 9px;
+            }
+            .bars i:nth-child(4) {
+                height: 11px;
+            }
+            .bars i:nth-child(5) {
+                height: 13px;
+            }
+
+            .bars i:nth-child(-n + 3) {
+                background: var(--ink);
+            }
+
+            .action {
+                display: grid;
+                place-content: center;
+                justify-items: center;
+                gap: 9px;
+                border: 0;
+                background: var(--ink);
+                color: #fff;
+                font-size: 13.5px;
+                font-weight: 650;
+            }
+
+            .action:hover {
+                background: #2a2d35;
+            }
+
+            .action:focus-visible {
+                outline-offset: -4px;
+                outline-color: #fff;
+            }
+
+            .action .stop {
+                width: 11px;
+                height: 11px;
+                border-radius: 2.5px;
+                background: #fff;
+            }
+
+            /* 팝오버(설정·프로필) */
+            .scrim {
+                position: fixed;
+                inset: 40px 0 0;
+                z-index: 10;
+                background: rgba(255, 255, 255, 0.62);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 160ms;
+            }
+
+            [data-screen="settings"] .scrim,
+            [data-screen="profile"] .scrim {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .pop {
+                position: absolute;
+                top: 45px;
+                z-index: 30;
+                border-radius: 12px;
+                background: var(--bg);
+                box-shadow:
+                    0 0 0 1px var(--line),
+                    0 2px 4px rgba(21, 23, 28, 0.04),
+                    0 24px 48px -18px rgba(21, 23, 28, 0.32);
+                opacity: 0;
+                visibility: hidden;
+                transform: translateY(-4px);
+                transition:
+                    opacity 150ms ease-out,
+                    transform 150ms ease-out,
+                    visibility 0s 150ms;
+            }
+
+            .pop::before {
+                content: "";
+                position: absolute;
+                top: -5px;
+                right: var(--notch);
+                width: 10px;
+                height: 10px;
+                border-radius: 2px 0 0 0;
+                background: var(--surface);
+                box-shadow: -1px -1px 0 var(--line);
+                transform: rotate(45deg);
+            }
+
+            .pop-inner {
+                border-radius: inherit;
+                overflow: hidden;
+            }
+
+            #settings-panel {
+                right: 114px;
+                width: 388px;
+                --notch: 27px;
+            }
+
+            #profile-panel {
+                right: 150px;
+                width: 364px;
+                --notch: 27px;
+            }
+
+            #profile-panel::before {
+                background: var(--bg);
+            }
+
+            [data-screen="settings"] #settings-panel,
+            [data-screen="profile"] #profile-panel {
+                opacity: 1;
+                visibility: visible;
+                transform: none;
+                transition:
+                    opacity 150ms ease-out,
+                    transform 150ms ease-out;
+            }
+
+            .sec {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                height: 28px;
+                margin: 0;
+                padding: 0 14px;
+                border-block: 1px solid var(--line);
+                background: var(--surface);
+                color: var(--ink-2);
+                font-size: 12px;
+                font-weight: 650;
+            }
+
+            .pop-inner > .sec:first-child {
+                border-top: 0;
+            }
+
+            .sec .note {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                color: var(--muted);
+                font-weight: 500;
+            }
+
+            .sec .note .icon {
+                width: 12px;
+                height: 12px;
+            }
+
+            .cell {
+                padding: 10px 14px 12px;
+            }
+
+            .field {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 8px;
+                align-items: center;
+            }
+
+            .path {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+                height: 32px;
+                padding: 0 10px;
+                border-radius: 7px;
+                box-shadow: inset 0 0 0 1px var(--line);
+            }
+
+            .path code {
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                font-size: 12px;
+            }
+
+            .path .icon {
+                color: var(--muted);
+            }
+
+            .tag {
+                margin-left: auto;
+                padding: 0 6px;
+                border-radius: 4px;
+                background: var(--surface);
+                color: var(--ink-2);
+                font-size: 11.5px;
+                white-space: nowrap;
+            }
+
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 30px;
+                padding: 0 11px;
+                border: 0;
+                border-radius: 7px;
+                background: var(--bg);
+                box-shadow: inset 0 0 0 1px var(--line);
+                font-size: 12.5px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .btn:hover {
+                background: var(--surface);
+            }
+
+            .btn[disabled] {
+                color: var(--muted);
+                background: var(--surface);
+                box-shadow: none;
+                cursor: not-allowed;
+            }
+
+            .btn .icon {
+                width: 13px;
+                height: 13px;
+            }
+
+            .btn-row {
+                display: flex;
+                gap: 6px;
+                margin-top: 8px;
+            }
+
+            .hint {
+                margin: 8px 0 0;
+                color: var(--muted);
+                font-size: 12.5px;
+                line-height: 1.5;
+            }
+
+            .choices {
+                margin: 0;
+                padding: 4px 0;
+                list-style: none;
+            }
+
+            .choice {
+                display: grid;
+                grid-template-columns: 16px 1fr;
+                gap: 10px;
+                padding: 7px 14px;
+            }
+
+            .choice strong {
+                display: block;
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .choice small {
+                display: block;
+                color: var(--muted);
+                font-size: 12.5px;
+                line-height: 1.45;
+            }
+
+            .radio {
+                width: 16px;
+                height: 16px;
+                margin-top: 2px;
+                border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px #b9bec8;
+            }
+
+            .choice[aria-checked="true"] .radio {
+                box-shadow:
+                    inset 0 0 0 1.5px var(--ink),
+                    inset 0 0 0 4px var(--bg),
+                    inset 0 0 0 8px var(--ink);
+            }
+
+            .switch-row {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 2px 16px;
+                align-items: center;
+            }
+
+            .switch-row strong {
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .switch-row .hint {
+                grid-column: 1;
+                margin: 0;
+            }
+
+            .switch {
+                grid-row: 1 / span 2;
+                grid-column: 2;
+                position: relative;
+                width: 34px;
+                height: 20px;
+                border: 0;
+                border-radius: 10px;
+                background: var(--ink);
+            }
+
+            .switch::after {
+                content: "";
+                position: absolute;
+                top: 2px;
+                right: 2px;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: #fff;
+            }
+
+            .menu-list {
+                margin: 0;
+                padding: 4px 6px;
+                list-style: none;
+            }
+
+            .menu-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                height: 32px;
+                padding: 0 8px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                font-size: 13.5px;
+                text-align: left;
+            }
+
+            .menu-item:hover {
+                background: var(--surface);
+            }
+
+            .menu-item .icon {
+                color: var(--muted);
+            }
+
+            .menu-item.danger,
+            .menu-item.danger .icon {
+                color: var(--del);
+            }
+
+            .pop-foot {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                height: 34px;
+                padding: 0 14px;
+                border-top: 1px solid var(--line);
+                background: var(--surface);
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            /* 프로필 */
+            .who {
+                display: grid;
+                grid-template-columns: 42px 1fr auto;
+                gap: 12px;
+                align-items: center;
+                padding: 14px;
+            }
+
+            .avatar {
+                display: grid;
+                place-items: center;
+                width: 42px;
+                height: 42px;
+                border-radius: 50%;
+                background: var(--ink);
+                color: #fff;
+                font-size: 17px;
+                font-weight: 700;
+            }
+
+            .who strong {
+                display: block;
+                font-size: 15.5px;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+            }
+
+            .who small {
+                color: var(--muted);
+                font-size: 12.5px;
+            }
+
+            .plan {
+                padding: 2px 8px;
+                border-radius: 6px;
+                box-shadow: inset 0 0 0 1px var(--ink);
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .accounts {
+                margin: 0;
+                padding: 4px 6px 0;
+                list-style: none;
+            }
+
+            .account {
+                display: grid;
+                grid-template-columns: 24px 1fr auto;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                height: 36px;
+                padding: 0 8px;
+                border: 0;
+                border-radius: 7px;
+                background: none;
+                font-size: 13.5px;
+                text-align: left;
+            }
+
+            .account:hover,
+            .account[aria-checked="true"] {
+                background: var(--surface);
+            }
+
+            .account[aria-checked="true"] {
+                font-weight: 600;
+            }
+
+            .mini {
+                display: grid;
+                place-items: center;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                background: var(--ink);
+                color: #fff;
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .mini.ghost-avatar {
+                background: var(--bg);
+                box-shadow: inset 0 0 0 1px var(--line);
+                color: var(--ink-2);
+            }
+
+            .acct-actions {
+                display: flex;
+                gap: 6px;
+                padding: 8px 14px 12px;
+            }
+
+            .acct-actions .danger {
+                margin-left: auto;
+                color: var(--del);
+            }
+
+            .sec .refresh {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: var(--muted);
+                font-weight: 500;
+            }
+
+            .sec .refresh button {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                height: 22px;
+                padding: 0 6px;
+                border: 0;
+                border-radius: 5px;
+                background: var(--bg);
+                box-shadow: inset 0 0 0 1px var(--line);
+                color: var(--ink-2);
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+
+            .sec .refresh .icon {
+                width: 11px;
+                height: 11px;
+            }
+
+            .meters {
+                margin: 0;
+                padding: 12px 14px 14px;
+                list-style: none;
+            }
+
+            .meter + .meter {
+                margin-top: 14px;
+            }
+
+            .meter-top,
+            .meter-foot {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+            }
+
+            .meter-top span {
+                font-size: 13.5px;
+                font-weight: 600;
+            }
+
+            .meter-top b {
+                font: 600 13px var(--mono);
+            }
+
+            .meter-foot {
+                margin-top: 4px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            /* 상단 diff 통계 칸과 같은 마디 막대 */
+            .cells {
+                height: 8px;
+                margin-top: 6px;
+                background: linear-gradient(90deg, var(--ink) var(--v), var(--line) var(--v));
+                -webkit-mask: repeating-linear-gradient(90deg, #000 0 calc(5% - 2px), transparent calc(5% - 2px) 5%);
+                mask: repeating-linear-gradient(90deg, #000 0 calc(5% - 2px), transparent calc(5% - 2px) 5%);
+            }
+
+            .meter.warn .cells {
+                background: linear-gradient(90deg, var(--warn) var(--v), var(--line) var(--v));
+            }
+
+            .meter.warn .meter-top b {
+                color: var(--warn-text);
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation: none !important;
+                    transition: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol id="mark-opus" viewBox="0 0 24 24">
+                <rect width="24" height="24" rx="7" fill="#d9822b" />
+                <path d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6Z" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                <path d="M6.1 8.6 12 12l5.9-3.4M12 12v6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+            </symbol>
+            <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" /></symbol>
+            <symbol id="i-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5l3-3" /></symbol>
+            <symbol id="i-next" viewBox="0 0 12 12"><path d="M4.5 3 7.5 6l-3 3" /></symbol>
+            <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.6h5A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" /></symbol>
+            <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5" /><circle cx="4.5" cy="12.5" r="1.5" /><circle cx="11.5" cy="5.5" r="1.5" /><path d="M4.5 5v6M11.5 7c0 2.5-2 3.2-7 4" /></symbol>
+            <symbol id="i-log" viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6" /></symbol>
+            <symbol id="i-report" viewBox="0 0 16 16"><path d="M4 2.5h5.5L12.5 5.5v8H4ZM9.5 2.5v3h3M6.5 9h4M6.5 11h3" /></symbol>
+            <symbol id="i-reset" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 3v3h3" /></symbol>
+            <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" /></symbol>
+            <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.8" r="2.6" /><path d="M3 13.5c.7-2.6 2.7-3.9 5-3.9s4.3 1.3 5 3.9" /></symbol>
+            <symbol id="i-expand" viewBox="0 0 16 16"><path d="M6 3H3v3M10 3h3v3M6 13H3v-3M10 13h3v-3" /></symbol>
+            <symbol id="done" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#1a7f45" /><path d="M4.8 8.2l2.2 2.1 4.2-4.6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+            <symbol id="live" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.8" fill="#fff" stroke="#2f6bff" stroke-width="1.5" /><circle cx="8" cy="8" r="3" fill="#2f6bff" /></symbol>
+        </svg>
+
+        <header class="titlebar">
+            <img class="logo" src="../../logo.png" alt="AutoPilot" />
+            <div class="where">
+                <b>shop-api</b>
+                <span class="ref"><svg class="icon"><use href="#i-branch" /></svg>ai/autopilot</span>
+            </div>
+            <div class="controls">
+                <button class="win" id="profile-toggle" data-panel="profile" aria-label="프로필">
+                    <svg viewBox="0 0 12 12"><circle cx="6" cy="4.2" r="2.1" /><path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" /></svg>
+                </button>
+                <button class="win" id="settings-toggle" data-panel="settings" aria-label="설정">
+                    <svg viewBox="0 0 12 12">
+                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
+                        <circle cx="6" cy="6" r="1.6" />
+                    </svg>
+                </button>
+                <span class="sep"></span>
+                <button class="win" aria-label="최소화"><svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg></button>
+                <button class="win" aria-label="최대화"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" /></svg></button>
+                <button class="win close" aria-label="닫기"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg></button>
+            </div>
+        </header>
+
+        <section class="runhead" aria-label="실행 상태">
+            <p class="state"><span class="live"></span>3회차 진행 중</p>
+            <p class="totals">
+                <span>커밋 3개</span>
+                <span class="mono"><ins>+240</ins> <del>−49</del></span>
+                <span class="stat-blocks" aria-hidden="true"><i class="a"></i><i class="a"></i><i class="a"></i><i class="a"></i><i class="d"></i></span>
+            </p>
+            <p class="clock"><b>04:39:50</b><small>07:00 종료까지</small></p>
+        </section>
+
+        <div class="thread" aria-label="회차 기록">
+            <section class="round">
+                <button class="band" aria-expanded="false">
+                    <span class="g"><svg width="16" height="16"><use href="#done" /></svg></span>
+                    <b>1회차</b><span class="span mono">00:30–01:22</span><span class="result">성공</span>
+                    <span class="count">커밋 2개<svg class="icon"><use href="#i-next" /></svg></span>
+                </button>
+                <div class="row commit"><code class="g">a3f9c21</code><span class="msg">[ap] 주문 목록 API에 커서 페이지네이션 추가</span><span class="stat"><ins>+142</ins><del>−21</del></span></div>
+                <div class="row commit"><code class="g">7be0d14</code><span class="msg">[ap] 결제 재시도에 지수 백오프 적용</span><span class="stat"><ins>+42</ins><del>−16</del></span></div>
+            </section>
+
+            <section class="round">
+                <button class="band" aria-expanded="false">
+                    <span class="g"><svg width="16" height="16"><use href="#done" /></svg></span>
+                    <b>2회차</b><span class="span mono">01:23–02:07</span><span class="result">성공</span>
+                    <span class="count">커밋 1개<svg class="icon"><use href="#i-next" /></svg></span>
+                </button>
+                <div class="row commit"><code class="g">c51e8aa</code><span class="msg">[ap] 결제 재시도 테스트 보강</span><span class="stat"><ins>+56</ins><del>−12</del></span></div>
+            </section>
+
+            <section class="round active">
+                <div class="band">
+                    <span class="g"><svg width="16" height="16"><use href="#live" /></svg></span>
+                    <b>3회차</b><span class="span mono">02:08–</span><span class="result">진행 중</span>
+                    <span class="count">12분 경과</span>
+                </div>
+
+                <div class="row tool"><time class="g">02:17:12</time><code class="call"><span class="name">Grep</span><span class="arg">"searchOrders" src/admin</span></code></div>
+                <div class="row tool"><time class="g">02:18:30</time><code class="call"><span class="name">Read</span><span class="arg">src/admin/searchController.js</span></code></div>
+                <div class="row tool"><time class="g">02:19:02</time><code class="call"><span class="name">Edit</span><span class="arg">src/admin/searchController.js</span></code><span class="stat"><ins>+2</ins><del>−1</del></span></div>
+                <div class="hunk" aria-label="src/admin/searchController.js 변경">
+                    <div class="dl"><span class="g">38</span><span class="s"> </span><span class="code-wrap"><span class="code"><span class="k">const</span> SEARCH_SQL = `<span class="k">SELECT</span> id, status <span class="k">FROM</span> orders</span></span></div>
+                    <div class="dl del"><span class="g">39</span><span class="s">-</span><span class="code-wrap"><span class="code">  <span class="k">WHERE</span> customer_name <span class="k">ILIKE</span> '%' || $1 || '%'`<span class="p">;</span></span></span></div>
+                    <div class="dl add"><span class="g">39</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">WHERE</span> lower(customer_name) <span class="k">LIKE</span> $1 || '%'</span></span></div>
+                    <div class="dl add"><span class="g">40</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">ORDER BY</span> created_at <span class="k">DESC LIMIT</span> $2`<span class="p">;</span></span></span></div>
+                </div>
+                <div class="row tool"><time class="g">02:19:31</time><code class="call"><span class="name">Edit</span><span class="arg">migrations/20261014_add_search_index.sql</span></code><span class="stat"><ins id="sql-added">+4</ins></span></div>
+                <div class="hunk" id="live-hunk" aria-label="migrations/20261014_add_search_index.sql 변경">
+                    <div class="dl add typed"><span class="g">1</span><span class="s">+</span><span class="code-wrap"><span class="code"><span class="k">CREATE INDEX CONCURRENTLY</span> idx_orders_name_prefix</span><i class="caret"></i></span></div>
+                    <div class="dl add typed"><span class="g">2</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">ON</span> orders (lower(customer_name) text_pattern_ops)<span class="p">;</span></span><i class="caret"></i></span></div>
+                    <div class="dl add typed"><span class="g">3</span><span class="s">+</span><span class="code-wrap"><span class="code"><span class="k">CREATE INDEX CONCURRENTLY</span> idx_orders_created_at</span><i class="caret"></i></span></div>
+                    <div class="dl add typed"><span class="g">4</span><span class="s">+</span><span class="code-wrap"><span class="code">  <span class="k">ON</span> orders (created_at <span class="k">DESC</span>)<span class="p">;</span></span><i class="caret"></i></span></div>
+                </div>
+                <div class="row tool">
+                    <time class="g">02:19:47</time><code class="call"><span class="name">Bash</span><span class="arg">npm test -- admin</span></code>
+                    <span class="out"><svg class="icon"><use href="#i-check" /></svg>admin 테스트 24개 통과</span>
+                </div>
+                <div class="said">
+                    <time class="g">02:20:05</time>
+                    <p>관리자 검색 쿼리에 인덱스를 쓰도록 바꾸고 응답 시간을 1.2초에서 0.2초로 줄였어요.</p>
+                </div>
+                <div class="waiting">
+                    <span class="g"><span class="pending"></span></span>
+                    <span>다음 단계를 생각하는 중<span class="mono">5초</span></span>
+                    <button class="ghost" type="button"><svg class="icon"><use href="#i-expand" /></svg>전체 로그</button>
+                </div>
+            </section>
+        </div>
+
+        <form class="composer" onsubmit="return false">
+            <div>
+                <div class="tasks">
+                    <span class="g" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg>실행 중</span>
+                    <pre aria-label="처리할 작업">주문 목록 API에 페이지네이션 추가
+결제 실패 시 재시도 로직 점검
+관리자 화면 검색 속도 개선</pre>
+                </div>
+                <div class="opts">
+                    <button type="button" class="pill" aria-label="모델: Opus"><svg class="mark"><use href="#mark-opus" /></svg>Opus<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                    <button type="button" class="pill" aria-label="Effort: High"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>High<svg class="icon chev"><use href="#i-chev" /></svg></button>
+                    <span class="div" aria-hidden="true"></span>
+                    <span class="pill locked" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>자율개선</b></span>
+                    <span class="pill locked" title="실행 중에는 바꿀 수 없어요"><svg class="icon"><use href="#i-lock" /></svg><b>07:00</b>4시간 39분</span>
+                </div>
+            </div>
+            <button type="submit" class="action"><span class="stop"></span>종료 신호</button>
+        </form>
+
+        <div class="scrim" data-close></div>
+
+        <section class="pop" id="settings-panel" aria-label="설정">
+            <div class="pop-inner">
+                <h3 class="sec">대상 프로젝트<span class="note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 바꿀 수 없어요</span></h3>
+                <div class="cell">
+                    <div class="field">
+                        <div class="path"><svg class="icon"><use href="#i-folder" /></svg><code>C:\Users\dev\Projects\shop-api</code></div>
+                        <button class="btn" disabled>폴더 선택</button>
+                    </div>
+                </div>
+
+                <h3 class="sec">Claude 데이터 폴더</h3>
+                <div class="cell">
+                    <div class="path"><svg class="icon"><use href="#i-folder" /></svg><code>C:\Users\dev\.claude</code><span class="tag">자동 감지</span></div>
+                    <div class="btn-row">
+                        <button class="btn">폴더 변경</button>
+                        <button class="btn">자동 감지</button>
+                    </div>
+                    <p class="hint">메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요.</p>
+                </div>
+
+                <h3 class="sec">개선 정책<span class="note"><svg class="icon"><use href="#i-lock" /></svg>실행 중에는 잠겨요</span></h3>
+                <ul class="choices" role="radiogroup" aria-label="개선 정책">
+                    <li class="choice" role="radio" aria-checked="true" aria-disabled="true">
+                        <span class="radio"></span>
+                        <span><strong>자율개선</strong><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
+                    </li>
+                    <li class="choice" role="radio" aria-checked="false" aria-disabled="true">
+                        <span class="radio"></span>
+                        <span><strong>지시개선</strong><small>적어 둔 작업만 처리하고 끝나요.</small></span>
+                    </li>
+                </ul>
+
+                <h3 class="sec">사용량 한도</h3>
+                <div class="cell">
+                    <div class="switch-row">
+                        <strong>대기한 시간만큼 종료 시각 연장</strong>
+                        <button class="switch" role="switch" aria-checked="true" aria-label="대기한 시간만큼 종료 시각 연장"></button>
+                        <p class="hint">한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요.</p>
+                    </div>
+                </div>
+
+                <h3 class="sec">기록</h3>
+                <ul class="menu-list">
+                    <li><button class="menu-item"><svg class="icon"><use href="#i-log" /></svg>전체 기록 보기</button></li>
+                    <li><button class="menu-item"><svg class="icon"><use href="#i-report" /></svg>리포트 열기</button></li>
+                    <li><button class="menu-item danger"><svg class="icon"><use href="#i-reset" /></svg>진행 기록 초기화</button></li>
+                </ul>
+
+                <div class="pop-foot"><span>AutoPilot</span><span class="mono">v0.1.0</span></div>
+            </div>
+        </section>
+
+        <section class="pop" id="profile-panel" aria-label="프로필">
+            <div class="pop-inner">
+                <div class="who">
+                    <span class="avatar">개</span>
+                    <span><strong>개발자</strong><small>dev@example.com</small></span>
+                    <span class="plan">Max 20x</span>
+                </div>
+
+                <h3 class="sec">계정</h3>
+                <ul class="accounts" role="radiogroup" aria-label="계정 선택">
+                    <li>
+                        <button class="account" role="radio" aria-checked="true"><span class="mini">개</span>기본 계정<svg class="icon"><use href="#i-check" /></svg></button>
+                    </li>
+                    <li>
+                        <button class="account" role="radio" aria-checked="false"><span class="mini ghost-avatar">회</span>회사<span></span></button>
+                    </li>
+                </ul>
+                <div class="acct-actions">
+                    <button class="btn"><svg class="icon"><use href="#i-plus" /></svg>계정 추가</button>
+                    <button class="btn">다시 로그인</button>
+                    <button class="btn danger">제거</button>
+                </div>
+
+                <h3 class="sec">
+                    사용량과 한도
+                    <span class="refresh">02:18 기준<button type="button"><svg class="icon"><use href="#i-refresh" /></svg>새로 고침</button></span>
+                </h3>
+                <ul class="meters">
+                    <li class="meter" style="--v: 42%">
+                        <div class="meter-top"><span>5시간 한도</span><b>42%</b></div>
+                        <div class="cells"></div>
+                        <div class="meter-foot"><span>03:00 리셋</span><span>40분 후</span></div>
+                    </li>
+                    <li class="meter" style="--v: 63%">
+                        <div class="meter-top"><span>주간 한도</span><b>63%</b></div>
+                        <div class="cells"></div>
+                        <div class="meter-foot"><span>10월 16일 09:00 리셋</span><span>3일 후</span></div>
+                    </li>
+                    <li class="meter warn" style="--v: 78%">
+                        <div class="meter-top"><span>주간 한도 (Opus)</span><b>78%</b></div>
+                        <div class="cells"></div>
+                        <div class="meter-foot"><span>10월 16일 09:00 리셋</span><span>3일 후</span></div>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <script>
+            document.querySelectorAll("[data-panel]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const panel = button.dataset.panel;
+                    location.hash = document.documentElement.dataset.screen === panel ? "main" : panel;
+                });
+            });
+
+            document.querySelector("[data-close]").addEventListener("click", () => (location.hash = "main"));
+            addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    location.hash = "main";
+                }
+            });
+
+            // 대표 모션: 지금 회차의 마지막 Edit가 스레드 안의 diff로 한 글자씩 들어온다
+            const CHAR_MS = 11;
+            const LINE_GAP_MS = 90;
+            const START_MS = 450;
+            const HOLD_MS = 7000;
+            const hunk = document.getElementById("live-hunk");
+            const added = document.getElementById("sql-added");
+            const lines = [...hunk.querySelectorAll(".dl.typed")].map((element) => ({ element: element, length: element.querySelector(".code").textContent.length }));
+            const totalMs = lines.reduce((sum, line) => sum + line.length * CHAR_MS + LINE_GAP_MS, 0);
+
+            const renderAt = (elapsed) => {
+                let offset = elapsed - START_MS;
+                let started = 0;
+
+                lines.forEach((line) => {
+                    const typed = Math.max(0, Math.min(line.length, Math.floor(offset / CHAR_MS)));
+                    const isShown = offset >= 0;
+
+                    line.element.classList.toggle("shown", isShown);
+                    line.element.classList.toggle("typing", isShown && typed < line.length);
+                    line.element.style.setProperty("--n", typed);
+                    started += isShown ? 1 : 0;
+                    offset -= line.length * CHAR_MS + LINE_GAP_MS;
+                });
+
+                added.textContent = `+${started}`;
+            };
+
+            const play = () => {
+                const begin = performance.now();
+
+                renderAt(0);
+                hunk.classList.remove("rewind");
+
+                const frame = (now) => {
+                    const elapsed = now - begin;
+
+                    renderAt(elapsed);
+
+                    if (elapsed < START_MS + totalMs) {
+                        requestAnimationFrame(frame);
+                        return;
+                    }
+
+                    setTimeout(() => {
+                        hunk.classList.add("rewind");
+                        setTimeout(play, 320);
+                    }, HOLD_MS);
+                };
+
+                requestAnimationFrame(frame);
+            };
+
+            if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                hunk.classList.add("armed");
+                play();
+            }
+        </script>
+    </body>
+</html>
