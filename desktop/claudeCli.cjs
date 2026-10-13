@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
@@ -6,6 +7,7 @@ const IS_WINDOWS = process.platform === "win32";
 const WINDOWS_SCRIPT_PATTERN = /\.(cmd|bat)$/i;
 const UNSAFE_CMD_PATH_PATTERN = /["\r\n%!]/;
 const AUTH_STATUS_TIMEOUT_MS = 20000;
+const RENEW_TIMEOUT_MS = 60000;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
 const LOGIN_URL_HOSTS = ["claude.com", "claude.ai", "anthropic.com"];
@@ -113,6 +115,49 @@ const getAuthStatus = (configDir, options = {}) => {
     });
 };
 
+// 액세스 토큰은 쓸 때 CLI가 refresh token으로 직접 갱신한다. 앱이 refresh token을 건드리지 않도록 가장 작은 요청 한 번으로 CLI에 갱신을 맡긴다.
+// 도구 정의(약 31k 토큰)와 사용자 설정·MCP(약 4k 토큰)를 빼면 입력이 약 3k 토큰으로 줄어든다. --bare는 OAuth를 읽지 않아 쓰지 못한다.
+// Windows CMD 래퍼는 인자를 공백으로 이어 붙여서 빈 문자열 인자가 사라지므로 --tools=처럼 한 토큰으로 쓴다.
+const renewCredentials = (configDir, options = {}) => {
+    return new Promise((resolve) => {
+        const launch = getLaunch(options);
+
+        if (!launch.command) {
+            resolve(false);
+
+            return;
+        }
+
+        const args = [
+            "-p",
+            "ok",
+            "--model",
+            "haiku",
+            "--effort",
+            "low",
+            "--no-session-persistence",
+            "--disable-slash-commands",
+            "--tools=",
+            "--setting-sources",
+            "project",
+            "--strict-mcp-config",
+            "--system-prompt",
+            "Reply-one-word"
+        ];
+        const child = spawnClaudeProcess(launch, args, { env: getClaudeEnv(configDir), cwd: os.tmpdir(), windowsHide: true, stdio: ["ignore", "ignore", "ignore"] });
+        const timer = setTimeout(() => killProcessTree(child), RENEW_TIMEOUT_MS);
+
+        child.on("error", () => {
+            clearTimeout(timer);
+            resolve(false);
+        });
+        child.on("close", (code) => {
+            clearTimeout(timer);
+            resolve(code === 0);
+        });
+    });
+};
+
 const isLoginUrl = (text) => {
     try {
         const { protocol, hostname } = new URL(text);
@@ -204,4 +249,4 @@ const startLogin = (configDir, handlers, options = {}) => {
     };
 };
 
-module.exports = { findClaude, getAuthStatus, startLogin, isLoginUrl, LOGIN_CODE_PATTERN };
+module.exports = { findClaude, getAuthStatus, renewCredentials, startLogin, isLoginUrl, LOGIN_CODE_PATTERN };

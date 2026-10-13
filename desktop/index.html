@@ -13,8 +13,11 @@
     <body data-status="idle" data-view="ready">
         <header id="titlebar" class="titlebar">
             <img class="brand" src="../docs/logo.png" alt="AutoPilot" />
-            <p class="repo"><b id="project-name">프로젝트 없음</b><code>ai/autopilot</code></p>
             <div class="window-controls">
+                <button type="button" id="update-chip" class="update-chip" hidden>
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.5V2.8M3.2 5.4L6 2.6l2.8 2.8" /></svg>
+                    <span id="update-label" class="num"></span>
+                </button>
                 <button type="button" id="profile-toggle" class="window-control" aria-label="프로필" title="프로필" aria-expanded="false" aria-controls="profile">
                     <svg viewBox="0 0 12 12" aria-hidden="true">
                         <circle cx="6" cy="4.2" r="2.1" />
@@ -67,6 +70,16 @@
                 <section class="greet view-ready" aria-label="시작 전">
                     <h1 id="greet-title"></h1>
                     <p id="greet-lead" class="lead"></p>
+
+                    <section id="recent" class="recent" aria-label="지난 실행" hidden>
+                        <div class="recent-head">
+                            <h2>지난 실행</h2>
+                            <button type="button" id="archive-all" class="link" aria-controls="archive" aria-expanded="false">
+                                <svg class="icon" aria-hidden="true"><use href="#icon-lines" /></svg>전체 보기
+                            </button>
+                        </div>
+                        <ul id="recent-list" class="recent-list"></ul>
+                    </section>
                 </section>
 
                 <section class="story view-run" aria-label="지금 하는 일">
@@ -111,6 +124,9 @@
                 </section>
 
                 <section class="finish view-done" aria-label="실행을 마치고">
+                    <button type="button" id="back-to-ready" class="finish-back">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-back" /></svg>처음으로
+                    </button>
                     <h1 id="finish-title"></h1>
                     <p id="finish-lead" class="lead"></p>
                     <ul id="finish-gains" class="gains" aria-label="이번 실행의 성과"></ul>
@@ -137,35 +153,51 @@
             </div>
 
             <form id="run-form" class="composer">
-                <textarea id="tasks" class="tasks" rows="4" spellcheck="false" aria-label="처리할 작업" placeholder="처리할 작업을 한 줄에 하나씩 적어 주세요 (지시개선은 꼭 필요해요)"></textarea>
-                <p id="tasks-summary" class="tasks-summary" title="실행 중에는 작업을 바꿀 수 없어요">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-lock" /></svg>
-                    <b id="tasks-count"></b>
-                    <span id="tasks-first"></span>
-                </p>
+                <div class="fold fold-summary">
+                    <div>
+                        <button type="button" id="tasks-toggle" class="tasks-summary" aria-controls="tasks-fold" aria-expanded="false" title="처리할 작업 보기 (실행 중에는 바꿀 수 없어요)">
+                            <svg class="icon" aria-hidden="true"><use href="#icon-lock" /></svg>
+                            <b id="tasks-count"></b>
+                            <span id="tasks-first"></span>
+                            <svg class="chevron" aria-hidden="true"><use href="#icon-chevron" /></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="tasks-fold" class="fold fold-tasks">
+                    <div>
+                        <textarea
+                            id="tasks"
+                            class="tasks"
+                            rows="4"
+                            spellcheck="false"
+                            aria-label="처리할 작업"
+                            placeholder="처리할 작업을 한 줄에 하나씩 적어 주세요 (지시개선은 꼭 필요해요)"
+                        ></textarea>
+                    </div>
+                </div>
 
                 <div class="composer-bar">
                     <button type="button" id="model-chip" class="chip" popovertarget="model-popover" aria-label="모델 고르기" aria-expanded="false">
                         <svg class="mark" aria-hidden="true"><use id="model-chip-mark" href="#mark-opus" /></svg>
                         <span id="model-chip-name">Opus</span>
+                        <svg class="lock" aria-hidden="true"><use href="#icon-lock" /></svg>
                         <svg class="chevron" aria-hidden="true"><use href="#icon-chevron" /></svg>
                     </button>
 
                     <button type="button" id="effort-control" class="chip effort" data-level="2" popovertarget="effort-popover" aria-label="Effort 고르기" aria-expanded="false">
                         <svg class="wave" viewBox="0 0 18 16" aria-hidden="true"><path /></svg>
                         <b id="effort-name" class="effort-name">High</b>
+                        <svg class="lock" aria-hidden="true"><use href="#icon-lock" /></svg>
                         <svg class="chevron" aria-hidden="true"><use href="#icon-chevron" /></svg>
                     </button>
 
                     <button type="button" id="policy-chip" class="chip" popovertarget="policy-popover" aria-label="개선 정책 고르기" aria-expanded="false">
-                        <svg class="lock" aria-hidden="true"><use href="#icon-lock" /></svg>
                         <svg class="chip-icon" viewBox="0 0 20 20" aria-hidden="true"><use id="policy-chip-icon" href="#icon-policy-auto" /></svg>
                         <span id="policy-chip-name">자율개선</span>
                         <svg class="chevron" aria-hidden="true"><use href="#icon-chevron" /></svg>
                     </button>
 
                     <button type="button" id="end-time-button" class="chip end-time-chip" popovertarget="end-time-popover" aria-label="종료 시각 고르기" aria-expanded="false">
-                        <svg class="lock" aria-hidden="true"><use href="#icon-lock" /></svg>
                         <b id="end-time-value" class="num">07:00</b>
                         <small id="end-time-until" class="end-time-until num"></small>
                         <svg class="chevron" aria-hidden="true"><use href="#icon-chevron" /></svg>
@@ -186,6 +218,11 @@
         </div>
 
         <svg class="symbols" width="0" height="0" aria-hidden="true">
+            <symbol id="mark-claude" viewBox="0 0 24 24">
+                <path
+                    d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.3399-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"
+                />
+            </symbol>
             <symbol id="mark-fable" viewBox="0 0 24 24">
                 <path d="M14.5 5A7.2 7.2 0 1 0 19 15.5 5.8 5.8 0 0 1 14.5 5Z" />
                 <circle cx="18.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
@@ -207,6 +244,7 @@
             <symbol id="icon-lines" viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6" /></symbol>
             <symbol id="icon-out" viewBox="0 0 16 16"><path d="M9.5 3H13v3.5M13 3 7.5 8.5M11.5 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1h2.5" /></symbol>
             <symbol id="icon-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
+            <symbol id="icon-back" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" /></symbol>
             <symbol id="icon-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
         </svg>
 
@@ -266,6 +304,8 @@
         </div>
 
         <div id="policy-popover" class="popover choice-popover" popover role="group" aria-label="개선 정책">
+            <input type="radio" name="policy" value="auto" form="run-form" data-default hidden />
+            <input type="radio" name="policy" value="todo" form="run-form" hidden />
             <button type="button" class="choice-option" data-policy="auto" aria-pressed="true">
                 <svg class="chip-icon" viewBox="0 0 20 20" aria-hidden="true"><use href="#icon-policy-auto" /></svg>
                 <span class="choice-title">자율개선</span>
@@ -334,122 +374,172 @@
             </div>
         </section>
 
-        <aside id="profile" class="panel profile-panel" aria-label="프로필" inert>
-            <div id="account-select" class="account-list" role="radiogroup" aria-label="사용할 계정"></div>
-            <div class="account-actions">
-                <button type="button" id="account-add" class="button small">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg>계정 추가
+        <section id="archive" class="archive" aria-label="지난 실행 기록" inert>
+            <div class="archive-head">
+                <button type="button" id="archive-back" class="button small" hidden>
+                    <svg class="icon back" aria-hidden="true"><use href="#icon-chevron" /></svg>목록
                 </button>
-                <button type="button" id="account-login" class="button small">다시 로그인</button>
-                <button type="button" id="account-remove" class="button small danger">제거</button>
+                <h2 id="archive-title">지난 실행</h2>
+                <span id="archive-count" class="num"></span>
+                <button type="button" id="archive-close" class="button small">닫기</button>
             </div>
-            <p id="account-message" class="panel-note" aria-live="polite" hidden></p>
+            <p id="archive-note" class="archive-note" hidden></p>
 
-            <form id="account-form" class="account-form" hidden>
-                <input id="account-label" class="account-input" type="text" maxlength="30" autocomplete="off" spellcheck="false" placeholder="계정 이름 (비우면 이메일)" aria-label="계정 이름" />
-                <label class="check" title="기본 .claude의 메모리·세션 기록(projects), CLAUDE.md, settings.json, 스킬, 플러그인을 이 계정이 함께 써요. 로그인 정보는 계정마다 따로예요."
-                    ><input type="checkbox" id="account-share" checked />기본 .claude의 메모리·지침·스킬 함께 쓰기</label
-                >
+            <div id="archive-list-pane" class="archive-pane">
+                <ul id="archive-list" class="archive-list"></ul>
+            </div>
+
+            <div id="archive-detail-pane" class="archive-pane" hidden>
+                <div class="archive-summary">
+                    <p id="archive-lead" class="archive-lead"></p>
+                    <ul id="archive-gains" class="gains" aria-label="이 실행의 성과"></ul>
+                    <p id="archive-notes" class="archive-notes"></p>
+                    <div class="finish-links">
+                        <button type="button" id="archive-report" class="button small">
+                            <svg class="icon" aria-hidden="true"><use href="#icon-out" /></svg>리포트 열기
+                        </button>
+                        <button type="button" id="archive-log" class="button small">
+                            <svg class="icon" aria-hidden="true"><use href="#icon-lines" /></svg>원본 로그 열기
+                        </button>
+                        <button type="button" id="archive-delete" class="button small danger">기록 삭제</button>
+                    </div>
+                </div>
+                <ol id="archive-chat" class="chat" aria-label="그날의 작업 대화"></ol>
+            </div>
+        </section>
+
+        <aside id="profile" class="panel profile-panel" aria-label="프로필" inert>
+            <div class="panel-scroll">
+                <div id="account-select" class="account-list" role="radiogroup" aria-label="사용할 계정"></div>
                 <div class="account-actions">
-                    <button type="submit" class="button small primary">로그인 시작</button>
-                    <button type="button" id="account-form-cancel" class="button small">취소</button>
+                    <button type="button" id="account-add" class="button small">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg>계정 추가
+                    </button>
+                    <button type="button" id="account-login" class="button small" hidden>다시 로그인</button>
+                    <button type="button" id="account-remove" class="button small danger" hidden>제거</button>
                 </div>
-            </form>
+                <p id="account-message" class="panel-note" aria-live="polite" hidden></p>
 
-            <section id="login-box" class="login-box" aria-live="polite" hidden>
-                <p id="login-message" class="panel-note"></p>
-                <button type="button" id="login-open" class="button small" hidden>브라우저에서 열기</button>
-                <form id="login-code-form" class="login-code" hidden>
-                    <input id="login-code" class="account-input" type="text" autocomplete="off" spellcheck="false" placeholder="브라우저에 표시된 코드" aria-label="로그인 코드" />
-                    <button type="submit" class="button small">확인</button>
+                <form id="account-form" class="account-form" hidden>
+                    <input id="account-label" class="account-input" type="text" maxlength="30" autocomplete="off" spellcheck="false" placeholder="계정 이름 (비우면 이메일)" aria-label="계정 이름" />
+                    <label class="check" title="기본 .claude의 메모리·세션 기록(projects), CLAUDE.md, settings.json, 스킬, 플러그인을 이 계정이 함께 써요. 로그인 정보는 계정마다 따로예요."
+                        ><input type="checkbox" id="account-share" checked />기본 .claude의 메모리·지침·스킬 함께 쓰기</label
+                    >
+                    <div class="account-actions">
+                        <button type="submit" class="button small primary">로그인 시작</button>
+                        <button type="button" id="account-form-cancel" class="button small">취소</button>
+                    </div>
                 </form>
-                <button type="button" id="login-cancel" class="button small">취소</button>
-            </section>
 
-            <section id="profile-card" class="profile-card" aria-busy="true" hidden>
-                <span id="profile-avatar" class="profile-avatar" aria-hidden="true"></span>
-                <div class="profile-id">
-                    <b id="profile-name" class="profile-name"></b>
-                    <span id="profile-email" class="profile-email"></span>
+                <section id="login-box" class="login-box" aria-live="polite" hidden>
+                    <p id="login-message" class="panel-note"></p>
+                    <button type="button" id="login-open" class="button small" hidden>브라우저에서 열기</button>
+                    <form id="login-code-form" class="login-code" hidden>
+                        <input id="login-code" class="account-input" type="text" autocomplete="off" spellcheck="false" placeholder="브라우저에 표시된 코드" aria-label="로그인 코드" />
+                        <button type="submit" class="button small">확인</button>
+                    </form>
+                    <button type="button" id="login-cancel" class="button small">취소</button>
+                </section>
+
+                <section id="profile-card" class="profile-card" aria-busy="true" hidden>
+                    <span id="profile-avatar" class="profile-avatar" aria-hidden="true"></span>
+                    <div class="profile-id">
+                        <b id="profile-name" class="profile-name"></b>
+                        <span id="profile-email" class="profile-email"></span>
+                    </div>
+                    <span id="profile-plan" class="profile-plan" hidden></span>
+                </section>
+
+                <section id="usage-section" class="profile-usage" aria-label="사용량과 한도">
+                    <div id="usage-list" class="usage-list"></div>
+                </section>
+
+                <div class="panel-foot">
+                    <p id="usage-status" class="panel-note" aria-live="polite">불러오는 중이에요.</p>
+                    <button type="button" id="usage-refresh" class="button small">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-refresh" /></svg>새로 고침
+                    </button>
                 </div>
-                <span id="profile-plan" class="profile-plan" hidden></span>
-            </section>
-
-            <section id="usage-section" class="profile-usage" aria-label="사용량과 한도">
-                <div id="usage-list" class="usage-list"></div>
-            </section>
-
-            <div class="panel-foot">
-                <p id="usage-status" class="panel-note" aria-live="polite">불러오는 중이에요.</p>
-                <button type="button" id="usage-refresh" class="button small">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-refresh" /></svg>새로 고침
-                </button>
             </div>
         </aside>
 
         <aside id="settings" class="panel settings-panel" aria-labelledby="settings-title" inert>
-            <h2 id="settings-title" class="panel-title">설정</h2>
+            <div class="panel-scroll">
+                <h2 id="settings-title" class="panel-title">설정</h2>
 
-            <section class="settings-group">
-                <div class="row project">
-                    <div class="row-body">
-                        <h3>대상 프로젝트</h3>
-                        <p id="project-path" class="path">선택한 폴더가 없어요.</p>
-                    </div>
-                    <button type="button" id="select-project" class="button small">폴더 선택</button>
-                </div>
-                <div id="claude-dir" class="row claude-dir">
-                    <div class="row-body">
-                        <h3>Claude 데이터 폴더</h3>
-                        <p id="claude-dir-path" class="path"></p>
-                        <p class="row-note">
-                            메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요. 자동 감지는 환경 변수 CLAUDE_CONFIG_DIR, 없으면 사용자 폴더의 .claude예요.
-                        </p>
-                        <div class="row-actions">
-                            <button type="button" id="select-claude-dir" class="button small">폴더 변경</button>
-                            <button type="button" id="reset-claude-dir" class="button small">자동 감지</button>
+                <section class="settings-group" aria-labelledby="group-provider">
+                    <h3 id="group-provider" class="group-title">AI 제공자</h3>
+                    <div class="group-card">
+                        <div class="provider" role="radiogroup" aria-label="AI 제공자">
+                            <button type="button" class="provider-option" role="radio" aria-checked="true">
+                                <svg class="icon provider-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#mark-claude" /></svg>
+                                <span class="provider-text"><b>Claude</b><small>Anthropic · 현재 지원하는 제공자예요</small></span>
+                                <svg class="icon tick" aria-hidden="true"><use href="#icon-check" /></svg>
+                            </button>
+                        </div>
+                        <div id="claude-dir" class="field claude-dir">
+                            <div class="field-head">
+                                <h4 class="field-title">Claude 데이터 폴더</h4>
+                                <span id="claude-dir-auto" class="tag" hidden>자동 감지</span>
+                                <span id="claude-dir-missing" class="tag warn" hidden>폴더를 찾지 못했어요</span>
+                            </div>
+                            <p id="claude-dir-path" class="path"></p>
+                            <p class="field-desc">
+                                메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요. 자동 감지는 환경 변수 CLAUDE_CONFIG_DIR, 없으면 사용자 폴더의 .claude예요.
+                            </p>
+                            <div class="row-actions">
+                                <button type="button" id="select-claude-dir" class="button small">폴더 변경</button>
+                                <button type="button" id="reset-claude-dir" class="button small">자동 감지</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="settings-group">
-                <h3 class="group-title">개선 정책</h3>
-                <div class="policy" role="radiogroup" aria-label="개선 정책">
-                    <label class="row choice">
-                        <input type="radio" name="policy" value="auto" form="run-form" data-default />
-                        <span class="row-body"><b>자율개선</b><small>작업을 마친 뒤에도 종료 시각까지 스스로 개선점을 찾아요.</small></span>
-                    </label>
-                    <label class="row choice">
-                        <input type="radio" name="policy" value="todo" form="run-form" />
-                        <span class="row-body"><b>지시개선</b><small>적어 둔 작업만 처리하고 끝나요. 작업 입력이 꼭 필요해요.</small></span>
-                    </label>
-                </div>
-            </section>
+                <section class="settings-group" aria-labelledby="group-project">
+                    <h3 id="group-project" class="group-title">프로젝트</h3>
+                    <div class="group-card">
+                        <div class="field project">
+                            <div class="field-head">
+                                <h4 class="field-title">대상 프로젝트</h4>
+                                <button type="button" id="select-project" class="button small">폴더 선택</button>
+                            </div>
+                            <p id="project-path" class="path">선택한 폴더가 없어요.</p>
+                            <p class="field-desc">Git 저장소의 루트 폴더만 고를 수 있어요.</p>
+                        </div>
+                    </div>
+                </section>
 
-            <section class="settings-group">
-                <h3 class="group-title">사용량 한도</h3>
-                <label class="row switch-row">
-                    <span class="row-body"
-                        ><b>대기한 시간만큼 종료 시각 연장</b><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요.</small></span
-                    >
-                    <input type="checkbox" id="extend-on-limit" class="switch" form="run-form" />
-                </label>
-            </section>
+                <section class="settings-group" aria-labelledby="group-limit">
+                    <h3 id="group-limit" class="group-title">사용량 한도</h3>
+                    <div class="group-card">
+                        <label class="row switch-row">
+                            <span class="row-body"
+                                ><b>대기한 시간만큼 종료 시각 연장</b><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요.</small></span
+                            >
+                            <input type="checkbox" id="extend-on-limit" class="switch" form="run-form" />
+                        </label>
+                    </div>
+                </section>
 
-            <section class="settings-group">
-                <h3 class="group-title">기록</h3>
-                <button type="button" id="history-toggle" class="row nav-row" aria-expanded="false" aria-controls="history">전체 기록 보기</button>
-                <button type="button" id="open-report" class="row nav-row">리포트 열기</button>
-                <button type="button" id="reset-progress" class="row nav-row danger">진행 기록 초기화</button>
-            </section>
+                <section class="settings-group" aria-labelledby="group-history">
+                    <h3 id="group-history" class="group-title">기록</h3>
+                    <div class="group-card">
+                        <button type="button" id="history-toggle" class="row nav-row" aria-expanded="false" aria-controls="history">전체 기록 보기</button>
+                        <button type="button" id="archive-toggle" class="row nav-row" aria-expanded="false" aria-controls="archive">지난 실행 보기</button>
+                        <button type="button" id="open-report" class="row nav-row">리포트 열기</button>
+                        <button type="button" id="reset-progress" class="row nav-row danger">진행 기록 초기화</button>
+                    </div>
+                </section>
 
-            <section id="dev-group" class="settings-group" hidden>
-                <h3 class="group-title">개발자</h3>
-                <button type="button" id="toggle-devtools" class="row nav-row">개발자 도구 켜기/끄기</button>
-            </section>
+                <section id="dev-group" class="settings-group" aria-labelledby="group-dev" hidden>
+                    <h3 id="group-dev" class="group-title">개발자</h3>
+                    <div class="group-card">
+                        <button type="button" id="toggle-devtools" class="row nav-row">개발자 도구 켜기/끄기</button>
+                    </div>
+                </section>
 
-            <p class="panel-foot"><span>앱 버전</span><span id="app-version" class="num"></span></p>
+                <p class="panel-foot"><span>앱 버전</span><span id="app-version" class="num"></span></p>
+            </div>
         </aside>
     </body>
 </html>

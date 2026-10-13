@@ -8,6 +8,7 @@ const OAUTH_BETA_HEADER = "oauth-2025-04-20";
 const REQUEST_TIMEOUT_MS = 10000;
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_REFRESH_GAP_MS = 15000;
+const MIN_RENEW_GAP_MS = 30 * 60 * 1000;
 const SESSION_LABEL = "5시간 한도";
 const WEEKLY_LABEL = "주간 한도";
 const SCOPED_FALLBACK_NAME = "모델별";
@@ -114,6 +115,7 @@ const createAccountReader = (options = {}) => {
     const onChange = options.onChange || (() => {});
     let account = createEmptyAccount();
     let lastAttemptAt = 0;
+    let lastRenewAt = 0;
     let inFlight = null;
     let timer = null;
 
@@ -134,7 +136,7 @@ const createAccountReader = (options = {}) => {
         return { body: await response.json() };
     };
 
-    const fetchAccount = async () => {
+    const fetchOnce = async () => {
         const oauth = readOAuth(options.credentialsFile || getCredentialsFile());
 
         if (!oauth?.accessToken && process.platform === "darwin") {
@@ -159,6 +161,19 @@ const createAccountReader = (options = {}) => {
             profile: profile,
             failure: usageResult.failure || profileResult.failure || (limits.length === 0 || !profile ? emptyFailure : null)
         };
+    };
+
+    // 만료로 실패하면 CLI가 토큰을 갱신하도록 맡기고 한 번 다시 읽는다. 갱신이 안 되는 계정이 5분마다 CLI를 띄우지 않게 간격을 둔다.
+    const fetchAccount = async () => {
+        const result = await fetchOnce();
+
+        if (result.failure?.code !== "TOKEN_EXPIRED" || !options.renewCredentials || (lastRenewAt && now() - lastRenewAt < MIN_RENEW_GAP_MS)) {
+            return result;
+        }
+
+        lastRenewAt = now();
+
+        return (await options.renewCredentials()) ? fetchOnce() : result;
     };
 
     const run = async () => {

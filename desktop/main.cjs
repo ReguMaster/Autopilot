@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
 const path = require("node:path");
-const { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch } = require("./autopilotIpc.cjs");
+const { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch } = require("./autopilotIpc.cjs");
 const { createTray, showWindow } = require("./systemIntegration.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
@@ -29,7 +29,7 @@ app.setAppUserModelId("com.autopilot.desktop");
 let isQuitting = false;
 
 const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.loginAccount === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && typeof window.autopilot?.getAccounts === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && Boolean(document.querySelector('#profile')) && typeof initialize === 'function'";
+    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.loginAccount === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && typeof window.autopilot?.getAccounts === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && Boolean(document.querySelector('#profile')) && Boolean(document.querySelector('#archive')) && typeof window.autopilot?.listRuns === 'function' && typeof window.autopilot?.openUpdate === 'function' && Boolean(document.querySelector('#update-chip')) && typeof initialize === 'function'";
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -72,7 +72,7 @@ const createWindow = () => {
         minWidth: WINDOW_MIN_SIZE.width,
         minHeight: WINDOW_MIN_SIZE.height,
         backgroundColor: WINDOW_BACKGROUND,
-        icon: path.join(__dirname, "../docs/icon.png"),
+        icon: path.join(__dirname, "../docs/icon.ico"),
         frame: false,
         show: false,
         autoHideMenuBar: true,
@@ -96,6 +96,17 @@ const createWindow = () => {
     window.once("ready-to-show", () => window.show());
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    window.webContents.setVisualZoomLevelLimits(1, 1);
+    // 확대·축소와 새로고침 단축키는 웹 페이지 느낌이라 막는다. 개발 중에는 새로고침만 남긴다.
+    window.webContents.on("before-input-event", (event, input) => {
+        const isCommand = input.control || input.meta;
+        const isZoom = isCommand && ["+", "-", "=", "0"].includes(input.key);
+        const isReload = input.key === "F5" || (isCommand && input.key.toLowerCase() === "r");
+
+        if (input.type === "keyDown" && (isZoom || (isReload && !IS_DEV))) {
+            event.preventDefault();
+        }
+    });
     // 앱이 시작한 엔진이 실행 중이면 닫기는 트레이로 숨기기만 한다. 종료는 트레이 메뉴에서 확인을 거쳐 한다.
     window.on("close", (event) => {
         if (!isQuitting && isOwnedEngineRunning()) {
@@ -165,6 +176,7 @@ if (!hasInstanceLock) {
 
         if (!process.argv.includes("--smoke-test")) {
             startAccountWatch();
+            startUpdateWatch();
         }
 
         app.on("activate", () => {

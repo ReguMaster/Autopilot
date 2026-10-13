@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { createAccountReader } = require("./claudeAccount.cjs");
-const { startLogin, isLoginUrl, getAuthStatus } = require("./claudeCli.cjs");
+const { startLogin, isLoginUrl, getAuthStatus, renewCredentials } = require("./claudeCli.cjs");
 const { createAccountStore, normalizeAccounts, sanitizeLabel, resolveBaseDir, getHomeConfigDir, DEFAULT_ACCOUNT_ID, DEFAULT_ACCOUNT_LABEL, MAX_ACCOUNTS } = require("./accountStore.cjs");
 
 const CREDENTIALS_FILE_NAME = ".credentials.json";
@@ -40,6 +40,7 @@ const createAccountIpc = ({
         if (!readers.has(accountId)) {
             const reader = createAccountReader({
                 credentialsFile: path.join(store.getConfigDir(accountId), CREDENTIALS_FILE_NAME),
+                renewCredentials: async () => (isRunning() || login ? false : renewCredentials(store.getConfigDir(accountId))),
                 onChange: (account) => broadcast("autopilot:account", { id: accountId, account: account })
             });
 
@@ -279,7 +280,13 @@ const createAccountIpc = ({
         }
 
         dropReader(accountId);
-        store.removeAccountDir(accountId);
+
+        try {
+            store.removeAccountDir(accountId);
+        } catch (error) {
+            return createFailure("REMOVE_FAILED", `계정 폴더를 지우지 못했어요. 사용 중인 파일이 없는지 확인해 주세요. (${error.code || error.message})`);
+        }
+
         writeSettings({
             ...settings,
             accounts: normalizeAccounts(settings.accounts).filter((account) => account.id !== accountId),

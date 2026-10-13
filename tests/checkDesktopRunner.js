@@ -11,6 +11,7 @@ const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
 const { createAccountReader } = require("../desktop/claudeAccount.cjs");
+const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -326,7 +327,7 @@ const checkForceKill = async (testDir) => {
 // 앱을 닫았다 켠 사이에 계속 실행된 엔진에 연결해 로그를 따라가고, 종료 신호·강제 종료·종료 감지를 확인한다.
 const checkAttachToRunningEngine = async (testDir) => {
     const projectDir = path.join(testDir, "attach project");
-    const logFile = path.join(projectDir, "autopilot", "progress", "2026-10-10", "autopilot_120000_ab12cd34.log");
+    const logFile = path.join(projectDir, ".autopilot", "progress", "2026-10-10", "autopilot_120000_ab12cd34.log");
     const outsideLogFile = path.join(testDir, "attach project", "outside", "autopilot_120000_ab12cd34.log");
     const externals = [];
     const spawnExternal = (mode, externalLogFile) => {
@@ -417,7 +418,7 @@ const checkAttachToRunningEngine = async (testDir) => {
         assert(logs.some((entry) => entry.stream === "app" && entry.text === "[앱] 연결한 엔진이 종료됐어요 - 중단 요청"));
         assert.equal(runner.isRunning(), false);
 
-        // 엔진이 알려준 로그 경로가 프로젝트 autopilot/progress/ 밖이면 읽지 않는다.
+        // 엔진이 알려준 로그 경로가 프로젝트 .autopilot/progress/ 밖이면 읽지 않는다.
         const outsideExternal = spawnExternal("external-hang", outsideLogFile);
 
         await waitFor(() => fs.existsSync(outsideLogFile), "프로젝트 작업 폴더 밖 로그를 쓰는 엔진 시작");
@@ -490,7 +491,7 @@ const checkProjectError = (testDir) => {
 // 엔진 출력에서 읽은 경로로 실행 파일이나 작업 폴더 밖의 파일을 열 수 없어야 한다.
 const checkReportOpenGuard = (testDir) => {
     const projectDir = path.join(testDir, "report guard");
-    const workDir = path.join(projectDir, "autopilot");
+    const workDir = path.join(projectDir, ".autopilot");
     const dayDir = path.join(workDir, "progress", "2026-10-10");
     const outsideDir = path.join(testDir, "report guard", "outside");
     const reportFile = path.join(dayDir, "report_120000_ab12cd34.html");
@@ -553,7 +554,7 @@ const checkClaudeAccount = async (testDir) => {
     };
     const requests = [];
     const changes = [];
-    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody) } = {}) => {
+    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials } = {}) => {
         const responses = { usage: usage, profile: profile, isDown: false };
         const fetchImpl = async (url, init) => {
             requests.push({ url: url, headers: init.headers });
@@ -564,7 +565,13 @@ const checkClaudeAccount = async (testDir) => {
 
             return new URL(url).pathname.endsWith("/usage") ? responses.usage : responses.profile;
         };
-        const reader = createAccountReader({ credentialsFile: credentialsFile, fetchImpl: fetchImpl, now: () => clock.now, onChange: (account) => changes.push(account) });
+        const reader = createAccountReader({
+            credentialsFile: credentialsFile,
+            fetchImpl: fetchImpl,
+            now: () => clock.now,
+            renewCredentials: renewCredentials,
+            onChange: (account) => changes.push(account)
+        });
 
         return { ...reader, responses: responses };
     };
@@ -679,6 +686,29 @@ const checkClaudeAccount = async (testDir) => {
     assert.equal((await createReader().refresh()).error.code, "TOKEN_EXPIRED");
     assert.equal(requests.length, requestsBeforeExpired);
 
+    let renewCount = 0;
+    const renewing = createReader({
+        renewCredentials: async () => {
+            renewCount += 1;
+            writeCredentials({ accessToken: "renewed-token", expiresAt: clock.now + 3600000 });
+
+            return true;
+        }
+    });
+
+    assert.equal((await renewing.refresh()).error, null);
+    assert.equal(renewCount, 1);
+    assert.equal(requests.at(-1).headers.Authorization, "Bearer renewed-token");
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now - 1 });
+    clock.now += 60000;
+
+    const failingRenew = createReader({ renewCredentials: async () => (renewCount += 1) && false });
+
+    assert.equal((await failingRenew.refresh()).error.code, "TOKEN_EXPIRED");
+    assert.equal((await failingRenew.refresh(true)).error.code, "TOKEN_EXPIRED");
+    assert.equal(renewCount, 2);
+
     fs.writeFileSync(credentialsFile, "{ broken");
 
     assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
@@ -686,6 +716,64 @@ const checkClaudeAccount = async (testDir) => {
     fs.rmSync(credentialsFile);
 
     assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
+};
+
+const checkUpdateCheck = async () => {
+    assert(isNewerVersion("v1.0.1", "1.0.0"));
+    assert(isNewerVersion("v1.10.0", "1.9.9"));
+    assert(isNewerVersion("v2.0.0", "1.99.99"));
+    assert(!isNewerVersion("v1.0.0", "1.0.0"));
+    assert(!isNewerVersion("v0.9.9", "1.0.0"));
+    assert(!isNewerVersion("v1.1.0-beta", "1.0.0"));
+    assert(!isNewerVersion(undefined, "1.0.0"));
+
+    const responses = { body: { tag_name: "v1.1.0" }, status: 200, isDown: false };
+    const changes = [];
+    const requests = [];
+    const updateCheck = createUpdateCheck({
+        currentVersion: "1.0.0",
+        fetchImpl: async (url) => {
+            requests.push(url);
+
+            if (responses.isDown) {
+                throw new Error("fetch failed");
+            }
+
+            return { ok: responses.status === 200, status: responses.status, json: async () => responses.body };
+        },
+        onChange: (update) => changes.push(update)
+    });
+
+    assert.equal(updateCheck.getUpdate(), null);
+
+    const found = await updateCheck.check();
+
+    assert.deepEqual(found, { version: "1.1.0", url: "https://github.com/ReguMaster/Autopilot/releases/tag/v1.1.0" });
+    assert(requests[0].startsWith("https://api.github.com/repos/ReguMaster/Autopilot/"));
+
+    await updateCheck.check();
+
+    assert.equal(changes.length, 1);
+
+    responses.isDown = true;
+
+    assert.equal((await updateCheck.check()).version, "1.1.0");
+
+    responses.isDown = false;
+    responses.status = 403;
+
+    assert.equal((await updateCheck.check()).version, "1.1.0");
+
+    responses.status = 200;
+    responses.body = { tag_name: "v1.0.0" };
+
+    assert.equal(await updateCheck.check(), null);
+    assert.deepEqual(changes, [found, null]);
+
+    // 태그에 주소 조각이 섞여도 열 주소로 쓰지 않는다.
+    responses.body = { tag_name: "v1.2.0/../../evil" };
+
+    assert.equal(await updateCheck.check(), null);
 };
 
 // 태그 목록에서 attribute 값을 순서대로 모으고, data-default가 붙은 태그의 값을 기본값으로 돌려준다.
@@ -739,6 +827,7 @@ const runChecks = async () => {
         checkReportOpenGuard(testDir);
 
         await checkClaudeAccount(testDir);
+        await checkUpdateCheck();
         await checkFinishedRun(testDir);
 
         fs.rmSync(path.join(testDir, "STOP"), { force: true });

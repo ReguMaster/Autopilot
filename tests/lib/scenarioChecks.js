@@ -69,7 +69,7 @@ const createScenarioRunner = (context, fakeCliFile) => {
 
     const runScenario = async (mode, { progressContent = "initial\n", roundOptionsContent = "", staleFiles = [], tasks = DEFAULT_TASKS, ...testOptions } = {}) => {
         const projectDir = getNextProjectDir();
-        const workDir = path.join(projectDir, "autopilot");
+        const workDir = path.join(projectDir, ".autopilot");
 
         scenarioCount++;
 
@@ -126,8 +126,8 @@ const createScenarioRunner = (context, fakeCliFile) => {
 
         // 작업 폴더는 프로젝트 git이 추적하지 않는다.
         assert.equal(fs.readFileSync(path.join(workDir, ".gitignore"), "utf8"), "*\n");
-        context.git(projectDir, "check-ignore", "-q", "autopilot/progress/any.log");
-        context.git(projectDir, "check-ignore", "-q", "autopilot/recycle_bin/any.txt");
+        context.git(projectDir, "check-ignore", "-q", ".autopilot/progress/any.log");
+        context.git(projectDir, "check-ignore", "-q", ".autopilot/recycle_bin/any.txt");
 
         if (!["limit", "limit-long", "timeout", "signal"].includes(mode)) {
             assert.match(fs.readFileSync(result.reportFile, "utf8"), /&lt;script&gt;/);
@@ -183,13 +183,13 @@ const checkProgressResetFlow = async (runScenario) => {
 
     for (const result of [await run("todo", { policy: "todo" }), await run("idle")]) {
         const record = readRecord(result);
-        const archivePath = record.match(/autopilot\/progress\/[\d-]+\/AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md/)?.[0];
+        const archivePath = record.match(/\.autopilot\/progress\/[\d-]+\/AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md/)?.[0];
 
         assert(record.startsWith(progressUtil.PROGRESS_TEMPLATE), result.reason);
         assert(!record.includes("이어갈 일"));
         assert(archivePath, "초기화한 기록에 보관본 경로가 있어야 한다");
         assert.equal(fs.readFileSync(path.join(result.projectDir, archivePath), "utf8"), UNFINISHED_RECORD);
-        assert.match(fs.readFileSync(result.logFile, "utf8"), /^\[진행 기록\] 초기화했습니다\. 원본 보관: autopilot\/progress\//m);
+        assert.match(fs.readFileSync(result.logFile, "utf8"), /^\[진행 기록\] 초기화했습니다\. 원본 보관: \.autopilot\/progress\//m);
     }
 };
 
@@ -244,7 +244,7 @@ const checkTasksRequired = async (context, fakeCliFile) => {
 
         assert.equal(result.status, STATUS_FAILED);
         assert.match(result.error.msg, /작업이 필요/);
-        assert(!fs.existsSync(autopilotUtil.getLockFile(path.join(projectDir, "autopilot"))));
+        assert(!fs.existsSync(autopilotUtil.getLockFile(path.join(projectDir, ".autopilot"))));
         assert(!fs.existsSync(path.join(projectDir, "prompt.txt")));
     }
 };
@@ -252,7 +252,7 @@ const checkTasksRequired = async (context, fakeCliFile) => {
 // autopilot reset-progress가 쓰는 서비스. 실행 중에는 거부하고, 아니면 원본을 보관하고 초기화한다.
 const checkProgressResetCommand = (context) => {
     const projectDir = path.join(context.testDir, "reset command project");
-    const workDir = path.join(projectDir, "autopilot");
+    const workDir = path.join(projectDir, ".autopilot");
     const dataDir = path.join(context.testDir, "appdata");
     const unfinishedRecord = `${progressUtil.PROGRESS_TEMPLATE}\n## 다음 작업\n- 일\n`;
 
@@ -296,7 +296,7 @@ const checkLogRetention = async (runScenario) => {
     const archivedRecord = "progress/2020-01-01/AUTOPILOT_PROGRESS_aaaa1111.md";
     const recentLog = `progress/${yesterday}/autopilot_000000_bbbb2222.log`;
     const result = await runScenario("idle", { staleFiles: [staleLog, staleReport, archivedRecord, recentLog] });
-    const workFile = (relativePath) => path.join(result.projectDir, "autopilot", relativePath);
+    const workFile = (relativePath) => path.join(result.projectDir, ".autopilot", relativePath);
 
     assert(!fs.existsSync(workFile(staleLog)));
     assert(!fs.existsSync(workFile(staleReport)));
@@ -337,7 +337,7 @@ const checkRoundOptions = async (runScenario, context) => {
 
     const { readRoundOptions, writeRoundOptions, getRoundOptionsFile } = autopilotUtil;
     const optionsProjectDir = path.join(context.testDir, "options project");
-    const optionsWorkDir = path.join(optionsProjectDir, "autopilot");
+    const optionsWorkDir = path.join(optionsProjectDir, ".autopilot");
     const roundOptionsFile = getRoundOptionsFile(optionsWorkDir);
 
     fs.mkdirSync(optionsProjectDir, { recursive: true });
@@ -391,7 +391,7 @@ const checkProgressCleanupPrompt = async (runScenario) => {
     const growingRunData = await runScenario("progress", { progressContent: atLimitProgress });
 
     assert.equal(readCleanupLog(growingRunData), "01");
-    assert.match(fs.readFileSync(growingRunData.logFile, "utf8"), /^\[진행 기록\] 원본 보관: autopilot\/progress\//m);
+    assert.match(fs.readFileSync(growingRunData.logFile, "utf8"), /^\[진행 기록\] 원본 보관: \.autopilot\/progress\//m);
     assert.match(fs.readFileSync(path.join(growingRunData.projectDir, "prompt.txt"), "utf8"), new RegExp(`${PROGRESS_TARGET_LINES}줄 안팎`));
 
     // 정리로 줄어든 기록이 다시 상한을 넘으면 다시 지시한다.
@@ -463,7 +463,7 @@ const checkInterrupt = async (scenarioRunner, signal) => {
 const checkRunLock = async (context) => {
     const { acquireRunLock, getLockFile } = autopilotUtil;
     const lockProjectDir = path.join(context.testDir, "lock project");
-    const lockWorkDir = path.join(lockProjectDir, "autopilot");
+    const lockWorkDir = path.join(lockProjectDir, ".autopilot");
     const lockFile = getLockFile(lockWorkDir);
     const releaseLock = acquireRunLock(lockFile);
 
@@ -534,7 +534,7 @@ const checkCliRun = (context, fakeCliFile, appExe) => {
     const bundledEntryFile = appExe ? path.join(path.dirname(command), "resources", "engine", "core", "autopilot_loop.js") : "";
     const entryFile = bundledEntryFile && fs.existsSync(bundledEntryFile) ? bundledEntryFile : path.join(linkedEngineDir, "core", "autopilot_loop.js");
     const projectDir = path.join(context.testDir, "cli project 한글");
-    const workDir = path.join(projectDir, "autopilot");
+    const workDir = path.join(projectDir, ".autopilot");
     const dataDir = path.join(context.testDir, "cli appdata");
     const binDir = path.join(context.testDir, "fake-bin");
     const claudeWrapper = path.join(binDir, process.platform === "win32" ? "claude.cmd" : "claude");
@@ -622,7 +622,7 @@ const checkCliRun = (context, fakeCliFile, appExe) => {
     const resetResult = runCli(["reset-progress", ...projectArgs]);
 
     assert.equal(resetResult.status, 0, resetResult.stderr);
-    assert.match(resetResult.stdout, /Progress record reset\. Original archived: autopilot\/progress\//);
+    assert.match(resetResult.stdout, /Progress record reset\. Original archived: \.autopilot\/progress\//);
     assert(fs.readFileSync(progressFile, "utf8").startsWith(progressUtil.PROGRESS_TEMPLATE));
     assert.equal(runCli(["reset-progress", ...projectArgs, "extra"]).status, 1);
 

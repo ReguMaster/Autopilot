@@ -3,9 +3,11 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
-const { getProjectError, isProjectReportFile } = require("./projectFiles.cjs");
+const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
+const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
+const { createUpdateCheck } = require("./updateCheck.cjs");
 
 const POLICY_CHOICES = ["auto", "todo"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -109,6 +111,8 @@ const runner = createRunner({
 });
 
 const accounts = createAccountIpc({ readSettings: readSettings, writeSettings: writeSettings, broadcast: broadcast, isRunning: () => runner.isRunning() });
+
+const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update) });
 
 // 시작 인자의 오류를 알려준다. 없으면 null.
 const getStartError = (settings, options) => {
@@ -235,7 +239,19 @@ const handleSelectProject = async (event) => {
 const handleGetState = async () => {
     await attachRunningEngine();
 
-    return { version: app.getVersion(), settings: readSettings(), state: runner.getState(), logs: runner.getLogs() };
+    return { version: app.getVersion(), update: updateCheck.getUpdate(), settings: readSettings(), state: runner.getState(), logs: runner.getLogs() };
+};
+
+const handleOpenUpdate = async () => {
+    const update = updateCheck.getUpdate();
+
+    if (!update) {
+        return createFailure("NO_UPDATE", "열 수 있는 새 버전 안내가 없어요.");
+    }
+
+    await shell.openExternal(update.url);
+
+    return { status: STATUS_OK };
 };
 
 const handleKill = async (event) => {
@@ -275,7 +291,7 @@ const handleResetProgress = async (event) => {
         type: "question",
         title: "AutoPilot",
         message: "진행 기록을 초기화할까요?",
-        detail: "다음 실행이 이전 작업을 이어받지 않고 빈 기록에서 시작해요. 원본은 프로젝트의 autopilot/progress 폴더에 보관돼요.",
+        detail: "다음 실행이 이전 작업을 이어받지 않고 빈 기록에서 시작해요. 원본은 프로젝트의 .autopilot/progress 폴더에 보관돼요.",
         buttons: ["취소", "초기화"],
         defaultId: 0,
         cancelId: 0
@@ -306,12 +322,100 @@ const handleOpenReport = async () => {
     }
 
     if (!isProjectReportFile(runner.getProjectDir(), reportFile)) {
-        return createFailure("INVALID_REPORT", "프로젝트의 autopilot/progress 안에 있는 리포트만 열 수 있어요.");
+        return createFailure("INVALID_REPORT", "프로젝트의 .autopilot/progress 안에 있는 리포트만 열 수 있어요.");
     }
 
     const openError = await shell.openPath(reportFile);
 
     return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
+};
+
+const getActiveLogFile = () => {
+    return runner.isRunning() ? runner.getState().logFile : "";
+};
+
+// 지난 실행 목록. 프로젝트를 고르지 않았거나 기록 폴더가 없으면 빈 목록이다. 읽지 못하는 로그는 목록에서 읽을 수 없음으로 표시한다.
+const handleListRuns = async (event, limit) => {
+    const { projectDir } = readSettings();
+
+    if (getProjectError(projectDir)) {
+        return { status: STATUS_OK, data: { runs: [] } };
+    }
+
+    try {
+        const runs = await listRuns(projectDir, { limit: Number.isFinite(limit) ? limit : MAX_RUN_COUNT, activeLogFile: getActiveLogFile() });
+
+        return { status: STATUS_OK, data: { runs: runs } };
+    } catch (error) {
+        return createFailure("LIST_RUNS_FAILED", `지난 실행 목록을 읽지 못했어요: ${error.message}`);
+    }
+};
+
+const handleReadRun = async (event, id) => {
+    const { projectDir } = readSettings();
+
+    try {
+        return { status: STATUS_OK, data: await readRun(projectDir, id, { activeLogFile: getActiveLogFile() }) };
+    } catch (error) {
+        return createFailure("READ_RUN_FAILED", `기록을 읽지 못했어요: ${error.message}`);
+    }
+};
+
+// 지난 실행의 리포트나 원본 로그를 연다. 렌더러가 보낸 id는 형식을 검사하고 진행 기록 폴더 안의 파일만 연다.
+const handleOpenRunFile = async (event, id, kind) => {
+    const { projectDir } = readSettings();
+    const files = getRunFiles(projectDir, id);
+    const isReport = kind === "report";
+    const file = isReport ? files?.reportFile : files?.logFile;
+
+    if (!file || !fs.existsSync(file)) {
+        return createFailure(isReport ? "NO_REPORT" : "NO_LOG", isReport ? "열 수 있는 리포트가 없어요." : "열 수 있는 로그가 없어요.");
+    }
+
+    if (!(isReport ? isProjectReportFile(projectDir, file) : isProjectLogFile(projectDir, file))) {
+        return createFailure("INVALID_FILE", "프로젝트의 .autopilot/progress 안에 있는 기록만 열 수 있어요.");
+    }
+
+    const openError = await shell.openPath(file);
+
+    return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
+};
+
+// 지난 실행의 로그와 리포트를 지운다. 되돌릴 수 없으므로 확인을 받는다.
+const handleDeleteRun = async (event, id) => {
+    const { projectDir } = readSettings();
+    const files = getRunFiles(projectDir, id);
+
+    if (!files) {
+        return createFailure("INVALID_RUN", "지울 수 없는 기록이에요.");
+    }
+
+    if (getActiveLogFile() && path.resolve(getActiveLogFile()).toLowerCase() === path.resolve(files.logFile).toLowerCase()) {
+        return createFailure("RUN_ACTIVE", "진행 중인 실행은 지울 수 없어요.");
+    }
+
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const { response } = await dialog.showMessageBox(window, {
+        type: "warning",
+        title: "AutoPilot",
+        message: "이 실행 기록을 지울까요?",
+        detail: "로그와 리포트가 지워지고 되돌릴 수 없어요. 커밋과 진행 기록(AUTOPILOT_PROGRESS.md)은 그대로예요.",
+        buttons: ["취소", "삭제"],
+        defaultId: 0,
+        cancelId: 0
+    });
+
+    if (response === 0) {
+        return { status: STATUS_OK, data: { cancelled: true } };
+    }
+
+    try {
+        await deleteRun(projectDir, id, { activeLogFile: getActiveLogFile() });
+
+        return { status: STATUS_OK, data: { cancelled: false } };
+    } catch (error) {
+        return createFailure("DELETE_RUN_FAILED", `기록을 지우지 못했어요: ${error.message}`);
+    }
 };
 
 const registerIpc = () => {
@@ -323,6 +427,11 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:kill", handleKill);
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
+    ipcMain.handle("autopilot:list-runs", handleListRuns);
+    ipcMain.handle("autopilot:read-run", handleReadRun);
+    ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
+    ipcMain.handle("autopilot:delete-run", handleDeleteRun);
+    ipcMain.handle("autopilot:open-update", handleOpenUpdate);
     accounts.register();
 
     // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.
@@ -364,4 +473,9 @@ const startAccountWatch = () => {
     accounts.startWatch();
 };
 
-module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch };
+// 새 버전 확인도 네트워크를 쓰므로 스모크 테스트에서는 시작하지 않는다.
+const startUpdateWatch = () => {
+    updateCheck.start();
+};
+
+module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch };

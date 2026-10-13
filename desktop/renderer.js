@@ -1,6 +1,8 @@
 const MAX_LOG_LINES = 3000;
 const CLOCK_INTERVAL_MS = 1000;
-const STORY_PAST_LINES = 3;
+const STORY_PAST_LINES = 9;
+const PAST_SLIDE_MS = 520;
+const PAST_SLIDE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const FINISH_GAIN_LIMIT = 3;
 const FINISH_ROUND_LIMIT = 6;
 const NOW_MID_LENGTH = 45;
@@ -16,12 +18,9 @@ const PANEL_NAMES = ["settings", "profile"];
 
 const STATUS_OK = "OK";
 
-// 안내 문구는 알려야 할 때만 보인다(적용 대기는 renderOptions가 따로 쓴다).
-const OPTIONS_HINTS = {
-    idle: "",
-    running: "",
-    stopping: "종료 요청 후에는 모델·Effort를 바꿀 수 없어요."
-};
+const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·Effort를 바꿀 수 없어요";
+const STOP_CONFIRM_MS = 4000;
+const STOP_ARMED_LABEL = "한 번 더 눌러 종료";
 
 // 상태별 가운데 버튼. 종료 요청 후에 누르면 메인 프로세스가 확인 모달을 띄우고 강제 종료한다.
 const MAIN_ACTIONS = {
@@ -34,6 +33,8 @@ const byId = (id) => document.getElementById(id);
 
 const elements = {
     titlebar: byId("titlebar"),
+    updateChip: byId("update-chip"),
+    updateLabel: byId("update-label"),
     settingsToggle: byId("settings-toggle"),
     settings: byId("settings"),
     profileToggle: byId("profile-toggle"),
@@ -57,6 +58,8 @@ const elements = {
     accountShare: byId("account-share"),
     claudeDir: byId("claude-dir"),
     claudeDirPath: byId("claude-dir-path"),
+    claudeDirAuto: byId("claude-dir-auto"),
+    claudeDirMissing: byId("claude-dir-missing"),
     selectClaudeDir: byId("select-claude-dir"),
     resetClaudeDir: byId("reset-claude-dir"),
     accountFormCancel: byId("account-form-cancel"),
@@ -66,10 +69,10 @@ const elements = {
     loginCodeForm: byId("login-code-form"),
     loginCode: byId("login-code"),
     loginCancel: byId("login-cancel"),
+    backToReady: byId("back-to-ready"),
     windowMinimize: byId("window-minimize"),
     windowMaximize: byId("window-maximize"),
     windowClose: byId("window-close"),
-    projectName: byId("project-name"),
     badge: byId("status-badge"),
     clock: byId("clock"),
     clockLabel: byId("clock-label"),
@@ -105,6 +108,26 @@ const elements = {
     finishRounds: byId("finish-rounds"),
     doneReport: byId("done-report"),
     doneHistory: byId("done-history"),
+    recent: byId("recent"),
+    recentList: byId("recent-list"),
+    archive: byId("archive"),
+    archiveAll: byId("archive-all"),
+    archiveToggle: byId("archive-toggle"),
+    archiveBack: byId("archive-back"),
+    archiveClose: byId("archive-close"),
+    archiveTitle: byId("archive-title"),
+    archiveCount: byId("archive-count"),
+    archiveNote: byId("archive-note"),
+    archiveListPane: byId("archive-list-pane"),
+    archiveList: byId("archive-list"),
+    archiveDetailPane: byId("archive-detail-pane"),
+    archiveLead: byId("archive-lead"),
+    archiveGains: byId("archive-gains"),
+    archiveNotes: byId("archive-notes"),
+    archiveReport: byId("archive-report"),
+    archiveLog: byId("archive-log"),
+    archiveDelete: byId("archive-delete"),
+    archiveChat: byId("archive-chat"),
     notice: byId("notice"),
     projectBanner: byId("project-banner"),
     bannerSelectProject: byId("banner-select-project"),
@@ -140,6 +163,7 @@ const elements = {
     timeUntil: byId("time-until"),
     extendOnLimit: byId("extend-on-limit"),
     tasks: byId("tasks"),
+    tasksToggle: byId("tasks-toggle"),
     tasksCount: byId("tasks-count"),
     tasksFirst: byId("tasks-first"),
     applyNote: byId("apply-note"),
@@ -178,6 +202,7 @@ let renderedRoundsKey = "";
 let lineNumber = 0;
 let isApplying = false;
 let isApplyQueued = false;
+let stopArmTimer = 0;
 let renderedUsageKey = "";
 const EMPTY_ACCOUNT = { profile: null, limits: [], fetchedAt: 0, error: null };
 const LOGIN_DONE_HIDE_MS = 3000;
@@ -194,6 +219,10 @@ let isStartAfterLogin = false;
 const story = createStory();
 let renderedNowKey = "";
 let revealToken = 0;
+let revealDone = Promise.resolve();
+let revealResolve = () => {};
+let isStoryBusy = false;
+let isStoryDirty = false;
 let renderedTrackKey = "";
 let renderedFinishKey = "";
 // 실행을 마친 뒤 다른 프로젝트를 고르면 지난 실행 대신 시작 화면을 보여준다. 새 실행이 시작되면 다시 마친 화면을 쓴다.
@@ -270,6 +299,12 @@ const scrollLogToEnd = () => {
 // 지금 문장을 줄 순서대로 부드러운 마스크로 쓸어 드러낸다. 글자 위치는 그대로라 움직임 줄이기 설정에서도 쓴다.
 const revealNowText = () => {
     const token = ++revealToken;
+
+    revealDone = new Promise((resolve) => {
+        revealResolve();
+        revealResolve = resolve;
+    });
+
     const line = elements.nowLine;
     const box = line.getBoundingClientRect();
     const lineHeight = parseFloat(getComputedStyle(line).lineHeight);
@@ -308,6 +343,7 @@ const revealNowText = () => {
 
         if ((now - startedAt) * REVEAL_SPEED >= total) {
             line.style.removeProperty("mask");
+            revealResolve();
 
             return;
         }
@@ -323,6 +359,7 @@ const revealNowText = () => {
 const stopReveal = () => {
     revealToken++;
     elements.nowLine.style.removeProperty("mask");
+    revealResolve();
 };
 
 const createToolChip = (tool) => {
@@ -336,23 +373,65 @@ const createToolChip = (tool) => {
     return chip;
 };
 
-const PAST_CLASSES = ["far", "mid", "near"];
+const getPastKey = (item) => {
+    return `${item.id}:${item.tools.length}:${item.text}`;
+};
 
+// 도구 칩은 문장 위에 한 줄로 모으고, 문장은 그 아래에 둔다.
+const createPastItem = (item) => {
+    const paragraph = document.createElement("p");
+    const said = document.createElement("span");
+
+    said.className = "said";
+    said.textContent = item.text;
+    paragraph.dataset.key = getPastKey(item);
+    paragraph.className = "appear";
+    paragraph.addEventListener("animationend", () => paragraph.classList.remove("appear"), { once: true });
+
+    if (item.tools.length) {
+        const tools = document.createElement("span");
+
+        tools.className = "tools";
+        tools.append(...item.tools.map(createToolChip));
+        paragraph.append(tools);
+    }
+
+    paragraph.append(said);
+
+    return paragraph;
+};
+
+// 이미 있는 줄은 DOM을 그대로 두어 위치만 바뀌게 하고(slidePast), 새로 지난 문장만 만들어 한 번 맺히게 한다.
 const renderPast = (items) => {
-    const nodes = items.map((item, index) => {
-        const paragraph = document.createElement("p");
+    const known = new Map([...elements.storyPast.children].map((node) => [node.dataset.key, node]));
+    const wanted = new Set(items.map(getPastKey));
 
-        paragraph.className = PAST_CLASSES[PAST_CLASSES.length - items.length + index];
-        paragraph.dataset.id = item.id;
-        paragraph.append(...item.tools.map(createToolChip), item.text);
-
-        return paragraph;
+    known.forEach((node, key) => {
+        if (!wanted.has(key)) {
+            node.remove();
+        }
     });
-    const renderedIds = new Set([...elements.storyPast.children].map((paragraph) => paragraph.dataset.id));
 
-    // 새로 지난 문장이 된 줄만 한 번 맺힌다.
-    nodes.filter((node) => !renderedIds.has(node.dataset.id)).forEach((node) => node.classList.add("appear"));
-    elements.storyPast.replaceChildren(...nodes);
+    elements.storyPast.append(...items.filter((item) => !known.has(getPastKey(item))).map(createPastItem));
+};
+
+const getPastTops = () => {
+    return new Map([...elements.storyPast.children].map((node) => [node, node.getBoundingClientRect().top]));
+};
+
+// 문장이 늘거나 지금 문장의 높이가 바뀌어 줄 위치가 달라지면 이전 위치에서 부드럽게 올라가게 한다(FLIP).
+const slidePast = (tops) => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        return;
+    }
+
+    tops.forEach((top, node) => {
+        const distance = top - node.getBoundingClientRect().top;
+
+        if (node.isConnected && Math.abs(distance) > 1) {
+            node.animate({ translate: [`0 ${distance}px`, "0 0"] }, { duration: PAST_SLIDE_MS, easing: PAST_SLIDE_EASING });
+        }
+    });
 };
 
 const getNowLength = (text) => {
@@ -372,22 +451,49 @@ const renderStory = () => {
     const text = waitSentence || nowItem?.text || "곧 첫 문장을 들려드릴게요.";
     const key = waitSentence ? `wait:${waitSentence}` : `item:${nowItem?.id || 0}`;
 
+    const tops = getPastTops();
+
     renderPast(pastItems);
-    elements.nowTime.textContent = nowItem?.time || "";
+    swapText(elements.nowTime, nowItem?.time || "");
     elements.nowLine.dataset.length = getNowLength(text);
 
-    if (key === renderedNowKey) {
-        if (elements.nowText.textContent !== text) {
-            stopReveal();
-            elements.nowText.textContent = text;
-        }
+    if (key !== renderedNowKey) {
+        renderedNowKey = key;
+        elements.nowText.textContent = text;
+        revealNowText();
+    } else if (elements.nowText.textContent !== text) {
+        stopReveal();
+        elements.nowText.textContent = text;
+        replayAnimation(elements.nowLine, "swap");
+    }
+
+    slidePast(tops);
+};
+
+// 새 문장·이동·드러내기 애니메이션이 끝나기 전에 로그가 오면 가장 최근 상태만 모아 두었다가 끝난 뒤 한 번 그린다(애니메이션이 끊기지 않게).
+const scheduleStory = async () => {
+    if (isStoryBusy) {
+        isStoryDirty = true;
 
         return;
     }
 
-    renderedNowKey = key;
-    elements.nowText.textContent = text;
-    revealNowText();
+    isStoryBusy = true;
+    renderStory();
+
+    const animations = elements.nowLine
+        .closest("section")
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.effect.getComputedTiming().endTime !== Infinity);
+
+    await Promise.allSettled([revealDone, ...animations.map((animation) => animation.finished)]);
+
+    isStoryBusy = false;
+
+    if (isStoryDirty) {
+        isStoryDirty = false;
+        scheduleStory();
+    }
 };
 
 // 로그는 모아서 한 번에 DOM에 반영한다. 창이 최소화돼도 멈추지 않도록 rAF 대신 타이머를 쓴다. 사용자가 위로 스크롤한 상태면 따라가지 않는다.
@@ -419,7 +525,7 @@ const flushLogEntries = () => {
         applyStoryEntry(story, entry);
     }
 
-    renderStory();
+    scheduleStory();
 };
 
 const appendLogEntries = (entries) => {
@@ -457,6 +563,8 @@ const handleFollowByScroll = () => {
 
 /* 사용량 */
 
+const SESSION_LIMIT_PREFIX = "5시간";
+
 const createUsageItem = () => {
     const item = document.createElement("section");
     const name = document.createElement("h3");
@@ -484,6 +592,7 @@ const updateUsageItem = (item, limit, now) => {
     const meter = item.querySelector(".usage-meter");
 
     item.dataset.tone = getUsageTone(limit.percent);
+    item.toggleAttribute("data-session", limit.label.startsWith(SESSION_LIMIT_PREFIX));
     item.querySelector("h3").textContent = limit.label;
     item.querySelector(".usage-percent").textContent = `${percent}%`;
     item.querySelector(".usage-reset").textContent = formatUsageReset(limit.resetsAt, now);
@@ -553,6 +662,7 @@ const renderAccount = (account) => {
 
 const renderActiveAccount = () => {
     renderAccount(accountSnapshots[accountsState.activeId] || EMPTY_ACCOUNT);
+    renderAccountBar();
 };
 
 const showAccountMessage = (message) => {
@@ -601,6 +711,10 @@ const createAccountOption = (account) => {
     return option;
 };
 
+const DEFAULT_ACCOUNT_ID = "default";
+// 로그인 정보가 없거나 만료돼 사용량을 읽지 못할 때만 다시 로그인이 필요하다.
+const RELOGIN_ERROR_CODES = ["NO_CREDENTIALS", "TOKEN_EXPIRED"];
+
 // 실행 중이거나 로그인 중에는 계정을 바꾸거나 추가·제거할 수 없다(메인 프로세스도 막는다).
 const renderAccountBar = () => {
     const { accounts, activeId } = accountsState;
@@ -620,14 +734,18 @@ const renderAccountBar = () => {
     }
 
     elements.accountAdd.disabled = isLocked || accounts.length >= MAX_ACCOUNT_COUNT;
+    elements.accountLogin.hidden = !RELOGIN_ERROR_CODES.includes(accountSnapshots[activeId]?.error?.code);
     elements.accountLogin.disabled = isLocked;
-    elements.accountRemove.disabled = isLocked || activeId === "default";
+    elements.accountRemove.hidden = activeId === DEFAULT_ACCOUNT_ID;
+    elements.accountRemove.disabled = isLocked;
     elements.selectClaudeDir.disabled = isLocked;
     elements.resetClaudeDir.disabled = isLocked || !claudeDirInfo || claudeDirInfo.isAuto;
 };
 
 const renderClaudeDir = () => {
-    elements.claudeDirPath.textContent = claudeDirInfo ? `${claudeDirInfo.path}${claudeDirInfo.isAuto ? " (자동 감지)" : ""}${claudeDirInfo.exists ? "" : " - 폴더를 찾지 못했어요"}` : "";
+    elements.claudeDirPath.textContent = claudeDirInfo?.path ?? "";
+    elements.claudeDirAuto.hidden = !claudeDirInfo?.isAuto;
+    elements.claudeDirMissing.hidden = !claudeDirInfo || claudeDirInfo.exists;
     elements.claudeDir.toggleAttribute("data-missing", Boolean(claudeDirInfo) && !claudeDirInfo.exists);
 };
 
@@ -649,6 +767,7 @@ const renderLogin = () => {
         return;
     }
 
+    elements.loginBox.dataset.phase = loginState.phase;
     elements.loginMessage.textContent = loginState.message;
     elements.loginMessage.dataset.tone = loginState.phase === "failed" ? "warn" : "";
     elements.loginOpen.hidden = !isWaiting || !loginState.url;
@@ -832,6 +951,7 @@ const setHistoryOpen = (isOpen) => {
 
     if (isOpen) {
         closePanels();
+        setArchiveOpen(false);
         scrollLogToEnd();
     }
 };
@@ -862,6 +982,306 @@ const handleEscape = (event) => {
     } else if (isHistoryOpen()) {
         setHistoryOpen(false);
         elements.livePanel.focus();
+    } else if (isArchiveOpen()) {
+        setArchiveOpen(false);
+        elements.archiveAll.focus();
+    }
+};
+
+/* 지난 실행: 로그 파일로 남은 지난 실행을 시작 화면에서 몇 개 보여주고, 전체 목록과 채팅처럼 이어지는 그날의 작업을 시트로 본다 */
+
+const RECENT_RUN_COUNT = 3;
+const MAX_ARCHIVE_RUNS = 200;
+const CHAT_TOOL_CHIP_LIMIT = 4;
+
+let recentRuns = [];
+let recentToken = 0;
+let archiveToken = 0;
+let archiveRunId = "";
+let lastStatus = "idle";
+
+const isArchiveOpen = () => {
+    return document.body.classList.contains("archive-open");
+};
+
+const createTag = (status) => {
+    const tag = document.createElement("span");
+
+    tag.className = "tag";
+    tag.dataset.tone = status.tone;
+    tag.textContent = status.label;
+
+    return tag;
+};
+
+const createRunItem = (run, nowMs) => {
+    const description = describePastRun(run, nowMs);
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const when = document.createElement("span");
+    const day = document.createElement("b");
+    const time = document.createElement("span");
+    const meta = document.createElement("small");
+    const headline = document.createElement("span");
+
+    button.type = "button";
+    button.className = "run-item";
+    button.dataset.id = run.id;
+    when.className = "run-when";
+    day.textContent = description.day;
+    time.className = "num";
+    time.textContent = [description.time, description.duration].filter(Boolean).join(" · ");
+    meta.className = "run-meta";
+    meta.textContent = description.meta || description.notes[0] || "";
+    headline.className = "run-headline";
+    headline.textContent = description.headline;
+
+    when.append(day, time);
+    button.append(when, createTag(description.status), meta, headline);
+    item.append(button);
+
+    return item;
+};
+
+const renderRunList = (list, runs) => {
+    const nowMs = Date.now();
+
+    list.replaceChildren(...runs.map((run) => createRunItem(run, nowMs)));
+};
+
+const renderRecent = () => {
+    const runs = recentRuns.slice(0, RECENT_RUN_COUNT);
+
+    elements.recent.hidden = !settings.projectDir || !runs.length;
+
+    renderRunList(elements.recentList, runs);
+};
+
+// 목록을 읽지 못해도 시작 화면은 그대로 쓸 수 있어야 하므로 실패하면 조용히 숨긴다.
+const loadRecentRuns = async () => {
+    const token = ++recentToken;
+    const result = await window.autopilot.listRuns(RECENT_RUN_COUNT);
+
+    if (token !== recentToken) {
+        return;
+    }
+
+    recentRuns = result.status === STATUS_OK ? result.data.runs : [];
+
+    renderRecent();
+};
+
+const setArchiveNote = (message, tone = "") => {
+    elements.archiveNote.textContent = message;
+    elements.archiveNote.dataset.tone = tone;
+    elements.archiveNote.hidden = !message;
+};
+
+const showArchivePane = (pane) => {
+    const isDetail = pane === "detail";
+
+    elements.archiveListPane.hidden = isDetail;
+    elements.archiveDetailPane.hidden = !isDetail;
+    elements.archiveBack.hidden = !isDetail;
+};
+
+const setArchiveOpen = (isOpen) => {
+    if (isOpen === isArchiveOpen()) {
+        return;
+    }
+
+    document.body.classList.toggle("archive-open", isOpen);
+    elements.archive.inert = !isOpen;
+    elements.archiveAll.setAttribute("aria-expanded", String(isOpen));
+    elements.archiveToggle.setAttribute("aria-expanded", String(isOpen));
+
+    if (isOpen) {
+        closePanels();
+        setHistoryOpen(false);
+    }
+};
+
+const openArchiveList = async () => {
+    const token = ++archiveToken;
+
+    setArchiveOpen(true);
+    showArchivePane("list");
+    setArchiveNote("불러오는 중이에요.");
+
+    elements.archiveTitle.textContent = "지난 실행";
+    elements.archiveCount.textContent = "";
+
+    const result = await window.autopilot.listRuns(MAX_ARCHIVE_RUNS);
+
+    if (token !== archiveToken) {
+        return;
+    }
+
+    const runs = result.status === STATUS_OK ? result.data.runs : [];
+
+    renderRunList(elements.archiveList, runs);
+
+    elements.archiveCount.textContent = runs.length ? `${runs.length}개` : "";
+
+    if (result.status !== STATUS_OK) {
+        setArchiveNote(result.error.msg, "warn");
+    } else {
+        setArchiveNote(runs.length ? "" : "아직 지난 실행이 없어요. 실행하면 기록이 프로젝트의 .autopilot/progress 폴더에 남아요.");
+    }
+};
+
+const createChatChips = (item) => {
+    const chips = item.tools.slice(-CHAT_TOOL_CHIP_LIMIT).map(createToolChip);
+
+    if (item.count > chips.length) {
+        const more = document.createElement("small");
+
+        more.className = "chat-more";
+        more.textContent = `외 ${item.count - chips.length}번`;
+        chips.push(more);
+    }
+
+    return chips;
+};
+
+const createChatLine = (className, ...children) => {
+    const node = document.createElement("li");
+
+    node.className = `chat-item ${className}`;
+    node.append(...children);
+
+    return node;
+};
+
+const createChatText = (tagName, className, text) => {
+    const node = document.createElement(tagName);
+
+    node.className = className;
+    node.textContent = text;
+
+    return node;
+};
+
+const createChatItem = (item) => {
+    if (item.kind === "say") {
+        const bubble = document.createElement("div");
+
+        bubble.className = "bubble";
+        bubble.append(...createChatChips(item), createChatText("span", "said", item.text), createChatText("time", "num", item.time));
+
+        return createChatLine("say", bubble);
+    }
+
+    if (item.kind === "work") {
+        return createChatLine("work", ...createChatChips(item));
+    }
+
+    if (item.kind === "round") {
+        return createChatLine("round", createChatText("b", "", `${item.round}회차 시작`), createChatText("small", "", item.options));
+    }
+
+    if (item.kind === "result") {
+        return createChatLine("result", createChatText("b", "", `${item.round}회차`), createTag({ label: item.outcome, tone: item.tone }));
+    }
+
+    if (item.kind === "commit") {
+        return createChatLine(
+            "commit",
+            createChatText("code", "", item.hash),
+            createChatText("span", "subject", item.subject || "제목 없음"),
+            createChatText("ins", "", `+${item.insertions}`),
+            createChatText("del", "", `−${item.deletions}`)
+        );
+    }
+
+    if (item.kind === "gain") {
+        return createChatLine("gain", createChatText("b", "", "성과"), createChatText("span", "", item.text));
+    }
+
+    return createChatLine("note", createChatText("span", "", item.kind === "finish" ? `종료 · ${item.text}` : item.text));
+};
+
+const renderArchiveDetail = ({ run, lines, omittedLines }) => {
+    const description = describePastRun(run, Date.now());
+    const transcript = buildTranscript(lines);
+    const notes = [...description.notes];
+
+    if (omittedLines || transcript.omitted) {
+        notes.push("기록이 길어 최근 대화만 보여줘요. 전체는 원본 로그에서 볼 수 있어요.");
+    }
+
+    archiveRunId = run.id;
+
+    elements.archiveTitle.textContent = `${description.day} ${description.time}`.trim();
+    elements.archiveCount.textContent = [description.duration, description.status.label].filter(Boolean).join(" · ");
+    elements.archiveLead.textContent = description.lead || description.meta;
+    elements.archiveGains.hidden = !run.gains?.length;
+    elements.archiveGains.replaceChildren(...(run.gains || []).slice().reverse().map(createGainItem));
+    elements.archiveNotes.textContent = notes.join(" ");
+    elements.archiveNotes.hidden = !notes.length;
+    elements.archiveReport.disabled = !run.hasReport;
+    elements.archiveLog.disabled = Boolean(run.isUnreadable);
+    elements.archiveDelete.disabled = Boolean(run.isActive);
+    elements.archiveChat.replaceChildren(...(transcript.items.length ? transcript.items.map(createChatItem) : [createChatLine("note", createChatText("span", "", "대화로 보여 줄 내용이 없어요."))]));
+    elements.archiveChat.scrollTop = 0;
+};
+
+const openArchiveDetail = async (id) => {
+    const token = ++archiveToken;
+
+    setArchiveOpen(true);
+    showArchivePane("detail");
+    setArchiveNote("불러오는 중이에요.");
+
+    elements.archiveChat.replaceChildren();
+
+    const result = await window.autopilot.readRun(id);
+
+    if (token !== archiveToken) {
+        return;
+    }
+
+    if (result.status !== STATUS_OK) {
+        showArchivePane("list");
+        setArchiveNote(result.error.msg, "warn");
+
+        return;
+    }
+
+    setArchiveNote("");
+    renderArchiveDetail(result.data);
+};
+
+const handleRunItemClick = (event) => {
+    const item = event.target.closest("[data-id]");
+
+    if (item) {
+        openArchiveDetail(item.dataset.id);
+    }
+};
+
+const handleArchiveFile = async (kind) => {
+    const result = await window.autopilot.openRunFile(archiveRunId, kind);
+
+    if (result.status !== STATUS_OK) {
+        setArchiveNote(result.error.msg, "warn");
+    }
+};
+
+// 지운 뒤에는 목록으로 돌아가 지워졌음을 알리고, 시작 화면의 최근 목록도 다시 읽는다.
+const handleArchiveDelete = async () => {
+    const result = await window.autopilot.deleteRun(archiveRunId);
+
+    if (result.status !== STATUS_OK) {
+        setArchiveNote(result.error.msg, "warn");
+
+        return;
+    }
+
+    if (!result.data.cancelled) {
+        await openArchiveList();
+        loadRecentRuns();
+        setArchiveNote("기록을 지웠어요.");
     }
 };
 
@@ -969,14 +1389,8 @@ const getPhaseText = (state) => {
     return phase;
 };
 
-const getSinceText = (state) => {
-    return `${formatClock(state.startedAt)}부터 ${formatRemaining(Date.now() - state.startedAt)}째`;
-};
-
-// 따로 알릴 진행 단계가 없으면 실행 중에는 언제부터 얼마나 일했는지 보여준다.
 const renderStatusPhase = () => {
-    const state = currentState;
-    const phaseText = getPhaseText(state) || (state.status === "running" && state.startedAt ? getSinceText(state) : "");
+    const phaseText = getPhaseText(currentState);
 
     elements.statPhase.hidden = !phaseText;
     setText(elements.statPhase, phaseText);
@@ -987,14 +1401,43 @@ const renderView = (state) => {
         isFinishDismissed = false;
     }
 
-    document.body.dataset.view = getView(state, isFinishDismissed);
+    const view = getView(state, isFinishDismissed);
+
+    document.body.dataset.view = view;
+
+    if (view !== "run") {
+        setTasksOpen(false);
+    }
+};
+
+// 실행 중에는 작업 칸이 접혀 있고, 눌러서 읽어 볼 수 있다. 실행이 끝나면 다음 실행을 위해 접힌 상태로 되돌린다.
+const setTasksOpen = (isOpen) => {
+    document.body.toggleAttribute("data-tasks-open", isOpen);
+    elements.tasksToggle.setAttribute("aria-expanded", String(isOpen));
 };
 
 const renderGreeting = () => {
-    const greeting = getGreeting({ hour: new Date().getHours(), policy: elements.form.elements.policy.value, endTime: elements.endTime.value, hasProject: Boolean(settings.projectDir) });
+    const projectName = settings.projectDir ? settings.projectDir.split(/[\\/]/).filter(Boolean).pop() : "";
+    const greeting = getGreeting({ hour: new Date().getHours(), policy: elements.form.elements.policy.value, endTime: elements.endTime.value, projectName: projectName });
 
-    setText(elements.greetTitle, greeting.title);
+    const [before, after] = projectName ? greeting.title.split(projectName) : [greeting.title, ""];
+    const name = document.createElement("span");
+
+    name.className = "project-name";
+    name.textContent = projectName;
+    elements.greetTitle.replaceChildren(before, ...(projectName ? [name, after] : []));
     setText(elements.greetLead, greeting.lead);
+};
+
+// 앱처럼 보이도록 브라우저 기본 동작(오른쪽 메뉴, 파일 끌어 놓기 이동)을 막는다. 입력 칸은 붙여넣기 때문에 메뉴를 남긴다.
+const bindNativeFeel = () => {
+    document.addEventListener("contextmenu", (event) => {
+        if (!event.target.closest("input, textarea, .log")) {
+            event.preventDefault();
+        }
+    });
+    document.addEventListener("dragover", (event) => event.preventDefault());
+    document.addEventListener("drop", (event) => event.preventDefault());
 };
 
 // 실행 중에는 작업 칸 대신 잠긴 작업 요약 한 줄을 보여준다.
@@ -1044,19 +1487,18 @@ const renderTrack = () => {
     elements.trackBar.replaceChildren(
         ...track.segments.map((segment) => createTrackNode("i", segment.isLive ? "seg live" : "seg", { from: segment.from, to: segment.to })),
         ...track.commits.map((commit) => Object.assign(createTrackNode("i", "commit", { at: commit.at }), { title: `커밋 ${commit.count}개` })),
-        ...(track.head === null ? [] : [createTrackNode("i", "head", { at: track.head })]),
-        ...track.labels.map((label) => createTrackNode("span", ["mark", label.isLive ? "live" : "", label.isEnd ? "end" : ""].join(" ").trim(), { at: label.at }, label.text))
+        ...(track.head === null ? [] : [createTrackNode("i", "head", { at: track.head })])
     );
 };
 
 const renderWork = (state) => {
     const summary = getWorkSummary(state);
 
-    setText(elements.workTools, String(summary.toolCalls));
-    setText(elements.workRead, String(summary.filesRead));
-    setText(elements.workEdited, String(summary.filesEdited));
-    setText(elements.workInsertions, `+${summary.insertions}`);
-    setText(elements.workDeletions, `−${summary.deletions}`);
+    swapText(elements.workTools, String(summary.toolCalls));
+    swapText(elements.workRead, String(summary.filesRead));
+    swapText(elements.workEdited, String(summary.filesEdited));
+    swapText(elements.workInsertions, `+${summary.insertions}`);
+    swapText(elements.workDeletions, `−${summary.deletions}`);
     setText(elements.workCommits, `남긴 커밋 ${summary.commits}개`);
 };
 
@@ -1075,11 +1517,11 @@ const renderOutcome = (state) => {
     const after = splitFigure(parsed.after);
 
     setText(elements.outcomeRound, `${gain.round}회차`);
-    setText(elements.outcomeLabel, parsed.label);
+    swapText(elements.outcomeLabel, parsed.label);
     elements.outcomeHero.hidden = !parsed.after;
     setText(elements.outcomeBefore, before.number);
     setText(elements.outcomeBeforeUnit, before.unit);
-    setText(elements.outcomeAfter, after.number);
+    swapText(elements.outcomeAfter, after.number);
     setText(elements.outcomeAfterUnit, after.unit);
 };
 
@@ -1178,6 +1620,16 @@ const showFailure = (result) => {
     showNotice(result.status === STATUS_OK ? "" : result.error.msg);
 };
 
+const renderUpdate = (update) => {
+    elements.updateChip.hidden = !update;
+
+    if (update) {
+        elements.updateLabel.textContent = `v${update.version}`;
+        elements.updateChip.title = `새 버전 v${update.version}이 나왔어요 (현재 v${appVersion}). 누르면 다운로드 페이지가 열려요.`;
+        elements.updateChip.setAttribute("aria-label", `새 버전 v${update.version} 다운로드 페이지 열기`);
+    }
+};
+
 // 로그인이 필요해서 시작하지 못했으면 안내 줄에 로그인 버튼을 보여준다.
 const showLoginRequired = (isRequired, message = "") => {
     elements.loginBannerMessage.textContent = message;
@@ -1214,8 +1666,6 @@ const renderSettings = () => {
     const hasProject = Boolean(settings.projectDir);
 
     elements.projectPath.textContent = settings.projectDir || "선택한 폴더가 없어요.";
-    elements.projectName.textContent = hasProject ? settings.projectDir.split(/[\\/]/).filter(Boolean).pop() : "프로젝트 없음";
-    elements.projectName.title = settings.projectDir;
     elements.project.toggleAttribute("data-missing", !hasProject);
     elements.selectProject.textContent = hasProject ? "폴더 변경" : "폴더 선택";
     elements.projectBanner.hidden = hasProject;
@@ -1228,17 +1678,36 @@ const POLICY_LABELS = { auto: "자율개선", todo: "지시개선" };
 // 목록의 선택 표시가 미끄러지는 것을 보여준 뒤 팝오버를 닫는다.
 const CHOICE_CLOSE_DELAY_MS = 320;
 
-// 알약의 글자·아이콘이 실제로 바뀔 때만 맺히는 전환을 건다.
+const CHIP_RESIZE_MS = 320;
+const CHIP_RESIZE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// 글자 길이로 알약 너비가 바뀌면 뒤의 알약이 튀지 않고 함께 미끄러지도록 너비를 이어 준다.
+const animateChipWidth = (chip, fromWidth) => {
+    const toWidth = chip.getBoundingClientRect().width;
+
+    if (reducedMotion.matches || Math.abs(toWidth - fromWidth) < 1) {
+        return;
+    }
+
+    chip.animate([{ width: `${fromWidth}px` }, { width: `${toWidth}px` }], { duration: CHIP_RESIZE_MS, easing: CHIP_RESIZE_EASING });
+};
+
+// 알약의 글자·아이콘이 실제로 바뀌었는지 돌려준다. 바뀌었으면 너비 전환까지 건다.
 const updateChip = (chip, icon, name, iconId, label) => {
     const href = `#${iconId}`;
 
     if (icon.getAttribute("href") === href && name.textContent === label) {
-        return;
+        return false;
     }
+
+    const previousWidth = chip.getBoundingClientRect().width;
 
     icon.setAttribute("href", href);
     name.textContent = label;
-    replayAnimation(chip, "chip-swap");
+    animateChipWidth(chip, previousWidth);
+
+    return true;
 };
 
 const closePopoverSoon = (popover) => {
@@ -1250,7 +1719,9 @@ const renderPolicy = () => {
     const policy = elements.form.elements.policy.value;
 
     elements.policyPopover.dataset.policy = policy;
-    updateChip(elements.policyChip, elements.policyChipIcon, elements.policyChipName, `icon-policy-${policy}`, POLICY_LABELS[policy]);
+    if (updateChip(elements.policyChip, elements.policyChipIcon, elements.policyChipName, `icon-policy-${policy}`, POLICY_LABELS[policy])) {
+        replayAnimation(elements.policyChipName, "tick-up");
+    }
 
     for (const option of elements.policyOptions) {
         option.setAttribute("aria-pressed", String(option.dataset.policy === policy));
@@ -1273,7 +1744,10 @@ const renderModelChip = () => {
     const model = elements.form.elements.model.value;
 
     elements.modelChip.dataset.model = model;
-    updateChip(elements.modelChip, elements.modelChipMark, elements.modelChipName, `mark-${model}`, MODEL_LABELS[model]);
+
+    if (updateChip(elements.modelChip, elements.modelChipMark, elements.modelChipName, `mark-${model}`, MODEL_LABELS[model])) {
+        replayAnimation(elements.modelChip, "model-swap");
+    }
 };
 
 // 팝오버가 열리고 닫히면 그 팝오버를 여는 알약에 상태를 알린다.
@@ -1288,7 +1762,7 @@ const bindPopoverChips = () => {
 /* 모델·Effort */
 
 // 단계가 높을수록 두 마루의 진폭이 커지는 물결. 알약과 목록이 같은 모양을 쓴다.
-const getWavePath = (level) => `M1 8q2-${(1 + level * 1.7).toFixed(1)} 4 0t4 0t4 0t4 0`;
+const getWavePath = (level) => `M-7 8q2-${(1 + level * 1.7).toFixed(1)} 4 0${"t4 0".repeat(8)}`;
 
 // 이름은 단계가 오른 쪽(아래에서)·내린 쪽(위에서)으로 들어온다.
 const renderEffort = () => {
@@ -1306,8 +1780,12 @@ const renderEffort = () => {
     }
 
     if (elements.effortName.textContent !== label) {
+        const previousWidth = elements.effortControl.getBoundingClientRect().width;
+
         elements.effortName.textContent = label;
+        animateChipWidth(elements.effortControl, previousWidth);
         replayAnimation(elements.effortName, level > previousLevel ? "tick-up" : "tick-down");
+        replayAnimation(elements.effortControl, "effort-swap");
     }
 
     elements.effortWaves.forEach((path) => {
@@ -1354,6 +1832,9 @@ const renderOptions = (state) => {
     elements.effort.disabled = state.status === "stopping";
     elements.effortControl.disabled = state.status === "stopping";
 
+    elements.modelChip.title = state.status === "stopping" ? OPTIONS_LOCKED_TITLE : "";
+    elements.effortControl.title = elements.modelChip.title;
+
     if (state.status === "stopping") {
         elements.modelPopover.hidePopover();
         elements.effortPopover.hidePopover();
@@ -1365,7 +1846,7 @@ const renderOptions = (state) => {
         return;
     }
 
-    showApplyNote(OPTIONS_HINTS[state.status], "");
+    showApplyNote("", "");
 };
 
 // 변경은 즉시 전달한다. 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다.
@@ -1493,23 +1974,46 @@ const bindEndTimePicker = () => {
 
 /* 전체 렌더링과 이벤트 */
 
+// 종료 신호는 실수로 누르기 쉬워 한 번 누르면 잠깐 대기하고, 그 안에 한 번 더 눌러야 보낸다.
+const setStopArmed = (isArmed) => {
+    clearTimeout(stopArmTimer);
+    stopArmTimer = isArmed ? setTimeout(() => setStopArmed(false), STOP_CONFIRM_MS) : 0;
+    renderMainAction(currentState, Boolean(settings.projectDir));
+};
+
 const renderMainAction = (state, hasProject) => {
     const config = MAIN_ACTIONS[state.status];
+    const isArmed = Boolean(stopArmTimer) && config.action === "stop";
+
+    if (!isArmed && stopArmTimer) {
+        clearTimeout(stopArmTimer);
+        stopArmTimer = 0;
+    }
 
     elements.mainAction.dataset.action = config.action;
-    swapText(elements.mainActionLabel, config.label);
-    elements.mainAction.title = config.title;
+    elements.mainAction.toggleAttribute("data-armed", isArmed);
+    elements.mainAction.style.setProperty("--arm-ms", `${STOP_CONFIRM_MS}ms`);
+    swapText(elements.mainActionLabel, isArmed ? STOP_ARMED_LABEL : config.label);
+    elements.mainAction.title = isArmed ? `${STOP_CONFIRM_MS / 1000}초 안에 한 번 더 누르면 현재 회차를 마치고 종료해요` : config.title;
     elements.mainAction.disabled = state.status === "idle" && !hasProject;
 };
 
 const renderState = (state) => {
     currentState = state;
 
+    // 실행이 끝나면 방금 끝난 실행이 지난 실행 목록에 들어온다.
+    if (lastStatus !== "idle" && state.status === "idle") {
+        loadRecentRuns();
+    }
+
+    lastStatus = state.status;
+
     const hasProject = Boolean(settings.projectDir);
     const isIdle = state.status === "idle";
     const phase = hasProject ? getRunPhase(state) : { label: "프로젝트 미선택", tone: "muted" };
 
     document.body.dataset.status = state.status;
+    elements.usageList.toggleAttribute("data-working", state.status === "running");
     renderView(state);
     swapText(elements.badge, getStatusText(state, phase));
     elements.badge.dataset.tone = phase.tone;
@@ -1524,7 +2028,7 @@ const renderState = (state) => {
     if (!isIdle) {
         elements.timePopover.hidePopover();
     }
-    elements.tasks.disabled = !isIdle;
+    elements.tasks.readOnly = !isIdle;
     setRadiosDisabled("policy", !isIdle);
     elements.policyChip.disabled = !isIdle;
 
@@ -1546,7 +2050,7 @@ const renderState = (state) => {
     renderFinish(state);
     renderGreeting();
     renderTasksSummary();
-    renderStory();
+    scheduleStory();
 };
 
 const handleMainAction = async (event) => {
@@ -1557,6 +2061,13 @@ const handleMainAction = async (event) => {
     if (action === "start") {
         await startRun();
     } else if (action === "stop") {
+        if (!stopArmTimer) {
+            setStopArmed(true);
+
+            return;
+        }
+
+        setStopArmed(false);
         showFailure(await window.autopilot.stop());
     } else {
         showFailure(await window.autopilot.kill());
@@ -1578,6 +2089,7 @@ const handleSelectProject = async () => {
 
         renderSettings();
         renderState(currentState);
+        loadRecentRuns();
     }
 };
 
@@ -1591,7 +2103,7 @@ const handleResetProgress = async () => {
     }
 
     if (!result.data.cancelled) {
-        showNotice(result.data.isReset ? "진행 기록을 초기화했어요. 원본은 autopilot/progress 폴더에 보관했어요." : "이미 초기 상태예요.", "ok");
+        showNotice(result.data.isReset ? "진행 기록을 초기화했어요. 원본은 .autopilot/progress 폴더에 보관했어요." : "이미 초기 상태예요.", "ok");
     }
 };
 
@@ -1606,6 +2118,10 @@ const renderWindowState = ({ maximized }) => {
 const bindWindowControls = () => {
     elements.settingsToggle.addEventListener("click", () => setPanelOpen("settings", getOpenPanel() !== "settings"));
     elements.profileToggle.addEventListener("click", () => setPanelOpen("profile", getOpenPanel() !== "profile"));
+    elements.backToReady.addEventListener("click", () => {
+        isFinishDismissed = true;
+        renderState(currentState);
+    });
     elements.windowMinimize.addEventListener("click", () => window.appWindow.minimize());
     elements.windowMaximize.addEventListener("click", () => window.appWindow.toggleMaximize());
     elements.windowClose.addEventListener("click", () => window.appWindow.close());
@@ -1621,11 +2137,17 @@ const bindWindowControls = () => {
 const initialize = async () => {
     revealWhenReady();
     bindWindowControls();
+    bindNativeFeel();
+    elements.tasksToggle.addEventListener("click", () => setTasksOpen(!document.body.hasAttribute("data-tasks-open")));
 
     const snapshot = await window.autopilot.getState();
 
     settings = snapshot.settings;
     appVersion = snapshot.version;
+
+    renderUpdate(snapshot.update);
+    window.autopilot.onUpdate(renderUpdate);
+    elements.updateChip.addEventListener("click", async () => showFailure(await window.autopilot.openUpdate()));
 
     elements.endTime.value = settings.endTime;
     renderEndTime();
@@ -1638,6 +2160,7 @@ const initialize = async () => {
     renderSettings();
     renderState(snapshot.state);
     appendLogEntries(snapshot.logs);
+    loadRecentRuns();
 
     applyAccountsPayload((await window.autopilot.getAccounts()).data);
 
@@ -1663,7 +2186,17 @@ const initialize = async () => {
     elements.scrim.addEventListener("click", () => {
         closePanels();
         setHistoryOpen(false);
+        setArchiveOpen(false);
     });
+    elements.archiveAll.addEventListener("click", openArchiveList);
+    elements.archiveToggle.addEventListener("click", openArchiveList);
+    elements.archiveBack.addEventListener("click", openArchiveList);
+    elements.archiveClose.addEventListener("click", () => setArchiveOpen(false));
+    elements.archiveReport.addEventListener("click", () => handleArchiveFile("report"));
+    elements.archiveLog.addEventListener("click", () => handleArchiveFile("log"));
+    elements.archiveDelete.addEventListener("click", handleArchiveDelete);
+    elements.recentList.addEventListener("click", handleRunItemClick);
+    elements.archiveList.addEventListener("click", handleRunItemClick);
     elements.usageRefresh.addEventListener("click", handleRefreshAccount);
     elements.accountSelect.addEventListener("click", handleAccountSelect);
     elements.selectClaudeDir.addEventListener("click", () => handleClaudeDirChange(window.autopilot.selectClaudeDir));

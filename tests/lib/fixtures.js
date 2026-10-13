@@ -17,7 +17,7 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => prompt += chunk);
 process.stdin.on('end', () => {
   fs.writeFileSync('prompt.txt', prompt);
-  if (fs.existsSync('autopilot/progress/RUNNING')) fs.writeFileSync('lock-snapshot.txt', fs.readFileSync('autopilot/progress/RUNNING', 'utf8'));
+  if (fs.existsSync('.autopilot/progress/RUNNING')) fs.writeFileSync('lock-snapshot.txt', fs.readFileSync('.autopilot/progress/RUNNING', 'utf8'));
   fs.appendFileSync('cleanup.log', /AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md/.test(prompt) ? '1' : '0');
   const mode = process.env.AP_MODE;
   const emit = value => console.log(JSON.stringify(value));
@@ -53,10 +53,10 @@ process.stdin.on('end', () => {
     execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
     execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] fake']);
   } else if (mode === 'todo') {
-    const marker = prompt.match(/빈 파일 (autopilot\/progress\/[^ ]+\/TODO_COMPLETE)/)[1];
+    const marker = prompt.match(/빈 파일 (\.autopilot\/progress\/[^ ]+\/TODO_COMPLETE)/)[1];
     fs.writeFileSync(marker, '');
-  } else if (mode === 'stop') fs.writeFileSync('autopilot/progress/STOP', '');
-  else if (mode === 'options') fs.writeFileSync('autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ model: 'sonnet', effort: 'low' }));
+  } else if (mode === 'stop') fs.writeFileSync('.autopilot/progress/STOP', '');
+  else if (mode === 'options') fs.writeFileSync('.autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ model: 'sonnet', effort: 'low' }));
   if (mode === 'failure') process.exitCode = 1;
   if (!mode.startsWith('limit')) emit({ type: 'result', subtype: 'success', is_error: mode === 'is-error', num_turns: 1, duration_ms: 10, total_cost_usd: 0.25, result: '검증 <script>' });
   console.error('fake stderr 한글\nReport : /forged-stderr');

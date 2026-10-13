@@ -30,7 +30,7 @@ AutoPilot은 AutoPilot 앱이 돌리는 여러 회차로 나뉘어 실행된다.
 - \`지시개선\` - 예약 작업만 처리한다. 스스로 새 개선 작업을 찾지 않으며, 예약 작업이 모두 끝났으면 남은 시간이 있어도 전체 실행을 끝낸다.
 
 \`지시개선\`에서 예약 작업이 전부 끝났다면 진행 기록을 갱신한 뒤 빈 파일
-\`autopilot/progress/<실행 시작 날짜>/TODO_COMPLETE\`를 만들고 세션을 종료한다.
+\`.autopilot/progress/<실행 시작 날짜>/TODO_COMPLETE\`를 만들고 세션을 종료한다.
 앱은 이 파일을 보고 다음 회차를 시작하지 않는다.
 **처리할 예약 작업이 남아 있으면 만들지 않는다** - 만드는 순간 전체 실행이 끝난다.
 
@@ -63,7 +63,7 @@ AutoPilot은 AutoPilot 앱이 돌리는 여러 회차로 나뉘어 실행된다.
 여러 작업을 끝낸 뒤 한꺼번에 기록하지 않는다.
 완료된 작업의 기록은 임의로 삭제하지 않는다. 기록은 짧을수록 좋다. 매 회차가 이 문서를 읽으므로 길어질수록 시간과 비용이 든다.
 회차를 시작할 때 진행 기록이 ${PROGRESS_MAX_LINES}줄을 넘으면
-앱이 원본을 \`autopilot/progress/<시작 날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md\`에 보관하고 회차 프롬프트로 정리를 지시한다.
+앱이 원본을 \`.autopilot/progress/<시작 날짜>/AUTOPILOT_PROGRESS_<고유 ID>.md\`에 보관하고 회차 프롬프트로 정리를 지시한다.
 정리 지시가 있으면 작업 전에 현재 상태, 미완료·남은 작업, 검증 실패와 주의사항, 다음 작업을 유지하고,
 완료 작업은 최근 5건만 한 줄씩 남기고 서술을 간결하게 줄여 전체를 ${PROGRESS_TARGET_LINES}줄 안팎으로 만든다. 본문에 보관본 경로를 남기고 판단이 어려운 내용은 유지한다.
 보관 실패 시 기존 문서를 유지하며, 줄 수를 맞추려고 인수인계 정보를 삭제하지 않는다.
@@ -174,7 +174,7 @@ Git 상태 확인, diff 확인처럼 변경하지 않는 조회는 프로젝트 
 허용 범위 외부의 변경이 필요하다고 판단되면 임의로 수행하지 않고 그 작업을 건너뛴다.
 
 \`autopilot/\` 폴더는 AutoPilot이 로그 · 리포트 · 실행 신호를 두는 작업 폴더이므로 허용 범위 안에 있어도 작업 대상이 아니다.
-이 안에서는 \`autopilot/progress/<날짜>/TODO_COMPLETE\` 생성과 \`autopilot/recycle_bin/\`으로의 이동만 한다.
+이 안에서는 \`.autopilot/progress/<날짜>/TODO_COMPLETE\` 생성과 \`.autopilot/recycle_bin/\`으로의 이동만 한다.
 그 밖의 파일(로그 · 리포트 · STOP · RUNNING · ROUND_OPTIONS.json 등)은 읽기만 하고 수정 · 이동 · 삭제하지 않는다.
 
 ## 기본 원칙
@@ -196,9 +196,9 @@ Git 상태 확인, diff 확인처럼 변경하지 않는 조회는 프로젝트 
 
 ## 파일 삭제 정책
 
-파일을 직접 삭제하지 않는다. 삭제가 필요한 파일이나 폴더는 프로젝트 루트의 \`autopilot/recycle_bin\`으로 옮긴다.
+파일을 직접 삭제하지 않는다. 삭제가 필요한 파일이나 폴더는 프로젝트 루트의 \`.autopilot/recycle_bin\`으로 옮긴다.
 
-- 원래 디렉터리 구조를 그대로 유지한다. 예: \`test/location/file.js\` → \`autopilot/recycle_bin/test/location/file.js\`
+- 원래 디렉터리 구조를 그대로 유지한다. 예: \`test/location/file.js\` → \`.autopilot/recycle_bin/test/location/file.js\`
 - 같은 이름의 파일이 이미 있으면 덮어쓰지 않는다.
 - \`recycle_bin\` 내부는 정리하지 않고, 작업 대상으로도 취급하지 않는다.
 

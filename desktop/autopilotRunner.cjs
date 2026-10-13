@@ -447,7 +447,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
         attachTimer = setInterval(followLog, attachPollMs);
     };
 
-    // 앱이 시작하지 않았지만 이미 실행 중인 엔진이 있으면(엔진의 status로 확인) 연결한다. 로그 경로는 프로젝트 autopilot/progress/ 안의 엔진 로그만 받는다.
+    // 앱이 시작하지 않았지만 이미 실행 중인 엔진이 있으면(엔진의 status로 확인) 연결한다. 로그 경로는 프로젝트 .autopilot/progress/ 안의 엔진 로그만 받는다.
     const attachIfRunning = ({ command, prefixArgs = [], env, projectDir }) => {
         return new Promise((resolve) => {
             const notAttached = { status: STATUS_OK, data: { attached: false } };

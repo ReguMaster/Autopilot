@@ -145,7 +145,7 @@ const checkProjectPaths = (context) => {
 
     const workDir = getWorkDir(projectDir);
 
-    assert.equal(workDir, path.join(projectDir, "autopilot"));
+    assert.equal(workDir, path.join(projectDir, ".autopilot"));
 
     ensureWorkDir(workDir);
 
@@ -272,7 +272,7 @@ const checkProgressReset = (context) => {
     const archiveFile = path.join(progressDir, path.basename(resetResult.archivePath));
 
     assert.equal(resetResult.isDone, true);
-    assert.match(resetResult.archivePath, /^autopilot\/progress\/2026-10-10\/AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md$/);
+    assert.match(resetResult.archivePath, /^\.autopilot\/progress\/2026-10-10\/AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md$/);
     assert.equal(fs.readFileSync(archiveFile, "utf8"), BOM + original);
     assert(readRecord().startsWith(PROGRESS_TEMPLATE));
     assert(readRecord().includes(resetResult.archivePath));

@@ -31,7 +31,7 @@ const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
 const DEFAULT_EFFORT = "high";
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
-const WORK_DIR_NAME = "autopilot";
+const WORK_DIR_NAME = ".autopilot";
 const APP_DATA_DIR_NAME = "AutoPilot";
 const PROJECTS_DATA_DIR_NAME = "projects";
 const PROGRESS_FILE_NAME = "AUTOPILOT_PROGRESS.md";

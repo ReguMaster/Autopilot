@@ -211,13 +211,22 @@ const isNightHour = (hour) => {
     return hour >= 18 || hour < 5;
 };
 
-const getGreeting = ({ hour, policy, endTime, hasProject }) => {
-    if (!hasProject) {
-        return { title: "먼저 작업할 프로젝트를 골라 주세요.", lead: "Git 저장소의 루트 폴더를 고르면 바로 시작할 수 있어요." };
+const getGreetingEmoji = (hour) => {
+    if (isNightHour(hour)) {
+        return "🌙";
+    }
+
+    return hour < 12 ? "☀️" : "☕";
+};
+
+const getGreeting = ({ hour, policy, endTime, projectName }) => {
+    if (!projectName) {
+        return { title: "먼저 작업할 프로젝트를 골라 주세요. 📂", lead: "Git 저장소의 루트 폴더를 고르면 바로 시작할 수 있어요." };
     }
 
     const end = endTime || DEFAULT_END_TIME;
-    const title = isNightHour(hour) ? "오늘 밤에는 무엇을 해 둘까요?" : "지금부터 무엇을 해 둘까요?";
+    const when = isNightHour(hour) ? "오늘 밤에는" : "지금부터";
+    const title = `${when} ${projectName}에 무엇을 해 둘까요? ${getGreetingEmoji(hour)}`;
 
     if (policy === "todo") {
         return { title: title, lead: `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` };
@@ -241,7 +250,7 @@ const getWorkSummary = (state) => {
 
 // 엔진 종료 사유를 사용자에게 들려주는 문장으로 바꾼다. 모르는 사유는 그대로 보여준다.
 const FINISH_REASONS = [
-    [/^예정 시각 도달$/, (state) => `종료 시각 ${formatClock(state.deadlineAt)}에 맞춰 멈췄어요.`],
+    [/^예정 시각 도달$/, (state) => (state.deadlineAt ? `종료 시각 ${formatClock(state.deadlineAt)}에 맞춰 멈췄어요.` : "정해 둔 종료 시각에 맞춰 멈췄어요.")],
     [/예약 작업 완료/, () => "적어 주신 일을 모두 마쳤어요."],
     [/연속 새 commit 없음/, () => "더 고칠 만한 곳을 찾지 못해서 멈췄어요."],
     [/^중단 요청$/, () => "말씀하신 대로 이번 회차를 마치고 멈췄어요."],
@@ -251,14 +260,24 @@ const FINISH_REASONS = [
     [/회차 상한/, () => "정해진 회차를 모두 채웠어요."]
 ];
 
+const getReasonText = (reason, deadlineAt) => {
+    return FINISH_REASONS.find(([pattern]) => pattern.test(reason))?.[1]({ deadlineAt: deadlineAt }) || (reason ? `종료 사유: ${reason}` : "");
+};
+
+const getWorkSentence = (roundCount, commitCount) => {
+    if (!roundCount) {
+        return "회차를 시작하기 전에 멈췄어요.";
+    }
+
+    return commitCount ? `${roundCount}회차 동안 쉬지 않고 일해서 커밋 ${commitCount}개를 남겼어요.` : `${roundCount}회차 동안 일했지만 커밋으로 남길 만한 변경은 없었어요.`;
+};
+
 const describeFinish = (state) => {
     const tone = getRunPhase(state).tone;
     const hour = new Date(state.endedAt).getHours();
-    const roundCount = state.rounds.length;
-    const commitCount = getWorkSummary(state).commits;
-    const reasonText = FINISH_REASONS.find(([pattern]) => pattern.test(state.reason))?.[1](state) || (state.reason ? `종료 사유: ${state.reason}` : "");
+    const reasonText = getReasonText(state.reason, state.deadlineAt);
+    const work = getWorkSentence(state.rounds.length, getWorkSummary(state).commits);
     let title = "일을 마쳤어요.";
-    let work = `${roundCount}회차 동안 일했지만 커밋으로 남길 만한 변경은 없었어요.`;
 
     if (tone === "danger") {
         title = "도중에 멈췄어요.";
@@ -266,12 +285,6 @@ const describeFinish = (state) => {
         title = "여기까지 하고 멈췄어요.";
     } else if (hour >= 5 && hour < 12) {
         title = "좋은 아침이에요.";
-    }
-
-    if (!roundCount) {
-        work = "회차를 시작하기 전에 멈췄어요.";
-    } else if (commitCount) {
-        work = `${roundCount}회차 동안 쉬지 않고 일해서 커밋 ${commitCount}개를 남겼어요.`;
     }
 
     return { title: title, lead: reasonText ? `${work} ${reasonText}` : work };
@@ -300,9 +313,6 @@ const getWaitSentence = (state) => {
 
 /* 회차 진행선: 실행 시작부터 종료 예정 시각까지를 100으로 놓고 회차 구간·커밋·지금 위치를 퍼센트로 정한다 */
 
-const TRACK_LABEL_GAP = 9;
-const TRACK_LABEL_END = 86;
-
 const getTrack = (state, nowMs) => {
     if (!state.startedAt || !state.deadlineAt) {
         return null;
@@ -315,27 +325,9 @@ const getTrack = (state, nowMs) => {
     // 연결하면서 이미 쓰인 로그로 읽은 회차는 시각을 몰라 그리지 않는다.
     const rounds = state.rounds.filter((round) => round.timesKnown);
     const segments = rounds.map((round) => ({ from: toPercent(round.startedAt), to: toPercent(round.endedAt || lastMs), isLive: isRunning && !round.endedAt }));
-    const labels = [];
-
-    rounds.forEach((round, index) => {
-        const label = { at: segments[index].from, text: `${round.round}회차`, isLive: segments[index].isLive, isEnd: segments[index].from > TRACK_LABEL_END };
-
-        // 짧은 회차가 이어지면 이름이 겹치므로 건너뛰되, 지금 회차 이름은 앞 이름을 밀어내고 남긴다.
-        if (labels.length && label.at - labels.at(-1).at < TRACK_LABEL_GAP) {
-            if (!label.isLive) {
-                return;
-            }
-
-            labels.pop();
-        }
-
-        labels.push(label);
-    });
-
     return {
         segments: segments,
         commits: rounds.filter((round) => round.endedAt && round.commits?.length).map((round) => ({ at: toPercent(round.endedAt), count: round.commits.length })),
-        labels: labels,
         head: isRunning ? toPercent(nowMs) : null,
         startText: formatClock(state.startedAt),
         endText: formatClock(state.deadlineAt)
@@ -344,7 +336,7 @@ const getTrack = (state, nowMs) => {
 
 /* 이야기: 엔진 로그의 Claude 문장과 도구 호출을 읽어, 도구 호출 뒤에 이어지는 문장 단위(beat)로 묶는다 */
 
-const STORY_LIMIT = 6;
+const STORY_LIMIT = 10;
 const STORY_TOOL_LIMIT = 4;
 const STORY_DETAIL_LENGTH = 32;
 const STORY_TOOL_PATTERN = /^(\d{2}:\d{2}:\d{2}) {3}> (\S+) ?(.*)$/;
@@ -523,4 +515,223 @@ const splitFigure = (value) => {
     const figure = value.match(FIGURE_PATTERN);
 
     return figure ? { number: figure[1], unit: figure[2] } : { number: value, unit: "" };
+};
+
+/* 지난 실행: 로그 파일에서 읽은 요약을 목록과 상세 문장으로 바꾼다. 로그가 깨졌거나 끝맺음이 없어도 같은 모양으로 보여준다 */
+
+const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PAST_STATUSES = [
+    [/^예정 시각 도달$|예약 작업 완료|연속 새 commit 없음|회차 상한/, "정상 종료", "ok"],
+    [/^중단 요청$|^강제 종료$/, "중단됨", "warn"],
+    [/사용량 한도/, "한도로 멈춤", "warn"],
+    [/연속 \d+회 실패|^실행 오류/, "오류 종료", "danger"]
+];
+
+const getStartOfDay = (ms) => {
+    const date = new Date(ms);
+
+    date.setHours(0, 0, 0, 0);
+
+    return date.getTime();
+};
+
+const formatPastDay = (ms, nowMs) => {
+    if (!ms) {
+        return "날짜를 알 수 없어요";
+    }
+
+    const days = Math.round((getStartOfDay(nowMs) - getStartOfDay(ms)) / DAY_MS);
+
+    if (days === 0) {
+        return "오늘";
+    }
+
+    if (days === 1) {
+        return "어제";
+    }
+
+    const date = new Date(ms);
+
+    return `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAY_LABELS[date.getDay()]})`;
+};
+
+const getPastStatus = (run) => {
+    if (run.isActive) {
+        return { label: "진행 중", tone: "run" };
+    }
+
+    if (run.isUnreadable) {
+        return { label: "읽을 수 없음", tone: "danger" };
+    }
+
+    if (run.isEmpty) {
+        return { label: "내용 없음", tone: "muted" };
+    }
+
+    if (!run.reason) {
+        return { label: "끝맺음 없음", tone: "muted" };
+    }
+
+    const matched = PAST_STATUSES.find(([pattern]) => pattern.test(run.reason));
+
+    return matched ? { label: matched[1], tone: matched[2] } : { label: "종료", tone: "muted" };
+};
+
+const getPastNotes = (run) => {
+    if (run.isUnreadable) {
+        return ["기록 파일을 읽지 못했어요."];
+    }
+
+    const notes = [];
+
+    if (run.isEmpty) {
+        notes.push("기록에서 읽을 수 있는 내용이 없어요. 파일이 비었거나 깨졌을 수 있어요.");
+    } else if (!run.reason && !run.isActive) {
+        notes.push("끝맺음 줄이 없어요. 앱이나 PC가 꺼졌거나 강제로 종료됐을 수 있어요.");
+    }
+
+    if (run.isPartial) {
+        notes.push("기록이 커서 마지막 부분만 읽었어요.");
+    }
+
+    return notes;
+};
+
+const formatPastMeta = (run) => {
+    if (run.isUnreadable || run.isEmpty) {
+        return "";
+    }
+
+    const parts = [`${run.roundCount}회차`, run.commitCount ? `커밋 ${run.commitCount}개 +${run.insertions} −${run.deletions}` : "커밋 없음"];
+
+    return parts.join(" · ");
+};
+
+const describePastRun = (run, nowMs) => {
+    const hasDuration = run.endedAt > run.startedAt && !run.isActive;
+    const duration = hasDuration ? (run.endedAt - run.startedAt < 60000 ? "1분 미만" : formatRemaining(run.endedAt - run.startedAt)) : "";
+
+    return {
+        day: formatPastDay(run.startedAt, nowMs),
+        time: run.startedAt ? formatClock(run.startedAt) : "",
+        duration: duration,
+        status: getPastStatus(run),
+        meta: formatPastMeta(run),
+        headline: run.headline || "",
+        lead: run.isUnreadable || run.isEmpty ? "" : `${getWorkSentence(run.roundCount, run.commitCount)} ${getReasonText(run.reason, run.deadlineAt)}`.trim(),
+        notes: getPastNotes(run)
+    };
+};
+
+/* 지난 실행의 대화: 로그 줄을 Claude의 문장·회차·커밋·성과가 시간 순으로 이어지는 목록으로 바꾼다. 알아볼 수 없는 줄은 건너뛴다 */
+
+const TRANSCRIPT_LIMIT = 1500;
+const TRANSCRIPT_TEXT_LENGTH = 600;
+const TRANSCRIPT_ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
+const TRANSCRIPT_ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \(model (\S+), effort (\S+)\))?/;
+const TRANSCRIPT_COMMIT_PATTERN = /^\[커밋\] (\S+) \+(\d+) -(\d+) ?(.*)$/;
+const TRANSCRIPT_LIMIT_PATTERN = /^\[사용량 한도\] (.+)$/;
+const TRANSCRIPT_FINISH_PATTERN = /^AutoPilot 종료 - (.+) \(\d+회차\)$/;
+
+const buildTranscript = (lines) => {
+    const items = [];
+    let tools = [];
+    let toolCount = 0;
+    let lastType = "";
+    let lastSay = null;
+
+    const pushItem = (item) => {
+        items.push(item);
+    };
+
+    // 문장 없이 도구만 부른 구간은 문장 앞 칩으로 붙지 못하므로 따로 한 줄로 남긴다.
+    const flushTools = () => {
+        if (toolCount) {
+            pushItem({ kind: "work", tools: tools, count: toolCount });
+        }
+
+        tools = [];
+        toolCount = 0;
+    };
+
+    for (const text of Array.isArray(lines) ? lines : []) {
+        if (typeof text !== "string") {
+            continue;
+        }
+
+        const round = text.match(TRANSCRIPT_ROUND_PATTERN);
+        const commit = round ? null : text.match(TRANSCRIPT_COMMIT_PATTERN);
+        const limit = round || commit ? null : text.match(TRANSCRIPT_LIMIT_PATTERN);
+        const finish = round || commit || limit ? null : text.match(TRANSCRIPT_FINISH_PATTERN);
+
+        if (round || commit || limit || finish) {
+            flushTools();
+
+            lastType = "";
+            lastSay = null;
+        }
+
+        if (round) {
+            const start = round[2].match(TRANSCRIPT_ROUND_START_PATTERN);
+
+            pushItem(
+                start
+                    ? { kind: "round", round: Number(round[1]), options: start[1] ? formatOptions(start[1], start[2]) : "" }
+                    : { kind: "result", round: Number(round[1]), outcome: round[2], tone: getRoundTone(round[2]) }
+            );
+
+            continue;
+        }
+
+        if (commit) {
+            pushItem({ kind: "commit", hash: commit[1], insertions: Number(commit[2]), deletions: Number(commit[3]), subject: commit[4] });
+
+            continue;
+        }
+
+        if (limit) {
+            pushItem({ kind: "notice", text: shortenText(limit[1], TRANSCRIPT_TEXT_LENGTH) });
+
+            continue;
+        }
+
+        if (finish) {
+            pushItem({ kind: "finish", text: shortenText(finish[1], TRANSCRIPT_TEXT_LENGTH) });
+
+            continue;
+        }
+
+        const line = parseStoryLine(text);
+        const isMessageLine = lastType === "say" || lastType === "more";
+
+        if (!line) {
+            lastType = "";
+
+            continue;
+        }
+
+        if (line.type === "tool") {
+            tools = [...tools, { name: line.name, detail: getToolDetail(line.name, line.argument) }].slice(-STORY_TOOL_LIMIT);
+            toolCount++;
+        } else if (line.type === "say" && line.text) {
+            lastSay = { kind: "say", time: line.time, text: shortenText(line.text, TRANSCRIPT_TEXT_LENGTH), tools: tools, count: toolCount };
+
+            pushItem(lastSay);
+
+            tools = [];
+            toolCount = 0;
+        } else if (line.type === "more" && isMessageLine && lastSay && line.text) {
+            lastSay.text = shortenText(`${lastSay.text} ${line.text}`, TRANSCRIPT_TEXT_LENGTH);
+        } else if (line.type === "gain" && line.text) {
+            pushItem({ kind: "gain", text: shortenText(line.text, TRANSCRIPT_TEXT_LENGTH) });
+        }
+
+        // 메시지 중간의 성과 줄 뒤에도 같은 메시지가 이어진다.
+        lastType = line.type === "gain" && !line.time && isMessageLine ? "more" : line.type;
+    }
+
+    flushTools();
+
+    return { items: items.slice(-TRANSCRIPT_LIMIT), omitted: Math.max(0, items.length - TRANSCRIPT_LIMIT) };
 };

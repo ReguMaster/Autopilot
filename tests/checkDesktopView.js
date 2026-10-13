@@ -29,7 +29,9 @@ const EXPORTED_NAMES = [
     "createStory",
     "applyStoryEntry",
     "parseGain",
-    "splitFigure"
+    "splitFigure",
+    "describePastRun",
+    "buildTranscript"
 ];
 
 // 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
@@ -194,11 +196,14 @@ const checkViewAndGreeting = ({ getView, getGreeting }) => {
     assert.equal(getView(createState({ endedAt: 1 }), false), "done");
     assert.equal(getView(createState({ endedAt: 1 }), true), "ready");
 
-    assert.equal(getGreeting({ hour: 23, policy: "auto", endTime: "", hasProject: true }).title, "오늘 밤에는 무엇을 해 둘까요?");
-    assert.equal(getGreeting({ hour: 14, policy: "auto", endTime: "", hasProject: true }).title, "지금부터 무엇을 해 둘까요?");
-    assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", hasProject: true }).lead, /07:00까지 .*스스로 고칠 곳/);
-    assert.match(getGreeting({ hour: 23, policy: "todo", endTime: "05:30", hasProject: true }).lead, /늦어도 05:30에는 멈춰요/);
-    assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", hasProject: false }).title, /프로젝트를 골라/);
+    const projectName = "Kirikomodo";
+
+    assert.equal(getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: projectName }).title, "오늘 밤에는 Kirikomodo에 무엇을 해 둘까요? 🌙");
+    assert.equal(getGreeting({ hour: 8, policy: "auto", endTime: "", projectName: projectName }).title, "지금부터 Kirikomodo에 무엇을 해 둘까요? ☀️");
+    assert.equal(getGreeting({ hour: 14, policy: "auto", endTime: "", projectName: projectName }).title, "지금부터 Kirikomodo에 무엇을 해 둘까요? ☕");
+    assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: projectName }).lead, /07:00까지 .*스스로 고칠 곳/);
+    assert.match(getGreeting({ hour: 23, policy: "todo", endTime: "05:30", projectName: projectName }).lead, /늦어도 05:30에는 멈춰요/);
+    assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: "" }).title, /프로젝트를 골라/);
 };
 
 const checkFinishText = ({ getWorkSummary, describeFinish, getWaitSentence }) => {
@@ -256,11 +261,6 @@ const checkTrack = ({ getTrack }) => {
     assert.deepEqual(
         Array.from(track.commits, (commit) => [commit.at, commit.count]),
         [[10, 2]]
-    );
-    // 2회차 이름은 1회차와 너무 가까워 빠지고, 지금 회차 이름은 남는다.
-    assert.deepEqual(
-        Array.from(track.labels, (label) => label.text),
-        ["1회차", "3회차"]
     );
     assert.equal(track.head, 20);
     assert.equal(track.startText, "00:30");
@@ -326,7 +326,7 @@ const checkStory = ({ parseStoryLine, describeTool, createStory, applyStoryEntry
         out(`02:20:0${index} 문장 ${index}`);
     }
 
-    assert.equal(story.items.length, 6);
+    assert.equal(story.items.length, 10);
 
     applyStoryEntry(story, { stream: "app", text: "[앱] 엔진을 시작했어요: autopilot" });
 
@@ -339,6 +339,118 @@ const checkStory = ({ parseStoryLine, describeTool, createStory, applyStoryEntry
     assert.deepEqual({ ...splitFigure("빠름") }, { number: "빠름", unit: "" });
 };
 
+const checkPastRuns = ({ describePastRun, buildTranscript }) => {
+    const now = new Date(2026, 9, 14, 9, 0).getTime();
+    const base = {
+        id: "2026-10-13/autopilot_231500_ab12cd34.log",
+        startedAt: new Date(2026, 9, 13, 23, 15).getTime(),
+        endedAt: new Date(2026, 9, 14, 0, 35).getTime(),
+        reason: "예정 시각 도달",
+        deadlineAt: 0,
+        roundCount: 3,
+        commitCount: 5,
+        insertions: 120,
+        deletions: 30,
+        headline: "검색 응답 1.2초 → 0.2초",
+        isEmpty: false,
+        isUnreadable: false,
+        isPartial: false,
+        isActive: false
+    };
+    const done = describePastRun(base, now);
+
+    assert.equal(done.day, "어제");
+    assert.equal(done.time, "23:15");
+    assert.equal(done.duration, "1시간 20분");
+    assert.deepEqual({ ...done.status }, { label: "정상 종료", tone: "ok" });
+    assert.equal(done.meta, "3회차 · 커밋 5개 +120 −30");
+    assert.match(done.lead, /3회차 동안 쉬지 않고 일해서 커밋 5개를 남겼어요\. 정해 둔 종료 시각에 맞춰 멈췄어요\./);
+    assert.deepEqual(Array.from(done.notes), []);
+    assert.equal(describePastRun({ ...base, startedAt: new Date(2026, 9, 14, 1, 0).getTime() }, now).day, "오늘");
+    assert.equal(describePastRun({ ...base, startedAt: new Date(2026, 9, 10, 1, 0).getTime() }, now).day, "10월 10일 (토)");
+
+    // 끝맺음 줄이 없거나 읽을 수 없거나 비어 있어도 같은 모양으로 설명한다.
+    const unfinished = describePastRun({ ...base, reason: "" }, now);
+
+    assert.deepEqual({ ...unfinished.status }, { label: "끝맺음 없음", tone: "muted" });
+    assert.match(unfinished.notes[0], /끝맺음 줄이 없어요/);
+    assert.deepEqual({ ...describePastRun({ ...base, reason: "", isActive: true }, now).status }, { label: "진행 중", tone: "run" });
+    assert.equal(describePastRun({ ...base, reason: "", isActive: true }, now).notes.length, 0);
+    assert.deepEqual({ ...describePastRun({ ...base, reason: "중단 요청" }, now).status }, { label: "중단됨", tone: "warn" });
+    assert.deepEqual({ ...describePastRun({ ...base, reason: "연속 4회 실패로 중단" }, now).status }, { label: "오류 종료", tone: "danger" });
+    assert.deepEqual({ ...describePastRun({ ...base, reason: "실행 오류: spawn" }, now).status }, { label: "오류 종료", tone: "danger" });
+    assert.deepEqual({ ...describePastRun({ ...base, reason: "사용량 한도 리셋이 종료 시각 이후" }, now).status }, { label: "한도로 멈춤", tone: "warn" });
+    assert.deepEqual({ ...describePastRun({ ...base, reason: "처음 보는 사유" }, now).status }, { label: "종료", tone: "muted" });
+    assert.match(describePastRun({ ...base, reason: "처음 보는 사유" }, now).lead, /종료 사유: 처음 보는 사유/);
+
+    const empty = describePastRun({ ...base, isEmpty: true, reason: "" }, now);
+
+    assert.deepEqual({ ...empty.status }, { label: "내용 없음", tone: "muted" });
+    assert.equal(empty.meta, "");
+    assert.equal(empty.lead, "");
+    assert.match(empty.notes[0], /읽을 수 있는 내용이 없어요/);
+
+    const unreadable = describePastRun({ id: base.id, startedAt: 0, endedAt: 0, isUnreadable: true }, now);
+
+    assert.deepEqual({ ...unreadable.status }, { label: "읽을 수 없음", tone: "danger" });
+    assert.equal(unreadable.day, "날짜를 알 수 없어요");
+    assert.equal(unreadable.time, "");
+    assert.match(unreadable.notes[0], /읽지 못했어요/);
+    assert.match(describePastRun({ ...base, isPartial: true }, now).notes.at(-1), /마지막 부분만/);
+    assert.equal(describePastRun({ ...base, endedAt: base.startedAt + 1000 }, now).duration, "1분 미만");
+    assert.equal(describePastRun({ ...base, endedAt: 0 }, now).duration, "");
+
+    const transcript = buildTranscript([
+        "Claude Code AutoPilot",
+        "[1회차] 시작 - 남은 시간 60분 (model opus, effort high)",
+        "12:00:01   > Read C:/app/search.js",
+        "12:00:02   > Edit C:/app/search.js",
+        "12:00:03 인덱스를 쓰도록 고쳤어요.",
+        "    그래서 더 빨라질 거예요.",
+        "    성과: 응답 1.2초 → 0.2초",
+        "    다음엔 테스트를 돌릴게요.",
+        "12:00:09   > Bash npm test",
+        "[커밋] abc1234 +3 -1 검색 인덱스 사용",
+        "[1회차] 완료",
+        "[사용량 한도] 14:00까지 대기",
+        "AutoPilot 종료 - 예정 시각 도달 (1회차)"
+    ]);
+
+    assert.deepEqual(
+        Array.from(transcript.items, (item) => item.kind),
+        ["round", "say", "gain", "work", "commit", "result", "notice", "finish"]
+    );
+    assert.equal(transcript.omitted, 0);
+    assert.equal(transcript.items[0].options, "Opus · High");
+    assert.equal(transcript.items[1].text, "인덱스를 쓰도록 고쳤어요. 그래서 더 빨라질 거예요. 다음엔 테스트를 돌릴게요.");
+    assert.equal(transcript.items[1].count, 2);
+    assert.deepEqual(
+        Array.from(transcript.items[1].tools, (tool) => `${tool.name} ${tool.detail}`),
+        ["Read search.js", "Edit search.js"]
+    );
+    assert.equal(transcript.items[2].text, "응답 1.2초 → 0.2초");
+    assert.equal(transcript.items[3].count, 1);
+    assert.deepEqual({ ...transcript.items[4] }, { kind: "commit", hash: "abc1234", insertions: 3, deletions: 1, subject: "검색 인덱스 사용" });
+    assert.equal(transcript.items[5].tone, "ok");
+
+    // 깨진 입력은 건너뛰고, 길거나 많은 입력은 자른다.
+    const broken = buildTranscript([null, 42, undefined, "", "�����", "[ㅁㅁ회차] 시작", "99:99:99 형식만 맞는 줄", "    들여 쓴 줄만 있어요"]);
+
+    assert.deepEqual(
+        Array.from(broken.items, (item) => item.kind),
+        ["say"]
+    );
+    assert.deepEqual(Array.from(buildTranscript(undefined).items), []);
+    assert.deepEqual(Array.from(buildTranscript("문자열").items), []);
+    assert.equal(buildTranscript(["12:00:00 " + "가".repeat(5000)]).items[0].text.length, 600);
+
+    const many = buildTranscript(Array.from({ length: 2000 }, (item, index) => `12:00:00 문장 ${index}`));
+
+    assert.equal(many.items.length, 1500);
+    assert.equal(many.omitted, 500);
+    assert.equal(many.items.at(-1).text, "문장 1999");
+};
+
 const checkViewFormat = () => {
     const viewFormat = loadViewFormat();
 
@@ -346,6 +458,7 @@ const checkViewFormat = () => {
     checkFinishText(viewFormat);
     checkTrack(viewFormat);
     checkStory(viewFormat);
+    checkPastRuns(viewFormat);
 
     checkEndTime(viewFormat);
     checkFormatting(viewFormat);

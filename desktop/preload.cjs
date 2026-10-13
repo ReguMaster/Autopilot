@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld("autopilot", {
     kill: () => ipcRenderer.invoke("autopilot:kill"),
     resetProgress: () => ipcRenderer.invoke("autopilot:reset-progress"),
     openReport: () => ipcRenderer.invoke("autopilot:open-report"),
+    listRuns: (limit) => ipcRenderer.invoke("autopilot:list-runs", limit),
+    readRun: (id) => ipcRenderer.invoke("autopilot:read-run", id),
+    openRunFile: (id, kind) => ipcRenderer.invoke("autopilot:open-run-file", id, kind),
+    deleteRun: (id) => ipcRenderer.invoke("autopilot:delete-run", id),
+    openUpdate: () => ipcRenderer.invoke("autopilot:open-update"),
     getAccounts: () => ipcRenderer.invoke("autopilot:get-accounts"),
     refreshAccount: (accountId) => ipcRenderer.invoke("autopilot:refresh-account", accountId),
     selectAccount: (accountId) => ipcRenderer.invoke("autopilot:select-account", accountId),
@@ -34,7 +39,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     onState: subscribe("autopilot:state"),
     onAccount: subscribe("autopilot:account"),
     onAccounts: subscribe("autopilot:accounts"),
-    onLogin: subscribe("autopilot:login")
+    onLogin: subscribe("autopilot:login"),
+    onUpdate: subscribe("autopilot:update")
 });
 
 contextBridge.exposeInMainWorld("appWindow", {
