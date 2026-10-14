@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
 const path = require("node:path");
-const { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch } = require("./autopilotIpc.cjs");
+const { registerIpc, confirmClose, isOwnedEngineRunning, isTrayResident, syncLaunchAtLogin, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch } = require("./autopilotIpc.cjs");
+const { wasLaunchedHidden } = require("./launchAtLogin.cjs");
 const { createTray, showWindow } = require("./systemIntegration.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
@@ -26,6 +27,8 @@ app.commandLine.appendSwitch("no-proxy-server");
 app.enableSandbox();
 // 개발 실행(electron.exe)이 알림을 띄우면 Electron이 같은 ID로 시작 메뉴에 Electron.lnk를 만들고, 작업표시줄은 그 바로가기 아이콘을 쓴다. 패키지 앱과 ID를 나눠 충돌을 막는다.
 app.setAppUserModelId(app.isPackaged ? "com.autopilot.desktop" : "com.autopilot.desktop.dev");
+
+const isSmokeTest = process.argv.includes("--smoke-test");
 
 let isQuitting = false;
 
@@ -93,8 +96,14 @@ const createWindow = () => {
         }
     });
 
-    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다.
-    window.once("ready-to-show", () => window.show());
+    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다. 로그인 자동 실행이면 트레이에만 둔다.
+    window.once("ready-to-show", () => {
+        if (!isSmokeTest && wasLaunchedHidden()) {
+            return;
+        }
+
+        window.show();
+    });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.webContents.setVisualZoomLevelLimits(1, 1);
@@ -108,9 +117,9 @@ const createWindow = () => {
             event.preventDefault();
         }
     });
-    // 앱이 시작한 엔진이 실행 중이면 닫기는 트레이로 숨기기만 한다. 종료는 트레이 메뉴에서 확인을 거쳐 한다.
+    // 앱이 시작한 엔진이 실행 중이거나 설정에서 트레이 상주를 켰으면 닫기는 트레이로 숨기기만 한다. 종료는 트레이 메뉴에서 확인을 거쳐 한다.
     window.on("close", (event) => {
-        if (!isQuitting && isOwnedEngineRunning()) {
+        if (!isQuitting && (isOwnedEngineRunning() || isTrayResident())) {
             event.preventDefault();
             window.hide();
 
@@ -124,13 +133,19 @@ const createWindow = () => {
         }
     });
     window.on("focus", attachRunningEngine);
+    // macOS는 창이 모두 닫혀도 앱이 남으므로, 트레이 메뉴의 종료는 창이 닫힌 뒤 직접 끝낸다.
+    window.on("closed", () => {
+        if (isQuitting) {
+            app.quit();
+        }
+    });
 
     const sendWindowState = () => window.webContents.send("window:state", { maximized: window.isMaximized() });
 
     window.on("maximize", sendWindowState);
     window.on("unmaximize", sendWindowState);
 
-    if (process.argv.includes("--smoke-test")) {
+    if (isSmokeTest) {
         const timeout = setTimeout(() => app.exit(1), SMOKE_TEST_TIMEOUT_MS);
 
         window.webContents.once("did-fail-load", () => app.exit(1));
@@ -155,7 +170,7 @@ const quitFromTray = () => {
 };
 
 // 엔진은 한 번에 하나만 실행되므로 앱도 하나만 띄운다. 스모크 테스트는 실행 중인 앱과 무관하게 검증해야 하므로 제외한다.
-const hasInstanceLock = process.argv.includes("--smoke-test") || app.requestSingleInstanceLock();
+const hasInstanceLock = isSmokeTest || app.requestSingleInstanceLock();
 
 if (!hasInstanceLock) {
     app.quit();
@@ -175,7 +190,8 @@ if (!hasInstanceLock) {
         createWindow();
         createTray({ onQuit: quitFromTray });
 
-        if (!process.argv.includes("--smoke-test")) {
+        if (!isSmokeTest) {
+            syncLaunchAtLogin();
             startAccountWatch();
             startUpdateWatch();
         }

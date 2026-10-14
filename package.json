@@ -9,15 +9,15 @@
         "start": "electron .",
         "dev": "electron . --dev",
         "test": "electron . --smoke-test",
-        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js",
+        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js",
         "build": "electron-builder --win --x64 --dir",
         "dist": "electron-builder --win --x64",
         "dist:signed": "electron-builder --win --x64 -c.win.signtoolOptions.certificateSubjectName=ReguMaster -c.win.signtoolOptions.publisherName=ReguMaster",
         "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js",
-        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js"
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js"
     },
     "devDependencies": {
         "electron": "^44.6.0",

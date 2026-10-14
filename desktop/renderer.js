@@ -162,6 +162,9 @@ const elements = {
     timeMinute: byId("time-minute"),
     timeUntil: byId("time-until"),
     extendOnLimit: byId("extend-on-limit"),
+    keepInTray: byId("keep-in-tray"),
+    launchAtLogin: byId("launch-at-login"),
+    launchAtLoginNote: byId("launch-at-login-note"),
     tasks: byId("tasks"),
     tasksToggle: byId("tasks-toggle"),
     tasksCount: byId("tasks-count"),
@@ -195,6 +198,7 @@ const EFFORT_LEVELS = [...elements.effortLevels.options].map((option) => option.
 
 let settings = { projectDir: "" };
 let appVersion = "";
+let canLaunchAtLogin = false;
 let currentState = null;
 let pendingEntries = [];
 let isFlushScheduled = false;
@@ -1670,6 +1674,31 @@ const renderSettings = () => {
     elements.selectProject.textContent = hasProject ? "폴더 변경" : "폴더 선택";
     elements.projectBanner.hidden = hasProject;
     elements.appVersion.textContent = appVersion ? `v${appVersion}` : "";
+    renderSystemSettings();
+};
+
+const LAUNCH_AT_LOGIN_NOTE = "컴퓨터에 로그인하면 창 없이 트레이로 조용히 켜져요. 켜면 트레이 상주도 함께 켜져요.";
+const LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE = "설치한 앱에서만 켤 수 있어요. 개발 실행에서는 쓸 수 없어요.";
+
+// 로그인 자동 실행을 켜면 트레이 상주는 반드시 켜져 있어야 하므로 끌 수 없게 잠근다. 개발 실행처럼 등록할 수 없는 환경은 켜는 쪽을 막는다.
+const renderSystemSettings = () => {
+    elements.keepInTray.checked = settings.keepInTray;
+    elements.keepInTray.disabled = settings.launchAtLogin;
+    elements.launchAtLogin.checked = settings.launchAtLogin;
+    elements.launchAtLogin.disabled = !canLaunchAtLogin && !settings.launchAtLogin;
+    elements.launchAtLoginNote.textContent = canLaunchAtLogin || settings.launchAtLogin ? LAUNCH_AT_LOGIN_NOTE : LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE;
+};
+
+const handleSystemChange = async () => {
+    const result = await window.autopilot.setSystemSettings({ keepInTray: elements.keepInTray.checked, launchAtLogin: elements.launchAtLogin.checked });
+
+    showFailure(result);
+
+    if (result.status === STATUS_OK) {
+        settings = result.data.settings;
+    }
+
+    renderSystemSettings();
 };
 
 /* 컴포저 알약: 모델·정책은 팝오버 목록에서 고르고, 고른 값을 알약에 보여준다 */
@@ -2144,6 +2173,7 @@ const initialize = async () => {
 
     settings = snapshot.settings;
     appVersion = snapshot.version;
+    canLaunchAtLogin = snapshot.canLaunchAtLogin;
 
     renderUpdate(snapshot.update);
     window.autopilot.onUpdate(renderUpdate);
@@ -2181,6 +2211,8 @@ const initialize = async () => {
     elements.bannerSelectProject.addEventListener("click", handleSelectProject);
     elements.bannerLogin.addEventListener("click", handleLogin);
     elements.resetProgress.addEventListener("click", handleResetProgress);
+    elements.keepInTray.addEventListener("change", handleSystemChange);
+    elements.launchAtLogin.addEventListener("change", handleSystemChange);
     elements.openReport.addEventListener("click", handleOpenReport);
     elements.historyToggle.addEventListener("click", toggleHistory);
     elements.scrim.addEventListener("click", () => {

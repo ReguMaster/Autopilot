@@ -8,12 +8,26 @@ const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./
 const { handleState } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
+const loginItem = require("./launchAtLogin.cjs");
 
 const POLICY_CHOICES = ["auto", "todo"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 const TASKS_FILE_NAME = "tasks.md";
-const DEFAULT_SETTINGS = { projectDir: "", tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", effort: "high", accounts: [], accountId: "default", claudeDir: "" };
+const DEFAULT_SETTINGS = {
+    projectDir: "",
+    tasks: "",
+    endTime: "",
+    policy: "auto",
+    extendOnLimit: false,
+    model: "opus",
+    effort: "high",
+    accounts: [],
+    accountId: "default",
+    claudeDir: "",
+    keepInTray: false,
+    launchAtLogin: false
+};
 
 // 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
 const SETTING_VALIDATORS = {
@@ -26,7 +40,9 @@ const SETTING_VALIDATORS = {
     effort: (value) => EFFORT_CHOICES.includes(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
-    claudeDir: (value) => typeof value === "string"
+    claudeDir: (value) => typeof value === "string",
+    keepInTray: (value) => typeof value === "boolean",
+    launchAtLogin: (value) => typeof value === "boolean"
 };
 
 const getSettingsFile = () => {
@@ -239,7 +255,55 @@ const handleSelectProject = async (event) => {
 const handleGetState = async () => {
     await attachRunningEngine();
 
-    return { version: app.getVersion(), update: updateCheck.getUpdate(), settings: readSettings(), state: runner.getState(), logs: runner.getLogs() };
+    return {
+        version: app.getVersion(),
+        platform: process.platform,
+        canLaunchAtLogin: loginItem.isSupported(),
+        update: updateCheck.getUpdate(),
+        settings: readSettings(),
+        state: runner.getState(),
+        logs: runner.getLogs()
+    };
+};
+
+// 로그인 자동 실행은 트레이에 상주해야 의미가 있으므로 켜면 트레이 상주도 함께 켠다. 시스템이 실제로 등록했는지 다시 읽어 확인한다.
+const handleSetSystem = (event, options = {}) => {
+    const launchAtLogin = options.launchAtLogin === true;
+    const keepInTray = options.keepInTray === true || launchAtLogin;
+
+    if (launchAtLogin && !loginItem.isSupported()) {
+        return createFailure("UNSUPPORTED", "설치한 앱에서만 로그인 자동 실행을 켤 수 있어요.");
+    }
+
+    try {
+        loginItem.setEnabled(launchAtLogin);
+    } catch (error) {
+        return createFailure("LOGIN_ITEM_FAILED", `로그인 자동 실행을 바꾸지 못했어요: ${error.message}`);
+    }
+
+    if (loginItem.isSupported() && loginItem.isEnabled() !== launchAtLogin) {
+        return createFailure("LOGIN_ITEM_FAILED", "시스템이 로그인 자동 실행 설정을 받아들이지 않았어요. 보안 정책이나 권한을 확인해 주세요.");
+    }
+
+    const settings = { ...readSettings(), keepInTray: keepInTray, launchAtLogin: launchAtLogin };
+
+    writeSettings(settings);
+
+    return { status: STATUS_OK, data: { settings: settings } };
+};
+
+// 앱을 켤 때 저장된 자동 실행 설정으로 로그인 항목의 경로를 다시 맞춘다(업데이트·재설치로 실행 파일 위치가 바뀌었을 수 있다).
+const syncLaunchAtLogin = () => {
+    if (readSettings().launchAtLogin && loginItem.isSupported()) {
+        try {
+            loginItem.setEnabled(true);
+        } catch {}
+    }
+};
+
+// 닫아도 트레이에 남겨 둘지. 실행 중이 아닐 때의 닫기 동작을 정한다.
+const isTrayResident = () => {
+    return readSettings().keepInTray;
 };
 
 const handleOpenUpdate = async () => {
@@ -432,6 +496,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
     ipcMain.handle("autopilot:delete-run", handleDeleteRun);
     ipcMain.handle("autopilot:open-update", handleOpenUpdate);
+    ipcMain.handle("autopilot:set-system", handleSetSystem);
     accounts.register();
 
     // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.
@@ -478,4 +543,4 @@ const startUpdateWatch = () => {
     updateCheck.start();
 };
 
-module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch };
+module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, isTrayResident, syncLaunchAtLogin, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch };

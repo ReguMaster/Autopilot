@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     openRunFile: (id, kind) => ipcRenderer.invoke("autopilot:open-run-file", id, kind),
     deleteRun: (id) => ipcRenderer.invoke("autopilot:delete-run", id),
     openUpdate: () => ipcRenderer.invoke("autopilot:open-update"),
+    setSystemSettings: (options) => ipcRenderer.invoke("autopilot:set-system", options),
     getAccounts: () => ipcRenderer.invoke("autopilot:get-accounts"),
     refreshAccount: (accountId) => ipcRenderer.invoke("autopilot:refresh-account", accountId),
     selectAccount: (accountId) => ipcRenderer.invoke("autopilot:select-account", accountId),
