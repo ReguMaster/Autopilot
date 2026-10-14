@@ -709,13 +709,16 @@ const checkClaudeAccount = async (testDir) => {
     assert.equal((await failingRenew.refresh(true)).error.code, "TOKEN_EXPIRED");
     assert.equal(renewCount, 2);
 
+    // macOS는 로그인 정보가 키체인에 있어 파일이 없거나 깨져도 조회할 수 없다는 안내로 답한다.
+    const missingCredentialsCode = process.platform === "darwin" ? "UNSUPPORTED_PLATFORM" : "NO_CREDENTIALS";
+
     fs.writeFileSync(credentialsFile, "{ broken");
 
-    assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
+    assert.equal((await createReader().refresh()).error.code, missingCredentialsCode);
 
     fs.rmSync(credentialsFile);
 
-    assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
+    assert.equal((await createReader().refresh()).error.code, missingCredentialsCode);
 };
 
 const checkUpdateCheck = async () => {
