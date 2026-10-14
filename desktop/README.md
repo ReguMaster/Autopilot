@@ -18,7 +18,7 @@ npm start
 
 Windows에서 빌드합니다. 최초 설치와 패키징에는 Electron 및 패키징 도구 다운로드를 위한 인터넷 연결이 필요합니다. 배포 EXE는 코드 서명하지 않으므로 Windows에서 게시자 경고가 표시될 수 있습니다.
 
-`desktop/main.cjs`는 앱 창과 보안 설정을, `systemIntegration.cjs`는 트레이·절전 방지·알림·작업표시줄 진행을, `autopilotRunner.cjs`·`autopilotIpc.cjs`·`projectFiles.cjs`·`preload.cjs`는 엔진 제어와 연결을, `viewFormat.js`·`index.html`·`styles.css`·`renderer.js`는 대시보드 화면을 담당합니다(`viewFormat.js`는 화면에 의존하지 않는 표시용 함수라 `npm run test:desktop`이 따로 검증합니다). 별도 웹 서버나 프론트엔드 빌드 도구는 사용하지 않습니다. 서체는 `desktop/fonts/`의 Pretendard(SIL OFL 1.1, `Pretendard-LICENSE.txt` 동봉)를 앱에 넣어 오프라인에서도 같게 보입니다.
+`desktop/main.cjs`는 앱 창과 보안 설정을, `systemIntegration.cjs`는 트레이·절전 방지·알림·작업표시줄 진행을, `autopilotRunner.cjs`·`autopilotIpc.cjs`·`projectFiles.cjs`·`preload.cjs`는 엔진 제어와 연결을, `viewFormat.js`·`index.html`·`styles.css`·`desktop/ui`는 대시보드 화면을 담당합니다(`viewFormat.js`는 화면에 의존하지 않는 표시용 함수라 `npm run test:desktop`이 따로 검증합니다). 별도 웹 서버나 프론트엔드 빌드 도구는 사용하지 않습니다. 서체는 `desktop/fonts/`의 Pretendard(SIL OFL 1.1, `Pretendard-LICENSE.txt` 동봉)를 앱에 넣어 오프라인에서도 같게 보입니다.
 
 엔진(`autopilot/`)은 앱에 포함됩니다. 앱은 자기 실행 파일을 `ELECTRON_RUN_AS_NODE=1`로 실행해 엔진 스크립트를 자식 프로세스로 띄웁니다(개발 중에는 저장소의 `autopilot/core/autopilot_loop.js`, 패키지에서는 `resources/engine/core/autopilot_loop.js`). 별도 엔진 파일을 연결할 필요가 없습니다.
 

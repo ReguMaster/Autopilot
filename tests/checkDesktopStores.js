@@ -4,7 +4,6 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
-import { viewFormatPlugin } from "../desktop/ui/viewFormatPlugin.mjs";
 
 const UI_DIR = path.join(import.meta.dirname, "../desktop/ui");
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +28,6 @@ const loadModules = async () => {
         format: "cjs",
         platform: "node",
         outdir: "out",
-        plugins: [viewFormatPlugin],
         define: { "process.env.NODE_ENV": '"production"' },
         logLevel: "silent"
     });

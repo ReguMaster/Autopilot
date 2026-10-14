@@ -43,8 +43,23 @@ const isSmokeTest = process.argv.includes("--smoke-test");
 
 let isQuitting = false;
 
-const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.loginAccount === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && typeof window.autopilot?.getAccounts === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && Boolean(document.querySelector('#profile')) && Boolean(document.querySelector('#archive')) && typeof window.autopilot?.listRuns === 'function' && typeof window.autopilot?.openUpdate === 'function' && Boolean(document.querySelector('#update-chip')) && typeof window.autopilot?.getSchedules === 'function' && Boolean(document.querySelector('#schedule')) && typeof initialize === 'function' && Boolean(document.querySelector('#model-versions .select-trigger'))";
+// 화면은 메인이 보관한 첫 상태를 받은 뒤에 그려지므로 마운트를 잠깐 기다린 다음, preload 다리와 화면의 주요 자리가 모두 있는지 확인한다.
+const SMOKE_BRIDGE_APIS = ["start", "loginAccount", "getAccounts", "listRuns", "openUpdate", "getSchedules"];
+const SMOKE_SELECTORS = ["#titlebar", "#update-chip", "#login-banner", "#run-form", "#profile", "#settings", "#history", "#archive", "#schedule", "#schedule-peek", "#model-versions .select-trigger"];
+const SMOKE_MOUNT_TIMEOUT_MS = 8000;
+const SMOKE_CHECK_SCRIPT = `(async () => {
+    const deadline = Date.now() + ${SMOKE_MOUNT_TIMEOUT_MS};
+
+    while (!document.querySelector("#run-form")) {
+        if (Date.now() > deadline) {
+            return false;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return ${JSON.stringify(SMOKE_BRIDGE_APIS)}.every((name) => typeof window.autopilot?.[name] === "function") && typeof window.appWindow?.close === "function" && ${JSON.stringify(SMOKE_SELECTORS)}.every((selector) => Boolean(document.querySelector(selector)));
+})()`;
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {

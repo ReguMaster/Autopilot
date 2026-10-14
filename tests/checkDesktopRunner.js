@@ -6,6 +6,14 @@ import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+    DEFAULT_EFFORT_LEVEL as UI_DEFAULT_EFFORT_LEVEL,
+    DEFAULT_MODEL as UI_DEFAULT_MODEL,
+    DEFAULT_POLICY as UI_DEFAULT_POLICY,
+    EFFORT_LEVELS as UI_EFFORT_LEVELS,
+    MODEL_FAMILIES as UI_MODEL_FAMILIES,
+    POLICIES as UI_POLICIES
+} from "../desktop/ui/lib/constants.js";
+import {
     MODEL_CHOICES as ENGINE_MODELS,
     MODEL_ID_PATTERN as ENGINE_MODEL_ID_PATTERN,
     EFFORT_LEVELS as ENGINE_EFFORTS,
@@ -787,43 +795,19 @@ const checkUpdateCheck = async () => {
     assert.equal(await updateCheck.check(), null);
 };
 
-// 태그 목록에서 attribute 값을 순서대로 모으고, data-default가 붙은 태그의 값을 기본값으로 돌려준다.
-const readChoices = (tags, valueAttribute) => {
-    const choices = tags.map((tag) => ({ value: tag.match(new RegExp(`\\b${valueAttribute}="([^"]*)"`))[1], isDefault: /\bdata-default\b/.test(tag) }));
-
-    return { values: choices.map((choice) => choice.value), defaultValue: choices.find((choice) => choice.isDefault)?.value };
-};
-
-// 모델은 name="model" 라디오, Effort는 effort-levels 목록의 option label이다.
-const readModelChoices = (html) => {
-    return readChoices(html.match(/<input\b[^>]*\bname="model"[^>]*>/g) ?? [], "value");
-};
-
-const readEffortChoices = (html) => {
-    const listHtml = html.match(/<datalist id="effort-levels">([\s\S]*?)<\/datalist>/)[1];
-
-    return readChoices(listHtml.match(/<option\b[^>]*>/g) ?? [], "label");
-};
-
-// 허용 값은 엔진(config.js)·러너·화면(index.html) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
+// 허용 값은 엔진(config.js)·러너·화면(desktop/ui/lib/constants.js) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
 const checkChoiceSync = () => {
-    const html = fs.readFileSync(path.join(import.meta.dirname, "../desktop/index.html"), "utf8");
-    const model = readModelChoices(html);
-    const effort = readEffortChoices(html);
-
     assert.deepEqual(MODEL_CHOICES, ENGINE_MODELS);
     assert.equal(MODEL_ID_PATTERN.source, ENGINE_MODEL_ID_PATTERN.source);
     assert.deepEqual(EFFORT_CHOICES, ENGINE_EFFORTS);
-    assert.deepEqual(model.values, ENGINE_MODELS);
-    assert.deepEqual(effort.values, ENGINE_EFFORTS);
-    assert.equal(model.defaultValue, DEFAULT_MODEL);
-    assert.equal(effort.defaultValue, DEFAULT_EFFORT);
+    assert.deepEqual(UI_MODEL_FAMILIES, ENGINE_MODELS);
+    assert.deepEqual(UI_EFFORT_LEVELS, ENGINE_EFFORTS);
+    assert.equal(UI_DEFAULT_MODEL, DEFAULT_MODEL);
+    assert.equal(UI_EFFORT_LEVELS[UI_DEFAULT_EFFORT_LEVEL], DEFAULT_EFFORT);
 
-    const policy = readChoices(html.match(/<input\b[^>]*\bname="policy"[^>]*>/g) ?? [], "value");
-
-    assert.deepEqual(policy.values, ["auto", "todo"]);
-    assert(policy.values.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
-    assert.equal(POLICY_ALIASES[policy.defaultValue], POLICY_SELF);
+    assert.deepEqual(UI_POLICIES, ["auto", "todo"]);
+    assert(UI_POLICIES.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
+    assert.equal(POLICY_ALIASES[UI_DEFAULT_POLICY], POLICY_SELF);
 };
 
 // 공식 모델 목록: 새 모델은 목록에서 그대로 따라오고, 형식이 다른 항목은 걸러내며, 조회가 안 되면 이전 목록을 유지한다.

@@ -9,7 +9,7 @@ AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPi
 ## 구조
 
 - 배포물은 Electron 앱이다. Windows exe(포터블과 NSIS 설치형), macOS dmg·zip(x64·arm64, ad-hoc 서명), Linux AppImage·deb(x64·arm64)를 만든다. 엔진(autopilot/)은 앱에 내장되고(electron-builder extraResources로 패키지의 resources/engine/에 복사), 앱이 자기 실행 파일을 ELECTRON_RUN_AS_NODE=1로 Node처럼 실행해 엔진 스크립트를 자식 프로세스로 돌린다. 사용자는 앱 화면에서 대상 프로젝트 폴더·작업·종료 시각·정책·model·effort를 모두 정하고 시작한다.
-- 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI. React 화면 소스는 desktop/ui/이고 esbuild가 desktop/bundle/로 번들한다), tests/(검증), docs/(README 스크린샷·앱 로고·아이콘), legacy/(보관), .github/, package.json, .prettierrc다.
+- 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI. 화면은 React 19이고 소스는 desktop/ui/, esbuild가 desktop/bundle/로 번들한다), tests/(검증), docs/(README 스크린샷·앱 로고·아이콘), legacy/(보관), .github/, package.json, .prettierrc다.
 - legacy/의 PowerShell 구현 압축본(autopilot_loop.ps1, check_progress_archive.ps1)은 새 실행 경로에서 사용하지 않으며 수정하지 않는다. 다른 레거시 소스도 legacy/에 압축해 보관한다.
 
 ## 개발 명령과 검증
@@ -18,7 +18,8 @@ AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPi
 npm ci
 npm run test:cli              # 엔진 검증(tests/checkAutopilot.js)
 npm run build:ui              # React 화면 번들(desktop/ui → desktop/bundle). npm run dev:ui는 저장할 때마다 다시 만든다
-npm run test:desktop          # 데스크톱 러너·표시·계정·기록·화면 컴포넌트 검증
+npm run test:desktop          # 데스크톱 러너·표시·계정·기록·화면 컴포넌트·스토어 검증
+npm run ui:parity             # 옛 화면과 지금 화면을 같은 장면으로 비교(tests/tools/ui). --baseline <git ref> --full
 npm test                      # Electron 창·preload 스모크, 앱 번들의 엔진을 ELECTRON_RUN_AS_NODE로 --help 실행
 npm run format:cli            # 엔진과 엔진 검증 파일 전체 포맷
 npm run format:desktop        # desktop과 데스크톱 검증 파일 전체 포맷
@@ -72,7 +73,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 - 포맷은 루트 .prettierrc(4칸 들여쓰기·큰따옴표·세미콜론·trailing comma 없음)를 따르고 구조는 기존 서비스 코드를 기준으로 한다.
 - 포맷터는 수정한 JS 파일만 지정한다(`npx prettier --write <파일>`). 기존 Electron 파일은 별도 요청 없이 전체 포맷하지 않는다(format:desktop은 요청이 있을 때만 쓴다).
 - 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용한다. 함수는 get/run/parse/write/handle/kill 등 동작이 드러나게 이름 짓고 의미 없는 축약명을 피한다.
-- const 화살표 함수를 쓴다. 엔진과 tests는 ESM(import/export)이고, desktop 메인 프로세스(.cjs)는 CommonJS(require), viewFormat.js·renderer.js는 브라우저 클래식 스크립트, desktop/ui/는 ESM + JSX(esbuild 번들)이므로 각 파일의 기존 방식을 따른다.
+- const 화살표 함수를 쓴다. 엔진과 tests는 ESM(import/export)이고, desktop 메인 프로세스(.cjs)는 CommonJS(require), viewFormat.js는 ES 모듈, desktop/ui/는 ESM + JSX(esbuild 번들)이므로 각 파일의 기존 방식을 따른다.
 - 공개 서비스 함수는 try/catch, 오류 로그, STATUS_OK/STATUS_FAILED 반환을 갖춘다. 성공 데이터는 data, 오류는 error: { code, msg }에 담는다. CLI 오류에 HTTP 코드나 웹 서버 의존성을 추가하지 않는다.
 - 서비스 함수는 준비·실행·결과 처리 단계로 나누고 재사용할 로직은 utils의 export default 라이브러리로 분리한다. 유틸 내부 예외는 서비스 경계에서 처리하며 프로세스 종료와 finally 정리를 유지한다.
 - 함수 사이와 논리 블록(변수 선언군·검증·반환) 사이에는 빈 줄을 둔다. if는 한 줄이어도 중괄호를 쓰고 중첩 삼항 연산자는 쓰지 않는다. 오브젝트 필드는 key: value로 명시하고 shorthand를 쓰지 않는다.

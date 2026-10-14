@@ -17,18 +17,18 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 렌더러에는 Node 권한을 주지 않는다. preload.cjs가 window.autopilot·window.appWindow만 노출한다.
 - CSP가 inline style 속성을 막으므로 스크립트의 스타일은 style.setProperty로만 넣는다. React의 style prop은 CSSOM으로 적용돼 CSP에 걸리지 않는다(CSS 변수·anchorName 확인).
 - 엔진이 알려준 경로는 믿지 않는다(projectFiles.cjs). 리포트 열기는 시작한 프로젝트의 .autopilot/progress/ 안의 report_*.html만 허용하고, 연결할 로그는 progress/ 안의 autopilot_*.log만 읽는다. 둘 다 링크를 실제 경로로 풀어 판단한다.
-- viewFormat.js는 DOM에 의존하지 않는 표시용 순수 함수이며 renderer.js보다 먼저 불러오는 클래식 스크립트다. tests/checkDesktopView.js가 단독으로 불러 검증한다. desktop/ui가 쓰는 함수는 번들이 읽을 때 ui/build.mjs의 view-format 플러그인이 최상위 const를 export로 덧붙여 import하게 하므로 viewFormat.js 자체는 바꾸지 않는다.
+- viewFormat.js는 DOM에 의존하지 않는 표시용 순수 함수(ES 모듈)이며 desktop/ui가 import하고 tests/checkDesktopView.js가 단독으로 불러 검증한다.
 
 ## 실행 설정과 허용 값
 
 - 대상 프로젝트는 Git 저장소의 루트(.git이 있는 폴더)만 받는다(projectFiles.getProjectError). 고르기 전에는 시작 버튼이 잠기고 실행 중에는 바꿀 수 없다.
 - 프로젝트·작업·종료 시각·정책·model·effort는 userData/settings.json에 저장해 다음 실행 때 복원한다. 프로젝트는 고를 때, 나머지는 시작할 때 저장하고, model·effort는 실행 중 set에 성공해도 저장한다.
 - 종료 신호는 같은 엔진의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다.
-- 실행 중에는 model·effort를 고르는 즉시 set으로 보낸다(Effort는 팝오버의 단계를 누를 때 한 번). 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다(renderer의 applyRoundOptions).
+- 실행 중에는 model·effort를 고르는 즉시 set으로 보낸다(Effort는 팝오버의 단계를 누를 때 한 번). 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다(composerStore의 applyRoundOptions).
 - 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 본다. 둘이 다르면 적용 대기로 표시한다.
-- 모델은 화면에서 계열 별칭(MODEL_CHOICES, 최신 버전)만 고르고, 설정 패널의 "모델 버전"(#model-versions, React 섬 ui/islands/ModelVersions.jsx)이 계열마다 모델 ID를 고정한다(settings.json의 modelVersions, 비면 별칭). 별칭→ID 변환은 메인(autopilotIpc.resolveModel)이 시작·set에서만 하고 settings.model에는 계열을 저장한다. 엔진·러너 state의 model은 ID일 수 있어 renderer·viewFormat이 getModelFamily·formatModelName으로 계열과 이름을 읽는다. 고정은 실행 중에 막고 메인도 거부한다(autopilot:set-model-version).
+- 모델은 화면에서 계열 별칭(MODEL_CHOICES, 최신 버전)만 고르고, 설정 패널의 "모델 버전"(#model-versions, ui/features/settings/ModelVersions.jsx)이 계열마다 모델 ID를 고정한다(settings.json의 modelVersions, 비면 별칭). 별칭→ID 변환은 메인(autopilotIpc.resolveModel)이 시작·set에서만 하고 settings.model에는 계열을 저장한다. 엔진·러너 state의 model은 ID일 수 있어 화면(composerStore·viewFormat)이 getModelFamily·formatModelName으로 계열과 이름을 읽는다. 고정은 실행 중에 막고 메인도 거부한다(autopilot:set-model-version).
 - 버전 목록은 claudeAccount.createAccountReader().getModels()가 계정 토큰으로 공식 `GET /v1/models`(anthropic-version 헤더 필요)를 읽어 1시간 보관한다. ID 형식(MODEL_ID_PATTERN)을 벗어난 항목은 걸러내고 실패하면 이전 목록을 유지한다. 새 모델은 목록이 따라오지만 새 계열(line)은 별칭 라디오·MODEL_CHOICES·viewFormat의 MODEL_LABELS·마크를 함께 더해야 보인다. tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
-- 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·MODEL_ID_PATTERN·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES, index.html의 모델 라디오(name="model")·Effort 단계 목록(datalist#effort-levels의 option label)·정책 라디오(name="policy")이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 data-default가 붙은 기본값을 대조한다.
+- 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·MODEL_ID_PATTERN·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES, 화면의 ui/lib/constants.js(MODEL_FAMILIES·EFFORT_LEVELS·POLICIES와 DEFAULT_*)이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 기본값을 대조한다.
 
 ## 계정
 
@@ -89,34 +89,40 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ## React 화면(desktop/ui)
 
-- 화면은 renderer.js(명령형 DOM)에서 React 19로 옮기는 중이다. 한 번에 바꾸지 않고 index.html의 자리(지금은 #model-versions)에 섬 단위로 붙인다(ui/index.jsx의 mount, 첫 그림은 flushSync로 바로 그려 스모크 테스트가 확인한다). 옮긴 영역의 코드는 renderer.js에서 지운다.
-- 소스는 desktop/ui/(ESM·JSX), 출력은 desktop/bundle/ui.js·ui.css다(esbuild, ui/build.mjs). 번들이 없으면 스모크 테스트가 `#model-versions .select-trigger`를 못 찾아 실패한다. React·ReactDOM·esbuild는 devDependency이고 exact로 고정한다(react 19.3.0, esbuild 0.28.2). 올릴 때는 최근 2주 안에 나온 버전을 피한다.
-- 구성: components/(공통 컴포넌트와 같은 이름의 CSS, 토큰은 styles.css의 :root), islands/(화면 조각), bridge.js(window.autopilot을 훅으로 잇는다: useRunStatus·useSettings·useBodyClass), selectKeys.js(키 이동 순수 함수). JSX가 필요 없는 로직은 .js로 두어 Node에서 바로 검증한다.
-- renderer.js와 섬은 document의 CustomEvent로 주고받는다. 섬이 값을 바꾸면 알린다(autopilot:model-versions의 detail은 modelVersions이고 renderer가 settings와 모델 알약을 갱신한다). 옮기는 영역이 늘면 이 다리는 없어진다.
-- Select는 설정 패널의 .version-select를 개선한 선택 상자이고 새 선택 UI의 기준이다(높이 32·반경 8·안쪽 1px 테두리). 목록은 native popover(auto)와 anchor 위치라 패널 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙다가 자리가 모자라면 위로 뒤집힌다. 항목은 이름 아래에 설명을 두고(알약 팝오버와 같은 흰 카드·모션) 고른 항목은 배경과 체크로 보인다(파랑은 쓰지 않는다). 키보드는 select-only combobox를 따라 트리거에 포커스가 남고(↑↓·Home·End·PageUp/Down·글자 이어 치기·Enter/Space로 고름·Esc로 닫음) 실행 중에는 알약처럼 회색 + 자물쇠로 잠긴다.
-- 팝오버가 열린 동안은 renderer의 handleEscape가 Esc를 처리하지 않는다. 안 그러면 선택 목록을 닫는 Esc가 설정 패널까지 닫는다.
-- React 19에서 inert·popoverTarget·form이 속성대로 동작한다(18에서는 inert={true}가 빠진다).
-- tests/checkDesktopUi.js가 키 이동 함수와 Select 마크업을 esbuild로 묶어 react-dom/server로 검증한다. 열기·키보드·Esc·잠금 같은 동작은 가짜 preload로 index.html을 띄운 오프스크린 Electron에서 실제 마우스·키보드 입력으로 확인한다.
+- 화면 전체를 React 19가 그린다. index.html은 `<div id="root">` 하나와 번들(bundle/app.js·app.css)만 불러오고, 소스는 desktop/ui/(ESM·JSX)이며 esbuild(ui/build.mjs)가 desktop/bundle/로 묶는다(npm run build:ui, 저장할 때마다 다시 만들려면 npm run dev:ui). 번들은 커밋하지 않고 패키지에는 번들만 넣는다. 번들이 없으면 스모크 테스트가 #run-form을 못 찾아 실패한다. react·react-dom·esbuild·zustand는 devDependency이고 exact로 고정한다(올릴 때는 최근 2주 안에 나온 버전을 피한다).
+- 구성
+    - main.jsx는 메인이 보관한 첫 상태를 모두 받은 뒤(boot.js) App.jsx를 그린다. boot.js는 첫 상태 적재, 메인 이벤트 구독, 실행 상태가 바뀔 때 다른 스토어가 따라야 하는 규칙(옛 renderState가 한꺼번에 하던 일)을 맡는다.
+    - stores/는 zustand 스토어다. runStore(엔진 상태와 로그 3000줄. 로그는 50ms 단위로 모아 반영하고 shareStructure로 바뀌지 않은 조각의 참조를 유지한다), appStore(앱 정보·저장된 설정·창), uiStore(패널·시트 전환 규칙·안내·시작 중 잠금), composerStore(모델·Effort·정책·종료 시각·작업·한도 연장, 실행 중 엔진 값 따라가기, 옵션 전달 큐), accountStore, scheduleStore, runsStore, clock(초 단위 틱 하나를 모두가 나눠 쓰고 useClock은 읽은 값이 바뀔 때만 다시 그린다)이다.
+    - actions/는 IPC를 부르는 일(run·runs·accounts·schedules)이다. 컴포넌트는 window.autopilot을 직접 부르지 않고 액션을 부른다.
+    - features/는 화면 단위(shell·ready·run·done·composer·profile·settings·history·archive·schedule)다. 각 화면은 스토어를 선택자 단위로 구독하고, 객체를 고를 때는 useShallow를 쓴다.
+    - components/는 공통 컴포넌트다(Icon·Button·Chip·Tag·SwapText·TickText·Popover·Select·Panel·Scrim·SettingsGroup·Gains·RunList·Symbols). CSS가 필요한 것은 같은 이름의 .css를 두고 토큰은 styles.css의 :root를 쓴다.
+    - hooks/(useReplay·useWidthTween·useMergedRef·useView·useBodyFlags·useOverlayDismiss), lib/(constants: 허용 값·MAIN_ACTIONS, shareStructure, runText, cx)가 받친다. 허용 값(constants.js)은 엔진 config.js·autopilotRunner.cjs와 함께 바꾸고 tests/checkDesktopRunner.js가 대조한다.
+- CSS가 body의 data-view·data-status·data-tasks-open·클래스(ready·*-open)에 기대므로 useBodyFlags가 화면 상태를 그 한 곳에 반영한다. #root는 display: contents라 body의 flex 배치에 끼지 않는다.
+- 성능: 구독은 선택자 단위이고, 이벤트마다 새로 오는 상태 객체는 shareStructure로 바뀐 조각만 새 참조가 된다. 시계는 하나다. 로그 줄은 늘어나기만 하는 불변 객체라 새 줄만 DOM에 더해지고, 전체 기록은 열려 있을 때만 그린다(가상화는 전체 선택·복사를 깨므로 쓰지 않는다). 지난 실행 상세의 대화 변환은 기록당 한 번(useMemo)이다. 팝오버·패널은 native popover·inert·CSS 전환을 쓴다.
+- 애니메이션: 이야기(features/run/RunView)는 렌더 직전에 위치를 재고(measureTops) flushSync로 커밋한 뒤 layout effect에서 FLIP(slidePast)을 걸고, 드러내기 마스크(reveal.js)와 애니메이션 대기 게이트(busy·dirty와 Promise.allSettled)로 끝나기 전에 온 상태를 모았다가 한 번 그린다. 문구가 바뀔 때 맺히는 전환(SwapText·TickText)과 알약 너비 전환(useWidthTween. 출발 너비는 ResizeObserver가 기억한 바뀌기 직전의 실제 너비다)은 훅이 한다. 애니메이션 클래스를 다시 거는 요소의 className prop에는 그 클래스를 넣지 않는다(React가 다시 쓰지 않아 클래스가 남는다).
+- Select는 설정 패널의 옛 선택 상자를 개선한 것이고 새 선택 UI의 기준이다(높이 32·반경 8·안쪽 1px 테두리). 목록은 native popover(auto)와 anchor 위치라 패널 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙다가 자리가 모자라면 위로 뒤집힌다. 항목은 이름 아래에 설명을 두고(알약 팝오버와 같은 흰 카드·모션) 고른 항목은 배경과 체크로 보인다(파랑은 쓰지 않는다). 키보드는 select-only combobox를 따라 트리거에 포커스가 남고(↑↓·Home·End·PageUp/Down·글자 이어 치기·Enter/Space로 고름·Esc로 닫음) 실행 중에는 알약처럼 회색 + 자물쇠로 잠긴다.
+- 팝오버가 열린 동안은 useOverlayDismiss가 Esc를 처리하지 않는다. 안 그러면 선택 목록을 닫는 Esc가 설정 패널까지 닫는다. React 19에서 inert·popoverTarget·form이 속성대로 동작한다(18에서는 inert={true}가 빠진다).
+- 검증: tests/checkDesktopUi.js(키 이동 함수·Select 마크업), tests/checkDesktopStores.js(구조 공유, 로그 묶음·번호, 패널 전환, 옵션 전달 큐, 시작 중복 방지, 종료 신호 확인, 로그인 뒤 시작 이어가기, 예약 저장), 스모크(마운트와 주요 자리 확인)가 있다. 화면 모양과 동작은 tests/tools/ui의 비교 도구로 확인한다. 가짜 preload(fakePreload.cjs)로 두 화면을 같은 장면(scenes/)으로 띄워 진짜 마우스·키보드 입력을 보내고 영역별 PNG·정규화한 DOM·IPC 호출을 비교한다(`npm run ui:parity -- --baseline <git ref> [--full]`. 기준은 그 ref의 desktop·docs이고 화면 번들까지 만들어 쓴다). 화면을 고칠 때는 고치기 전 커밋을 기준으로 의도한 차이만 남는지 확인하고 장면을 더한다. React 전환 직전 커밋 c0333ae가 옛 renderer.js 화면이다.
 
 ## 화면 구조
 
 - 화면은 사이드바 없이 한 장이고 스크롤하지 않는다. 창 높이에 맞춰 본문이 줄어든다(헤더가 밀려나면 창을 끌 곳이 없다). 위에서부터 헤더(#titlebar), 상태 줄(.course, 아래에 회차 진행선 #track), 본문(.stage), 안내 문구(.notices: #notice·#login-banner·#project-banner, 비면 자리를 차지하지 않는다), 컴포저(#run-form.composer)를 쌓는다.
 - 본문은 body[data-view]의 ready·run·done 중 하나만 보인다(viewFormat.getView). ready는 시작 전 인사(.greet)이고 상태 줄(.course)을 숨긴다. run은 이야기(.story)다. done은 실행을 마친 뒤의 정리(.finish)로, 실행이 끝난 상태가 남아 있는 동안 보이고 다른 프로젝트를 고르면 ready로 돌아간다(isFinishDismissed).
-- 이야기는 renderer가 로그 줄마다 viewFormat.applyStoryEntry로 Claude의 문장(시각 + 본문 줄, 여러 줄 메시지의 4칸 들여 쓴 줄은 앞 문장에 잇는다)과 도구 줄(`HH:MM:SS   > 이름 인자`)을 묶음(beat)으로 만든다. 앱이 엔진을 시작·연결하는 [앱] 줄이 오면 이야기를 비운다.
+- 이야기는 storyModel(features/run)이 로그 묶음마다 viewFormat.applyStoryEntry로 Claude의 문장(시각 + 본문 줄, 여러 줄 메시지의 4칸 들여 쓴 줄은 앞 문장에 잇는다)과 도구 줄(`HH:MM:SS   > 이름 인자`)을 묶음(beat)으로 만든다. 앱이 엔진을 시작·연결하는 [앱] 줄이 오면 이야기를 비운다.
 - 문장 앞에는 그 전에 부른 도구가 칩으로 붙는다. 도구만 온 동안에는 describeTool이 지은 문장을 보여주다가 Claude의 문장이 오면 바꾼다. 사용량 한도·재시도 대기·종료 신호 뒤에는 getWaitSentence의 기다리는 이유가 지금 문장(#now-text)을 대신한다.
-- 지난 문장(#story-past)은 최대 STORY_PAST_LINES개까지 쌓는다. 줄이 늘거나 지금 문장 높이가 바뀌면 renderer의 slidePast가 FLIP으로 올려 보내고 새 줄만 맺힌다.
+- 지난 문장(#story-past)은 최대 STORY_PAST_LINES개까지 쌓는다. 줄이 늘거나 지금 문장 높이가 바뀌면 RunView의 slidePast가 FLIP으로 올려 보내고 새 줄만 맺힌다.
 - 진행선(getTrack)은 실행 시작부터 종료 예정 시각까지를 100으로 놓고 회차 구간·커밋 점(회차 끝)·지금 위치를 퍼센트로 그린다. 0.1% 넘게 바뀔 때만 다시 그리고, 회차 이름은 상태 줄의 N회차 진행 중과 겹쳐 그리지 않는다.
-- 전체 기록(#history)은 아래에서 올라오는 흰 시트이고(닫혀 있으면 inert, 스크림을 누르거나 Esc로 닫는다) 전체 로그 줄은 content-visibility로 화면 밖을 그리지 않는다.
+- 전체 기록(#history)은 아래에서 올라오는 흰 시트이고(닫혀 있으면 inert, 스크림을 누르거나 Esc로 닫는다) 전체 로그 줄은 content-visibility로 화면 밖을 그리지 않고, 열려 있을 때만 그린다.
 
 ## 컴포저와 패널
 
-- 실행이 시작되면 컴포저가 아래에 붙은 얇은 막대로 줄어든다(position: sticky, 좌우 여백은 그대로 두고 흰 바탕·그림자로 떠 있게 한다). 작업 칸(textarea, 높이 고정, 넘치면 칸 안에서 스크롤)은 접혀 작업 요약 한 줄 #tasks-toggle만 남고, 누르면 .fold의 grid-template-rows 0fr↔1fr 전환으로 읽기 전용 작업 칸이 펴진다. 접힌 칸은 visibility로 포커스를 막고 실행이 끝나면 접힌 상태로 돌아간다. renderer의 setTasksOpen이 body[data-tasks-open]을 다룬다.
-- 주 버튼(#main-action, 글자 #main-action-label)은 시작 → 종료 신호 → 종료로 바뀐다. 종료 신호는 실수 방지로 한 번 누르면 붉게 바뀌어 4초 동안 "한 번 더 눌러 종료"를 보이고(줄어드는 채움이 남은 시간을 알린다) 그 안에 다시 눌러야 stop을 보낸다(renderer의 setStopArmed). 종료는 강제 종료이며 메인 프로세스의 확인 대화상자를 거친다.
-- 알약 줄(.composer-bar)은 모델(#model-popover)·Effort(#effort-popover)·개선 정책(#policy-popover)·종료 시각(#end-time-popover)이다. Effort 파형은 renderer의 getWavePath가 path의 d를 정하고 값은 숨은 input#effort가 갖는다. 종료 시각 값은 숨은 input#end-time에 HH:mm 또는 빈 값으로 둔다.
-- 정책 라디오(name="policy")는 정책 팝오버 안의 숨은 입력이고 form="run-form"으로 폼에 속하며, 팝오버 버튼은 그 값만 바꾼다. 설정 패널에는 정책이 없다.
+- 실행이 시작되면 컴포저가 아래에 붙은 얇은 막대로 줄어든다(position: sticky, 좌우 여백은 그대로 두고 흰 바탕·그림자로 떠 있게 한다). 작업 칸(textarea, 높이 고정, 넘치면 칸 안에서 스크롤)은 접혀 작업 요약 한 줄 #tasks-toggle만 남고, 누르면 .fold의 grid-template-rows 0fr↔1fr 전환으로 읽기 전용 작업 칸이 펴진다. 접힌 칸은 visibility로 포커스를 막고 실행이 끝나면 접힌 상태로 돌아간다. uiStore의 tasksOpen을 useBodyFlags가 body[data-tasks-open]에 반영한다.
+- 주 버튼(#main-action, 글자 #main-action-label)은 시작 → 종료 신호 → 종료로 바뀐다. 종료 신호는 실수 방지로 한 번 누르면 붉게 바뀌어 4초 동안 "한 번 더 눌러 종료"를 보이고(줄어드는 채움이 남은 시간을 알린다) 그 안에 다시 눌러야 stop을 보낸다(actions/run.js의 setStopArmed). 시작은 응답을 기다리는 동안 다시 누르지 못하게 잠근다(uiStore의 isStarting). 종료는 강제 종료이며 메인 프로세스의 확인 대화상자를 거친다.
+- 알약 줄(.composer-bar)은 모델(#model-popover)·Effort(#effort-popover)·개선 정책(#policy-popover)·종료 시각(#end-time-popover)이다. Effort 파형은 EffortChip의 getWavePath가 path의 d를 정하고, Effort·종료 시각(HH:mm 또는 빈 값) 같은 선택 값은 composerStore가 갖는다.
+- 정책 값도 composerStore가 갖고 정책 팝오버의 버튼은 그 값만 바꾼다. 설정 패널에는 정책이 없다.
 - 실행 중에는 정책·종료 시각 알약을 숨긴다(종료 시각과 남은 시간은 상태 줄·진행선에, 정책은 작업 요약의 문구에 이미 있다). 알약 줄은 줄바꿈 없이 한 줄에 들어가야 하므로 좁은 창(560px 이하)에서는 남은 시간과 화살표를 숨긴다.
 - 팝오버는 native popover와 anchor 위치를 쓰고 컴포저가 아래에 있어 위로 열린다. display는 :popover-open에만 준다(닫힌 팝오버에 display를 주면 보이지 않는 목록이 남아 클릭으로 값이 바뀐다). 모델 라디오(name="model")는 팝오버 안에 있지만 form="run-form"으로 폼에 속하고, 마크·아이콘은 svg.symbols의 symbol을 use로 쓴다.
-- 프로필 패널(#profile, #profile-toggle)과 설정 패널(#settings, #settings-toggle)은 헤더 아래에 뜨는 같은 .panel 컴포넌트이며 한 번에 하나만 열린다(renderer의 setPanelOpen). 설정 패널은 닫혀 있으면 inert이고 열 때 ease-out·닫을 때 ease-in이며, 뒤에 헤더 아래만 덮는 .scrim을 깐다. 프로필 패널의 계정 목록은 #account-select 안에 renderer가 role=radio 버튼 줄로 만든다.
+- 프로필 패널(#profile, #profile-toggle)과 설정 패널(#settings, #settings-toggle)은 헤더 아래에 뜨는 같은 .panel 컴포넌트이며 한 번에 하나만 열린다(uiStore의 setPanel·togglePanel). 설정 패널은 닫혀 있으면 inert이고 열 때 ease-out·닫을 때 ease-in이며, 뒤에 헤더 아래만 덮는 .scrim을 깐다. 프로필 패널의 계정 목록은 #account-select 안에 AccountList가 role=radio 버튼 줄로 그린다.
 - 진행 기록 초기화(설정 패널)는 확인 대화상자를 거쳐 reset-progress를 실행하고 실행 중에는 막는다. 버튼은 공통 .button(primary·danger·small 조합)을 쓴다.
 
 ## 시각 규칙
@@ -125,14 +131,14 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 글자 크기는 styles.css :root의 열 단계(--text-xs 12 ~ --display 56)만 쓴다.
 - 서체는 desktop/fonts/의 Pretendard(OFL, 라이선스 파일 동봉)를 @font-face로 넣어 오프라인에서도 같게 보이게 한다. 숫자는 body의 tabular-nums(Pretendard 고정폭 숫자)로 써서 시계가 바뀌어도 흔들리지 않게 한다.
 - 고정폭 서체(--mono, Windows의 Cascadia Mono)는 코드·경로·해시·전체 로그에만 쓴다(한글이 섞인 숫자 문구에 쓰면 글자 사이가 벌어진다).
-- 지금 문장은 줄 순서대로 마스크를 쓸어 드러내고(renderer의 revealNowText, 글자 위치는 그대로다), 드러내는 중에 문장이 이어지면 마스크를 걷어 다 보여준다. 길이에 따라 글자 크기를 줄여(data-length) 네 줄 안에 넣는다.
+- 지금 문장은 줄 순서대로 마스크를 쓸어 드러내고(features/run/reveal.js, 글자 위치는 그대로다), 드러내는 중에 문장이 이어지면 마스크를 걷어 다 보여준다. 길이에 따라 글자 크기를 줄여(data-length) 네 줄 안에 넣는다.
 - prefers-reduced-motion에서는 이동·확대 전환(패널·시트·팝오버 미끄러짐, 등장)을 끄고, 자리가 바뀌지 않는 투명도 표시(캐럿 깜빡임, 상태 점, 문장 드러내기, 문구 전환)만 남긴다.
 - 창을 숨기면(document.hidden) :root.window-hidden으로 반복 애니메이션을 멈춘다. 등장 애니메이션은 서체가 준비돼 body.ready가 붙기 전까지 멈춰 둔다.
 
 ## 창과 시스템 연동
 
 - 창은 세로형 600×800(최소 480×640, 작업 영역보다 크면 줄인다)이고 frame 없이 흰 바탕(main.cjs의 WINDOW_BACKGROUND)으로 첫 화면이 그려진 뒤(ready-to-show) 띄운다.
-- 헤더(#titlebar)는 index.html에서 직접 그린다. 왼쪽에 로고, 오른쪽에 프로필·설정·최소화·최대화·닫기 버튼을 둔다(맨 앞에 #update-chip). 헤더 전체가 끌기 영역(-webkit-app-region: drag)이고 버튼만 뺀다.
+- 헤더(#titlebar)는 features/shell/TitleBar.jsx에서 직접 그린다. 왼쪽에 로고, 오른쪽에 프로필·설정·최소화·최대화·닫기 버튼을 둔다(맨 앞에 #update-chip). 헤더 전체가 끌기 영역(-webkit-app-region: drag)이고 버튼만 뺀다.
 - 최소화·최대화·닫기는 preload의 window.appWindow가 main.cjs의 window:* IPC로 요청한 창에만 적용한다. 닫기는 일반 close라 실행 중 확인을 그대로 거친다. 최대화 상태는 window:state로 받아 아이콘을 바꾼다.
 - 앱은 단일 인스턴스이며 두 번째 실행은 종료하고 기존 창을 앞으로 가져온다(--smoke-test는 실행 중인 앱과 무관하게 검증하도록 잠금에서 제외한다).
 - 앱이 시작한 엔진이 실행 중이거나 설정의 "닫아도 트레이에서 계속 켜 두기"(settings.json의 keepInTray)가 켜져 있으면 창을 닫을 때 트레이로 숨기기만 한다(main.cjs의 close 처리, isOwnedEngineRunning·isTrayResident). 종료는 트레이 메뉴의 종료로 하며 창을 띄워 confirmClose의 확인 후 강제 종료한다. 그 밖에는(실행 중이 아니고 트레이 상주도 꺼져 있거나 연결한 엔진이면) 닫을 때 앱이 종료된다. 트레이에서 종료할 때는 window closed에서 app.quit()을 불러 macOS에서도 끝낸다.

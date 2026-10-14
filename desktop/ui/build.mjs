@@ -1,7 +1,6 @@
 import { build, context } from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
-import { viewFormatPlugin } from "./viewFormatPlugin.mjs";
 
 const UI_DIR = import.meta.dirname;
 const OUT_DIR = path.join(UI_DIR, "..", "bundle");
@@ -9,7 +8,7 @@ const IS_WATCH = process.argv.includes("--watch");
 
 const getOptions = () => {
     return {
-        entryPoints: { ui: path.join(UI_DIR, "index.jsx"), app: path.join(UI_DIR, "main.jsx") },
+        entryPoints: { app: path.join(UI_DIR, "main.jsx") },
         outdir: OUT_DIR,
         entryNames: "[name]",
         bundle: true,
@@ -19,7 +18,6 @@ const getOptions = () => {
         minify: !IS_WATCH,
         sourcemap: IS_WATCH,
         define: { "process.env.NODE_ENV": IS_WATCH ? '"development"' : '"production"' },
-        plugins: [viewFormatPlugin],
         logLevel: "info"
     };
 };

@@ -1,51 +1,5 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import vm from "node:vm";
-
-const EXPORTED_NAMES = [
-    "MODEL_LABELS",
-    "formatDuration",
-    "formatClock",
-    "formatDeadline",
-    "formatOptions",
-    "getModelFamily",
-    "formatModelName",
-    "getLineKind",
-    "getRunPhase",
-    "getRoundTone",
-    "formatRoundTime",
-    "shiftEndTime",
-    "getEndTimeAfter",
-    "formatTimeUntil",
-    "formatUsageReset",
-    "getUsageTone",
-    "getView",
-    "getGreeting",
-    "getWorkSummary",
-    "describeFinish",
-    "getWaitSentence",
-    "getTrack",
-    "parseStoryLine",
-    "describeTool",
-    "createStory",
-    "applyStoryEntry",
-    "parseGain",
-    "splitFigure",
-    "describePastRun",
-    "buildTranscript",
-    "describeSchedule",
-    "describeScheduleStatus",
-    "describeScheduleLast",
-    "describeScheduleSummary"
-];
-
-// 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
-const loadViewFormat = () => {
-    const source = fs.readFileSync(path.join(import.meta.dirname, "../desktop/viewFormat.js"), "utf8");
-
-    return vm.runInNewContext(`${source}\n({ ${EXPORTED_NAMES.join(", ")} })`);
-};
+import * as viewFormat from "../desktop/viewFormat.js";
 
 const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
     assert.equal(formatDuration(0), "00:00:00");
@@ -536,8 +490,6 @@ const checkSchedules = (viewFormat) => {
 };
 
 const checkViewFormat = () => {
-    const viewFormat = loadViewFormat();
-
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
     checkTrack(viewFormat);
