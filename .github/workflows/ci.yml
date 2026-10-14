@@ -7,7 +7,17 @@ permissions:
   contents: read
 jobs:
   check:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            packaged-app: dist/win-unpacked/AutoPilot.exe
+          - os: ubuntu-latest
+            packaged-app: dist/linux-unpacked/autopilot
+          - os: macos-latest
+            packaged-app: dist/mac-arm64/AutoPilot.app/Contents/MacOS/AutoPilot
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,4 +29,16 @@ jobs:
       - run: npm run format:check:desktop
       - run: npm run test:cli
       - run: npm run test:desktop
-      - run: npm test
+      - name: Electron smoke test
+        if: runner.os != 'Linux'
+        run: npm test
+      # 리눅스 러너에는 화면이 없고 chrome-sandbox 권한도 없어 가상 화면과 --no-sandbox로 띄운다.
+      - name: Electron smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npx electron . --smoke-test --no-sandbox
+      - name: Package (unpacked)
+        run: npx electron-builder --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Packaged engine check
+        run: node tests/checkAutopilot.js "${{ matrix.packaged-app }}"

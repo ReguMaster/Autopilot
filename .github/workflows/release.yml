@@ -3,10 +3,12 @@ on:
   push:
     tags:
       - 'v*'
+  # 태그 없이 눌러 배포 파일이 세 운영체제에서 만들어지는지만 확인할 수 있다(릴리스는 올리지 않는다).
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
-  desktop:
+  verify:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +18,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Check tag matches version
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           app_version="v$(node -p "require('./package.json').version")"
@@ -25,13 +28,47 @@ jobs:
       - run: npm run test:cli
       - run: npm run test:desktop
       - run: npm test
-      - run: npm run dist -- --publish never
+  desktop:
+    needs: [verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dist: npm run dist -- --publish never
+            assets: dist/AutoPilot-*.exe
+            artifact: desktop-windows
+          - os: macos-latest
+            dist: npm run dist:mac -- --publish never
+            assets: |
+              dist/AutoPilot-*.dmg
+              dist/AutoPilot-*.zip
+            artifact: desktop-mac
+          - os: ubuntu-latest
+            dist: npm run dist:linux -- --publish never
+            assets: |
+              dist/AutoPilot-*.AppImage
+              dist/AutoPilot-*.deb
+            artifact: desktop-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: ${{ matrix.dist }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop
-          path: dist/AutoPilot-*.exe
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.assets }}
+          if-no-files-found: error
   release:
     needs: [desktop]
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

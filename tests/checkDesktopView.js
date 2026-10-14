@@ -33,7 +33,11 @@ const EXPORTED_NAMES = [
     "parseGain",
     "splitFigure",
     "describePastRun",
-    "buildTranscript"
+    "buildTranscript",
+    "describeSchedule",
+    "describeScheduleStatus",
+    "describeScheduleLast",
+    "describeScheduleSummary"
 ];
 
 // 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
@@ -464,6 +468,73 @@ const checkPastRuns = ({ describePastRun, buildTranscript }) => {
     assert.equal(many.items.at(-1).text, "문장 1999");
 };
 
+const checkSchedules = (viewFormat) => {
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+    const describeSchedule = (schedule) => plain(viewFormat.describeSchedule(schedule));
+    const describeScheduleStatus = (schedule, status, nowMs) => plain(viewFormat.describeScheduleStatus(schedule, status, nowMs));
+    const describeScheduleLast = (last, nowMs) => plain(viewFormat.describeScheduleLast(last, nowMs));
+
+    const base = { id: "sch-00000001", enabled: true, kind: "time", time: "23:00", window: "session", from: "", to: "", days: [0, 1, 2, 3, 4, 5, 6], minRemaining: 0, duration: 360 };
+
+    assert.deepEqual(describeSchedule(base), { title: "매일 23:00에 시작", detail: "6시간 실행" });
+    assert.equal(describeSchedule({ ...base, days: [1, 2, 3, 4, 5], minRemaining: 50, duration: 90 }).title, "평일 23:00에 시작");
+    assert.equal(describeSchedule({ ...base, days: [5, 0, 3] }).title, "수·금·일 23:00에 시작");
+    assert.equal(describeSchedule({ ...base, days: [0, 6] }).title, "주말 23:00에 시작");
+    assert.equal(describeSchedule({ ...base, minRemaining: 50, duration: 90 }).detail, "90분 실행, 남은 한도 50% 이상일 때만");
+
+    const reset = { ...base, kind: "reset", time: "", window: "weekly", from: "22:00", to: "07:00", minRemaining: 30, duration: 300 };
+
+    assert.deepEqual(describeSchedule(reset), { title: "주간 한도가 리셋되면 시작", detail: "매일 22:00~07:00 사이에 시작, 5시간 실행, 남은 한도 30% 이상일 때만" });
+    assert.equal(describeSchedule({ ...reset, window: "session", from: "", to: "", days: [1, 2, 3, 4, 5], minRemaining: 0 }).detail, "평일 언제든 시작, 5시간 실행");
+
+    // 2026-10-14는 수요일이다.
+    const now = new Date(2026, 9, 14, 21, 0).getTime();
+    const at = (hour, minute, dayOffset = 0) => new Date(2026, 9, 14 + dayOffset, hour, minute).getTime();
+    const status = (state, overrides = {}) => describeScheduleStatus({ ...base, ...overrides }, state, now);
+
+    assert.deepEqual(status({ code: "next-time", at: at(23, 0) }), { text: "다음 시작은 오늘 23:00이에요", tone: "ok" });
+    assert.equal(status({ code: "next-time", at: at(23, 0, 1) }).text, "다음 시작은 내일 23:00이에요");
+    assert.equal(status({ code: "next-time", at: at(23, 0, 3) }).text, "다음 시작은 10월 17일 (토) 23:00이에요");
+    assert.equal(status({ code: "next-time", at: null }).tone, "ok");
+    assert.deepEqual(status({ code: "disabled" }), { text: "꺼져 있어요", tone: "muted" });
+    assert.deepEqual(status({ code: "next-time" }, { enabled: false }), { text: "꺼져 있어요", tone: "muted" });
+    assert.equal(describeScheduleStatus(base, undefined, now).text, "확인하는 중이에요");
+    assert.equal(status({ code: "busy" }).tone, "muted");
+    assert.deepEqual(status({ code: "low-limit", remaining: 30, need: 50 }), { text: "남은 한도가 30%라 기다려요. 50% 이상이어야 시작해요", tone: "warn" });
+    assert.match(status({ code: "waiting-reset", resetsAt: at(23, 30) }, { kind: "reset", window: "weekly" }).text, /^주간 한도 리셋을 기다려요\. 23:30 리셋/);
+    assert.equal(status({ code: "waiting-reset", resetsAt: 0 }, { kind: "reset" }).text, "5시간 한도 리셋을 기다려요");
+    assert.match(status({ code: "outside-window", opensAt: at(22, 0, 1) }).text, /내일 22:00에 시작해요$/);
+    assert.deepEqual(status({ code: "no-usage", message: "읽지 못했어요" }), { text: "사용량을 읽지 못해 한도 리셋을 알 수 없어요. 읽지 못했어요", tone: "warn" });
+    assert.equal(status({ code: "loading" }).text, "사용량을 읽는 중이에요");
+    assert.equal(status({ code: "too-short" }).tone, "muted");
+    assert.deepEqual(status({ code: "unknown" }), { text: "", tone: "muted" });
+
+    const summary = (schedules, statuses) => viewFormat.describeScheduleSummary(schedules, statuses, now);
+    const resetSchedule = { ...base, id: "sch-00000002", kind: "reset" };
+
+    assert.equal(summary([], []), "예약해 두면 정해진 때나 한도가 리셋될 때 자동으로 시작해요");
+    assert.equal(summary([{ ...base, enabled: false }], []), "예약이 모두 꺼져 있어요");
+    assert.equal(summary([base], [{ id: base.id, code: "next-time", at: at(23, 0) }]), "다음 예약 오늘 23:00");
+    assert.equal(
+        summary(
+            [base, { ...base, id: "sch-00000003", time: "09:00" }],
+            [
+                { id: base.id, code: "next-time", at: at(23, 0) },
+                { id: "sch-00000003", code: "next-time", at: at(9, 0, 1) }
+            ]
+        ),
+        "다음 예약 오늘 23:00"
+    );
+    assert.equal(summary([base, resetSchedule], [{ id: base.id, code: "next-time", at: at(23, 0) }]), "다음 예약 오늘 23:00, 한도 리셋을 기다리는 예약 1개");
+    assert.equal(summary([resetSchedule], []), "한도 리셋을 기다리는 예약 1개");
+    assert.equal(summary([base], []), "켜져 있는 예약 1개");
+
+    assert.deepEqual(describeScheduleLast(null, now), { text: "", tone: "muted" });
+    assert.equal(describeScheduleLast({ at: at(23, 1, -1), ok: true, message: "x" }, now).text, "10월 13일 (화) 23:01에 시작했어요");
+    assert.equal(describeScheduleLast({ at: at(20, 30), ok: true, message: "x" }, now).text, "오늘 20:30에 시작했어요");
+    assert.deepEqual(describeScheduleLast({ at: at(20, 30), ok: false, message: "로그인이 필요해요" }, now), { text: "오늘 20:30에 시작하지 못했어요. 로그인이 필요해요", tone: "warn" });
+};
+
 const checkViewFormat = () => {
     const viewFormat = loadViewFormat();
 
@@ -479,6 +550,7 @@ const checkViewFormat = () => {
     checkPhases(viewFormat);
     checkRoundTime(viewFormat);
     checkUsageFormat(viewFormat);
+    checkSchedules(viewFormat);
 
     console.log("Desktop view checks passed.");
 };

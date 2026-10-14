@@ -9,6 +9,7 @@ import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import streamUtil from "../../autopilot/src/utils/streamUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
 import gitUtil from "../../autopilot/src/utils/gitUtil.js";
+import processUtil from "../../autopilot/src/utils/processUtil.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -354,7 +355,18 @@ const checkRunFilePrune = (context) => {
     assert.equal(logs.length, 1);
 };
 
+// 실행 중인 프로세스는 자기 실행 파일 이름으로 확인되고, 다른 이름(pid 재사용)이나 없는 pid는 같은 프로세스가 아니다. Linux에서 ps의 comm이 MainThread로 보여도 같아야 한다.
+const checkProcessIdentity = () => {
+    const ownName = path.basename(process.execPath);
+
+    assert.equal(processUtil.isSameProcess(process.pid, ownName), true);
+    assert.equal(processUtil.isSameProcess(process.pid, ""), true);
+    assert.equal(processUtil.isSameProcess(process.pid, "definitely-another-program"), false);
+    assert.equal(processUtil.isSameProcess(2 ** 22 + 12345, ownName), false);
+};
+
 export {
+    checkProcessIdentity,
     checkInvalidProject,
     checkRunFilePrune,
     checkProgressEnsure,

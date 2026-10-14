@@ -164,6 +164,30 @@ const elements = {
     extendOnLimit: byId("extend-on-limit"),
     modelVersions: byId("model-versions"),
     modelVersionsNote: byId("model-versions-note"),
+    scheduleToggle: byId("schedule-toggle"),
+    schedule: byId("schedule"),
+    scheduleTitle: byId("schedule-title"),
+    scheduleCount: byId("schedule-count"),
+    scheduleAdd: byId("schedule-add"),
+    scheduleClose: byId("schedule-close"),
+    scheduleNote: byId("schedule-note"),
+    scheduleListPane: byId("schedule-list-pane"),
+    scheduleList: byId("schedule-list"),
+    scheduleEmpty: byId("schedule-empty"),
+    scheduleForm: byId("schedule-form"),
+    scheduleTime: byId("schedule-time"),
+    scheduleAnytime: byId("schedule-anytime"),
+    scheduleRange: byId("schedule-range"),
+    scheduleFrom: byId("schedule-from"),
+    scheduleTo: byId("schedule-to"),
+    scheduleDays: byId("schedule-days"),
+    scheduleFormError: byId("schedule-form-error"),
+    scheduleFormCancel: byId("schedule-form-cancel"),
+    schedulePeek: byId("schedule-peek"),
+    schedulePeekText: byId("schedule-peek-text"),
+    keepInTray: byId("keep-in-tray"),
+    launchAtLogin: byId("launch-at-login"),
+    launchAtLoginNote: byId("launch-at-login-note"),
     tasks: byId("tasks"),
     tasksToggle: byId("tasks-toggle"),
     tasksCount: byId("tasks-count"),
@@ -197,6 +221,7 @@ const EFFORT_LEVELS = [...elements.effortLevels.options].map((option) => option.
 
 let settings = { projectDir: "" };
 let appVersion = "";
+let canLaunchAtLogin = false;
 let currentState = null;
 let pendingEntries = [];
 let isFlushScheduled = false;
@@ -936,6 +961,7 @@ const applyPanelState = (name, isOpen) => {
 const setPanelOpen = (name, isOpen) => {
     if (isOpen) {
         PANEL_NAMES.filter((otherName) => otherName !== name).forEach((otherName) => applyPanelState(otherName, false));
+        setScheduleOpen(false);
     }
 
     applyPanelState(name, isOpen);
@@ -958,6 +984,7 @@ const setHistoryOpen = (isOpen) => {
     if (isOpen) {
         closePanels();
         setArchiveOpen(false);
+        setScheduleOpen(false);
         scrollLogToEnd();
     }
 };
@@ -991,6 +1018,299 @@ const handleEscape = (event) => {
     } else if (isArchiveOpen()) {
         setArchiveOpen(false);
         elements.archiveAll.focus();
+    } else if (isScheduleOpen()) {
+        if (elements.scheduleForm.hidden) {
+            setScheduleOpen(false);
+            elements.scheduleToggle.focus();
+        } else {
+            closeScheduleForm();
+        }
+    }
+};
+
+/* 예약: 정해진 시각이나 한도 리셋에 맞춰 자동으로 시작하는 조건을 목록으로 보고 만든다 */
+
+const SCHEDULE_REFRESH_MS = 20000;
+const SCHEDULE_NOTICE_MS = 4000;
+
+let scheduleState = { schedules: [], statuses: [], maxSchedules: 8, defaults: null };
+let editingSchedule = null;
+let lastScheduleRenderAt = 0;
+let scheduleNoticeTimer = 0;
+
+const isScheduleOpen = () => {
+    return document.body.classList.contains("schedule-open");
+};
+
+const setScheduleNote = (message, tone = "") => {
+    clearTimeout(scheduleNoticeTimer);
+
+    elements.scheduleNote.textContent = message;
+    elements.scheduleNote.dataset.tone = tone;
+    elements.scheduleNote.hidden = !message;
+
+    if (message && tone !== "warn") {
+        scheduleNoticeTimer = setTimeout(() => setScheduleNote(""), SCHEDULE_NOTICE_MS);
+    }
+};
+
+const showSchedulePane = (pane) => {
+    const isForm = pane === "form";
+
+    elements.scheduleListPane.hidden = isForm;
+    elements.scheduleForm.hidden = !isForm;
+    elements.scheduleAdd.hidden = isForm;
+    elements.scheduleTitle.textContent = isForm ? (editingSchedule ? "예약 수정" : "예약 추가") : "예약";
+};
+
+const setScheduleOpen = (isOpen) => {
+    if (isOpen === isScheduleOpen()) {
+        return;
+    }
+
+    document.body.classList.toggle("schedule-open", isOpen);
+    elements.schedule.inert = !isOpen;
+    elements.scheduleToggle.setAttribute("aria-expanded", String(isOpen));
+    elements.schedulePeek.setAttribute("aria-expanded", String(isOpen));
+
+    if (isOpen) {
+        closePanels();
+        setHistoryOpen(false);
+        setArchiveOpen(false);
+        setScheduleNote("");
+        showSchedulePane("list");
+        renderSchedules();
+    }
+};
+
+const createScheduleItem = (schedule, statuses, nowMs) => {
+    const description = describeSchedule(schedule);
+    const status = describeScheduleStatus(
+        schedule,
+        statuses.find((entry) => entry.id === schedule.id),
+        nowMs
+    );
+    const last = describeScheduleLast(statuses.find((entry) => entry.id === schedule.id)?.last, nowMs);
+    const item = document.createElement("li");
+    const body = document.createElement("button");
+    const title = document.createElement("b");
+    const detail = document.createElement("small");
+    const statusLine = document.createElement("small");
+    const lastLine = document.createElement("small");
+    const toggle = document.createElement("input");
+    const remove = document.createElement("button");
+
+    item.className = "schedule-item";
+    item.dataset.id = schedule.id;
+    item.toggleAttribute("data-off", !schedule.enabled);
+    body.type = "button";
+    body.className = "schedule-body";
+    body.title = "눌러서 수정";
+    title.textContent = description.title;
+    detail.textContent = description.detail;
+    statusLine.className = "schedule-status";
+    statusLine.dataset.tone = status.tone;
+    statusLine.textContent = status.text;
+    lastLine.dataset.tone = last.tone;
+    lastLine.textContent = last.text;
+    toggle.type = "checkbox";
+    toggle.className = "switch";
+    toggle.checked = schedule.enabled;
+    toggle.setAttribute("aria-label", `${description.title} 켜기`);
+    remove.type = "button";
+    remove.className = "schedule-delete";
+    remove.setAttribute("aria-label", `${description.title} 삭제`);
+    remove.title = "삭제";
+    remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8h5l.5-8" /></svg>';
+
+    body.append(title, detail, statusLine, lastLine);
+    item.append(body, toggle, remove);
+
+    return item;
+};
+
+const renderSchedulePeek = () => {
+    setText(elements.schedulePeekText, describeScheduleSummary(scheduleState.schedules, scheduleState.statuses, Date.now()));
+};
+
+const renderSchedules = () => {
+    const nowMs = Date.now();
+    const { schedules, statuses, maxSchedules } = scheduleState;
+
+    lastScheduleRenderAt = nowMs;
+    elements.scheduleCount.textContent = schedules.length ? `${schedules.length}개` : "";
+    elements.scheduleAdd.disabled = schedules.length >= maxSchedules;
+    elements.scheduleEmpty.hidden = schedules.length > 0;
+    elements.scheduleList.replaceChildren(...schedules.map((schedule) => createScheduleItem(schedule, statuses, nowMs)));
+    renderSchedulePeek();
+};
+
+const applySchedulePayload = (payload) => {
+    scheduleState = payload;
+
+    renderSchedules();
+};
+
+const getCheckedValue = (name) => {
+    return elements.scheduleForm.querySelector(`input[name="${name}"]:checked`)?.value;
+};
+
+const setCheckedValue = (name, value) => {
+    for (const input of elements.scheduleForm.querySelectorAll(`input[name="${name}"]`)) {
+        input.checked = input.value === String(value);
+    }
+};
+
+const renderScheduleKind = () => {
+    const kind = getCheckedValue("schedule-kind");
+
+    for (const group of elements.scheduleForm.querySelectorAll("[data-for]")) {
+        group.hidden = group.dataset.for !== kind;
+    }
+
+    elements.scheduleRange.hidden = elements.scheduleAnytime.checked;
+};
+
+const fillScheduleForm = (schedule) => {
+    setCheckedValue("schedule-kind", schedule.kind);
+    setCheckedValue("schedule-window", schedule.window);
+    setCheckedValue("schedule-min", schedule.minRemaining);
+    setCheckedValue("schedule-duration", schedule.duration);
+    elements.scheduleTime.value = schedule.time || scheduleState.defaults.time.time;
+    elements.scheduleAnytime.checked = !schedule.from;
+    elements.scheduleFrom.value = schedule.from || scheduleState.defaults.reset.from;
+    elements.scheduleTo.value = schedule.to || scheduleState.defaults.reset.to;
+
+    for (const input of elements.scheduleDays.querySelectorAll("input")) {
+        input.checked = schedule.days.includes(Number(input.value));
+    }
+
+    renderScheduleKind();
+};
+
+const openScheduleForm = (schedule) => {
+    editingSchedule = schedule;
+
+    elements.scheduleFormError.hidden = true;
+    fillScheduleForm(schedule || scheduleState.defaults.time);
+    showSchedulePane("form");
+};
+
+const closeScheduleForm = () => {
+    editingSchedule = null;
+
+    showSchedulePane("list");
+};
+
+// 시작 조건을 바꾸면 그 조건에 어울리는 기본값(실행 시간·남은 한도·시간대)으로 맞춘다. 수정 중이면 건드리지 않는다.
+const handleScheduleKindChange = () => {
+    if (!editingSchedule) {
+        const defaults = scheduleState.defaults[getCheckedValue("schedule-kind")];
+
+        setCheckedValue("schedule-min", defaults.minRemaining);
+        setCheckedValue("schedule-duration", defaults.duration);
+        elements.scheduleAnytime.checked = !defaults.from;
+    }
+
+    renderScheduleKind();
+};
+
+const readScheduleForm = () => {
+    const kind = getCheckedValue("schedule-kind");
+    const isRanged = kind === "reset" && !elements.scheduleAnytime.checked;
+
+    return {
+        id: editingSchedule?.id || "",
+        enabled: editingSchedule ? editingSchedule.enabled : true,
+        kind: kind,
+        time: elements.scheduleTime.value,
+        window: getCheckedValue("schedule-window"),
+        from: isRanged ? elements.scheduleFrom.value : "",
+        to: isRanged ? elements.scheduleTo.value : "",
+        days: Array.from(elements.scheduleDays.querySelectorAll("input:checked"), (input) => Number(input.value)),
+        minRemaining: Number(getCheckedValue("schedule-min")),
+        duration: Number(getCheckedValue("schedule-duration"))
+    };
+};
+
+const handleScheduleSubmit = async (event) => {
+    event.preventDefault();
+
+    const result = await window.autopilot.saveSchedule({
+        schedule: readScheduleForm(),
+        options: { tasks: elements.tasks.value, policy: elements.form.elements.policy.value, extendOnLimit: elements.extendOnLimit.checked, ...getSelectedOptions() }
+    });
+
+    if (result.status !== STATUS_OK) {
+        elements.scheduleFormError.textContent = result.error.msg;
+        elements.scheduleFormError.hidden = false;
+
+        return;
+    }
+
+    applySchedulePayload(result.data);
+    closeScheduleForm();
+    setScheduleNote("예약을 저장했어요.", "ok");
+};
+
+const handleScheduleListClick = async (event) => {
+    const id = event.target.closest(".schedule-item")?.dataset.id;
+
+    if (!id) {
+        return;
+    }
+
+    if (event.target.closest(".schedule-delete")) {
+        const result = await window.autopilot.deleteSchedule(id);
+
+        if (result.status === STATUS_OK) {
+            applySchedulePayload(result.data);
+            setScheduleNote("예약을 삭제했어요.", "ok");
+        }
+    } else if (event.target.closest(".schedule-body")) {
+        openScheduleForm(scheduleState.schedules.find((schedule) => schedule.id === id));
+    }
+};
+
+const handleScheduleToggle = async (event) => {
+    const id = event.target.closest(".schedule-item")?.dataset.id;
+
+    if (id && event.target.matches(".switch")) {
+        const result = await window.autopilot.toggleSchedule(id, event.target.checked);
+
+        if (result.status === STATUS_OK) {
+            applySchedulePayload(result.data);
+        }
+    }
+};
+
+// 남은 시간 문구가 분 단위로 바뀌므로 시트가 열려 있는 동안만 가끔 다시 그린다.
+const refreshSchedulesWhenOpen = () => {
+    if (isScheduleOpen() && elements.scheduleForm.hidden && Date.now() - lastScheduleRenderAt >= SCHEDULE_REFRESH_MS) {
+        renderSchedules();
+    }
+};
+
+const bindSchedule = async () => {
+    const result = await window.autopilot.getSchedules();
+
+    if (result.status === STATUS_OK) {
+        applySchedulePayload(result.data);
+    }
+
+    window.autopilot.onSchedules(applySchedulePayload);
+    elements.scheduleToggle.addEventListener("click", () => setScheduleOpen(!isScheduleOpen()));
+    elements.schedulePeek.addEventListener("click", () => setScheduleOpen(true));
+    elements.scheduleClose.addEventListener("click", () => setScheduleOpen(false));
+    elements.scheduleAdd.addEventListener("click", () => openScheduleForm(null));
+    elements.scheduleFormCancel.addEventListener("click", closeScheduleForm);
+    elements.scheduleForm.addEventListener("submit", handleScheduleSubmit);
+    elements.scheduleList.addEventListener("click", handleScheduleListClick);
+    elements.scheduleList.addEventListener("change", handleScheduleToggle);
+    elements.scheduleAnytime.addEventListener("change", renderScheduleKind);
+
+    for (const radio of elements.scheduleForm.querySelectorAll('input[name="schedule-kind"]')) {
+        radio.addEventListener("change", handleScheduleKindChange);
     }
 };
 
@@ -1104,6 +1424,7 @@ const setArchiveOpen = (isOpen) => {
     if (isOpen) {
         closePanels();
         setHistoryOpen(false);
+        setScheduleOpen(false);
     }
 };
 
@@ -1699,6 +2020,31 @@ const renderSettings = () => {
     elements.selectProject.textContent = hasProject ? "폴더 변경" : "폴더 선택";
     elements.projectBanner.hidden = hasProject;
     elements.appVersion.textContent = appVersion ? `v${appVersion}` : "";
+    renderSystemSettings();
+};
+
+const LAUNCH_AT_LOGIN_NOTE = "컴퓨터에 로그인하면 창 없이 트레이로 조용히 켜져요. 켜면 트레이 상주도 함께 켜져요.";
+const LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE = "설치한 앱에서만 켤 수 있어요. 개발 실행에서는 쓸 수 없어요.";
+
+// 로그인 자동 실행을 켜면 트레이 상주는 반드시 켜져 있어야 하므로 끌 수 없게 잠근다. 개발 실행처럼 등록할 수 없는 환경은 켜는 쪽을 막는다.
+const renderSystemSettings = () => {
+    elements.keepInTray.checked = settings.keepInTray;
+    elements.keepInTray.disabled = settings.launchAtLogin;
+    elements.launchAtLogin.checked = settings.launchAtLogin;
+    elements.launchAtLogin.disabled = !canLaunchAtLogin && !settings.launchAtLogin;
+    elements.launchAtLoginNote.textContent = canLaunchAtLogin || settings.launchAtLogin ? LAUNCH_AT_LOGIN_NOTE : LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE;
+};
+
+const handleSystemChange = async () => {
+    const result = await window.autopilot.setSystemSettings({ keepInTray: elements.keepInTray.checked, launchAtLogin: elements.launchAtLogin.checked });
+
+    showFailure(result);
+
+    if (result.status === STATUS_OK) {
+        settings = result.data.settings;
+    }
+
+    renderSystemSettings();
 };
 
 /* 컴포저 알약: 모델·정책은 팝오버 목록에서 고르고, 고른 값을 알약에 보여준다 */
@@ -2236,6 +2582,7 @@ const initialize = async () => {
 
     settings = snapshot.settings;
     appVersion = snapshot.version;
+    canLaunchAtLogin = snapshot.canLaunchAtLogin;
 
     renderUpdate(snapshot.update);
     window.autopilot.onUpdate(renderUpdate);
@@ -2277,12 +2624,15 @@ const initialize = async () => {
     elements.bannerSelectProject.addEventListener("click", handleSelectProject);
     elements.bannerLogin.addEventListener("click", handleLogin);
     elements.resetProgress.addEventListener("click", handleResetProgress);
+    elements.keepInTray.addEventListener("change", handleSystemChange);
+    elements.launchAtLogin.addEventListener("change", handleSystemChange);
     elements.openReport.addEventListener("click", handleOpenReport);
     elements.historyToggle.addEventListener("click", toggleHistory);
     elements.scrim.addEventListener("click", () => {
         closePanels();
         setHistoryOpen(false);
         setArchiveOpen(false);
+        setScheduleOpen(false);
     });
     elements.archiveAll.addEventListener("click", openArchiveList);
     elements.archiveToggle.addEventListener("click", openArchiveList);
@@ -2327,12 +2677,15 @@ const initialize = async () => {
     }
 
     bindEndTimePicker();
+    bindSchedule();
     document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("window-hidden", document.hidden));
     setInterval(() => {
         renderClock();
         renderEndTime();
         renderStatusPhase();
         renderTrack();
+        refreshSchedulesWhenOpen();
+        renderSchedulePeek();
     }, CLOCK_INTERVAL_MS);
 };
 

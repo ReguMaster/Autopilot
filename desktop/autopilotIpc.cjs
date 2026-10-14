@@ -1,17 +1,22 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
-const { handleState } = require("./systemIntegration.cjs");
+const { handleState, notify } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
+const loginItem = require("./launchAtLogin.cjs");
+const { createScheduler } = require("./scheduler.cjs");
+const { normalizeSchedules, parseSchedule } = require("./scheduleRules.cjs");
 
 const POLICY_CHOICES = ["auto", "todo"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ENGINE_HELP_TIMEOUT_MS = 10000;
+// 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
+const SCHEDULE_RESUME_DELAY_MS = 5000;
 const TASKS_FILE_NAME = "tasks.md";
 const DEFAULT_SETTINGS = {
     projectDir: "",
@@ -24,7 +29,10 @@ const DEFAULT_SETTINGS = {
     effort: "high",
     accounts: [],
     accountId: "default",
-    claudeDir: ""
+    claudeDir: "",
+    keepInTray: false,
+    launchAtLogin: false,
+    schedules: []
 };
 
 // modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
@@ -44,7 +52,10 @@ const SETTING_VALIDATORS = {
     effort: (value) => EFFORT_CHOICES.includes(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
-    claudeDir: (value) => typeof value === "string"
+    claudeDir: (value) => typeof value === "string",
+    keepInTray: (value) => typeof value === "boolean",
+    launchAtLogin: (value) => typeof value === "boolean",
+    schedules: (value) => Array.isArray(value)
 };
 
 const getSettingsFile = () => {
@@ -55,7 +66,9 @@ const readSettings = () => {
     try {
         const saved = JSON.parse(fs.readFileSync(getSettingsFile(), "utf8"));
 
-        return Object.fromEntries(Object.entries(SETTING_VALIDATORS).map(([key, isValid]) => [key, isValid(saved[key]) ? saved[key] : DEFAULT_SETTINGS[key]]));
+        const settings = Object.fromEntries(Object.entries(SETTING_VALIDATORS).map(([key, isValid]) => [key, isValid(saved[key]) ? saved[key] : DEFAULT_SETTINGS[key]]));
+
+        return { ...settings, schedules: normalizeSchedules(settings.schedules) };
     } catch {
         return { ...DEFAULT_SETTINGS };
     }
@@ -136,6 +149,41 @@ const accounts = createAccountIpc({ readSettings: readSettings, writeSettings: w
 
 const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update) });
 
+// 예약이 조건을 만족하면 마지막으로 저장한 작업·정책·모델·Effort로 시작한다. 종료 시각은 예약이 정한 값이라 다음 시작의 기본값으로 저장하지 않는다.
+const startScheduledRun = async (schedule, plan) => {
+    try {
+        const settings = readSettings();
+        const result = await launchRun(
+            settings,
+            { tasks: settings.tasks, endTime: plan.endTime, policy: settings.policy, extendOnLimit: settings.extendOnLimit, model: settings.model, effort: settings.effort },
+            { remember: false }
+        );
+
+        return result.status === STATUS_OK ? { ok: true, message: `조건이 맞아서 ${plan.endTime}까지 실행을 시작했어요.` } : { ok: false, message: result.error.msg };
+    } catch (error) {
+        return { ok: false, message: error.message };
+    }
+};
+
+// 앱을 닫았다 켠 사이에 계속 실행된 엔진이 있으면 먼저 연결해 둔다. 모르고 두 번째 엔진을 시작하지 않게 하기 위해서다.
+const isEngineBusy = async () => {
+    await attachRunningEngine();
+
+    return runner.isRunning() || isLaunching;
+};
+
+const scheduler = createScheduler({
+    stateFile: path.join(app.getPath("userData"), "schedule-state.json"),
+    readSchedules: () => readSettings().schedules,
+    writeSchedules: (schedules) => writeSettings({ ...readSettings(), schedules: schedules }),
+    getUsage: () => accounts.getActiveUsage(),
+    refreshUsage: () => accounts.refreshActiveUsage(),
+    isBusy: isEngineBusy,
+    startRun: startScheduledRun,
+    notify: notify,
+    onChange: (payload) => broadcast("autopilot:schedules", payload)
+});
+
 // 시작 인자의 오류를 알려준다. 없으면 null.
 const getStartError = (settings, options) => {
     const projectError = getProjectError(settings.projectDir);
@@ -155,43 +203,61 @@ const getStartError = (settings, options) => {
     return null;
 };
 
-const handleStart = async (event, options = {}) => {
-    const settings = readSettings();
-    const startOptions = {
-        tasks: typeof options.tasks === "string" ? options.tasks : "",
-        endTime: String(options.endTime || ""),
-        policy: options.policy,
-        extendOnLimit: options.extendOnLimit === true,
-        model: options.model,
-        effort: options.effort
-    };
+let isLaunching = false;
+
+// 수동 시작과 예약 시작이 함께 쓰는 시작 절차. remember가 참이면 쓴 값을 다음 시작의 기본값으로 저장한다.
+const launchRun = async (settings, startOptions, { remember }) => {
     const startError = getStartError(settings, startOptions);
 
     if (startError) {
         return startError;
     }
 
-    const runAccount = await accounts.getRunAccount();
+    isLaunching = true;
 
-    if (runAccount.status !== STATUS_OK) {
-        return runAccount;
+    try {
+        const runAccount = await accounts.getRunAccount();
+
+        if (runAccount.status !== STATUS_OK) {
+            return runAccount;
+        }
+
+        // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
+        const tasksFile = path.join(app.getPath("userData"), TASKS_FILE_NAME);
+
+        fs.mkdirSync(app.getPath("userData"), { recursive: true });
+        fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
+
+        if (remember) {
+            writeSettings({ ...settings, ...startOptions });
+        }
+
+        const model = resolveModel(startOptions.model, settings.modelVersions);
+
+        return await runner.start({
+            ...getEngineLaunch(),
+            projectDir: settings.projectDir,
+            args: getCliArgs({ ...startOptions, model: model, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
+            roundOptions: { model: model, effort: startOptions.effort }
+        });
+    } finally {
+        isLaunching = false;
     }
+};
 
-    // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
-    const tasksFile = path.join(app.getPath("userData"), TASKS_FILE_NAME);
-
-    fs.mkdirSync(app.getPath("userData"), { recursive: true });
-    fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
-    writeSettings({ ...settings, ...startOptions });
-
-    const model = resolveModel(startOptions.model, settings.modelVersions);
-
-    return runner.start({
-        ...getEngineLaunch(),
-        projectDir: settings.projectDir,
-        args: getCliArgs({ ...startOptions, model: model, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
-        roundOptions: { model: model, effort: startOptions.effort }
-    });
+const handleStart = async (event, options = {}) => {
+    return launchRun(
+        readSettings(),
+        {
+            tasks: typeof options.tasks === "string" ? options.tasks : "",
+            endTime: String(options.endTime || ""),
+            policy: options.policy,
+            extendOnLimit: options.extendOnLimit === true,
+            model: options.model,
+            effort: options.effort
+        },
+        { remember: true }
+    );
 };
 
 // 실행 중인 엔진에 다음 회차부터 쓸 model·effort를 전달하고, 성공하면 다음 시작의 기본값으로도 저장한다.
@@ -286,7 +352,111 @@ const handleSelectProject = async (event) => {
 const handleGetState = async () => {
     await attachRunningEngine();
 
-    return { version: app.getVersion(), update: updateCheck.getUpdate(), settings: readSettings(), state: runner.getState(), logs: runner.getLogs() };
+    return {
+        version: app.getVersion(),
+        platform: process.platform,
+        canLaunchAtLogin: loginItem.isSupported(),
+        update: updateCheck.getUpdate(),
+        settings: readSettings(),
+        state: runner.getState(),
+        logs: runner.getLogs()
+    };
+};
+
+// 로그인 자동 실행은 트레이에 상주해야 의미가 있으므로 켜면 트레이 상주도 함께 켠다. 시스템이 실제로 등록했는지 다시 읽어 확인한다.
+const handleSetSystem = (event, options = {}) => {
+    const launchAtLogin = options.launchAtLogin === true;
+    const keepInTray = options.keepInTray === true || launchAtLogin;
+
+    if (launchAtLogin && !loginItem.isSupported()) {
+        return createFailure("UNSUPPORTED", "설치한 앱에서만 로그인 자동 실행을 켤 수 있어요.");
+    }
+
+    const previous = readSettings().launchAtLogin;
+
+    try {
+        loginItem.setEnabled(launchAtLogin);
+    } catch (error) {
+        return createFailure("LOGIN_ITEM_FAILED", `로그인 자동 실행을 바꾸지 못했어요: ${error.message}`);
+    }
+
+    if (loginItem.isSupported() && loginItem.isEnabled() !== launchAtLogin) {
+        // 시스템에 반쯤 남은 항목이 저장된 설정과 어긋나지 않게 이전 상태로 되돌린다.
+        try {
+            loginItem.setEnabled(previous);
+        } catch {}
+
+        return createFailure("LOGIN_ITEM_FAILED", "시스템이 로그인 자동 실행 설정을 받아들이지 않았어요. 보안 정책이나 권한을 확인해 주세요.");
+    }
+
+    const settings = { ...readSettings(), keepInTray: keepInTray, launchAtLogin: launchAtLogin };
+
+    writeSettings(settings);
+
+    return { status: STATUS_OK, data: { settings: settings } };
+};
+
+// 앱을 켤 때 저장된 자동 실행 설정으로 로그인 항목의 경로를 다시 맞춘다(업데이트·재설치로 실행 파일 위치가 바뀌었을 수 있다).
+const syncLaunchAtLogin = () => {
+    if (readSettings().launchAtLogin && loginItem.isSupported()) {
+        try {
+            loginItem.setEnabled(true);
+        } catch {}
+    }
+};
+
+// 닫아도 트레이에 남겨 둘지. 실행 중이 아닐 때의 닫기 동작을 정한다.
+const isTrayResident = () => {
+    return readSettings().keepInTray;
+};
+
+// 예약을 저장하기 전에 지금 컴포저의 작업·정책·모델·Effort를 함께 저장한다. 예약 실행은 이 값으로 돈다.
+const handleSaveSchedule = async (event, payload = {}) => {
+    const settings = readSettings();
+    const composer = payload.options || {};
+    const options = {
+        tasks: typeof composer.tasks === "string" ? composer.tasks : "",
+        policy: composer.policy,
+        extendOnLimit: composer.extendOnLimit === true,
+        model: composer.model,
+        effort: composer.effort
+    };
+    const parsed = parseSchedule(payload.schedule);
+    const projectError = getProjectError(settings.projectDir);
+
+    if (parsed.error) {
+        return createFailure("INVALID_SCHEDULE", parsed.error);
+    }
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    if (!isValidRoundOptions(options) || !POLICY_CHOICES.includes(options.policy)) {
+        return createFailure("INVALID_OPTIONS", "모델, Effort, 정책 값이 올바르지 않아요.");
+    }
+
+    if (options.policy === "todo" && !options.tasks.trim()) {
+        return createFailure("TASKS_REQUIRED", "지시개선은 처리할 작업을 입력해야 예약할 수 있어요.");
+    }
+
+    writeSettings({ ...settings, ...options });
+
+    const result = await scheduler.save(payload.schedule);
+
+    return result.error ? createFailure("INVALID_SCHEDULE", result.error) : { status: STATUS_OK, data: scheduler.getPayload() };
+};
+
+const handleDeleteSchedule = async (event, id) => {
+    await scheduler.remove(String(id));
+
+    return { status: STATUS_OK, data: scheduler.getPayload() };
+};
+
+const handleToggleSchedule = async (event, id, enabled) => {
+    await scheduler.setEnabled(String(id), enabled);
+
+    return { status: STATUS_OK, data: scheduler.getPayload() };
 };
 
 const handleOpenUpdate = async () => {
@@ -480,6 +650,11 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
     ipcMain.handle("autopilot:delete-run", handleDeleteRun);
     ipcMain.handle("autopilot:open-update", handleOpenUpdate);
+    ipcMain.handle("autopilot:set-system", handleSetSystem);
+    ipcMain.handle("autopilot:get-schedules", () => ({ status: STATUS_OK, data: scheduler.getPayload() }));
+    ipcMain.handle("autopilot:save-schedule", handleSaveSchedule);
+    ipcMain.handle("autopilot:delete-schedule", handleDeleteSchedule);
+    ipcMain.handle("autopilot:toggle-schedule", handleToggleSchedule);
     accounts.register();
 
     // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.
@@ -521,9 +696,15 @@ const startAccountWatch = () => {
     accounts.startWatch();
 };
 
+// 예약 판단은 사용량 조회와 실행 시작을 하므로 스모크 테스트에서는 시작하지 않는다. 절전에서 깨어나면 놓친 예약을 바로 살핀다.
+const startScheduleWatch = () => {
+    scheduler.start();
+    powerMonitor.on("resume", () => setTimeout(scheduler.tick, SCHEDULE_RESUME_DELAY_MS));
+};
+
 // 새 버전 확인도 네트워크를 쓰므로 스모크 테스트에서는 시작하지 않는다.
 const startUpdateWatch = () => {
     updateCheck.start();
 };
 
-module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch };
+module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, isTrayResident, syncLaunchAtLogin, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch, startScheduleWatch };

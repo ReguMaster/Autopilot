@@ -759,3 +759,148 @@ const buildTranscript = (lines) => {
 
     return { items: items.slice(-TRANSCRIPT_LIMIT), omitted: Math.max(0, items.length - TRANSCRIPT_LIMIT) };
 };
+
+/* 예약: 시작 조건 문장과 지금 상태 문장 */
+
+const WEEKDAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const SCHEDULE_WINDOW_LABELS = { session: "5시간 한도", weekly: "주간 한도" };
+
+const isSameDays = (days, expected) => {
+    return days.length === expected.length && expected.every((day) => days.includes(day));
+};
+
+const describeDays = (days) => {
+    if (days.length === 7) {
+        return "매일";
+    }
+
+    if (isSameDays(days, [1, 2, 3, 4, 5])) {
+        return "평일";
+    }
+
+    if (isSameDays(days, [0, 6])) {
+        return "주말";
+    }
+
+    return WEEKDAY_ORDER.filter((day) => days.includes(day))
+        .map((day) => WEEKDAY_NAMES[day])
+        .join("·");
+};
+
+const formatScheduleDuration = (minutes) => {
+    return minutes % 60 ? `${minutes}분` : `${minutes / 60}시간`;
+};
+
+// 예약 하나를 두 줄로 설명한다. 제목은 언제 시작하는지, 설명은 어떻게 돌고 어떤 조건이 붙는지다.
+const describeSchedule = (schedule) => {
+    const days = describeDays(schedule.days);
+    const duration = `${formatScheduleDuration(schedule.duration)} 실행`;
+    const condition = schedule.minRemaining ? `남은 한도 ${schedule.minRemaining}% 이상일 때만` : "";
+
+    if (schedule.kind === "time") {
+        return { title: `${days} ${schedule.time}에 시작`, detail: [duration, condition].filter(Boolean).join(", ") };
+    }
+
+    const range = schedule.from ? `${days} ${schedule.from}~${schedule.to} 사이에 시작` : `${days} 언제든 시작`;
+
+    return { title: `${SCHEDULE_WINDOW_LABELS[schedule.window]}가 리셋되면 시작`, detail: [range, duration, condition].filter(Boolean).join(", ") };
+};
+
+// 오늘·내일은 말로, 그 밖에는 날짜와 요일로 적는다.
+const formatScheduleWhen = (ms, nowMs) => {
+    const date = new Date(ms);
+    const dayDiff = Math.round(
+        (new Date(date.getFullYear(), date.getMonth(), date.getDate()) - new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate())) / 86400000
+    );
+
+    if (dayDiff === 0) {
+        return `오늘 ${formatClock(ms)}`;
+    }
+
+    if (dayDiff === 1) {
+        return `내일 ${formatClock(ms)}`;
+    }
+
+    return `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAY_NAMES[date.getDay()]}) ${formatClock(ms)}`;
+};
+
+// 판단 결과(status)를 한 문장으로. 막힌 이유는 warn, 기다리는 중은 muted, 정상 흐름은 ok로 구분한다.
+const describeScheduleStatus = (schedule, status, nowMs) => {
+    const label = SCHEDULE_WINDOW_LABELS[schedule.window];
+
+    if (!schedule.enabled || status?.code === "disabled") {
+        return { text: "꺼져 있어요", tone: "muted" };
+    }
+
+    if (!status) {
+        return { text: "확인하는 중이에요", tone: "muted" };
+    }
+
+    switch (status.code) {
+        case "next-time":
+            return { text: status.at ? `다음 시작은 ${formatScheduleWhen(status.at, nowMs)}이에요` : "시작할 요일이 없어요", tone: "ok" };
+        case "waiting-reset":
+            return { text: status.resetsAt ? `${label} 리셋을 기다려요. ${formatUsageReset(status.resetsAt, nowMs)}` : `${label} 리셋을 기다려요`, tone: "ok" };
+        case "outside-window":
+            return { text: status.opensAt ? `리셋됐어요. 허용 시간대가 열리는 ${formatScheduleWhen(status.opensAt, nowMs)}에 시작해요` : "리셋됐지만 시작할 수 있는 요일이 없어요", tone: "muted" };
+        case "busy":
+            return { text: "다른 실행이 끝나길 기다려요", tone: "muted" };
+        case "low-limit":
+            return { text: `남은 한도가 ${status.remaining}%라 기다려요. ${status.need}% 이상이어야 시작해요`, tone: "warn" };
+        case "too-short":
+            return { text: "허용 시간대가 곧 닫혀서 이번에는 건너뛰어요", tone: "muted" };
+        case "no-usage":
+            return { text: `사용량을 읽지 못해 한도 리셋을 알 수 없어요. ${status.message}`, tone: "warn" };
+        case "loading":
+            return { text: "사용량을 읽는 중이에요", tone: "muted" };
+        case "starting":
+        case "started":
+            return { text: "방금 시작했어요", tone: "ok" };
+        case "failed":
+            return { text: "시작하지 못했어요", tone: "warn" };
+        default:
+            return { text: "", tone: "muted" };
+    }
+};
+
+// 시작 화면의 예약 한 줄. 다음에 시작할 때와 한도 리셋을 기다리는 예약 수를 알린다.
+const describeScheduleSummary = (schedules, statuses, nowMs) => {
+    if (!schedules.length) {
+        return "예약해 두면 정해진 때나 한도가 리셋될 때 자동으로 시작해요";
+    }
+
+    const active = schedules.filter((schedule) => schedule.enabled);
+
+    if (!active.length) {
+        return "예약이 모두 꺼져 있어요";
+    }
+
+    const nextTimes = active
+        .map((schedule) => statuses.find((status) => status.id === schedule.id))
+        .filter((status) => status?.code === "next-time" && status.at)
+        .map((status) => status.at);
+    const resetCount = active.filter((schedule) => schedule.kind === "reset").length;
+    const parts = [];
+
+    if (nextTimes.length) {
+        parts.push(`다음 예약 ${formatScheduleWhen(Math.min(...nextTimes), nowMs)}`);
+    }
+
+    if (resetCount) {
+        parts.push(`한도 리셋을 기다리는 예약 ${resetCount}개`);
+    }
+
+    return parts.join(", ") || `켜져 있는 예약 ${active.length}개`;
+};
+
+// 마지막으로 시작을 시도한 결과. 시도한 적이 없으면 빈 문장이다.
+const describeScheduleLast = (last, nowMs) => {
+    if (!last) {
+        return { text: "", tone: "muted" };
+    }
+
+    const when = formatScheduleWhen(last.at, nowMs);
+
+    return last.ok ? { text: `${when}에 시작했어요`, tone: "muted" } : { text: `${when}에 시작하지 못했어요. ${last.message}`, tone: "warn" };
+};

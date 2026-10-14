@@ -540,7 +540,9 @@ const checkCliRun = (context, fakeCliFile, appExe) => {
     const engineDir = path.resolve(import.meta.dirname, "../../autopilot");
     const linkedEngineDir = path.join(context.testDir, "linked engine");
     const command = appExe ? path.resolve(appExe) : process.execPath;
-    const bundledEntryFile = appExe ? path.join(path.dirname(command), "resources", "engine", "core", "autopilot_loop.js") : "";
+    // 번들된 엔진 위치는 macOS(.app/Contents/Resources)와 그 밖(실행 파일 옆 resources)이 다르다.
+    const resourcesDir = process.platform === "darwin" ? path.join(path.dirname(command), "..", "Resources") : path.join(path.dirname(command), "resources");
+    const bundledEntryFile = appExe ? path.join(resourcesDir, "engine", "core", "autopilot_loop.js") : "";
     const entryFile = bundledEntryFile && fs.existsSync(bundledEntryFile) ? bundledEntryFile : path.join(linkedEngineDir, "core", "autopilot_loop.js");
     const projectDir = path.join(context.testDir, "cli project 한글");
     const workDir = path.join(projectDir, ".autopilot");

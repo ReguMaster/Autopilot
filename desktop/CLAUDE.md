@@ -55,8 +55,9 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ### 플랫폼 범위
 
-- 배포는 Windows exe(포터블·설치형)뿐이지만 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
+- 배포는 Windows exe(포터블·설치형), macOS dmg·zip, Linux AppImage·deb이고 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
 - 로그인 여부는 저장 위치가 플랫폼마다 달라 파일이 아니라 `claude auth status --json`으로 확인한다.
+- 창 아이콘은 Windows가 .ico, 그 밖은 .png다. 트레이 아이콘은 2배 크기(TRAY_ICON_SCALE)로 만들어 고해상도에서 흐려지지 않게 한다. 서체 목록(--sans·--mono)에는 macOS·Linux 시스템 서체를 대체로 둔다. Cmd+Q·시스템 종료(before-quit)는 트레이 숨기기가 아니라 종료 확인을 거친다. Linux는 트레이를 지원하지 않는 데스크톱이면 트레이로 숨긴 창을 다시 열 수 없으므로(두 번째 실행으로 열 수는 있다) README에 알린다.
 - Windows·Linux는 로그인 정보가 설정 폴더의 .credentials.json이라 사용량·프로필 조회가 된다. macOS는 키체인이라 조회하지 못하고(UNSUPPORTED_PLATFORM 안내) 계정 전환·로그인·실행은 CLI로 된다. Linux는 WSL로 tests/checkDesktopAccounts.js·checkDesktopRunner.js·checkDesktopView.js를 확인했고 macOS는 확인하지 못했다.
 
 ## 지난 실행(기록 보기)
@@ -74,6 +75,17 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 열 주소는 `^v?\d+\.\d+\.\d+$`를 통과한 태그로 직접 만든다(응답의 URL은 쓰지 않는다). 렌더러는 주소를 보내지 않고 autopilot:open-update만 요청한다.
 - 헤더 버튼 줄 맨 앞의 #update-chip(회색 칩, 파랑은 진행 중 표시 전용)이 누르면 그 릴리스 페이지를 연다. 자동 설치는 하지 않는다.
 - tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
+
+## 예약
+
+- 헤더의 시계 버튼(#schedule-toggle)이나 시작 화면의 한 줄(#schedule-peek)이 예약 시트(#schedule)를 연다. 시트는 지난 실행 시트와 같은 자리·같은 규칙이고(전체 기록·지난 실행·패널과 한 번에 하나만 열림, 스크림·Esc로 닫음) 목록과 폼을 번갈아 보여준다. 모달은 쓰지 않는다.
+- 규칙은 scheduleRules.cjs(순수 함수, 시계·사용량을 인자로 받음), 주기 판단·상태 보관은 scheduler.cjs, IPC·실행 연결은 autopilotIpc.cjs다. 예약 목록은 settings.json의 schedules(최대 8개, 읽을 때 normalizeSchedules가 올바르지 않은 항목을 버림)에, 판단 상태(마지막 시작·기억한 한도 리셋 시각·무장 여부)는 userData/schedule-state.json에 둔다.
+- 시작 조건은 두 가지다. 정해진 시각(time)은 요일과 시각이 오면 시작하고 TIME_GRACE_MS(2시간) 안에서는 놓친 예약도 이어서 시작한다(앱이 늦게 켜졌거나 PC가 잠들었다 깬 경우). 한도 리셋(reset)은 5시간 또는 주간 한도가 리셋되면 한 번 시작하고 다음 리셋까지 기다린다. 리셋은 기억해 둔 resetsAt이 지났거나, 쓰인 한도가 다시 새 한도(응답에 항목이 없거나 resetsAt이 지났거나 사용률 1% 미만)로 읽힐 때 알아채고, 처음 본 한도가 이미 새 한도면 바로 무장한다. 리셋 시각이 지난 직후에는 사용량을 다시 읽어 남은 한도 조건을 판단한다.
+- 공통 조건은 요일, 남은 한도(5시간·주간 중 적게 남은 쪽이 N% 이상일 때만, 읽지 못하면 검사하지 않음), 실행 시간(duration)이다. 리셋 예약에는 시작할 수 있는 시간대(from~to, 자정을 넘길 수 있고 요일은 시간대가 시작하는 날 기준)를 둘 수 있고, 종료 시각은 시간대가 닫히는 시각을 넘지 않게 맞추며 남은 시간이 MIN_RUN_MS(30분)보다 짧으면 시작하지 않는다.
+- 이미 실행 중이거나 시작을 진행 중이면 기다린다(isEngineBusy가 먼저 살아 있는 엔진에 연결한다). 시작에 실패해도(로그인 필요 등) 같은 시작 시각을 다시 시도하지 않고 알림으로 이유를 알린다. 절전에서 깨어나면 5초 뒤 바로 판단하고, 평소에는 30초마다 판단한다.
+- 예약 실행은 저장하는 순간의 작업·정책·모델·Effort·사용량 한도 연장 설정으로 돈다(handleSaveSchedule이 컴포저 값을 settings.json에 먼저 저장한다). 종료 시각은 예약이 정한 값이라 settings.json의 endTime을 덮어쓰지 않는다(launchRun의 remember). 예약 상태 문장은 viewFormat.js(describeSchedule·describeScheduleStatus·describeScheduleLast·describeScheduleSummary)가 만든다.
+- 사용량은 선택한 계정의 claudeAccount 조회값을 쓴다. 조회가 안 되는 환경(macOS 등)에서는 한도 리셋 예약이 판단하지 못한다는 안내를 보이고, 정해진 시각 예약은 그대로 동작한다.
+- tests/checkDesktopSchedule.js가 규칙·스케줄러를, tests/checkDesktopView.js가 상태 문장을 검증한다.
 
 ## 화면 구조
 
@@ -112,6 +124,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 헤더(#titlebar)는 index.html에서 직접 그린다. 왼쪽에 로고, 오른쪽에 프로필·설정·최소화·최대화·닫기 버튼을 둔다(맨 앞에 #update-chip). 헤더 전체가 끌기 영역(-webkit-app-region: drag)이고 버튼만 뺀다.
 - 최소화·최대화·닫기는 preload의 window.appWindow가 main.cjs의 window:* IPC로 요청한 창에만 적용한다. 닫기는 일반 close라 실행 중 확인을 그대로 거친다. 최대화 상태는 window:state로 받아 아이콘을 바꾼다.
 - 앱은 단일 인스턴스이며 두 번째 실행은 종료하고 기존 창을 앞으로 가져온다(--smoke-test는 실행 중인 앱과 무관하게 검증하도록 잠금에서 제외한다).
-- 앱이 시작한 엔진이 실행 중이면 창을 닫을 때 트레이로 숨기기만 하고 엔진은 계속 돈다(main.cjs의 close 처리, isOwnedEngineRunning). 종료는 트레이 메뉴의 종료로 하며 창을 띄워 confirmClose의 확인 후 강제 종료한다. 실행 중이 아니거나 연결한 엔진이면 닫을 때 앱이 종료된다.
+- 앱이 시작한 엔진이 실행 중이거나 설정의 "닫아도 트레이에서 계속 켜 두기"(settings.json의 keepInTray)가 켜져 있으면 창을 닫을 때 트레이로 숨기기만 한다(main.cjs의 close 처리, isOwnedEngineRunning·isTrayResident). 종료는 트레이 메뉴의 종료로 하며 창을 띄워 confirmClose의 확인 후 강제 종료한다. 그 밖에는(실행 중이 아니고 트레이 상주도 꺼져 있거나 연결한 엔진이면) 닫을 때 앱이 종료된다. 트레이에서 종료할 때는 window closed에서 app.quit()을 불러 macOS에서도 끝낸다.
+- "로그인하면 자동으로 켜기"(launchAtLogin)는 launchAtLogin.cjs가 맡는다. Windows·macOS는 app.setLoginItemSettings(인자 `--hidden`. Windows 값 이름은 기본인 AppUserModelId로 둔다. getLoginItemSettings가 name을 받지 않아 다른 이름으로 쓰면 등록돼도 확인되지 않는다), Linux는 ~/.config/autostart/autopilot.desktop을 쓰고, 포터블 exe·AppImage는 원본 파일(PORTABLE_EXECUTABLE_FILE·APPIMAGE)을 가리킨다. 개발 실행(app.isPackaged가 거짓)에서는 등록하지 않는다. 켜면 keepInTray도 함께 켜고 화면에서 끌 수 없게 잠근다(handleSetSystem). 등록 뒤 시스템에서 다시 읽어 확인하고 실패하면 설정을 바꾸지 않는다. 앱을 켤 때 syncLaunchAtLogin이 경로를 다시 맞춘다. `--hidden`(macOS는 wasOpenedAtLogin)으로 켜지면 창을 띄우지 않고 트레이에만 둔다. NSIS 제거 때 로그인 항목은 build/installer.nsh가 지운다.
 - systemIntegration.cjs가 러너 상태 변화(onState)마다 절전 방지(powerSaveBlocker prevent-app-suspension, 엔진이 도는 동안), 작업표시줄 진행률(종료 시각까지 경과, 종료 신호·재시도·한도 대기는 paused), 트레이 툴팁, Windows 알림(포커스가 없을 때 종료·실패·사용량 한도 대기 전환만, 강제 종료 제외)을 맞춘다.
 - 스모크 테스트(npm test)는 window.appWindow·#titlebar·#profile·#login-banner도 확인한다.

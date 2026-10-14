@@ -18,6 +18,12 @@
                     <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.5V2.8M3.2 5.4L6 2.6l2.8 2.8" /></svg>
                     <span id="update-label" class="num"></span>
                 </button>
+                <button type="button" id="schedule-toggle" class="window-control" aria-label="예약" title="예약" aria-expanded="false" aria-controls="schedule">
+                    <svg viewBox="0 0 12 12" aria-hidden="true">
+                        <circle cx="6" cy="6" r="4.4" />
+                        <path d="M6 3.6V6l1.7 1.1" />
+                    </svg>
+                </button>
                 <button type="button" id="profile-toggle" class="window-control" aria-label="프로필" title="프로필" aria-expanded="false" aria-controls="profile">
                     <svg viewBox="0 0 12 12" aria-hidden="true">
                         <circle cx="6" cy="4.2" r="2.1" />
@@ -70,6 +76,10 @@
                 <section class="greet view-ready" aria-label="시작 전">
                     <h1 id="greet-title"></h1>
                     <p id="greet-lead" class="lead"></p>
+                    <button type="button" id="schedule-peek" class="peek" aria-controls="schedule" aria-expanded="false">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-clock" /></svg>
+                        <span id="schedule-peek-text"></span>
+                    </button>
 
                     <section id="recent" class="recent" aria-label="지난 실행" hidden>
                         <div class="recent-head">
@@ -246,6 +256,10 @@
             <symbol id="icon-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v3h-3" /></symbol>
             <symbol id="icon-back" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" /></symbol>
             <symbol id="icon-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+            <symbol id="icon-clock" viewBox="0 0 16 16">
+                <circle cx="8" cy="8" r="5.6" />
+                <path d="M8 4.8V8l2.1 1.4" />
+            </symbol>
         </svg>
 
         <div id="model-popover" class="popover choice-popover" popover role="radiogroup" aria-label="모델">
@@ -408,6 +422,105 @@
             </div>
         </section>
 
+        <section id="schedule" class="schedule" aria-label="예약" inert>
+            <div class="archive-head">
+                <h2 id="schedule-title">예약</h2>
+                <span id="schedule-count" class="num"></span>
+                <button type="button" id="schedule-add" class="button small">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg>추가
+                </button>
+                <button type="button" id="schedule-close" class="button small">닫기</button>
+            </div>
+            <p id="schedule-note" class="archive-note" hidden></p>
+
+            <div id="schedule-list-pane" class="archive-pane schedule-pane">
+                <p class="schedule-plan">예약은 저장하는 순간의 작업·정책·모델·Effort로 실행해요. 앱이 켜져 있거나 트레이에 있어야 시작할 수 있어요.</p>
+                <ul id="schedule-list" class="schedule-list"></ul>
+                <p id="schedule-empty" class="schedule-empty" hidden>
+                    아직 예약이 없어요. 정해진 시각이나 사용량 한도가 리셋되는 때에 맞춰 자동으로 시작하게 해 두면, 자는 동안에도 한도를 알뜰하게 쓸 수 있어요.
+                </p>
+            </div>
+
+            <form id="schedule-form" class="archive-pane schedule-pane schedule-form" novalidate hidden>
+                <div class="form-group">
+                    <span class="form-label">언제 시작할까요?</span>
+                    <div class="seg" role="radiogroup" aria-label="시작 조건">
+                        <label class="seg-option"><input type="radio" name="schedule-kind" value="time" checked /><span>정해진 시각에</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-kind" value="reset" /><span>사용량 한도가 리셋되면</span></label>
+                    </div>
+                </div>
+
+                <div class="form-group" data-for="time">
+                    <label class="form-label" for="schedule-time">시작 시각</label>
+                    <input id="schedule-time" class="account-input schedule-time num" type="time" value="23:00" />
+                </div>
+
+                <div class="form-group" data-for="reset" hidden>
+                    <span class="form-label">기준이 되는 한도</span>
+                    <div class="seg" role="radiogroup" aria-label="기준이 되는 한도">
+                        <label class="seg-option"><input type="radio" name="schedule-window" value="session" checked /><span>5시간 한도</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-window" value="weekly" /><span>주간 한도</span></label>
+                    </div>
+                    <p class="form-hint">한도가 리셋되면 한 번 시작하고, 다음 리셋까지 기다려요. 이미 새 한도로 읽히면 바로 시작할 수 있어요.</p>
+                </div>
+
+                <div class="form-group" data-for="reset" hidden>
+                    <span class="form-label">시작할 수 있는 시간대</span>
+                    <label class="check"><input type="checkbox" id="schedule-anytime" />하루 종일</label>
+                    <div id="schedule-range" class="schedule-range">
+                        <input id="schedule-from" class="account-input schedule-time num" type="time" value="22:00" aria-label="시간대 시작" />
+                        <span aria-hidden="true">부터</span>
+                        <input id="schedule-to" class="account-input schedule-time num" type="time" value="07:00" aria-label="시간대 끝" />
+                        <span aria-hidden="true">까지</span>
+                    </div>
+                    <p class="form-hint">내가 직접 작업하는 낮 시간에 시작되지 않게 막아 줘요. 시간대가 끝나기 전에 실행도 마쳐요.</p>
+                </div>
+
+                <div class="form-group">
+                    <span class="form-label">요일</span>
+                    <div id="schedule-days" class="seg" role="group" aria-label="요일">
+                        <label class="seg-option"><input type="checkbox" value="1" /><span>월</span></label>
+                        <label class="seg-option"><input type="checkbox" value="2" /><span>화</span></label>
+                        <label class="seg-option"><input type="checkbox" value="3" /><span>수</span></label>
+                        <label class="seg-option"><input type="checkbox" value="4" /><span>목</span></label>
+                        <label class="seg-option"><input type="checkbox" value="5" /><span>금</span></label>
+                        <label class="seg-option"><input type="checkbox" value="6" /><span>토</span></label>
+                        <label class="seg-option"><input type="checkbox" value="0" /><span>일</span></label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <span class="form-label">남은 한도가 이만큼 있을 때만</span>
+                    <div class="seg" role="radiogroup" aria-label="남은 한도 조건">
+                        <label class="seg-option"><input type="radio" name="schedule-min" value="0" checked /><span>제한 없음</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-min" value="30" /><span>30% 이상</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-min" value="50" /><span>50% 이상</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-min" value="70" /><span>70% 이상</span></label>
+                    </div>
+                    <p class="form-hint">5시간·주간 한도 중 더 적게 남은 쪽을 봐요. 부족하면 조건이 맞을 때까지 기다려요.</p>
+                </div>
+
+                <div class="form-group">
+                    <span class="form-label">얼마나 실행할까요?</span>
+                    <div class="seg" role="radiogroup" aria-label="실행 시간">
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="60" /><span>1시간</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="120" /><span>2시간</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="240" /><span>4시간</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="300" /><span>5시간</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="360" checked /><span>6시간</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="480" /><span>8시간</span></label>
+                        <label class="seg-option"><input type="radio" name="schedule-duration" value="720" /><span>12시간</span></label>
+                    </div>
+                </div>
+
+                <p id="schedule-form-error" class="archive-note" data-tone="warn" role="alert" hidden></p>
+                <div class="form-actions">
+                    <button type="submit" class="button small primary">저장</button>
+                    <button type="button" id="schedule-form-cancel" class="button small">취소</button>
+                </div>
+            </form>
+        </section>
+
         <aside id="profile" class="panel profile-panel" aria-label="프로필" inert>
             <div class="panel-scroll">
                 <div id="account-select" class="account-list" role="radiogroup" aria-label="사용할 계정"></div>
@@ -528,6 +641,23 @@
                                 ><b>대기한 시간만큼 종료 시각 연장</b><small>한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요.</small></span
                             >
                             <input type="checkbox" id="extend-on-limit" class="switch" form="run-form" />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="settings-group" aria-labelledby="group-system">
+                    <h3 id="group-system" class="group-title">시스템</h3>
+                    <div class="group-card">
+                        <label class="row switch-row">
+                            <span class="row-body"
+                                ><b>닫아도 트레이에서 계속 켜 두기</b
+                                ><small id="keep-in-tray-note">창을 닫아도 앱이 트레이에 남아 실행과 예약 시작이 이어져요. 끄면 실행 중이 아닐 때 창을 닫으면 앱이 종료돼요.</small></span
+                            >
+                            <input type="checkbox" id="keep-in-tray" class="switch" />
+                        </label>
+                        <label class="row switch-row">
+                            <span class="row-body"><b>로그인하면 자동으로 켜기</b><small id="launch-at-login-note"></small></span>
+                            <input type="checkbox" id="launch-at-login" class="switch" />
                         </label>
                     </div>
                 </section>

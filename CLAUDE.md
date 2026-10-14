@@ -8,7 +8,7 @@ AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPi
 
 ## 구조
 
-- 배포물은 Electron 앱의 Windows exe(포터블과 NSIS 설치형)다. 엔진(autopilot/)은 앱에 내장되고(electron-builder extraResources로 패키지의 resources/engine/에 복사), 앱이 자기 실행 파일을 ELECTRON_RUN_AS_NODE=1로 Node처럼 실행해 엔진 스크립트를 자식 프로세스로 돌린다. 사용자는 앱 화면에서 대상 프로젝트 폴더·작업·종료 시각·정책·model·effort를 모두 정하고 시작한다.
+- 배포물은 Electron 앱이다. Windows exe(포터블과 NSIS 설치형), macOS dmg·zip(x64·arm64, ad-hoc 서명), Linux AppImage·deb(x64·arm64)를 만든다. 엔진(autopilot/)은 앱에 내장되고(electron-builder extraResources로 패키지의 resources/engine/에 복사), 앱이 자기 실행 파일을 ELECTRON_RUN_AS_NODE=1로 Node처럼 실행해 엔진 스크립트를 자식 프로세스로 돌린다. 사용자는 앱 화면에서 대상 프로젝트 폴더·작업·종료 시각·정책·model·effort를 모두 정하고 시작한다.
 - 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI), tests/(검증), docs/(README 스크린샷·앱 로고·아이콘), legacy/(보관), .github/, package.json, .prettierrc다.
 - legacy/의 PowerShell 구현 압축본(autopilot_loop.ps1, check_progress_archive.ps1)은 새 실행 경로에서 사용하지 않으며 수정하지 않는다. 다른 레거시 소스도 legacy/에 압축해 보관한다.
 
@@ -25,6 +25,10 @@ npm run format:check:cli
 npm run format:check:desktop
 npm run build                 # dist/win-unpacked/AutoPilot.exe
 npm run dist                  # 포터블·설치형 exe
+npm run build:mac             # macOS에서만. dist/mac-*/AutoPilot.app
+npm run dist:mac              # macOS에서만. dmg·zip(x64·arm64)
+npm run build:linux           # dist/linux-unpacked/autopilot
+npm run dist:linux            # AppImage·deb(x64·arm64)
 ```
 
 - 검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다.
@@ -34,8 +38,9 @@ npm run dist                  # 포터블·설치형 exe
 - 패키징한 앱의 엔진까지 확인하려면 npm run build 뒤 node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe를 실행한다(번들된 resources/engine을 앱 exe로 실행해 CLI 계약을 검증한다).
 - VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 npm start·npm test로 electron을 실행한다(앱이 엔진을 띄울 때는 앱이 직접 지정한다).
 - npm run dist는 electron-builder로 Windows x64 포터블 exe(AutoPilot-Portable-*)와 NSIS 설치 파일(AutoPilot-Setup-*)을 함께 만든다(포터블은 실행마다 임시 폴더에 풀어 느리므로 설치형을 병행한다). 앱 asar에는 desktop/과 로고만 들어가고, 엔진은 extraResources로 resources/engine/에 복사된다. 지침 본문은 엔진 소스(guideText.js)에 있으므로 별도 파일이 필요 없다.
-- .github/workflows/ci.yml은 Windows에서 CLI·데스크톱 포맷 검사, test:cli, test:desktop, Electron 스모크(npm test)를 실행한다.
-- .github/workflows/release.yml은 v* 태그를 push하면 같은 검증 뒤 포터블 exe와 설치 파일을 GitHub Release로 올린다. 태그는 루트 package.json의 version과 같아야 한다.
+- macOS 빌드는 서명하지 않고 ad-hoc 서명(mac.identity "-", hardenedRuntime 끔)만 한다. 인증서가 없어도 빌드되고 Apple Silicon에서 실행되며, 사용자는 처음 한 번 격리 속성을 풀어야 한다(README). 공증은 하지 않는다. Linux 실행 파일 이름은 `autopilot`(linux.executableName)이고, deb는 설치 때 chrome-sandbox에 SUID를 준다.
+- .github/workflows/ci.yml은 Windows·Ubuntu·macOS에서 CLI·데스크톱 포맷 검사, test:cli, test:desktop, Electron 스모크(Linux는 xvfb-run과 --no-sandbox), 패키징(--dir)과 번들된 엔진 검사(`node tests/checkAutopilot.js <패키지 실행 파일>`)를 실행한다. macOS 번들의 엔진은 .app/Contents/Resources/engine/에 있다.
+- .github/workflows/release.yml은 v* 태그를 push하면 Windows에서 검증한 뒤 세 운영체제에서 각각 배포 파일을 만들어(Windows exe 2개, macOS dmg·zip, Linux AppImage·deb) GitHub Release로 올린다. 태그는 루트 package.json의 version과 같아야 한다.
 
 ## 엔진 CLI 계약
 

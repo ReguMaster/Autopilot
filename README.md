@@ -4,11 +4,11 @@
 
 <p align="center">
   <strong>개발자가 자리를 비운 사이에도, 프로젝트는 앞으로.</strong><br>
-  Claude Code로 코드 수정부터 검증, 커밋까지 반복하는 Windows 자동 개발 앱
+  Claude Code로 코드 수정부터 검증, 커밋까지 반복하는 자동 개발 앱 (Windows · macOS · Linux)
 </p>
 
 <p align="center">
-  <a href="https://github.com/ReguMaster/Autopilot/releases/latest"><strong>Windows 다운로드</strong></a>
+  <a href="https://github.com/ReguMaster/Autopilot/releases/latest"><strong>다운로드</strong></a>
   &nbsp;·&nbsp;
   <a href="#시작하기">시작하기</a>
   &nbsp;·&nbsp;
@@ -31,21 +31,30 @@
 
 - **자율 개발** — 지시한 작업을 끝낸 뒤에도 버그, 안정성, 성능 등 개선점을 찾아 작업합니다.
 - **작업별 커밋** — 검증을 통과한 변경을 작업 단위로 커밋해 결과를 쉽게 검토할 수 있습니다.
-- **종료 시각 설정** — 원하는 시각까지 실행하고, 앱을 닫아도 시스템 트레이에서 계속 동작합니다.
+- **종료 시각 설정** — 원하는 시각까지 실행하고, 앱을 닫아도 시스템 트레이에서 계속 동작합니다. 설정에서 트레이 상주를 항상 켜 두거나 로그인할 때 자동으로 켜지게 할 수 있습니다.
+- **예약 시작** — 정해진 시각이나 사용량 한도가 리셋되는 때에 맞춰 자동으로 시작합니다. 남은 한도와 시작할 수 있는 시간대를 조건으로 걸 수 있어, 자는 동안에도 한도를 알뜰하게 씁니다.
 - **작업 이어하기** — 중단된 프로젝트를 다시 열면 기록을 바탕으로 진행을 이어갑니다.
 - **실시간 진행 상황** — 현재 작업, 수정 파일, 테스트, 커밋과 결과를 화면에서 확인할 수 있습니다.
 - **사용량 관리** — Claude 사용량과 재설정 시각을 확인하고, 한도에 걸리면 대기 후 재개합니다.
 
 ## 시작하기
 
-**필요한 것:** Windows 64비트, [Git](https://git-scm.com/), [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
+**필요한 것:** Windows · macOS · Linux 데스크톱, [Git](https://git-scm.com/), [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
 
-1. [최신 릴리스](https://github.com/ReguMaster/Autopilot/releases/latest)에서 설치형(`Setup`) 또는 무설치형(`Portable`)을 다운로드합니다.
+1. [최신 릴리스](https://github.com/ReguMaster/Autopilot/releases/latest)에서 내 운영체제에 맞는 파일을 다운로드합니다. ([운영체제별 참고](#운영체제별-참고))
 2. AutoPilot을 실행하고 **Git 프로젝트 폴더**를 선택합니다. (최소 1개의 커밋 필요)
 3. 작업 내용, 모델, 개선 방식, 종료 시각을 정하고 **시작**을 누릅니다.
 4. 실행을 마치면 리포트와 `ai/autopilot` 브랜치의 커밋을 검토합니다.
 
 > AutoPilot은 클라우드에서 실행되는 서비스가 아닙니다. 작업하는 동안 **PC가 켜져 있어야** 하며, Claude Code 사용 권한이 필요합니다.
+
+### 운영체제별 참고
+
+| 운영체제 | 받을 파일 | 참고 |
+| --- | --- | --- |
+| **Windows** 10 이상 (x64) | `AutoPilot-Setup-*.exe`(설치형), `AutoPilot-Portable-*.exe`(무설치형) | 포터블은 실행할 때마다 임시 폴더에 풀려 설치형보다 느립니다. |
+| **macOS** 12 이상 (Apple Silicon·Intel) | `AutoPilot-*-mac-arm64.dmg`·`-x64.dmg` (`.zip`도 제공) | 개발자 인증서로 서명하지 않은 앱이라 처음 한 번 **우클릭 → 열기**로 실행하거나 `xattr -dr com.apple.quarantine /Applications/AutoPilot.app`을 실행해야 합니다. 로그인 정보가 키체인에 있어 앱 안의 사용량 표시와 **한도 리셋 예약**은 쓸 수 없고, 정해진 시각 예약은 그대로 쓸 수 있습니다. |
+| **Linux** (x64·arm64, 데스크톱 환경) | `AutoPilot-*-linux-*.AppImage`, `AutoPilot-*-linux-*.deb` | AppImage는 `chmod +x`로 실행 권한을 준 뒤 실행합니다. 트레이 아이콘과 알림은 데스크톱 환경이 지원해야 하며(GNOME은 AppIndicator 확장 필요), Ubuntu 24.04처럼 사용자 네임스페이스를 막은 환경에서 AppImage가 시작되지 않으면 `--no-sandbox`를 붙여 실행하거나 `.deb`로 설치하세요. |
 
 ## 원하는 방식으로 작업하세요
 
@@ -77,7 +86,9 @@
 npm ci
 npm start       # 데스크톱 앱 실행
 npm test        # 스모크 테스트
-npm run dist    # Windows 설치형·포터블 빌드
+npm run dist        # Windows 설치형·포터블 빌드
+npm run dist:mac    # macOS dmg·zip 빌드 (macOS에서)
+npm run dist:linux  # Linux AppImage·deb 빌드
 ```
 
 자세한 구조와 개발 규칙은 [CLAUDE.md](CLAUDE.md)와 [desktop/README.md](desktop/README.md)를 참고하세요.

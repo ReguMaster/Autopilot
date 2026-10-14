@@ -4,20 +4,26 @@
     "private": true,
     "description": "무인 자율 개발 환경, Autopilot",
     "author": "ReguMaster",
+    "homepage": "https://github.com/ReguMaster/Autopilot",
+    "desktopName": "autopilot.desktop",
     "main": "desktop/main.cjs",
     "scripts": {
         "start": "electron .",
         "dev": "electron . --dev",
         "test": "electron . --smoke-test",
-        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js",
+        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js",
         "build": "electron-builder --win --x64 --dir",
+        "build:mac": "electron-builder --mac --dir",
+        "build:linux": "electron-builder --linux --dir",
         "dist": "electron-builder --win --x64",
+        "dist:mac": "electron-builder --mac",
+        "dist:linux": "electron-builder --linux",
         "dist:signed": "electron-builder --win --x64 -c.win.signtoolOptions.certificateSubjectName=ReguMaster -c.win.signtoolOptions.publisherName=ReguMaster",
         "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js",
-        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js"
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js"
     },
     "devDependencies": {
         "electron": "^44.6.0",
@@ -73,7 +79,65 @@
                     "package.json"
                 ]
             }
-        ]
+        ],
+        "mac": {
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ],
+            "icon": "docs/icon.png",
+            "category": "public.app-category.developer-tools",
+            "identity": "-",
+            "hardenedRuntime": false,
+            "gatekeeperAssess": false,
+            "artifactName": "AutoPilot-${version}-mac-${arch}.${ext}"
+        },
+        "dmg": {
+            "title": "AutoPilot ${version}",
+            "artifactName": "AutoPilot-${version}-mac-${arch}.${ext}"
+        },
+        "linux": {
+            "target": [
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                },
+                {
+                    "target": "deb",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ],
+            "icon": "docs/icon.png",
+            "executableName": "autopilot",
+            "syncDesktopName": true,
+            "category": "Development",
+            "synopsis": "Autonomous development assistant powered by Claude Code",
+            "maintainer": "ReguMaster <ReguMaster@users.noreply.github.com>",
+            "artifactName": "AutoPilot-${version}-linux-${arch}.${ext}",
+            "desktop": {
+                "entry": {
+                    "StartupWMClass": "autopilot"
+                }
+            }
+        }
     },
     "type": "module",
     "engines": {

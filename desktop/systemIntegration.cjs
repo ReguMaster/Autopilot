@@ -2,6 +2,8 @@ const { BrowserWindow, Menu, Notification, Tray, nativeImage, powerSaveBlocker }
 const path = require("node:path");
 
 const TRAY_ICON_SIZE = 16;
+// 고해상도 화면에서 흐려지지 않게 2배 크기로 만들어 같은 논리 크기로 쓴다.
+const TRAY_ICON_SCALE = 2;
 const PAUSED_PHASE_PATTERN = /재시도|사용량 한도/;
 const LIMIT_PHASE_PREFIX = "사용량 한도 대기";
 const KILLED_REASON = "강제 종료";
@@ -121,7 +123,8 @@ const handleState = (state) => {
 };
 
 const createTray = ({ onQuit }) => {
-    const icon = nativeImage.createFromPath(path.join(__dirname, "../docs/icon.png")).resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+    const source = nativeImage.createFromPath(path.join(__dirname, "../docs/icon.png")).resize({ width: TRAY_ICON_SIZE * TRAY_ICON_SCALE, height: TRAY_ICON_SIZE * TRAY_ICON_SCALE, quality: "best" });
+    const icon = nativeImage.createFromBuffer(source.toPNG(), { scaleFactor: TRAY_ICON_SCALE });
 
     tray = new Tray(icon);
 
@@ -130,4 +133,4 @@ const createTray = ({ onQuit }) => {
     tray.on("click", showWindow);
 };
 
-module.exports = { handleState, createTray, showWindow };
+module.exports = { handleState, createTray, showWindow, notify };

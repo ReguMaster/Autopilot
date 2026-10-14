@@ -28,7 +28,7 @@ const COMPLETE_LINES = [
 ];
 
 const createProject = () => {
-    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-history-"));
+    const projectDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-history-"));
 
     fs.mkdirSync(path.join(projectDir, ".git"));
     fs.mkdirSync(path.join(projectDir, ".autopilot", "progress"), { recursive: true });
@@ -194,7 +194,7 @@ const checkSafety = async (projectDir) => {
 
     await assert.rejects(() => readRun(projectDir, `${DAY}/autopilot_999999_ffffffff.log`));
 
-    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-outside-"));
+    const outsideDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-outside-"));
     const outsideFile = path.join(outsideDir, "secret.log");
     const linkPath = path.join(projectDir, ".autopilot", "progress", DAY, "autopilot_050000_b0000001.log");
 
