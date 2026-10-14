@@ -6,7 +6,7 @@ on:
 permissions:
   contents: write
 jobs:
-  desktop:
+  verify:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,11 +25,44 @@ jobs:
       - run: npm run test:cli
       - run: npm run test:desktop
       - run: npm test
-      - run: npm run dist -- --publish never
+  desktop:
+    needs: [verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dist: npm run dist -- --publish never
+            assets: dist/AutoPilot-*.exe
+            artifact: desktop-windows
+          - os: macos-latest
+            dist: npm run dist:mac -- --publish never
+            assets: |
+              dist/AutoPilot-*.dmg
+              dist/AutoPilot-*.zip
+            artifact: desktop-mac
+          - os: ubuntu-latest
+            dist: npm run dist:linux -- --publish never
+            assets: |
+              dist/AutoPilot-*.AppImage
+              dist/AutoPilot-*.deb
+            artifact: desktop-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: ${{ matrix.dist }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop
-          path: dist/AutoPilot-*.exe
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.assets }}
+          if-no-files-found: error
   release:
     needs: [desktop]
     runs-on: ubuntu-latest

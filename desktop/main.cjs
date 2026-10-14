@@ -87,7 +87,7 @@ const createWindow = () => {
         minWidth: WINDOW_MIN_SIZE.width,
         minHeight: WINDOW_MIN_SIZE.height,
         backgroundColor: WINDOW_BACKGROUND,
-        icon: path.join(__dirname, "../docs/icon.ico"),
+        icon: path.join(__dirname, process.platform === "win32" ? "../docs/icon.ico" : "../docs/icon.png"),
         frame: false,
         show: false,
         autoHideMenuBar: true,
@@ -215,6 +215,11 @@ if (!hasInstanceLock) {
         });
     });
 }
+
+// Cmd+Q나 시스템 종료처럼 트레이가 아닌 경로의 종료는 닫기 처리가 숨기기만 하지 않고 종료 확인을 거치게 한다.
+app.on("before-quit", () => {
+    isQuitting = true;
+});
 
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {

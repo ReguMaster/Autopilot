@@ -53,8 +53,9 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ### 플랫폼 범위
 
-- 배포는 Windows exe(포터블·설치형)뿐이지만 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
+- 배포는 Windows exe(포터블·설치형), macOS dmg·zip, Linux AppImage·deb이고 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
 - 로그인 여부는 저장 위치가 플랫폼마다 달라 파일이 아니라 `claude auth status --json`으로 확인한다.
+- 창 아이콘은 Windows가 .ico, 그 밖은 .png다. 트레이 아이콘은 2배 크기(TRAY_ICON_SCALE)로 만들어 고해상도에서 흐려지지 않게 한다. 서체 목록(--sans·--mono)에는 macOS·Linux 시스템 서체를 대체로 둔다. Cmd+Q·시스템 종료(before-quit)는 트레이 숨기기가 아니라 종료 확인을 거친다. Linux는 트레이를 지원하지 않는 데스크톱이면 트레이로 숨긴 창을 다시 열 수 없으므로(두 번째 실행으로 열 수는 있다) README에 알린다.
 - Windows·Linux는 로그인 정보가 설정 폴더의 .credentials.json이라 사용량·프로필 조회가 된다. macOS는 키체인이라 조회하지 못하고(UNSUPPORTED_PLATFORM 안내) 계정 전환·로그인·실행은 CLI로 된다. Linux는 WSL로 tests/checkDesktopAccounts.js·checkDesktopRunner.js·checkDesktopView.js를 확인했고 macOS는 확인하지 못했다.
 
 ## 지난 실행(기록 보기)
@@ -122,6 +123,6 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 최소화·최대화·닫기는 preload의 window.appWindow가 main.cjs의 window:* IPC로 요청한 창에만 적용한다. 닫기는 일반 close라 실행 중 확인을 그대로 거친다. 최대화 상태는 window:state로 받아 아이콘을 바꾼다.
 - 앱은 단일 인스턴스이며 두 번째 실행은 종료하고 기존 창을 앞으로 가져온다(--smoke-test는 실행 중인 앱과 무관하게 검증하도록 잠금에서 제외한다).
 - 앱이 시작한 엔진이 실행 중이거나 설정의 "닫아도 트레이에서 계속 켜 두기"(settings.json의 keepInTray)가 켜져 있으면 창을 닫을 때 트레이로 숨기기만 한다(main.cjs의 close 처리, isOwnedEngineRunning·isTrayResident). 종료는 트레이 메뉴의 종료로 하며 창을 띄워 confirmClose의 확인 후 강제 종료한다. 그 밖에는(실행 중이 아니고 트레이 상주도 꺼져 있거나 연결한 엔진이면) 닫을 때 앱이 종료된다. 트레이에서 종료할 때는 window closed에서 app.quit()을 불러 macOS에서도 끝낸다.
-- "로그인하면 자동으로 켜기"(launchAtLogin)는 launchAtLogin.cjs가 맡는다. Windows·macOS는 app.setLoginItemSettings(Windows는 name 고정, 인자 `--hidden`), Linux는 ~/.config/autostart/autopilot.desktop을 쓰고, 포터블 exe·AppImage는 원본 파일(PORTABLE_EXECUTABLE_FILE·APPIMAGE)을 가리킨다. 개발 실행(app.isPackaged가 거짓)에서는 등록하지 않는다. 켜면 keepInTray도 함께 켜고 화면에서 끌 수 없게 잠근다(handleSetSystem). 등록 뒤 시스템에서 다시 읽어 확인하고 실패하면 설정을 바꾸지 않는다. 앱을 켤 때 syncLaunchAtLogin이 경로를 다시 맞춘다. `--hidden`(macOS는 wasOpenedAtLogin)으로 켜지면 창을 띄우지 않고 트레이에만 둔다. NSIS 제거 때 로그인 항목은 build/installer.nsh가 지운다.
+- "로그인하면 자동으로 켜기"(launchAtLogin)는 launchAtLogin.cjs가 맡는다. Windows·macOS는 app.setLoginItemSettings(인자 `--hidden`. Windows 값 이름은 기본인 AppUserModelId로 둔다. getLoginItemSettings가 name을 받지 않아 다른 이름으로 쓰면 등록돼도 확인되지 않는다), Linux는 ~/.config/autostart/autopilot.desktop을 쓰고, 포터블 exe·AppImage는 원본 파일(PORTABLE_EXECUTABLE_FILE·APPIMAGE)을 가리킨다. 개발 실행(app.isPackaged가 거짓)에서는 등록하지 않는다. 켜면 keepInTray도 함께 켜고 화면에서 끌 수 없게 잠근다(handleSetSystem). 등록 뒤 시스템에서 다시 읽어 확인하고 실패하면 설정을 바꾸지 않는다. 앱을 켤 때 syncLaunchAtLogin이 경로를 다시 맞춘다. `--hidden`(macOS는 wasOpenedAtLogin)으로 켜지면 창을 띄우지 않고 트레이에만 둔다. NSIS 제거 때 로그인 항목은 build/installer.nsh가 지운다.
 - systemIntegration.cjs가 러너 상태 변화(onState)마다 절전 방지(powerSaveBlocker prevent-app-suspension, 엔진이 도는 동안), 작업표시줄 진행률(종료 시각까지 경과, 종료 신호·재시도·한도 대기는 paused), 트레이 툴팁, Windows 알림(포커스가 없을 때 종료·실패·사용량 한도 대기 전환만, 강제 종료 제외)을 맞춘다.
 - 스모크 테스트(npm test)는 window.appWindow·#titlebar·#profile·#login-banner도 확인한다.

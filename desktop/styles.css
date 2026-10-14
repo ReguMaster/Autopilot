@@ -39,8 +39,8 @@
     --title-lg: 28px;
     --title-xl: 34px;
     --display: 56px;
-    --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
-    --mono: "Cascadia Mono", Consolas, monospace;
+    --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
     font-family: var(--sans);
 }
 
