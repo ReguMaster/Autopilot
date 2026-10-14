@@ -1,0 +1,4 @@
+/* React가 그리는 루트는 레이아웃에 끼지 않는다. 헤더·본문이 body의 flex 자식으로 놓이도록 한다 */
+#root {
+    display: contents;
+}

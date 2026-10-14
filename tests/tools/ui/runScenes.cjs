@@ -31,25 +31,33 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PAGE_HELPERS = `(() => {
     // 애니메이션을 다시 거는 클래스와 값이 빈 속성은 상태가 아니라 흔적이라 비교에서 뺀다. 숨은 요소의 안쪽도 보이지 않으므로 뺀다.
     const REPLAY_CLASSES = ["swap", "appear", "tick-up", "tick-down", "tick-up", "model-swap", "effort-swap"];
-    const EMPTY_IGNORED = ["class", "data-tone", "data-length"];
+    const EMPTY_IGNORED = ["class", "data-tone", "data-length", "title"];
+
+    // 입력 값은 속성이 아니라 프로퍼티로 다뤄지고, 숨은 입력·datalist는 새 화면에 없다. 값이 아닌 모양만 비교한다.
+    const IGNORED_ATTRIBUTES = ["checked", "data-default", "value"];
+    const SKIPPED_SELECTOR = "datalist, input[type=hidden], input[hidden]";
 
     const norm = (node) => {
         if (node.nodeType === 3) {
             return node.data.replace(/\\s+/g, " ").trim();
         }
 
-        if (node.nodeType !== 1 || node.tagName === "SCRIPT") {
+        if (node.nodeType !== 1 || node.tagName === "SCRIPT" || node.matches(SKIPPED_SELECTOR)) {
             return "";
+        }
+
+        if (node.hasAttribute("hidden")) {
+            return "<" + node.tagName.toLowerCase() + " hidden></" + node.tagName.toLowerCase() + ">";
         }
 
         const attrs = [...node.attributes]
             .map((attr) => (attr.name === "class" ? { name: attr.name, value: attr.value.split(/\\s+/).filter((token) => token && !REPLAY_CLASSES.includes(token)).join(" ") } : attr))
-            .filter((attr) => attr.name !== "style" && !(attr.value === "" && EMPTY_IGNORED.includes(attr.name)))
+            .filter((attr) => attr.name !== "style" && !(attr.value === "" && EMPTY_IGNORED.includes(attr.name)) && !(attr.name === "id" && node.tagName === "use") && !IGNORED_ATTRIBUTES.includes(attr.name))
             .map((attr) => attr.name + "=" + JSON.stringify(attr.value))
             .sort()
             .join(" ");
         const name = node.tagName.toLowerCase();
-        const children = node.hasAttribute("hidden") ? "" : [...node.childNodes].map(norm).join("");
+        const children = node.tagName === "TEXTAREA" ? "" : [...node.childNodes].map(norm).join("");
 
         return "<" + name + (attrs ? " " + attrs : "") + ">" + children + "</" + name + ">";
     };

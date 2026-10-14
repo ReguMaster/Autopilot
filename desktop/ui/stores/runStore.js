@@ -32,6 +32,12 @@ const flushEntries = () => {
     entryListeners.forEach((listener) => listener(entries));
 };
 
+// 처음 불러온 로그처럼 기다릴 필요가 없는 묶음은 바로 반영한다.
+const flushNow = () => {
+    clearTimeout(flushTimer);
+    flushEntries();
+};
+
 const appendEntries = (entries) => {
     if (!entries.length) {
         return;
@@ -59,4 +65,4 @@ const subscribeEntries = (listener) => {
 
 const getRunState = () => useRunStore.getState().state;
 
-export { MAX_LOG_LINES, useRunStore, applyRunState, appendEntries, clearLogs, subscribeEntries, getRunState };
+export { MAX_LOG_LINES, useRunStore, applyRunState, appendEntries, flushNow, clearLogs, subscribeEntries, getRunState };

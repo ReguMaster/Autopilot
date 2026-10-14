@@ -4,11 +4,10 @@ import { loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
 import { setAccountSnapshot } from "./stores/accountStore.js";
 import { useAppStore } from "./stores/appStore.js";
-import { composer } from "./stores/composerStore.js";
-import { applyRunState, appendEntries, getRunState, useRunStore } from "./stores/runStore.js";
+import { composer, useComposerStore } from "./stores/composerStore.js";
+import { applyRunState, appendEntries, flushNow, getRunState, useRunStore } from "./stores/runStore.js";
 import { applySchedulePayload } from "./stores/scheduleStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
-import { useComposerStore } from "./stores/composerStore.js";
 
 // 실행 상태가 바뀔 때 다른 스토어가 따라야 하는 규칙. 옛 renderer.js의 renderState가 한꺼번에 하던 일이다.
 const followRunState = (state, previous) => {
@@ -45,7 +44,9 @@ const boot = async () => {
     useComposerStore.setState({ endTime: settings.endTime, tasks: settings.tasks, policy: settings.policy, extendOnLimit: settings.extendOnLimit });
     composer.setSelectedOptions(settings);
     applyRunState(snapshot.state);
+    composer.syncFromRun(snapshot.state);
     appendEntries(snapshot.logs);
+    flushNow();
 
     const accountsResult = await window.autopilot.getAccounts();
 

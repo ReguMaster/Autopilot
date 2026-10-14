@@ -1,4 +1,8 @@
 import { Symbols } from "./components/Symbols.jsx";
+import { Composer } from "./features/composer/Composer.jsx";
+import { FinishView } from "./features/done/FinishView.jsx";
+import { ReadyView } from "./features/ready/ReadyView.jsx";
+import { RunView } from "./features/run/RunView.jsx";
 import { Course } from "./features/shell/Course.jsx";
 import { Notices } from "./features/shell/Notices.jsx";
 import { TitleBar } from "./features/shell/TitleBar.jsx";
@@ -22,8 +26,13 @@ const App = () => {
             <TitleBar />
             <div className="content">
                 <Course />
-                <main className="stage"></main>
+                <main className="stage">
+                    <ReadyView />
+                    <RunView />
+                    <FinishView />
+                </main>
                 <Notices />
+                <Composer />
             </div>
             <Symbols />
         </>

@@ -1,6 +1,6 @@
-import { applyStoryEntry, createStory, getWaitSentence } from "../../viewFormat.js";
+import { applyStoryEntry, createStory, getWaitSentence } from "../../../viewFormat.js";
+import { getRunState, subscribeEntries, useRunStore } from "../../stores/runStore.js";
 
-const LOG_FLUSH_MS = 50;
 const STORY_PAST_LINES = 9;
 const EMPTY_SENTENCE = "곧 첫 문장을 들려드릴게요.";
 
@@ -23,14 +23,10 @@ const getViewModel = (story, state) => {
     };
 };
 
-// 로그는 모아서 한 번에 이야기에 반영하고, 상태가 오면 바로 알린다. 화면은 알림을 받아 getView로 그 순간의 모양을 읽는다.
-const createStoryStore = () => {
+// 실행 스토어가 모아 준 로그 묶음을 이야기 엔진에 반영한다. 로그 묶음과 상태 변화가 모두 알림이 되고, 화면은 알림을 받아 getView로 그 순간의 모양을 읽는다.
+const createStoryModel = () => {
     const story = createStory();
     const listeners = new Set();
-    let state = null;
-    let pending = [];
-    let flushTimer = 0;
-    let readyPromise = null;
     let version = 0;
 
     const notify = () => {
@@ -38,54 +34,25 @@ const createStoryStore = () => {
         listeners.forEach((listener) => listener());
     };
 
-    const flush = () => {
-        flushTimer = 0;
-
-        const entries = pending;
-
-        pending = [];
+    subscribeEntries((entries) => {
         entries.forEach((entry) => applyStoryEntry(story, entry));
         notify();
-    };
-
-    // 처음 상태를 받은 뒤에 첫 그림을 그리도록 마운트 전에 기다린다(안 그러면 빈 문장이 잠깐 보인다).
-    const start = () => {
-        if (readyPromise) {
-            return readyPromise;
+    });
+    useRunStore.subscribe((current, previous) => {
+        if (current.state !== previous.state) {
+            notify();
         }
-
-        window.autopilot.onLog((entries) => {
-            pending.push(...entries);
-
-            if (!flushTimer) {
-                flushTimer = setTimeout(flush, LOG_FLUSH_MS);
-            }
-        });
-        window.autopilot.onState((next) => {
-            state = next;
-            notify();
-        });
-
-        readyPromise = window.autopilot.getState().then((snapshot) => {
-            state = snapshot.state;
-            snapshot.logs.forEach((entry) => applyStoryEntry(story, entry));
-            notify();
-        });
-
-        return readyPromise;
-    };
+    });
 
     return {
-        ready: start,
         subscribe: (listener) => {
-            start();
             listeners.add(listener);
 
             return () => listeners.delete(listener);
         },
-        getView: () => getViewModel(story, state),
+        getView: () => getViewModel(story, getRunState()),
         getVersion: () => version
     };
 };
 
-export { createStoryStore, getViewModel };
+export { createStoryModel, getViewModel, getPastKey };

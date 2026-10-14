@@ -5,8 +5,10 @@ import { getRunState } from "./runStore.js";
 import { ui } from "./uiStore.js";
 
 // 시작 전에 고르는 값(모델·Effort·정책·종료 시각·작업·한도 연장). 실행 중에는 엔진에 전달된 값을 따라간다.
+// model은 계열이고, modelId는 알약에 보여줄 값(계열 별칭이거나 엔진이 쓰는 모델 ID)이다.
 const useComposerStore = create(() => ({
     model: DEFAULT_MODEL,
+    modelId: DEFAULT_MODEL,
     effort: DEFAULT_EFFORT_LEVEL,
     policy: DEFAULT_POLICY,
     endTime: "",
@@ -24,7 +26,7 @@ const getSelectedOptions = () => {
 };
 
 const setSelectedOptions = ({ model, effort }) => {
-    useComposerStore.setState((current) => ({ model: getModelFamily(model) || current.model, effort: Math.max(0, EFFORT_LEVELS.indexOf(effort)) }));
+    useComposerStore.setState((current) => ({ model: getModelFamily(model) || current.model, modelId: model, effort: Math.max(0, EFFORT_LEVELS.indexOf(effort)) }));
 };
 
 // 실행 중에는 엔진에 전달된 값을 기준으로 선택을 맞춘다. 전달 중인 값은 덮어쓰지 않는다.
@@ -69,7 +71,7 @@ const handleOptionChange = () => {
 
 const composer = {
     chooseModel: (family) => {
-        useComposerStore.setState({ model: family });
+        useComposerStore.setState({ model: family, modelId: family });
         handleOptionChange();
     },
     chooseEffort: (level) => {
@@ -82,6 +84,8 @@ const composer = {
     setEndTime: (endTime) => useComposerStore.setState({ endTime: endTime }),
     stepEndTime: (unit, step) => useComposerStore.setState((current) => ({ endTime: shiftEndTime(current.endTime, step * unit) })),
     setEndTimeAfter: (minutes) => useComposerStore.setState({ endTime: getEndTimeAfter(Date.now(), minutes) }),
+    // 모델 버전 고정이 바뀌면 알약은 다시 계열 기준으로 보여준다.
+    showFamily: () => useComposerStore.setState((current) => ({ modelId: current.model })),
     syncFromRun: syncFromRun,
     getSelectedOptions: getSelectedOptions,
     setSelectedOptions: setSelectedOptions
