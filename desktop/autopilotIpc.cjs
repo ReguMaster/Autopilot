@@ -336,6 +336,8 @@ const handleSetSystem = (event, options = {}) => {
         return createFailure("UNSUPPORTED", "설치한 앱에서만 로그인 자동 실행을 켤 수 있어요.");
     }
 
+    const previous = readSettings().launchAtLogin;
+
     try {
         loginItem.setEnabled(launchAtLogin);
     } catch (error) {
@@ -343,6 +345,11 @@ const handleSetSystem = (event, options = {}) => {
     }
 
     if (loginItem.isSupported() && loginItem.isEnabled() !== launchAtLogin) {
+        // 시스템에 반쯤 남은 항목이 저장된 설정과 어긋나지 않게 이전 상태로 되돌린다.
+        try {
+            loginItem.setEnabled(previous);
+        } catch {}
+
         return createFailure("LOGIN_ITEM_FAILED", "시스템이 로그인 자동 실행 설정을 받아들이지 않았어요. 보안 정책이나 권한을 확인해 주세요.");
     }
 

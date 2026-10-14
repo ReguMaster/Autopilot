@@ -1,11 +1,14 @@
-const electron = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
 const HIDDEN_ARG = "--hidden";
-const LOGIN_ITEM_NAME = "AutoPilot";
 const AUTOSTART_FILE_NAME = "autopilot.desktop";
+
+// 순수 함수(buildDesktopEntry)를 Electron 없이 검증할 수 있도록 electron은 쓸 때 불러온다.
+const getApp = () => {
+    return require("electron").app;
+};
 
 // 포터블 exe와 AppImage는 실행마다 임시 위치에 풀리므로 원본 파일을 가리켜야 다음 로그인에도 켜진다.
 const getLaunchPath = () => {
@@ -27,7 +30,7 @@ const getAutostartFile = () => {
 
 // 개발 실행(electron 바이너리)을 로그인 항목으로 등록하면 안 되므로 패키지 앱에서만 쓴다.
 const isSupported = () => {
-    return electron.app.isPackaged;
+    return getApp().isPackaged;
 };
 
 const isEnabled = () => {
@@ -39,7 +42,7 @@ const isEnabled = () => {
         return fs.existsSync(getAutostartFile());
     }
 
-    return electron.app.getLoginItemSettings({ path: getLaunchPath(), args: [HIDDEN_ARG], name: LOGIN_ITEM_NAME }).openAtLogin;
+    return getApp().getLoginItemSettings({ path: getLaunchPath(), args: [HIDDEN_ARG] }).openAtLogin;
 };
 
 const setEnabled = (enabled) => {
@@ -56,12 +59,12 @@ const setEnabled = (enabled) => {
         return;
     }
 
-    electron.app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true, path: getLaunchPath(), args: [HIDDEN_ARG], name: LOGIN_ITEM_NAME });
+    getApp().setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true, path: getLaunchPath(), args: [HIDDEN_ARG] });
 };
 
 // 로그인으로 켜졌으면 창을 띄우지 않고 트레이에만 둔다. macOS는 인자를 넘길 수 없어 시스템이 알려 주는 값을 본다.
 const wasLaunchedHidden = () => {
-    return process.argv.includes(HIDDEN_ARG) || (process.platform === "darwin" && electron.app.getLoginItemSettings().wasOpenedAtLogin);
+    return process.argv.includes(HIDDEN_ARG) || (process.platform === "darwin" && getApp().getLoginItemSettings().wasOpenedAtLogin);
 };
 
 module.exports = { buildDesktopEntry, isSupported, isEnabled, setEnabled, wasLaunchedHidden, HIDDEN_ARG };
