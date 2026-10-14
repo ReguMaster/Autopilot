@@ -130,4 +130,4 @@ const createTray = ({ onQuit }) => {
     tray.on("click", showWindow);
 };
 
-module.exports = { handleState, createTray, showWindow };
+module.exports = { handleState, createTray, showWindow, notify };

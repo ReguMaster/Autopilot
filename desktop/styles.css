@@ -1821,11 +1821,11 @@ body[data-view="run"] #policy-chip {
 }
 
 /* 스크림은 헤더 아래만 덮는다. 헤더에 덧씌우면 끌기 영역이 버튼 클릭을 가로채므로 배경색으로 맞춘다 */
-body:is(.settings-open, .profile-open, .history-open, .archive-open) .titlebar {
+body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .titlebar {
     background: rgb(26 31 54 / 0.14);
 }
 
-body:is(.settings-open, .profile-open, .history-open, .archive-open) .scrim {
+body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .scrim {
     opacity: 1;
     visibility: visible;
     transition-delay: 0s;
@@ -2610,7 +2610,8 @@ body.profile-open .usage-meter i {
 
 /* 전체 기록: 아래에서 올라오는 흰 시트. 열 때 감속, 닫을 때 가속해 내려간다 */
 .history,
-.archive {
+.archive,
+.schedule {
     position: fixed;
     top: 64px;
     right: 10px;
@@ -2633,7 +2634,8 @@ body.profile-open .usage-meter i {
 }
 
 body.history-open .history,
-body.archive-open .archive {
+body.archive-open .archive,
+body.schedule-open .schedule {
     translate: 0;
     visibility: visible;
     transition:
@@ -2642,7 +2644,8 @@ body.archive-open .archive {
 }
 
 .history::before,
-.archive::before {
+.archive::before,
+.schedule::before {
     content: "";
     position: absolute;
     top: 8px;
@@ -2875,7 +2878,8 @@ body.archive-open .archive {
 }
 
 /* 지난 실행 시트: 전체 기록과 같은 시트에 목록과 하루의 대화를 담는다 */
-.archive {
+.archive,
+.schedule {
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -3222,6 +3226,234 @@ body:not(.ready) :is(.recent-list, .archive-list, .finish-rounds, #finish-gains)
 }
 
 /* 움직임을 줄이는 설정에서는 이동·확대 전환을 끈다. 위치가 바뀌지 않는 투명도 전환(캐럿 깜빡임, 상태 점, 문장 드러내기)은 일하는 중임을 알리는 표시라 남긴다 */
+/* 예약 시트: 지난 실행 시트와 같은 자리에 뜬다. 목록 화면과 폼 화면을 번갈아 보여준다 */
+.schedule-pane {
+    overflow: auto;
+    padding-bottom: 14px;
+}
+
+.schedule-plan {
+    flex: none;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+}
+
+.schedule-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.schedule-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--hair);
+}
+
+.schedule-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    text-align: left;
+}
+
+.schedule-body b {
+    font-size: var(--text-md);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.schedule-body small {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+}
+
+.schedule-body .schedule-status {
+    color: var(--ink-2);
+}
+
+.schedule-body small[data-tone="warn"] {
+    color: var(--warn);
+}
+
+.schedule-body small:empty {
+    display: none;
+}
+
+.schedule-item[data-off] .schedule-body {
+    opacity: 0.55;
+}
+
+.schedule-delete {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--faint);
+}
+
+.schedule-delete:hover {
+    background: var(--chip);
+    color: var(--del);
+}
+
+.schedule-delete svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.schedule-empty {
+    padding: 24px 0;
+    color: var(--muted);
+    font-size: var(--text-md);
+    line-height: 1.7;
+    text-wrap: pretty;
+}
+
+.schedule-form {
+    gap: 18px;
+}
+
+.form-group {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-label {
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.form-hint {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.55;
+}
+
+/* 고르는 알약: 고른 것은 잉크색으로 채운다(파랑은 진행 중인 것에만 쓴다) */
+.seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.seg-option {
+    position: relative;
+    display: inline-flex;
+}
+
+.seg-option input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.seg-option span {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 13px;
+    border-radius: 8px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    transition:
+        background-color 0.2s var(--ease-out),
+        color 0.2s var(--ease-out),
+        box-shadow 0.2s var(--ease-out);
+}
+
+.seg-option:hover input:not(:checked) + span {
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.seg-option input:checked + span {
+    background: var(--ink);
+    color: #fff;
+    box-shadow: none;
+}
+
+.seg-option input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+#schedule-days .seg-option span {
+    min-width: 40px;
+    justify-content: center;
+    padding: 0;
+}
+
+.schedule-time {
+    width: 120px;
+    font-family: inherit;
+}
+
+.schedule-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.form-actions {
+    display: flex;
+    flex: none;
+    gap: 8px;
+}
+
+/* 시작 화면의 예약 한 줄: 누르면 예약 시트가 열린다 */
+.peek {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    margin: 12px 0 0 -8px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-align: left;
+    transition:
+        background-color 0.25s var(--ease-out),
+        color 0.25s var(--ease-out);
+}
+
+.peek:hover {
+    background: var(--chip);
+    color: var(--ink);
+}
+
 @media (prefers-reduced-motion: reduce) {
     *:not(.caret, .status-dot, .swap, .appear),
     *::before,
@@ -3233,6 +3465,7 @@ body:not(.ready) :is(.recent-list, .archive-list, .finish-rounds, #finish-gains)
     .panel,
     .history,
     .archive,
+    .schedule,
     .popover,
     .appear {
         translate: none !important;

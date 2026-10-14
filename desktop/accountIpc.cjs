@@ -417,7 +417,16 @@ const createAccountIpc = ({
         }
     };
 
-    return { register: register, startWatch: startWatch, getRunAccount: getRunAccount, cancelLogin: handleCancelLogin };
+    // 예약이 한도를 판단할 때 쓴다. 지금 선택한 계정의 마지막으로 읽은 사용량과 다시 읽기.
+    const getActiveUsage = () => {
+        return getReader(getActiveId(readSettings())).getAccount();
+    };
+
+    const refreshActiveUsage = () => {
+        return getReader(getActiveId(readSettings())).refresh();
+    };
+
+    return { register: register, startWatch: startWatch, getRunAccount: getRunAccount, cancelLogin: handleCancelLogin, getActiveUsage: getActiveUsage, refreshActiveUsage: refreshActiveUsage };
 };
 
 module.exports = { createAccountIpc };

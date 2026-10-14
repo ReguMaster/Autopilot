@@ -73,6 +73,17 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 헤더 버튼 줄 맨 앞의 #update-chip(회색 칩, 파랑은 진행 중 표시 전용)이 누르면 그 릴리스 페이지를 연다. 자동 설치는 하지 않는다.
 - tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
 
+## 예약
+
+- 헤더의 시계 버튼(#schedule-toggle)이나 시작 화면의 한 줄(#schedule-peek)이 예약 시트(#schedule)를 연다. 시트는 지난 실행 시트와 같은 자리·같은 규칙이고(전체 기록·지난 실행·패널과 한 번에 하나만 열림, 스크림·Esc로 닫음) 목록과 폼을 번갈아 보여준다. 모달은 쓰지 않는다.
+- 규칙은 scheduleRules.cjs(순수 함수, 시계·사용량을 인자로 받음), 주기 판단·상태 보관은 scheduler.cjs, IPC·실행 연결은 autopilotIpc.cjs다. 예약 목록은 settings.json의 schedules(최대 8개, 읽을 때 normalizeSchedules가 올바르지 않은 항목을 버림)에, 판단 상태(마지막 시작·기억한 한도 리셋 시각·무장 여부)는 userData/schedule-state.json에 둔다.
+- 시작 조건은 두 가지다. 정해진 시각(time)은 요일과 시각이 오면 시작하고 TIME_GRACE_MS(2시간) 안에서는 놓친 예약도 이어서 시작한다(앱이 늦게 켜졌거나 PC가 잠들었다 깬 경우). 한도 리셋(reset)은 5시간 또는 주간 한도가 리셋되면 한 번 시작하고 다음 리셋까지 기다린다. 리셋은 기억해 둔 resetsAt이 지났거나, 쓰인 한도가 다시 새 한도(응답에 항목이 없거나 resetsAt이 지났거나 사용률 1% 미만)로 읽힐 때 알아채고, 처음 본 한도가 이미 새 한도면 바로 무장한다. 리셋 시각이 지난 직후에는 사용량을 다시 읽어 남은 한도 조건을 판단한다.
+- 공통 조건은 요일, 남은 한도(5시간·주간 중 적게 남은 쪽이 N% 이상일 때만, 읽지 못하면 검사하지 않음), 실행 시간(duration)이다. 리셋 예약에는 시작할 수 있는 시간대(from~to, 자정을 넘길 수 있고 요일은 시간대가 시작하는 날 기준)를 둘 수 있고, 종료 시각은 시간대가 닫히는 시각을 넘지 않게 맞추며 남은 시간이 MIN_RUN_MS(30분)보다 짧으면 시작하지 않는다.
+- 이미 실행 중이거나 시작을 진행 중이면 기다린다(isEngineBusy가 먼저 살아 있는 엔진에 연결한다). 시작에 실패해도(로그인 필요 등) 같은 시작 시각을 다시 시도하지 않고 알림으로 이유를 알린다. 절전에서 깨어나면 5초 뒤 바로 판단하고, 평소에는 30초마다 판단한다.
+- 예약 실행은 저장하는 순간의 작업·정책·모델·Effort·사용량 한도 연장 설정으로 돈다(handleSaveSchedule이 컴포저 값을 settings.json에 먼저 저장한다). 종료 시각은 예약이 정한 값이라 settings.json의 endTime을 덮어쓰지 않는다(launchRun의 remember). 예약 상태 문장은 viewFormat.js(describeSchedule·describeScheduleStatus·describeScheduleLast·describeScheduleSummary)가 만든다.
+- 사용량은 선택한 계정의 claudeAccount 조회값을 쓴다. 조회가 안 되는 환경(macOS 등)에서는 한도 리셋 예약이 판단하지 못한다는 안내를 보이고, 정해진 시각 예약은 그대로 동작한다.
+- tests/checkDesktopSchedule.js가 규칙·스케줄러를, tests/checkDesktopView.js가 상태 문장을 검증한다.
+
 ## 화면 구조
 
 - 화면은 사이드바 없이 한 장이고 스크롤하지 않는다. 창 높이에 맞춰 본문이 줄어든다(헤더가 밀려나면 창을 끌 곳이 없다). 위에서부터 헤더(#titlebar), 상태 줄(.course, 아래에 회차 진행선 #track), 본문(.stage), 안내 문구(.notices: #notice·#login-banner·#project-banner, 비면 자리를 차지하지 않는다), 컴포저(#run-form.composer)를 쌓는다.

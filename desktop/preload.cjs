@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld("autopilot", {
     openRunFile: (id, kind) => ipcRenderer.invoke("autopilot:open-run-file", id, kind),
     deleteRun: (id) => ipcRenderer.invoke("autopilot:delete-run", id),
     openUpdate: () => ipcRenderer.invoke("autopilot:open-update"),
+    getSchedules: () => ipcRenderer.invoke("autopilot:get-schedules"),
+    saveSchedule: (payload) => ipcRenderer.invoke("autopilot:save-schedule", payload),
+    deleteSchedule: (id) => ipcRenderer.invoke("autopilot:delete-schedule", id),
+    toggleSchedule: (id, enabled) => ipcRenderer.invoke("autopilot:toggle-schedule", id, enabled),
     setSystemSettings: (options) => ipcRenderer.invoke("autopilot:set-system", options),
     getAccounts: () => ipcRenderer.invoke("autopilot:get-accounts"),
     refreshAccount: (accountId) => ipcRenderer.invoke("autopilot:refresh-account", accountId),
@@ -41,7 +45,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     onAccount: subscribe("autopilot:account"),
     onAccounts: subscribe("autopilot:accounts"),
     onLogin: subscribe("autopilot:login"),
-    onUpdate: subscribe("autopilot:update")
+    onUpdate: subscribe("autopilot:update"),
+    onSchedules: subscribe("autopilot:schedules")
 });
 
 contextBridge.exposeInMainWorld("appWindow", {
