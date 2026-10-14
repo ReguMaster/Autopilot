@@ -1,6 +1,6 @@
 {
     "name": "Autopilot",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "private": true,
     "description": "무인 자율 개발 환경, Autopilot",
     "author": "ReguMaster",
@@ -12,6 +12,7 @@
         "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js",
         "build": "electron-builder --win --x64 --dir",
         "dist": "electron-builder --win --x64",
+        "dist:signed": "electron-builder --win --x64 -c.win.signtoolOptions.certificateSubjectName=ReguMaster -c.win.signtoolOptions.publisherName=ReguMaster",
         "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
@@ -42,11 +43,7 @@
                 "nsis"
             ],
             "icon": "docs/icon.ico",
-            "signAndEditExecutable": true,
-            "signtoolOptions": {
-                "certificateSubjectName": "ReguMaster",
-                "publisherName": "ReguMaster"
-            }
+            "signAndEditExecutable": true
         },
         "electronLanguages": [
             "ko",
