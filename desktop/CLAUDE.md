@@ -15,9 +15,9 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 ## 보안과 경로
 
 - 렌더러에는 Node 권한을 주지 않는다. preload.cjs가 window.autopilot·window.appWindow만 노출한다.
-- CSP가 inline style 속성을 막으므로 스크립트의 스타일은 style.setProperty로만 넣는다.
+- CSP가 inline style 속성을 막으므로 스크립트의 스타일은 style.setProperty로만 넣는다. React의 style prop은 CSSOM으로 적용돼 CSP에 걸리지 않는다(CSS 변수·anchorName 확인).
 - 엔진이 알려준 경로는 믿지 않는다(projectFiles.cjs). 리포트 열기는 시작한 프로젝트의 .autopilot/progress/ 안의 report_*.html만 허용하고, 연결할 로그는 progress/ 안의 autopilot_*.log만 읽는다. 둘 다 링크를 실제 경로로 풀어 판단한다.
-- viewFormat.js는 DOM에 의존하지 않는 표시용 순수 함수이며 renderer.js보다 먼저 불러오는 클래식 스크립트다. tests/checkDesktopView.js가 단독으로 불러 검증한다.
+- viewFormat.js는 DOM에 의존하지 않는 표시용 순수 함수이며 renderer.js보다 먼저 불러오는 클래식 스크립트다. tests/checkDesktopView.js가 단독으로 불러 검증한다. desktop/ui가 쓰는 함수는 번들이 읽을 때 ui/build.mjs의 view-format 플러그인이 최상위 const를 export로 덧붙여 import하게 하므로 viewFormat.js 자체는 바꾸지 않는다.
 
 ## 실행 설정과 허용 값
 
@@ -26,7 +26,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 종료 신호는 같은 엔진의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다.
 - 실행 중에는 model·effort를 고르는 즉시 set으로 보낸다(Effort는 팝오버의 단계를 누를 때 한 번). 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다(renderer의 applyRoundOptions).
 - 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 본다. 둘이 다르면 적용 대기로 표시한다.
-- 모델은 화면에서 계열 별칭(MODEL_CHOICES, 최신 버전)만 고르고, 설정 패널의 "모델 버전"(#model-versions)이 계열마다 모델 ID를 고정한다(settings.json의 modelVersions, 비면 별칭). 별칭→ID 변환은 메인(autopilotIpc.resolveModel)이 시작·set에서만 하고 settings.model에는 계열을 저장한다. 엔진·러너 state의 model은 ID일 수 있어 renderer·viewFormat이 getModelFamily·formatModelName으로 계열과 이름을 읽는다. 고정은 실행 중에 막고 메인도 거부한다(autopilot:set-model-version).
+- 모델은 화면에서 계열 별칭(MODEL_CHOICES, 최신 버전)만 고르고, 설정 패널의 "모델 버전"(#model-versions, React 섬 ui/islands/ModelVersions.jsx)이 계열마다 모델 ID를 고정한다(settings.json의 modelVersions, 비면 별칭). 별칭→ID 변환은 메인(autopilotIpc.resolveModel)이 시작·set에서만 하고 settings.model에는 계열을 저장한다. 엔진·러너 state의 model은 ID일 수 있어 renderer·viewFormat이 getModelFamily·formatModelName으로 계열과 이름을 읽는다. 고정은 실행 중에 막고 메인도 거부한다(autopilot:set-model-version).
 - 버전 목록은 claudeAccount.createAccountReader().getModels()가 계정 토큰으로 공식 `GET /v1/models`(anthropic-version 헤더 필요)를 읽어 1시간 보관한다. ID 형식(MODEL_ID_PATTERN)을 벗어난 항목은 걸러내고 실패하면 이전 목록을 유지한다. 새 모델은 목록이 따라오지만 새 계열(line)은 별칭 라디오·MODEL_CHOICES·viewFormat의 MODEL_LABELS·마크를 함께 더해야 보인다. tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
 - 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·MODEL_ID_PATTERN·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES, index.html의 모델 라디오(name="model")·Effort 단계 목록(datalist#effort-levels의 option label)·정책 라디오(name="policy")이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 data-default가 붙은 기본값을 대조한다.
 
@@ -86,6 +86,17 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 예약 실행은 저장하는 순간의 작업·정책·모델·Effort·사용량 한도 연장 설정으로 돈다(handleSaveSchedule이 컴포저 값을 settings.json에 먼저 저장한다). 종료 시각은 예약이 정한 값이라 settings.json의 endTime을 덮어쓰지 않는다(launchRun의 remember). 예약 상태 문장은 viewFormat.js(describeSchedule·describeScheduleStatus·describeScheduleLast·describeScheduleSummary)가 만든다.
 - 사용량은 선택한 계정의 claudeAccount 조회값을 쓴다. 조회가 안 되는 환경(macOS 등)에서는 한도 리셋 예약이 판단하지 못한다는 안내를 보이고, 정해진 시각 예약은 그대로 동작한다.
 - tests/checkDesktopSchedule.js가 규칙·스케줄러를, tests/checkDesktopView.js가 상태 문장을 검증한다.
+
+## React 화면(desktop/ui)
+
+- 화면은 renderer.js(명령형 DOM)에서 React 19로 옮기는 중이다. 한 번에 바꾸지 않고 index.html의 자리(지금은 #model-versions)에 섬 단위로 붙인다(ui/index.jsx의 mount, 첫 그림은 flushSync로 바로 그려 스모크 테스트가 확인한다). 옮긴 영역의 코드는 renderer.js에서 지운다.
+- 소스는 desktop/ui/(ESM·JSX), 출력은 desktop/bundle/ui.js·ui.css다(esbuild, ui/build.mjs). 번들이 없으면 스모크 테스트가 `#model-versions .select-trigger`를 못 찾아 실패한다. React·ReactDOM·esbuild는 devDependency이고 exact로 고정한다(react 19.3.0, esbuild 0.28.2). 올릴 때는 최근 2주 안에 나온 버전을 피한다.
+- 구성: components/(공통 컴포넌트와 같은 이름의 CSS, 토큰은 styles.css의 :root), islands/(화면 조각), bridge.js(window.autopilot을 훅으로 잇는다: useRunStatus·useSettings·useBodyClass), selectKeys.js(키 이동 순수 함수). JSX가 필요 없는 로직은 .js로 두어 Node에서 바로 검증한다.
+- renderer.js와 섬은 document의 CustomEvent로 주고받는다. 섬이 값을 바꾸면 알린다(autopilot:model-versions의 detail은 modelVersions이고 renderer가 settings와 모델 알약을 갱신한다). 옮기는 영역이 늘면 이 다리는 없어진다.
+- Select는 설정 패널의 .version-select를 개선한 선택 상자이고 새 선택 UI의 기준이다(높이 32·반경 8·안쪽 1px 테두리). 목록은 native popover(auto)와 anchor 위치라 패널 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙다가 자리가 모자라면 위로 뒤집힌다. 항목은 이름 아래에 설명을 두고(알약 팝오버와 같은 흰 카드·모션) 고른 항목은 배경과 체크로 보인다(파랑은 쓰지 않는다). 키보드는 select-only combobox를 따라 트리거에 포커스가 남고(↑↓·Home·End·PageUp/Down·글자 이어 치기·Enter/Space로 고름·Esc로 닫음) 실행 중에는 알약처럼 회색 + 자물쇠로 잠긴다.
+- 팝오버가 열린 동안은 renderer의 handleEscape가 Esc를 처리하지 않는다. 안 그러면 선택 목록을 닫는 Esc가 설정 패널까지 닫는다.
+- React 19에서 inert·popoverTarget·form이 속성대로 동작한다(18에서는 inert={true}가 빠진다).
+- tests/checkDesktopUi.js가 키 이동 함수와 Select 마크업을 esbuild로 묶어 react-dom/server로 검증한다. 열기·키보드·Esc·잠금 같은 동작은 가짜 preload로 index.html을 띄운 오프스크린 Electron에서 실제 마우스·키보드 입력으로 확인한다.
 
 ## 화면 구조
 

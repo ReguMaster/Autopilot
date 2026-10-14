@@ -7,8 +7,10 @@
         <title>AutoPilot</title>
         <link rel="icon" type="image/png" href="../docs/icon.png" />
         <link rel="stylesheet" href="styles.css" />
+        <link rel="stylesheet" href="bundle/ui.css" />
         <script src="viewFormat.js" defer></script>
         <script src="renderer.js" defer></script>
+        <script src="bundle/ui.js" defer></script>
     </head>
     <body data-status="idle" data-view="ready">
         <header id="titlebar" class="titlebar">
@@ -614,8 +616,7 @@
                         <div class="field">
                             <p class="field-desc">기본은 각 모델의 최신 버전이에요. 버전을 고르면 그 모델을 쓸 때 고른 버전으로 실행해요. 실행 중에는 바꿀 수 없어요.</p>
                         </div>
-                        <div id="model-versions" class="versions"></div>
-                        <p id="model-versions-note" class="row-note version-note" hidden></p>
+                        <div id="model-versions"></div>
                     </div>
                 </section>
 

@@ -25,6 +25,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run build:ui
       - run: npm run format:check:cli
       - run: npm run format:check:desktop
       - run: npm run test:cli

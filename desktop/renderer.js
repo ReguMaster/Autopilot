@@ -162,8 +162,6 @@ const elements = {
     timeMinute: byId("time-minute"),
     timeUntil: byId("time-until"),
     extendOnLimit: byId("extend-on-limit"),
-    modelVersions: byId("model-versions"),
-    modelVersionsNote: byId("model-versions-note"),
     scheduleToggle: byId("schedule-toggle"),
     schedule: byId("schedule"),
     scheduleTitle: byId("schedule-title"),
@@ -951,10 +949,6 @@ const applyPanelState = (name, isOpen) => {
     if (name === "profile" && isOpen) {
         renderActiveAccount();
     }
-
-    if (name === "settings" && isOpen) {
-        loadModels();
-    }
 };
 
 // 두 패널은 같은 자리에 뜨므로 하나를 열면 다른 하나는 닫는다.
@@ -1003,7 +997,8 @@ const handleOutsidePointer = (event) => {
 };
 
 const handleEscape = (event) => {
-    if (event.key !== "Escape") {
+    // 열린 팝오버(선택 목록 등)는 브라우저가 Esc로 닫는다. 그 뒤의 패널·시트는 다음 Esc로 닫는다.
+    if (event.key !== "Escape" || document.querySelector(":popover-open")) {
         return;
     }
 
@@ -2283,57 +2278,10 @@ const handleOptionChange = (event) => {
     }
 };
 
-/* 모델 버전: 계열마다 최신(기본)이거나 공식 목록에서 고른 버전으로 고정한다. 목록은 계정으로 공식 API에서 받아와 새 모델이 나오면 따라온다 */
+/* 모델 버전은 React 섬(ui/islands/ModelVersions.jsx)이 그린다. 고른 값이 바뀌면 알려 주므로 모델 알약이 따라간다 */
 
-let availableModels = null;
-
-const loadModels = async () => {
-    const result = await window.autopilot.getModels();
-
-    availableModels = result.status === STATUS_OK ? result.data.models : [];
-    renderModelVersions();
-};
-
-const createModelVersionRow = (family) => {
-    const row = document.createElement("label");
-    const body = document.createElement("span");
-    const title = document.createElement("b");
-    const select = document.createElement("select");
-    const pinned = settings.modelVersions[family] || "";
-    const versions = (availableModels ?? []).filter((model) => model.line === family).map((model) => model.id);
-    const ids = pinned && !versions.includes(pinned) ? [...versions, pinned] : versions;
-
-    row.className = "row version-row";
-    body.className = "row-body";
-    title.textContent = MODEL_LABELS[family];
-    select.className = "version-select";
-    select.dataset.family = family;
-    select.setAttribute("aria-label", `${MODEL_LABELS[family]} 버전`);
-    select.append(new Option("최신 버전 (기본)", ""), ...ids.map((id) => new Option(`${formatModelName(id)} · ${id}`, id)));
-    select.value = pinned;
-    select.disabled = Boolean(currentState) && currentState.status !== "idle";
-    body.append(title);
-    row.append(body, select);
-
-    return row;
-};
-
-const renderModelVersions = () => {
-    elements.modelVersions.replaceChildren(...Object.keys(MODEL_LABELS).map(createModelVersionRow));
-    elements.modelVersionsNote.hidden = Boolean(availableModels?.length);
-    elements.modelVersionsNote.textContent = availableModels ? "버전 목록을 불러오지 못했어요. 로그인 상태를 확인해 주세요." : "버전 목록을 불러오는 중이에요.";
-};
-
-const handleModelVersionChange = async (event) => {
-    const result = await window.autopilot.setModelVersion(event.target.dataset.family, event.target.value);
-
-    showFailure(result);
-
-    if (result.status === STATUS_OK) {
-        settings = { ...settings, modelVersions: result.data.modelVersions };
-    }
-
-    renderModelVersions();
+const handleModelVersionsChange = (event) => {
+    settings = { ...settings, modelVersions: event.detail };
     renderModelChip();
 };
 
@@ -2458,10 +2406,6 @@ const renderState = (state) => {
     elements.endTime.disabled = !isIdle;
     elements.endTimeButton.disabled = !isIdle;
     elements.extendOnLimit.disabled = !isIdle;
-
-    for (const select of elements.modelVersions.querySelectorAll("select")) {
-        select.disabled = !isIdle;
-    }
 
     if (!isIdle) {
         elements.timePopover.hidePopover();
@@ -2603,9 +2547,7 @@ const initialize = async () => {
 
     applyAccountsPayload((await window.autopilot.getAccounts()).data);
 
-    elements.modelVersions.addEventListener("change", handleModelVersionChange);
-    renderModelVersions();
-    loadModels();
+    document.addEventListener("autopilot:model-versions", handleModelVersionsChange);
 
     window.autopilot.onAccounts(applyAccountsPayload);
     window.autopilot.onLogin(applyLoginState);
