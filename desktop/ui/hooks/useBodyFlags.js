@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect } from "react";
 
 const OVERLAYS = ["settings", "profile", "history", "archive", "schedule"];
 
-// styles.css가 body의 data-속성·클래스를 보고 화면을 바꾼다. 화면 상태를 그 한 곳에 반영한다.
+// ui/styles의 CSS가 body의 data-속성·클래스를 보고 화면을 바꾼다. 화면 상태를 그 한 곳에 반영한다.
 const useBodyFlags = ({ view, status, isTasksOpen, panel, history, archive, schedule }) => {
     useLayoutEffect(() => {
         const open = { settings: panel === "settings", profile: panel === "profile", history: history, archive: archive, schedule: schedule };

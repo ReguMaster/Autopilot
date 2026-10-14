@@ -89,15 +89,16 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ## React 화면(desktop/ui)
 
-- 화면 전체를 React 19가 그린다. index.html은 `<div id="root">` 하나와 번들(bundle/app.js·app.css)만 불러오고, 소스는 desktop/ui/(ESM·JSX)이며 esbuild(ui/build.mjs)가 desktop/bundle/로 묶는다(npm run build:ui, 저장할 때마다 다시 만들려면 npm run dev:ui). 번들은 커밋하지 않고 패키지에는 번들만 넣는다. 번들이 없으면 스모크 테스트가 #run-form을 못 찾아 실패한다. react·react-dom·esbuild·zustand는 devDependency이고 exact로 고정한다(올릴 때는 최근 2주 안에 나온 버전을 피한다).
+- 화면 전체를 React 19가 그린다. index.html은 `<div id="root">` 하나와 서체 선언(fonts/pretendard.css)·번들(bundle/app.js·app.css)만 불러오고, 소스는 desktop/ui/(ESM·JSX)이며 esbuild(ui/build.mjs)가 desktop/bundle/로 묶는다(npm run build:ui, 저장할 때마다 다시 만들려면 npm run dev:ui). 번들은 커밋하지 않고 패키지에는 번들만 넣는다. 번들이 없으면 스모크 테스트가 #run-form을 못 찾아 실패한다. react·react-dom·esbuild·zustand는 devDependency이고 exact로 고정한다(올릴 때는 최근 2주 안에 나온 버전을 피한다).
 - 구성
     - main.jsx는 메인이 보관한 첫 상태를 모두 받은 뒤(boot.js) App.jsx를 그린다. boot.js는 첫 상태 적재, 메인 이벤트 구독, 실행 상태가 바뀔 때 다른 스토어가 따라야 하는 규칙(옛 renderState가 한꺼번에 하던 일)을 맡는다.
     - stores/는 zustand 스토어다. runStore(엔진 상태와 로그 3000줄. 로그는 50ms 단위로 모아 반영하고 shareStructure로 바뀌지 않은 조각의 참조를 유지한다), appStore(앱 정보·저장된 설정·창), uiStore(패널·시트 전환 규칙·안내·시작 중 잠금), composerStore(모델·Effort·정책·종료 시각·작업·한도 연장, 실행 중 엔진 값 따라가기, 옵션 전달 큐), accountStore, scheduleStore, runsStore, clock(초 단위 틱 하나를 모두가 나눠 쓰고 useClock은 읽은 값이 바뀔 때만 다시 그린다)이다.
     - actions/는 IPC를 부르는 일(run·runs·accounts·schedules)이다. 컴포넌트는 window.autopilot을 직접 부르지 않고 액션을 부른다.
     - features/는 화면 단위(shell·ready·run·done·composer·profile·settings·history·archive·schedule)다. 각 화면은 스토어를 선택자 단위로 구독하고, 객체를 고를 때는 useShallow를 쓴다.
-    - components/는 공통 컴포넌트다(Icon·Button·Chip·Tag·SwapText·TickText·Popover·Select·Panel·Scrim·SettingsGroup·Gains·RunList·Symbols). CSS가 필요한 것은 같은 이름의 .css를 두고 토큰은 styles.css의 :root를 쓴다.
+    - components/는 공통 컴포넌트다(Icon·Button·Chip·Tag·SwapText·TickText·Popover·Select·Panel·Scrim·SettingsGroup·Gains·RunList·Symbols). 그 컴포넌트에만 쓰는 CSS(Select.css)는 같은 이름의 .css로 옆에 두고, 토큰은 styles/base.css의 :root를 쓴다.
     - hooks/(useReplay·useWidthTween·useMergedRef·useView·useBodyFlags·useOverlayDismiss), lib/(constants: 허용 값·MAIN_ACTIONS, shareStructure, runText, cx)가 받친다. 허용 값(constants.js)은 엔진 config.js·autopilotRunner.cjs와 함께 바꾸고 tests/checkDesktopRunner.js가 대조한다.
 - CSS가 body의 data-view·data-status·data-tasks-open·클래스(ready·*-open)에 기대므로 useBodyFlags가 화면 상태를 그 한 곳에 반영한다. #root는 display: contents라 body의 flex 배치에 끼지 않는다.
+- 공통 스타일은 ui/styles/의 영역별 파일이다(base 토큰·기본, shell 헤더·상태 줄, stage 본문 세 화면, controls 안내·버튼, composer 컴포저·팝오버, panels 스크림·설정·프로필, sheets 전체 기록·지난 실행, responsive, motion, schedule 예약 시트). index.css의 @import 순서가 곧 캐스케이드라 바꾸지 않는다. main.jsx가 index.css를 맨 먼저 불러 컴포넌트 전용 CSS보다 앞에 놓이고, esbuild가 bundle/app.css 하나로 묶는다.
 - 성능: 구독은 선택자 단위이고, 이벤트마다 새로 오는 상태 객체는 shareStructure로 바뀐 조각만 새 참조가 된다. 시계는 하나다. 로그 줄은 늘어나기만 하는 불변 객체라 새 줄만 DOM에 더해지고, 전체 기록은 열려 있을 때만 그린다(가상화는 전체 선택·복사를 깨므로 쓰지 않는다). 지난 실행 상세의 대화 변환은 기록당 한 번(useMemo)이다. 팝오버·패널은 native popover·inert·CSS 전환을 쓴다.
 - 애니메이션: 이야기(features/run/RunView)는 렌더 직전에 위치를 재고(measureTops) flushSync로 커밋한 뒤 layout effect에서 FLIP(slidePast)을 걸고, 드러내기 마스크(reveal.js)와 애니메이션 대기 게이트(busy·dirty와 Promise.allSettled)로 끝나기 전에 온 상태를 모았다가 한 번 그린다. 문구가 바뀔 때 맺히는 전환(SwapText·TickText)과 알약 너비 전환(useWidthTween. 출발 너비는 ResizeObserver가 기억한 바뀌기 직전의 실제 너비다)은 훅이 한다. 애니메이션 클래스를 다시 거는 요소의 className prop에는 그 클래스를 넣지 않는다(React가 다시 쓰지 않아 클래스가 남는다).
 - Select는 설정 패널의 옛 선택 상자를 개선한 것이고 새 선택 UI의 기준이다(높이 32·반경 8·안쪽 1px 테두리). 목록은 native popover(auto)와 anchor 위치라 패널 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙다가 자리가 모자라면 위로 뒤집힌다. 항목은 이름 아래에 설명을 두고(알약 팝오버와 같은 흰 카드·모션) 고른 항목은 배경과 체크로 보인다(파랑은 쓰지 않는다). 키보드는 select-only combobox를 따라 트리거에 포커스가 남고(↑↓·Home·End·PageUp/Down·글자 이어 치기·Enter/Space로 고름·Esc로 닫음) 실행 중에는 알약처럼 회색 + 자물쇠로 잠긴다.
@@ -128,8 +129,8 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 ## 시각 규칙
 
 - 화면은 흰 바탕 한 벌이다. 파랑(--accent) 하나를 지금 진행 중인 것(상태 점·진행선·캐럿·성과의 이후 숫자·시작 버튼)에만 쓴다.
-- 글자 크기는 styles.css :root의 열 단계(--text-xs 12 ~ --display 56)만 쓴다.
-- 서체는 desktop/fonts/의 Pretendard(OFL, 라이선스 파일 동봉)를 @font-face로 넣어 오프라인에서도 같게 보이게 한다. 숫자는 body의 tabular-nums(Pretendard 고정폭 숫자)로 써서 시계가 바뀌어도 흔들리지 않게 한다.
+- 글자 크기는 styles/base.css :root의 열 단계(--text-xs 12 ~ --display 56)만 쓴다.
+- 서체는 desktop/fonts/의 Pretendard(OFL, 라이선스 파일 동봉)를 fonts/pretendard.css의 @font-face로 넣어 오프라인에서도 같게 보이게 한다. 글꼴과 라이선스를 한 폴더에 두고 docs/mockups도 그 파일을 쓰므로 번들에 넣지 않고 index.html이 직접 불러온다. 숫자는 body의 tabular-nums(Pretendard 고정폭 숫자)로 써서 시계가 바뀌어도 흔들리지 않게 한다.
 - 고정폭 서체(--mono, Windows의 Cascadia Mono)는 코드·경로·해시·전체 로그에만 쓴다(한글이 섞인 숫자 문구에 쓰면 글자 사이가 벌어진다).
 - 지금 문장은 줄 순서대로 마스크를 쓸어 드러내고(features/run/reveal.js, 글자 위치는 그대로다), 드러내는 중에 문장이 이어지면 마스크를 걷어 다 보여준다. 길이에 따라 글자 크기를 줄여(data-length) 네 줄 안에 넣는다.
 - prefers-reduced-motion에서는 이동·확대 전환(패널·시트·팝오버 미끄러짐, 등장)을 끄고, 자리가 바뀌지 않는 투명도 표시(캐럿 깜빡임, 상태 점, 문장 드러내기, 문구 전환)만 남긴다.

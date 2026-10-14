@@ -10,7 +10,7 @@ const getTaskLines = (tasks) => {
         .filter(Boolean);
 };
 
-// 시작 전에는 작업을 적는 칸이고, 실행 중에는 잠긴 작업 요약 한 줄로 접힌다. 요약을 누르면 읽기 전용 칸이 펴진다(styles.css의 .fold).
+// 시작 전에는 작업을 적는 칸이고, 실행 중에는 잠긴 작업 요약 한 줄로 접힌다. 요약을 누르면 읽기 전용 칸이 펴진다(styles/composer.css의 .fold).
 const TasksFold = () => {
     const tasks = useComposerStore((store) => store.tasks);
     const isIdle = useRunStore((store) => store.state.status === "idle");

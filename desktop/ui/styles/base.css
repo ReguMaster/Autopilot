@@ -1,0 +1,182 @@
+/* 흰 바탕 위에 큰 문장 하나가 흐르는 한 화면. 색은 지금 진행 중인 것(상태 점·진행선·캐럿·성과 숫자)에만 파랑 하나를 쓴다.
+   서체는 Pretendard를 앱에 넣어 쓰고, 코드·경로·숫자는 Windows에 있는 Cascadia Mono로 쓴다. */
+:root {
+    color-scheme: light;
+    --bg: #fff;
+    --ink: #1a1f36;
+    --ink-2: rgb(26 31 54 / 0.74);
+    --muted: #69708a;
+    --faint: #a2a7ba;
+    --hair: #e7e9f0;
+    --hair-strong: #cfd3df;
+    --surface: #f6f7fa;
+    --chip: #f1f2f7;
+    --accent: #3656d6;
+    --accent-hover: #2c49bf;
+    --add: #1b7f4b;
+    --del: #c2372f;
+    --warn: #a8600a;
+    --warn-fill: #e8a03a;
+    --shadow: 0 0 0 1px var(--hair), 0 28px 56px -22px rgb(26 31 54 / 0.32);
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    /* 글자 크기 단계. 화면의 모든 글자는 이 열 단계 중 하나다 */
+    --text-xs: 12px;
+    --text-sm: 13px;
+    --text-md: 14px;
+    --text-lg: 16px;
+    --text-xl: 18px;
+    --title-sm: 20px;
+    --title-md: 24px;
+    --title-lg: 28px;
+    --title-xl: 34px;
+    --display: 56px;
+    --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
+    font-family: var(--sans);
+}
+
+* {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* 입력 칸과 실행 로그만 글자를 고르고 복사할 수 있다 */
+input,
+textarea,
+.log,
+.log * {
+    user-select: text;
+}
+
+html {
+    overscroll-behavior: none;
+}
+
+/* 창을 숨기면(트레이) 깜빡임·숨쉬기 같은 반복 애니메이션을 멈춘다 */
+:root.window-hidden *,
+:root.window-hidden *::before,
+:root.window-hidden *::after {
+    animation-play-state: paused !important;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: var(--text-md);
+    line-height: 1.5;
+    /* 숫자는 모두 같은 폭이라 시계가 바뀌어도 글자가 흔들리지 않는다 */
+    font-variant-numeric: tabular-nums;
+    /* 한글이 단어 중간에서 끊기지 않게 하고, 너무 긴 토큰만 어디서든 끊는다 */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd,
+ol,
+ul {
+    margin: 0;
+    padding: 0;
+}
+
+ol,
+ul {
+    list-style: none;
+}
+
+/* 고정폭 서체는 코드·경로·해시에만 쓴다. 시각·개수 같은 숫자는 본문 서체(Pretendard)의 고정폭 숫자(body의 tabular-nums)로 써서 글자 모양이 섞이지 않는다 */
+code {
+    font-family: var(--mono);
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.symbols {
+    position: absolute;
+}
+
+.icon,
+.chevron {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background: var(--hair-strong) padding-box;
+}
+
+/* 등장: 서체가 준비되기 전(body.ready 전)에는 멈춰 두었다가 위에서부터 한 번 드러낸다 */
+.course,
+.stage,
+.composer {
+    animation: rise 0.7s var(--ease-out) backwards;
+}
+
+.stage {
+    animation-delay: 0.08s;
+}
+
+.composer {
+    animation-delay: 0.16s;
+}
+
+body:not(.ready) :is(.course, .stage, .stage > section, .composer) {
+    animation-play-state: paused;
+}
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        translate: 0 10px;
+    }
+}
+
+/* React가 그리는 루트는 레이아웃에 끼지 않는다. 헤더·본문이 body의 flex 자식으로 놓이도록 한다 */
+#root {
+    display: contents;
+}

@@ -3,7 +3,7 @@ import { schedules } from "../../actions/schedules.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 
-// 헤더는 창 프레임을 대신해 직접 그린다. 전체가 끌기 영역이고 버튼만 뺀다(styles.css).
+// 헤더는 창 프레임을 대신해 직접 그린다. 전체가 끌기 영역이고 버튼만 뺀다(styles/shell.css).
 const TitleBar = () => {
     const update = useAppStore((store) => store.update);
     const version = useAppStore((store) => store.version);

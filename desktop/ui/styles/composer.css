@@ -1,0 +1,746 @@
+/* 컴포저: 시작 전에는 작업을 적는 칸, 실행 중에는 잠긴 작업 요약 한 줄. 아래 줄에 옵션 알약과 주 버튼이 있다 */
+.composer {
+    flex: none;
+    margin: 0 16px 16px;
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    transition: box-shadow 0.25s var(--ease-out);
+}
+
+.composer:focus-within {
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.tasks {
+    display: block;
+    width: 100%;
+    height: 116px;
+    padding: 14px 16px 0;
+    border: 0;
+    border-bottom: 1px solid var(--hair);
+    border-radius: 16px 16px 0 0;
+    background: none;
+    font-size: var(--text-md);
+    line-height: 1.55;
+    resize: none;
+    outline: none;
+}
+
+body[data-view="done"] .tasks {
+    height: 84px;
+}
+
+.tasks::placeholder {
+    color: var(--muted);
+}
+
+.tasks-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 40px;
+    padding: 0 16px;
+    border: 0;
+    border-bottom: 1px solid var(--hair);
+    background: none;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.tasks-summary b {
+    flex: none;
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.tasks-summary span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tasks-summary .chevron {
+    width: 11px;
+    height: 11px;
+    transition: rotate 0.3s var(--ease-out);
+}
+
+.tasks-summary[aria-expanded="true"] .chevron {
+    rotate: 180deg;
+}
+
+/* 접고 펴는 칸: 행 높이를 0fr↔1fr로 바꿔 내용 높이 그대로 미끄러지게 한다. 접힌 칸은 포커스도 받지 않는다 */
+.fold {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition:
+        grid-template-rows 0.4s var(--ease-out),
+        visibility 0s;
+}
+
+.fold > div {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.fold-summary,
+body[data-view="run"]:not([data-tasks-open]) .fold-tasks {
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition:
+        grid-template-rows 0.4s var(--ease-out),
+        visibility 0s linear 0.4s;
+}
+
+body[data-view="run"] .fold-summary {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition:
+        grid-template-rows 0.4s var(--ease-out),
+        visibility 0s;
+}
+
+body[data-view="run"] .tasks {
+    height: 96px;
+    color: var(--ink-2);
+}
+
+/* 실행 중에는 아래에 떠 있는 얇은 막대로 줄어든다. 종료 시각·남은 시간·정책은 위 상태 줄과 작업 요약에 이미 있어 알약에서 뺀다 */
+.composer {
+    position: sticky;
+    bottom: 0;
+    transition:
+        margin 0.45s var(--ease-out),
+        background-color 0.45s var(--ease-out),
+        box-shadow 0.45s var(--ease-out);
+}
+
+body[data-view="run"] .composer {
+    margin-bottom: 12px;
+    background: var(--bg);
+    box-shadow:
+        inset 0 0 0 1px var(--hair),
+        0 12px 32px -14px rgb(26 31 54 / 0.32);
+}
+
+body[data-view="run"] .composer-bar {
+    padding: 8px 8px 8px 12px;
+}
+
+body[data-view="run"] .end-time-chip,
+body[data-view="run"] #policy-chip {
+    display: none;
+}
+
+.composer-bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 10px 10px 12px;
+}
+
+.chip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    transition:
+        box-shadow 0.2s var(--ease-out),
+        background-color 0.2s var(--ease-out);
+}
+
+.chip:hover:not(:disabled),
+.chip[aria-expanded="true"] {
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.chip:active:not(:disabled) {
+    scale: 0.97;
+}
+
+.chip .chevron {
+    width: 11px;
+    height: 11px;
+    color: var(--muted);
+    transition: rotate 0.3s var(--ease-out);
+}
+
+.chip[aria-expanded="true"] .chevron {
+    rotate: 180deg;
+}
+
+.chip .mark {
+    width: 18px;
+    height: 18px;
+}
+
+.chip-icon {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 종료 요청 뒤 잠긴 알약: 회색으로 가라앉고 색·파형이 빠지며 화살표 자리에 자물쇠가 맺힌다 */
+.chip:disabled {
+    background: var(--chip);
+    box-shadow: none;
+    color: var(--faint);
+    cursor: not-allowed;
+}
+
+.chip:disabled .mark,
+.chip:disabled .wave {
+    color: currentColor;
+    opacity: 0.6;
+}
+
+.chip .lock {
+    display: none;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chip:disabled .lock {
+    display: block;
+    animation: lock-in 0.45s var(--ease-out);
+}
+
+@keyframes lock-in {
+    from {
+        opacity: 0;
+        rotate: -20deg;
+        scale: 0.4;
+    }
+}
+
+.chip:disabled .chevron,
+#policy-chip .chip-icon {
+    display: none;
+}
+
+#model-chip {
+    anchor-name: --model-chip;
+}
+
+#policy-chip {
+    anchor-name: --policy-chip;
+    padding: 0 14px;
+}
+
+#effort-control {
+    anchor-name: --effort-chip;
+}
+
+.end-time-chip {
+    anchor-name: --end-time;
+}
+
+.end-time-until {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 400;
+}
+
+.mark {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 모델 알약은 고른 모델의 색으로 옅게 물든다 */
+#model-chip {
+    --tint: #ecedfb;
+    --tone: #5b5fd3;
+}
+
+#model-chip[data-model="opus"] {
+    --tint: #fbeee0;
+    --tone: #d9822b;
+}
+
+#model-chip[data-model="sonnet"] {
+    --tint: #e0f2f3;
+    --tone: #1f8a90;
+}
+
+#model-chip[data-model="haiku"] {
+    --tint: #e5f2e1;
+    --tone: #4a9a3d;
+}
+
+#model-chip:not(:disabled) {
+    background: var(--tint);
+    box-shadow: none;
+    transition: background-color 0.3s var(--ease-out);
+}
+
+#model-chip:not(:disabled):hover,
+#model-chip[aria-expanded="true"] {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 40%, transparent);
+}
+
+/* 모델을 바꾸면 마크가 모델마다 다른 몸짓으로 자리를 잡는다. 알약 배경색은 전환이 이어 주고, 마크나 알약이 사라졌다 나타나지 않게 한다 */
+#model-chip {
+    --enter-translate: 0 0;
+    --enter-rotate: 0deg;
+    --enter-scale: 1;
+}
+
+#model-chip[data-model="fable"] {
+    --enter-rotate: -30deg;
+    --enter-scale: 0.85;
+}
+
+#model-chip[data-model="opus"] {
+    --enter-scale: 0.8;
+}
+
+#model-chip[data-model="sonnet"] {
+    --enter-translate: -4px 0;
+}
+
+#model-chip[data-model="haiku"] {
+    --enter-translate: -3px 3px;
+    --enter-rotate: -15deg;
+}
+
+#model-chip.model-swap .mark {
+    animation: mark-settle 0.5s var(--ease-out);
+}
+
+#model-chip.model-swap #model-chip-name {
+    animation: tick-up 0.35s var(--ease-out);
+}
+
+@keyframes mark-settle {
+    from {
+        translate: var(--enter-translate);
+        rotate: var(--enter-rotate);
+        scale: var(--enter-scale);
+    }
+}
+
+/* Effort 파형: 단계가 오르면 물결이 커진다. 모양은 스크립트가 d 속성으로 넣고 전환으로 이어진다 */
+.effort {
+    --level-color: var(--ink);
+}
+
+.effort[data-level="3"] {
+    --level-color: #d9822b;
+}
+
+.effort[data-level="4"] {
+    --level-color: var(--del);
+}
+
+/* 물결은 한 주기(8)보다 넓게 그려 두고 양끝을 흐리게 가린다. 단계를 바꾸면 한 주기만큼 흘러 같은 모양으로 이어진다 */
+.wave {
+    flex: none;
+    width: 18px;
+    height: 16px;
+    color: var(--level-color);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
+    transition: color 0.3s var(--ease-out);
+}
+
+.wave path {
+    transition: d 0.3s var(--ease-out);
+}
+
+#effort-control.effort-swap .wave path {
+    animation: wave-flow 0.6s var(--ease-out);
+}
+
+@keyframes wave-flow {
+    to {
+        transform: translateX(-8px);
+    }
+}
+
+.effort-name {
+    font-weight: 600;
+}
+
+/* 숫자·이름이 바뀌면 바뀐 방향에서 미끄러져 들어온다 */
+.tick-up {
+    animation: tick-up 0.3s var(--ease-out);
+}
+
+.tick-down {
+    animation: tick-down 0.3s var(--ease-out);
+}
+
+@keyframes tick-up {
+    from {
+        opacity: 0.6;
+        translate: 0 5px;
+    }
+}
+
+@keyframes tick-down {
+    from {
+        opacity: 0.6;
+        translate: 0 -5px;
+    }
+}
+
+/* 주 버튼: 시작(파랑) → 종료 신호(잉크) → 종료(빨강, 강제 종료) */
+.main-action {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    margin-left: auto;
+    padding: 0 14px 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: var(--text-md);
+    font-weight: 650;
+    white-space: nowrap;
+    transition: background-color 0.2s var(--ease-out);
+}
+
+.main-action:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.main-action:disabled {
+    background: var(--hair-strong);
+    cursor: not-allowed;
+}
+
+.main-action i {
+    width: 10px;
+    height: 10px;
+    background: currentColor;
+    clip-path: polygon(10% 0, 100% 50%, 10% 100%);
+}
+
+.main-action[data-action="stop"] {
+    background: var(--ink);
+}
+
+.main-action[data-action="stop"]:hover:not(:disabled) {
+    background: #2b3152;
+}
+
+.main-action[data-action="kill"] {
+    background: var(--del);
+}
+
+.main-action[data-action="kill"]:hover:not(:disabled) {
+    background: #a92e27;
+}
+
+.main-action:is([data-action="stop"], [data-action="kill"]) i {
+    border-radius: 2px;
+    clip-path: none;
+}
+
+/* 종료 신호는 한 번 더 눌러야 적용된다. 눌러 두면 빨갛게 바뀌고 남은 시간만큼 채움이 줄어든다 */
+.main-action {
+    position: relative;
+    overflow: hidden;
+}
+
+.main-action[data-armed],
+.main-action[data-armed]:hover:not(:disabled) {
+    background: var(--del);
+}
+
+.main-action[data-armed]::after {
+    position: absolute;
+    inset: 0;
+    background: rgb(255 255 255 / 0.22);
+    content: "";
+    transform-origin: left;
+    animation: arm-drain var(--arm-ms) linear forwards;
+}
+
+@keyframes arm-drain {
+    to {
+        transform: scaleX(0);
+    }
+}
+
+/* 알약 위아래에 붙는 팝오버. 열 때 살짝 맺히고 닫을 때 흐려진다 */
+.popover {
+    position-area: top span-right;
+    position-try-fallbacks:
+        flip-block,
+        flip-inline,
+        flip-block flip-inline;
+    inset: auto;
+    margin: 8px 0;
+    padding: 16px;
+    border: 0;
+    border-radius: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+    opacity: 0;
+    translate: 0 6px;
+    transition:
+        opacity 0.22s var(--ease-out),
+        translate 0.3s var(--ease-out),
+        display 0.3s allow-discrete,
+        overlay 0.3s allow-discrete;
+}
+
+.popover:popover-open {
+    opacity: 1;
+    translate: 0;
+}
+
+/* display는 열렸을 때만 준다. 닫힌 팝오버에 display를 주면 보이지 않는 목록이 그 자리에 남아 클릭으로 값이 바뀐다 */
+.choice-popover:popover-open {
+    display: grid;
+}
+
+/* 닫히며 흐려지는 동안에도 그 자리를 누르면 고른 값이 바뀌지 않게 한다 */
+.popover:not(:popover-open) {
+    pointer-events: none;
+}
+
+@starting-style {
+    .popover:popover-open {
+        opacity: 0;
+        translate: 0 6px;
+    }
+}
+
+.time-popover {
+    position-anchor: --end-time;
+    position-area: top span-left;
+    width: min(264px, calc(100vw - 32px));
+}
+
+.choice-popover {
+    gap: 2px;
+    width: min(240px, calc(100vw - 32px));
+    padding: 6px;
+}
+
+#model-popover {
+    position-anchor: --model-chip;
+}
+
+#effort-popover {
+    position-anchor: --effort-chip;
+    width: min(220px, calc(100vw - 32px));
+}
+
+#policy-popover {
+    position-anchor: --policy-chip;
+    width: min(312px, calc(100vw - 32px));
+}
+
+.choice-option {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "icon title"
+        "icon desc";
+    align-content: center;
+    column-gap: 10px;
+    min-height: 44px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--ink-2);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s var(--ease-out);
+}
+
+.choice-option:hover {
+    background: var(--surface);
+}
+
+.choice-option:has(input:checked),
+.choice-option[aria-pressed="true"] {
+    background: var(--chip);
+    color: var(--ink);
+}
+
+.choice-option:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.choice-option input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+}
+
+.choice-option > svg,
+.choice-option .wave {
+    grid-area: icon;
+    align-self: center;
+}
+
+.choice-title {
+    grid-area: title;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.choice-desc {
+    grid-area: desc;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+}
+
+.choice-option.effort[data-level="3"] {
+    --level-color: #d9822b;
+}
+
+.choice-option.effort[data-level="4"] {
+    --level-color: var(--del);
+}
+
+/* 모델 목록은 2×2 카드로 보여준다 */
+#model-popover {
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    width: min(280px, calc(100vw - 32px));
+}
+
+#model-popover .choice-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 0;
+    padding: 12px;
+    box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+#model-popover .choice-option .mark {
+    align-self: flex-start;
+    width: 28px;
+    height: 28px;
+    margin-bottom: 6px;
+}
+
+#model-popover .choice-option:has(input:checked) {
+    box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+.time-popover-title {
+    margin-bottom: 8px;
+    font-size: var(--text-md);
+    font-weight: 600;
+}
+
+.time-spinners {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.time-spin {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+}
+
+.time-spin b {
+    min-width: 2ch;
+    font-size: var(--title-xl);
+    font-weight: 400;
+    line-height: 1.15;
+    text-align: center;
+}
+
+.time-colon {
+    padding-bottom: 4px;
+    color: var(--faint);
+    font-size: var(--title-lg);
+}
+
+.spin-button {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+}
+
+.spin-button:hover {
+    background: var(--chip);
+    color: var(--ink);
+}
+
+.spin-button svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.time-until {
+    margin: 6px 0 14px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-align: center;
+}
+
+.time-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
