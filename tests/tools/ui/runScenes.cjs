@@ -159,7 +159,13 @@ const createTools = (win, scene, sceneDir, report) => {
             await wait(100);
         },
         focus: (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`),
-        scrollTo: (selector, top) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.scrollTop = ${top}; })()`),
+        // 레이아웃이 자리 잡은 뒤에도 같은 위치에 있도록 두 번 맞춘다.
+        scrollTo: async (selector, top) => {
+            for (let attempt = 0; attempt < 2; attempt++) {
+                await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); node.scrollTop = ${top}; })()`);
+                await wait(200);
+            }
+        },
         resize: async (width, height) => {
             win.setContentSize(width, height);
             await wait(300);
@@ -168,7 +174,10 @@ const createTools = (win, scene, sceneDir, report) => {
         shot: async (name, selector = "", options = {}) => {
             await tools.settle();
             await evaluate("window.__freeze()");
-            await wait(80);
+
+            // 그려 온 이력에 따라 글자의 안티앨리어싱이 달라지므로, 찍기 전에 화면 전체를 다시 그리게 한다.
+            win.webContents.invalidate();
+            await wait(150);
 
             const rect = selector ? await tools.rect(selector) : null;
             const isEmpty = selector && (!rect || rect.width < 1 || rect.height < 1);
@@ -178,6 +187,10 @@ const createTools = (win, scene, sceneDir, report) => {
 
             // 숨겨져 크기가 없는 요소는 찍을 화면이 없다. DOM만 남긴다.
             if (!isEmpty) {
+                if (options.tolerant) {
+                    fs.writeFileSync(path.join(sceneDir, `${name}.tolerant`), "");
+                }
+
                 const image = bounds ? await win.webContents.capturePage(bounds) : await win.webContents.capturePage();
 
                 fs.writeFileSync(path.join(sceneDir, `${name}.png`), image.toPNG());

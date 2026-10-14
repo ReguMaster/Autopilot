@@ -23,7 +23,7 @@ const hideLogin = () => {
 // 로그인이 끝나면 멈췄던 시작을 이어간다. 결과 전에 로그인 상태가 비어(null) 오는 갱신이 있어 끝난 단계만 본다.
 const applyLogin = (login) => {
     clearTimeout(loginHideTimer);
-    useAccountStore.setState({ login: login });
+    useAccountStore.setState(login?.phase === "waiting" ? { login: login, isFormOpen: false } : { login: login });
 
     if (login?.phase === "succeeded") {
         loginHideTimer = setTimeout(hideLogin, LOGIN_DONE_HIDE_MS);

@@ -91,4 +91,55 @@ const RUNS = [
     makeRun(3, { isUnreadable: true })
 ];
 
-module.exports = { NOW, MINUTE, HOUR, DAY, PROJECT, round, runningState, doneState, withProject, makeRun, RUNS };
+const ACCOUNTS = {
+    accounts: [
+        { id: "default", label: "기본 계정", shared: false },
+        { id: "acct-1a2b3c4d", label: "작업용", shared: true }
+    ],
+    activeId: "default",
+    claudeDir: { path: "C:/Users/User/.claude", isAuto: true, exists: true },
+    snapshots: {
+        default: {
+            profile: { name: "서영호", email: "yh@example.com", plan: "Max 5x", organization: "Acme 주식회사" },
+            limits: [
+                { label: "5시간 한도", percent: 37.5, resetsAt: NOW + 2 * HOUR },
+                { label: "주간 한도 (전체)", percent: 78, resetsAt: NOW + 3 * DAY },
+                { label: "주간 한도 (Sonnet)", percent: 96, resetsAt: NOW + 3 * DAY }
+            ],
+            fetchedAt: NOW - MINUTE,
+            error: null
+        },
+        "acct-1a2b3c4d": { profile: { name: "", email: "work@example.com", plan: "", organization: "" }, limits: [], fetchedAt: NOW - 5 * MINUTE, error: null }
+    },
+    login: null
+};
+
+const MODELS = [
+    { id: "claude-opus-5-5", line: "opus" },
+    { id: "claude-opus-4-8", line: "opus" },
+    { id: "claude-opus-4-7", line: "opus" },
+    { id: "claude-sonnet-5-5", line: "sonnet" },
+    { id: "claude-sonnet-4-6", line: "sonnet" },
+    { id: "claude-haiku-5-5", line: "haiku" },
+    { id: "claude-fable-5-1", line: "fable" }
+];
+
+// 지난 실행 한 건의 로그 줄(엔진 로그 형식)
+const RUN_LINES = [
+    "[1회차] 시작 - 남은 시간 420분 (model claude-opus-4-8, effort high)",
+    "10:00:01   > Read src/index.js",
+    "10:00:02   > Grep createStory",
+    "10:00:03 먼저 프로젝트 구조를 살펴보고 있어요.",
+    "    둘째 줄은 앞 문장에 이어져요.",
+    "10:00:05   > Edit desktop/ui/Story.jsx",
+    "성과: 테스트 통과 41 → 58",
+    "[커밋] a1b2c3d +12 -3 이야기 영역 정리",
+    "[1회차] 완료",
+    "[2회차] 시작 - 남은 시간 380분 (model claude-opus-4-8, effort high)",
+    "10:30:00   > Bash npm test",
+    "[사용량 한도] 종료 시각 연장 2026-09-01 16:00:00 (+30분)",
+    "[2회차] 시한 초과",
+    "AutoPilot 종료 - 예정 시각 도달 (2회차)"
+];
+
+module.exports = { NOW, MINUTE, HOUR, DAY, PROJECT, round, runningState, doneState, withProject, makeRun, RUNS, ACCOUNTS, MODELS, RUN_LINES };

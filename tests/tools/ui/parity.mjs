@@ -43,6 +43,17 @@ if (extract.status !== 0) {
     process.exit(2);
 }
 
+// gitignore된 화면 번들은 archive에 없으므로, 기준에도 번들이 있는 커밋이면 저장소의 node_modules를 이어 붙여 만든다.
+if (fs.existsSync(path.join(baselineRoot, "desktop/ui/build.mjs"))) {
+    fs.symlinkSync(path.join(REPO, "node_modules"), path.join(baselineRoot, "node_modules"), "junction");
+
+    const bundle = spawnSync(process.execPath, ["desktop/ui/build.mjs"], { cwd: baselineRoot, stdio: "inherit" });
+
+    if (bundle.status !== 0) {
+        process.exit(2);
+    }
+}
+
 const toolDir = path.join(REPO, "tests/tools/ui");
 const run = (script, args) => spawnSync(electronBinary, [path.join(toolDir, script), "--", ...args], { cwd: REPO, env: env, stdio: "inherit" });
 const extra = [...(scenes ? ["--scenes", scenes] : []), ...(isReduced ? ["--reduced"] : [])];

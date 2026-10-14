@@ -103,14 +103,32 @@ const SCENES = [
         name: "composer-locks",
         init: { ...withProject, state: runningState() },
         run: async (t) => {
-            await t.shot("composer-running", ".composer");
+            await t.shot("composer-running", ".composer", { tolerant: true });
 
             for (const [name, selector] of CHIPS) {
                 await t.shot(`running-${name}`, selector);
             }
 
             await t.state({ status: "stopping" });
-            await t.shot("composer-stopping", ".composer");
+            await t.shot("composer-stopping", ".composer", { tolerant: true });
+            await t.note(
+                "animations",
+                await t.eval(
+                    `JSON.stringify(document.getAnimations().map((a) => [a.animationName || a.transitionProperty || a.constructor.name, a.playState, a.effect && a.effect.target && (a.effect.target.id || a.effect.target.className || a.effect.target.tagName)]))`
+                )
+            );
+            await t.note(
+                "rects",
+                await t.eval(
+                    `JSON.stringify([...document.querySelectorAll("#tasks-toggle, #tasks-toggle > *")].map((node) => { const r = node.getBoundingClientRect(); return [node.id || node.tagName, +r.x.toFixed(2), +r.y.toFixed(2), +r.width.toFixed(2), +r.height.toFixed(2)]; }))`
+                )
+            );
+            await t.note(
+                "styles",
+                await t.eval(
+                    `JSON.stringify([...document.querySelectorAll("#tasks-toggle, #tasks-toggle > *")].map((node) => { const c = getComputedStyle(node); return [node.id || node.tagName, c.transform, c.translate, c.scale, c.opacity, c.letterSpacing]; }))`
+                )
+            );
 
             for (const [name, selector] of CHIPS) {
                 await t.shot(`stopping-${name}`, selector);

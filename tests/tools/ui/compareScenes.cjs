@@ -14,10 +14,38 @@ const DIR_A = readArgument("a");
 const DIR_B = readArgument("b");
 const IGNORED_PREFIXES = readArgument("ignore") ? readArgument("ignore").split(",") : [];
 const TOLERANCE = 8;
+const BLOCK_SIZE = 8;
+const BLOCK_TOLERANCE = 24;
 
 app.disableHardwareAcceleration();
 
-const diffImages = (fileA, fileB) => {
+const getBlockDelta = (bitmapA, bitmapB, { width, height }) => {
+    let max = 0;
+
+    for (let blockY = 0; blockY + BLOCK_SIZE <= height; blockY += BLOCK_SIZE) {
+        for (let blockX = 0; blockX + BLOCK_SIZE <= width; blockX += BLOCK_SIZE) {
+            for (let channel = 0; channel < 3; channel++) {
+                let sumA = 0;
+                let sumB = 0;
+
+                for (let y = 0; y < BLOCK_SIZE; y++) {
+                    for (let x = 0; x < BLOCK_SIZE; x++) {
+                        const index = ((blockY + y) * width + blockX + x) * 4 + channel;
+
+                        sumA += bitmapA[index];
+                        sumB += bitmapB[index];
+                    }
+                }
+
+                max = Math.max(max, Math.abs(sumA - sumB) / (BLOCK_SIZE * BLOCK_SIZE));
+            }
+        }
+    }
+
+    return max;
+};
+
+const diffImages = (fileA, fileB, isTolerant) => {
     const a = nativeImage.createFromBuffer(fs.readFileSync(fileA));
     const b = nativeImage.createFromBuffer(fs.readFileSync(fileB));
     const sizeA = a.getSize();
@@ -51,7 +79,16 @@ const diffImages = (fileA, fileB) => {
         }
     }
 
-    return count === 0 ? { same: true } : { same: false, text: `${count}px 다름, 영역 (${minX},${minY})-(${maxX},${maxY})` };
+    if (count === 0) {
+        return { same: true };
+    }
+
+    // 글자 래스터 이력에 따라 서브픽셀 위치가 달라지는 샷(tolerant)은 8×8 블록 평균이 크게 다르지 않으면 같은 것으로 본다.
+    if (isTolerant && getBlockDelta(bitmapA, bitmapB, sizeA) <= BLOCK_TOLERANCE) {
+        return { same: true, note: `${count}px 다름(글자 서브픽셀, 블록 평균은 같음)` };
+    }
+
+    return { same: false, text: `${count}px 다름, 영역 (${minX},${minY})-(${maxX},${maxY})` };
 };
 
 const firstDifference = (a, b) => {
@@ -83,13 +120,17 @@ const main = () => {
             checked++;
 
             const result = file.endsWith(".png")
-                ? diffImages(fileA, fileB)
+                ? diffImages(fileA, fileB, fs.existsSync(fileA.replace(/.png$/, ".tolerant")) || fs.existsSync(fileB.replace(/.png$/, ".tolerant")))
                 : (() => {
                       const a = fs.readFileSync(fileA, "utf8");
                       const b = fs.readFileSync(fileB, "utf8");
 
                       return a === b ? { same: true } : { same: false, text: firstDifference(a, b) };
                   })();
+
+            if (result.note) {
+                console.log(`[AA] ${sceneName}/${file}  ${result.note}`);
+            }
 
             if (!result.same) {
                 failures++;
