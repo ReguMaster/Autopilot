@@ -1,0 +1,1708 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AutoPilot 랜딩 시안</title>
+        <style>
+            @font-face {
+                font-family: "Pretendard";
+                src: url("../../../desktop/fonts/PretendardVariable.woff2") format("woff2");
+                font-weight: 45 920;
+                font-display: swap;
+            }
+
+            :root {
+                color-scheme: light;
+                interpolate-size: allow-keywords;
+                --bg: #fff;
+                --ink: #1a1f36;
+                --ink-2: rgb(26 31 54 / 0.74);
+                --muted: #5d647d;
+                --faint: #c3c7d6;
+                --hair: #e7e9f0;
+                --surface: #f6f7fa;
+                --tint: #eef1fc;
+                --accent: #3656d6;
+                --accent-ink: #2a45b4;
+                --shadow: 0 0 0 1px var(--hair), 0 32px 64px -28px rgb(26 31 54 / 0.34);
+                --ease: cubic-bezier(0.16, 1, 0.3, 1);
+                --radius: 16px;
+                --sans: "Pretendard", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+                --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html {
+                scroll-behavior: smooth;
+                scroll-padding-top: 80px;
+            }
+
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--ink);
+                font-family: var(--sans);
+                font-size: 16px;
+                line-height: 1.6;
+                font-variant-numeric: tabular-nums;
+                word-break: keep-all;
+                overflow-x: clip;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            img {
+                display: block;
+                max-width: 100%;
+            }
+
+            a {
+                color: inherit;
+            }
+
+            h1,
+            h2,
+            h3,
+            p {
+                margin: 0;
+            }
+
+            h1,
+            h2,
+            h3 {
+                letter-spacing: -0.03em;
+                line-height: 1.2;
+            }
+
+            p {
+                text-wrap: pretty;
+            }
+
+            .wrap {
+                width: 100%;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding-inline: 24px;
+            }
+
+            .section {
+                padding-block: 120px;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 3px;
+                border-radius: 8px;
+            }
+
+            /* 버튼: 글자 롤, 커서 방향 채움, 자석 */
+            .btn {
+                --tx: 0px;
+                --ty: 0px;
+                --s: 1;
+                position: relative;
+                isolation: isolate;
+                overflow: hidden;
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                height: 52px;
+                padding-inline: 26px;
+                border-radius: 999px;
+                font-size: 16px;
+                font-weight: 600;
+                text-decoration: none;
+                white-space: nowrap;
+                transform: translate(var(--tx), var(--ty)) scale(var(--s));
+                transition:
+                    transform 0.4s var(--ease),
+                    color 0.35s,
+                    box-shadow 0.35s;
+            }
+
+            .btn:active {
+                --s: 0.96;
+            }
+
+            .btn::before {
+                content: "";
+                position: absolute;
+                z-index: -1;
+                left: var(--bx, 50%);
+                top: var(--by, 50%);
+                width: 360px;
+                height: 360px;
+                margin: -180px 0 0 -180px;
+                border-radius: 50%;
+                transform: scale(0);
+                transition: transform 0.6s var(--ease);
+            }
+
+            .btn:hover::before {
+                transform: scale(1);
+            }
+
+            .btn-primary {
+                background: var(--accent);
+                color: #fff;
+                box-shadow: 0 14px 28px -14px rgb(54 86 214 / 0.8);
+            }
+
+            .btn-primary::before {
+                background: var(--ink);
+            }
+
+            .btn-ghost {
+                color: var(--ink);
+                box-shadow: inset 0 0 0 1px #cfd3df;
+            }
+
+            .btn-ghost::before {
+                background: var(--ink);
+            }
+
+            .btn-ghost:hover {
+                color: #fff;
+            }
+
+            .roll {
+                display: block;
+                overflow: hidden;
+                height: 1.4em;
+                line-height: 1.4em;
+            }
+
+            .roll-in {
+                position: relative;
+                display: block;
+                transition: transform 0.5s var(--ease);
+            }
+
+            .roll-in::after {
+                content: attr(data-t);
+                position: absolute;
+                left: 0;
+                top: 100%;
+            }
+
+            .btn:hover .roll-in {
+                transform: translateY(-100%);
+            }
+
+            .glyph {
+                display: inline-block;
+                transition: transform 0.5s var(--ease);
+            }
+
+            .btn:hover .glyph {
+                animation: nudge 0.9s var(--ease) infinite;
+            }
+
+            /* 상단 */
+            .nav {
+                position: sticky;
+                top: 0;
+                z-index: 10;
+            }
+
+            .nav::before {
+                content: "";
+                position: absolute;
+                inset: 0 0 -28px;
+                z-index: -1;
+                background: linear-gradient(rgb(255 255 255 / 0.92) 60%, rgb(255 255 255 / 0.6));
+                backdrop-filter: blur(14px);
+                mask-image: linear-gradient(#000 55%, transparent);
+                opacity: 0;
+                transition: opacity 0.4s;
+            }
+
+            .nav.scrolled::before {
+                opacity: 1;
+            }
+
+            .nav .wrap {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                height: 68px;
+            }
+
+            .nav img {
+                height: 28px;
+                width: auto;
+                mix-blend-mode: multiply;
+                transition: transform 0.5s var(--ease);
+            }
+
+            .nav .brand:hover img {
+                transform: rotate(-4deg) scale(1.06);
+            }
+
+            .nav-links {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .nav-links a:not(.btn) {
+                position: relative;
+                z-index: 1;
+                padding: 8px 16px;
+                color: var(--muted);
+                font-size: 15px;
+                font-weight: 500;
+                text-decoration: none;
+                transition: color 0.25s;
+            }
+
+            .nav-links a:not(.btn):hover {
+                color: var(--ink);
+            }
+
+            .nav .pill {
+                position: absolute;
+                z-index: 0;
+                left: 0;
+                top: 50%;
+                height: 36px;
+                width: var(--w, 0px);
+                margin-top: -18px;
+                border-radius: 999px;
+                background: var(--surface);
+                opacity: 0;
+                transform: translateX(var(--x, 0px));
+                transition:
+                    transform 0.45s var(--ease),
+                    width 0.45s var(--ease),
+                    opacity 0.25s;
+            }
+
+            .nav .pill.show {
+                opacity: 1;
+            }
+
+            .nav .btn {
+                height: 42px;
+                padding-inline: 20px;
+                margin-left: 12px;
+                font-size: 15px;
+            }
+
+            /* 히어로 */
+            .hero {
+                padding-top: 40px;
+                padding-bottom: 80px;
+            }
+
+            .hero .wrap {
+                display: grid;
+                grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+                align-items: center;
+                gap: 48px;
+                min-height: calc(100dvh - 68px - 120px);
+            }
+
+            .hero h1 {
+                font-size: clamp(40px, 5.4vw, 72px);
+                font-weight: 800;
+                letter-spacing: -0.045em;
+                line-height: 1.12;
+            }
+
+            .hero h1 em {
+                font-style: normal;
+                color: var(--accent);
+            }
+
+            .caret {
+                display: inline-block;
+                width: 0.06em;
+                height: 0.86em;
+                margin-left: 0.1em;
+                vertical-align: -0.06em;
+                background: var(--accent);
+                animation: blink 1.1s steps(1) infinite;
+            }
+
+            .hero-copy p {
+                margin-top: 24px;
+                max-width: 30em;
+                font-size: 18px;
+                color: var(--ink-2);
+            }
+
+            .hero-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-top: 36px;
+            }
+
+            .hero-stage {
+                position: relative;
+                height: min(640px, 62vw);
+                transform: perspective(1400px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+            }
+
+            .layer {
+                position: absolute;
+                aspect-ratio: 3 / 4;
+            }
+
+            .layer.back {
+                right: 0;
+                top: 0;
+                height: 88%;
+            }
+
+            .layer.front {
+                left: 4%;
+                bottom: 0;
+                height: 94%;
+            }
+
+            .depth {
+                width: 100%;
+                height: 100%;
+            }
+
+            .back .depth {
+                transform: translate3d(calc(var(--px, 0) * 26px), calc(var(--py, 0) * 18px), 0);
+            }
+
+            .front .depth {
+                transform: translate3d(calc(var(--px, 0) * -14px), calc(var(--py, 0) * -10px), 0);
+            }
+
+            .layer img {
+                width: 100%;
+                height: 100%;
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+            }
+
+            /* 반복 순환 띠 */
+            .loop {
+                overflow: hidden;
+                padding-block: 40px;
+                mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+            }
+
+            .loop-track {
+                display: flex;
+                width: max-content;
+                animation: loop 44s linear infinite;
+            }
+
+            .loop:hover .loop-track {
+                animation-play-state: paused;
+            }
+
+            .loop-set {
+                display: flex;
+                align-items: center;
+                gap: 0.5em;
+                padding-right: 0.5em;
+                font-size: clamp(40px, 6vw, 88px);
+                font-weight: 800;
+                letter-spacing: -0.04em;
+                white-space: nowrap;
+            }
+
+            .loop-set span:nth-child(4n + 1) {
+                color: var(--ink);
+            }
+
+            .loop-set span:nth-child(4n + 3) {
+                color: var(--faint);
+            }
+
+            .loop-set .arr {
+                color: var(--accent);
+                font-weight: 400;
+            }
+
+            /* 사용 방법 */
+            .how {
+                background: var(--surface);
+            }
+
+            .how-grid {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                gap: 96px;
+                align-items: start;
+            }
+
+            .how h2,
+            .outcomes h2,
+            .bento h2,
+            .faq h2 {
+                font-size: clamp(30px, 3.8vw, 48px);
+                font-weight: 800;
+            }
+
+            .steps {
+                position: relative;
+                margin-top: 56px;
+                padding-left: 32px;
+            }
+
+            .steps::before,
+            .rail-fill {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 40px;
+                width: 3px;
+                border-radius: 2px;
+            }
+
+            .steps::before {
+                bottom: 40px;
+                background: #dfe2ec;
+            }
+
+            .rail-fill {
+                background: var(--accent);
+                height: var(--rail, 0px);
+                transition: height 0.7s var(--ease);
+            }
+
+            .step {
+                padding-block: 40px;
+                opacity: 0.35;
+                translate: 0 0;
+                transition:
+                    opacity 0.5s var(--ease),
+                    translate 0.6s var(--ease);
+            }
+
+            .step.active {
+                opacity: 1;
+                translate: 10px 0;
+            }
+
+            .step h3 {
+                font-size: 28px;
+                font-weight: 700;
+            }
+
+            .step p {
+                margin-top: 12px;
+                max-width: 26em;
+                color: var(--ink-2);
+            }
+
+            .step figure {
+                display: none;
+                margin: 24px 0 0;
+            }
+
+            .stage {
+                position: sticky;
+                top: 112px;
+                height: min(640px, calc(100dvh - 160px));
+                aspect-ratio: 3 / 4;
+                margin-inline: auto;
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+                background: #fff;
+                transform: perspective(1400px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+            }
+
+            .stage img {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                border-radius: var(--radius);
+                clip-path: inset(100% 0 0 0 round var(--radius));
+                scale: 1.08;
+                transition:
+                    clip-path 0.9s var(--ease),
+                    scale 1.1s var(--ease);
+            }
+
+            .stage img.active {
+                clip-path: inset(0 0 0 0 round var(--radius));
+                scale: 1;
+                z-index: 1;
+            }
+
+            /* 성과 */
+            .outcomes-list {
+                margin-top: 64px;
+            }
+
+            .outcome {
+                position: relative;
+                isolation: isolate;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: baseline;
+                gap: 24px;
+                margin-inline: -24px;
+                padding: 40px 24px;
+                border-radius: var(--radius);
+            }
+
+            .outcome::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                border-radius: inherit;
+                background: var(--tint);
+                transform: scaleX(0);
+                transform-origin: left;
+                transition: transform 0.6s var(--ease);
+            }
+
+            .outcome:hover::before {
+                transform: scaleX(1);
+            }
+
+            .outcome-label,
+            .outcome-value {
+                transition: translate 0.6s var(--ease);
+            }
+
+            .outcome:hover .outcome-label {
+                translate: 14px 0;
+            }
+
+            .outcome:hover .outcome-value {
+                translate: -14px 0;
+            }
+
+            .outcome-label {
+                font-size: 20px;
+                font-weight: 600;
+            }
+
+            .outcome-label span {
+                display: block;
+                margin-top: 4px;
+                font-size: 14px;
+                font-weight: 400;
+                color: var(--muted);
+            }
+
+            .outcome-value {
+                display: flex;
+                align-items: baseline;
+                gap: 20px;
+                font-size: clamp(34px, 5.4vw, 64px);
+                font-weight: 700;
+                letter-spacing: -0.03em;
+            }
+
+            .outcome-value b {
+                font-weight: inherit;
+            }
+
+            .outcome-value small {
+                font-size: 0.5em;
+                font-weight: 600;
+            }
+
+            .outcome-value .before {
+                color: #a2a7ba;
+                transition: opacity 0.8s;
+            }
+
+            .outcome-value .arrow {
+                color: #a2a7ba;
+                font-weight: 300;
+                display: inline-block;
+                transition:
+                    translate 0.8s var(--ease),
+                    color 0.8s;
+            }
+
+            .outcome.in .arrow {
+                color: var(--accent);
+            }
+
+            .outcome:hover .arrow {
+                translate: 8px 0;
+            }
+
+            .outcome-value .after {
+                color: var(--ink);
+                transition: color 0.8s var(--ease) 0.2s;
+            }
+
+            .outcome.in .after {
+                color: var(--accent);
+            }
+
+            .note {
+                margin-top: 24px;
+                font-size: 14px;
+                color: var(--muted);
+            }
+
+            /* 기능 벤토 */
+            .bento h2 {
+                max-width: 14em;
+            }
+
+            .bento-grid {
+                margin-top: 64px;
+                display: grid;
+                grid-template-columns: repeat(6, minmax(0, 1fr));
+                gap: 20px;
+            }
+
+            .cell {
+                position: relative;
+                overflow: hidden;
+                isolation: isolate;
+                border-radius: var(--radius);
+                padding: 36px;
+                background: #fff;
+                box-shadow: inset 0 0 0 1px var(--hair);
+                translate: 0 0;
+                transition:
+                    translate 0.5s var(--ease),
+                    box-shadow 0.5s var(--ease);
+            }
+
+            .cell::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgb(54 86 214 / 0.1), transparent 70%);
+                opacity: 0;
+                transition: opacity 0.4s;
+            }
+
+            .cell:hover {
+                translate: 0 -6px;
+            }
+
+            .cell:hover::before {
+                opacity: 1;
+            }
+
+            .cell h3 {
+                font-size: 24px;
+                font-weight: 700;
+            }
+
+            .cell p {
+                margin-top: 12px;
+                color: var(--ink-2);
+                max-width: 24em;
+            }
+
+            .cell-mode {
+                grid-column: span 4;
+                background: var(--tint);
+                box-shadow: none;
+                padding-bottom: 0;
+            }
+
+            .cell-branch {
+                grid-column: span 2;
+                background: var(--accent);
+                box-shadow: none;
+                color: #fff;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                gap: 32px;
+            }
+
+            .cell-branch::before {
+                background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / 0.16), transparent 70%);
+            }
+
+            .cell-branch p {
+                color: rgb(255 255 255 / 0.86);
+            }
+
+            .cell-branch code {
+                font-family: var(--mono);
+                font-size: 13px;
+                line-height: 1.6;
+                display: block;
+                padding: 14px 16px;
+                border-radius: 12px;
+                background: rgb(255 255 255 / 0.14);
+                overflow-wrap: anywhere;
+                white-space: pre-wrap;
+            }
+
+            .cell-branch code.typing::after {
+                content: "";
+                display: inline-block;
+                width: 0.5em;
+                height: 1em;
+                margin-left: 2px;
+                vertical-align: -0.15em;
+                background: #fff;
+                animation: blink 0.9s steps(1) infinite;
+            }
+
+            .cell-local {
+                grid-column: span 2;
+                padding-bottom: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 28px;
+            }
+
+            .cell-log {
+                grid-column: span 4;
+                padding-bottom: 0;
+                background: var(--surface);
+                box-shadow: none;
+            }
+
+            .cell img.crop {
+                display: block;
+                width: 100%;
+                max-width: 600px;
+                margin: 32px 0 0 auto;
+                object-fit: cover;
+                border-radius: 12px 12px 0 0;
+                box-shadow: 0 0 0 1px rgb(26 31 54 / 0.08);
+                transform-origin: 50% 100%;
+                transition: transform 0.7s var(--ease);
+            }
+
+            .cell:hover img.crop {
+                transform: scale(1.03) translateY(-4px);
+            }
+
+            .cell-mode img.crop {
+                object-position: bottom;
+                aspect-ratio: 600 / 230;
+            }
+
+            .cell-log img.crop {
+                aspect-ratio: 600 / 360;
+                object-position: 0 42%;
+            }
+
+            .cell-local img.crop {
+                width: 432px;
+                max-width: none;
+                margin: auto 0 0;
+                aspect-ratio: 432 / 340;
+                object-fit: none;
+                object-position: -168px -195px;
+            }
+
+            /* FAQ */
+            .faq {
+                background: var(--surface);
+            }
+
+            .faq-grid {
+                display: grid;
+                grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+                gap: 96px;
+            }
+
+            .faq-list details {
+                border-bottom: 1px solid #d9dce6;
+            }
+
+            .faq-list details:first-child {
+                border-top: 1px solid #d9dce6;
+            }
+
+            .faq-list details::details-content {
+                block-size: 0;
+                overflow: clip;
+                transition:
+                    block-size 0.5s var(--ease),
+                    content-visibility 0.5s allow-discrete;
+            }
+
+            .faq-list details[open]::details-content {
+                block-size: auto;
+            }
+
+            .faq-list summary {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 24px;
+                padding-block: 24px;
+                font-size: 19px;
+                font-weight: 600;
+                cursor: pointer;
+                list-style: none;
+                transition:
+                    translate 0.5s var(--ease),
+                    color 0.3s;
+            }
+
+            .faq-list summary:hover {
+                translate: 8px 0;
+                color: var(--accent);
+            }
+
+            .faq-list summary::-webkit-details-marker {
+                display: none;
+            }
+
+            .faq-list summary::after {
+                content: "";
+                flex: none;
+                width: 10px;
+                height: 10px;
+                border-right: 2px solid currentColor;
+                border-bottom: 2px solid currentColor;
+                transform: rotate(45deg) translate(-2px, -2px);
+                transition: transform 0.5s var(--ease);
+            }
+
+            .faq-list details[open] summary::after {
+                transform: rotate(-135deg) translate(-2px, -2px);
+            }
+
+            .faq-list details p {
+                padding-bottom: 28px;
+                max-width: 34em;
+                color: var(--ink-2);
+            }
+
+            .faq-list code {
+                font-family: var(--mono);
+                font-size: 0.9em;
+                padding: 2px 6px;
+                border-radius: 6px;
+                background: #e9ebf2;
+            }
+
+            /* 마지막 */
+            .final {
+                padding-block: 120px;
+            }
+
+            .final-box {
+                position: relative;
+                overflow: hidden;
+                isolation: isolate;
+                border-radius: 24px;
+                padding: clamp(40px, 7vw, 96px);
+                background: var(--tint);
+            }
+
+            .final-box::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                background: radial-gradient(520px circle at var(--mx, 70%) var(--my, 30%), rgb(54 86 214 / 0.14), transparent 70%);
+            }
+
+            .final h2 {
+                font-size: clamp(34px, 5vw, 64px);
+                font-weight: 800;
+                letter-spacing: -0.045em;
+            }
+
+            .final p {
+                margin-top: 16px;
+                font-size: 18px;
+                color: var(--ink-2);
+            }
+
+            .final .hero-actions {
+                margin-top: 40px;
+            }
+
+            footer {
+                padding-block: 32px;
+                font-size: 14px;
+                color: var(--muted);
+            }
+
+            footer .wrap {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 16px 32px;
+                justify-content: space-between;
+            }
+
+            footer nav {
+                display: flex;
+                align-items: center;
+                gap: 24px;
+            }
+
+            footer a,
+            footer button {
+                color: inherit;
+                text-decoration: none;
+                transition: color 0.2s;
+            }
+
+            footer button {
+                font: inherit;
+                padding: 6px 14px;
+                border: 0;
+                border-radius: 999px;
+                background: var(--surface);
+                cursor: pointer;
+            }
+
+            footer a:hover,
+            footer button:hover {
+                color: var(--ink);
+            }
+
+            /* 단어 분할: 마스크 올라오기 / 스크롤 채움 */
+            .w {
+                display: inline-block;
+            }
+
+            .split-mask .w {
+                overflow: hidden;
+                vertical-align: top;
+                padding-bottom: 0.14em;
+                margin-bottom: -0.14em;
+            }
+
+            .split-mask .w > span {
+                display: inline-block;
+                transform: translateY(112%);
+                transition: transform 1s var(--ease) calc(var(--i) * 60ms);
+            }
+
+            .split-mask.in .w > span {
+                transform: none;
+            }
+
+            @supports (animation-timeline: view()) {
+                .split-fill .w {
+                    color: var(--faint);
+                    animation: fill linear both;
+                    animation-timeline: view();
+                    animation-range: cover calc(6% + var(--i) * 3%) cover calc(22% + var(--i) * 3%);
+                }
+
+                .layer.back {
+                    animation: driftBack linear both;
+                    animation-timeline: scroll(root);
+                    animation-range: 0 100vh;
+                }
+
+                .layer.front {
+                    animation: driftFront linear both;
+                    animation-timeline: scroll(root);
+                    animation-range: 0 100vh;
+                }
+
+                .hero-copy {
+                    animation: fadeAway linear both;
+                    animation-timeline: scroll(root);
+                    animation-range: 0 70vh;
+                }
+            }
+
+            /* 등장 */
+            .js .reveal {
+                opacity: 0;
+                transform: translateY(36px) scale(0.98);
+                filter: blur(10px);
+                transition:
+                    opacity 0.9s var(--ease),
+                    transform 0.9s var(--ease),
+                    filter 0.9s var(--ease);
+            }
+
+            .js .reveal.in {
+                opacity: 1;
+                transform: none;
+                filter: none;
+            }
+
+            .hero-copy p,
+            .hero-actions,
+            .layer img {
+                animation: rise 1.1s var(--ease) both;
+            }
+
+            .hero-copy p {
+                animation-delay: 0.45s;
+            }
+
+            .hero-copy .hero-actions {
+                animation-delay: 0.6s;
+            }
+
+            .layer.back img {
+                animation-name: slideBack;
+                animation-delay: 0.3s;
+            }
+
+            .layer.front img {
+                animation-name: slideFront;
+                animation-delay: 0.5s;
+            }
+
+            @keyframes rise {
+                from {
+                    opacity: 0;
+                    transform: translateY(28px);
+                }
+            }
+
+            @keyframes slideBack {
+                from {
+                    opacity: 0;
+                    transform: translate(60px, -40px) rotate(4deg);
+                }
+            }
+
+            @keyframes slideFront {
+                from {
+                    opacity: 0;
+                    transform: translate(-40px, 70px) rotate(-3deg);
+                }
+            }
+
+            @keyframes driftBack {
+                to {
+                    translate: 0 90px;
+                }
+            }
+
+            @keyframes driftFront {
+                to {
+                    translate: 0 -60px;
+                }
+            }
+
+            @keyframes fadeAway {
+                to {
+                    opacity: 0.15;
+                    translate: 0 -40px;
+                }
+            }
+
+            @keyframes fill {
+                to {
+                    color: var(--ink);
+                }
+            }
+
+            @keyframes loop {
+                to {
+                    transform: translateX(-50%);
+                }
+            }
+
+            @keyframes blink {
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            @keyframes nudge {
+                0%,
+                100% {
+                    transform: translateY(0);
+                }
+                50% {
+                    transform: translateY(4px);
+                }
+            }
+
+            /* 움직임 끄기 */
+            html[data-motion="off"] *,
+            html[data-motion="off"] *::before,
+            html[data-motion="off"] *::after {
+                animation: none !important;
+                transition-duration: 0s !important;
+            }
+
+            html[data-motion="off"] .reveal {
+                opacity: 1 !important;
+                transform: none !important;
+                filter: none !important;
+            }
+
+            html[data-motion="off"] .split-mask .w > span {
+                transform: none !important;
+            }
+
+            html[data-motion="off"] .split-fill .w {
+                color: var(--ink) !important;
+            }
+
+            @media (max-width: 960px) {
+                .section,
+                .final {
+                    padding-block: 80px;
+                }
+
+                .nav-links a:not(.btn) {
+                    display: none;
+                }
+
+                .nav .btn {
+                    margin-left: 0;
+                }
+
+                .hero {
+                    padding-top: 24px;
+                    padding-bottom: 48px;
+                }
+
+                .hero .wrap {
+                    grid-template-columns: 1fr;
+                    min-height: 0;
+                }
+
+                .hero-stage {
+                    height: min(480px, 92vw);
+                }
+
+                .how-grid,
+                .faq-grid {
+                    grid-template-columns: 1fr;
+                    gap: 40px;
+                }
+
+                .stage,
+                .steps::before,
+                .rail-fill {
+                    display: none;
+                }
+
+                .steps {
+                    padding-left: 0;
+                }
+
+                .step {
+                    opacity: 1;
+                    padding-block: 28px;
+                }
+
+                .step.active {
+                    translate: 0 0;
+                }
+
+                .step figure {
+                    display: block;
+                }
+
+                .step img {
+                    width: min(360px, 100%);
+                    border-radius: var(--radius);
+                    box-shadow: var(--shadow);
+                }
+
+                .outcome {
+                    grid-template-columns: 1fr;
+                    gap: 8px;
+                    padding-block: 28px;
+                }
+
+                .bento-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .cell-mode,
+                .cell-branch,
+                .cell-local,
+                .cell-log {
+                    grid-column: auto;
+                }
+
+                .cell {
+                    padding: 28px;
+                }
+
+                .cell-mode,
+                .cell-log,
+                .cell-local {
+                    padding-bottom: 0;
+                }
+            }
+
+            @media (max-width: 520px) {
+                .hero-actions .btn {
+                    width: 100%;
+                    justify-content: center;
+                }
+
+                .nav .btn {
+                    padding-inline: 14px;
+                }
+
+                .layer.front {
+                    left: 0;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="top-sentinel" style="position: absolute; top: 0; height: 1px; width: 1px"></div>
+
+        <header class="nav">
+            <div class="wrap">
+                <a class="brand" href="#" aria-label="AutoPilot 처음으로"><img src="../../logo.png" alt="AutoPilot" /></a>
+                <nav class="nav-links" aria-label="메인 메뉴">
+                    <i class="pill" aria-hidden="true"></i>
+                    <a href="#how">사용 방법</a>
+                    <a href="#features">기능</a>
+                    <a href="#faq">자주 묻는 질문</a>
+                    <a href="https://github.com/ReguMaster/Autopilot/releases/latest" class="btn btn-primary"><span class="roll">Windows용 다운로드</span></a>
+                </nav>
+            </div>
+        </header>
+
+        <main>
+            <section class="hero" id="hero">
+                <div class="wrap">
+                    <div class="hero-copy">
+                        <h1 class="split-mask" data-split>자리를 비워도,<br /><em>개발은 계속.</em><span class="caret" aria-hidden="true"></span></h1>
+                        <p>할 일과 종료 시각만 정하세요. Claude Code가 고치고 검증하고, 돌아왔을 때 볼 커밋을 남겨요.</p>
+                        <div class="hero-actions">
+                            <a class="btn btn-primary" href="https://github.com/ReguMaster/Autopilot/releases/latest">
+                                <span class="roll">Windows용 다운로드</span><span class="glyph" aria-hidden="true">↓</span>
+                            </a>
+                            <a class="btn btn-ghost" href="https://github.com/ReguMaster/Autopilot"><span class="roll">GitHub에서 보기</span></a>
+                        </div>
+                    </div>
+                    <div class="hero-stage" data-tilt="hero">
+                        <div class="layer back">
+                            <div class="depth"><img src="../../screenshots/done.png" alt="AutoPilot 결과 화면. 일을 마쳤고 줄어든 응답 시간이 표시돼요." width="600" height="800" /></div>
+                        </div>
+                        <div class="layer front">
+                            <div class="depth"><img src="../../screenshots/running.png" alt="AutoPilot 실행 화면. 3회차 진행 중이고 지금 하는 일을 문장으로 보여줘요." width="600" height="800" /></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="loop" aria-label="작업 선택, 코드 수정, 검증, 커밋, 기록, 다음 작업을 반복해요">
+                <div class="loop-track" aria-hidden="true">
+                    <div class="loop-set">
+                        <span>작업 선택</span><span class="arr">→</span><span>코드 수정</span><span class="arr">→</span><span>검증</span><span class="arr">→</span><span>커밋</span><span class="arr">→</span><span>기록</span><span class="arr">→</span><span>다음 작업</span><span class="arr">→</span>
+                    </div>
+                    <div class="loop-set">
+                        <span>작업 선택</span><span class="arr">→</span><span>코드 수정</span><span class="arr">→</span><span>검증</span><span class="arr">→</span><span>커밋</span><span class="arr">→</span><span>기록</span><span class="arr">→</span><span>다음 작업</span><span class="arr">→</span>
+                    </div>
+                </div>
+            </div>
+
+            <section class="section how" id="how">
+                <div class="wrap">
+                    <h2 class="split-fill" data-split>정하고, 맡기고,<br />돌아와서 확인해요.</h2>
+                    <div class="how-grid">
+                        <div class="steps">
+                            <div class="rail-fill" aria-hidden="true"></div>
+                            <div class="step" data-stage="0">
+                                <h3>작업을 정해요</h3>
+                                <p>Git 프로젝트 폴더를 열고 할 일을 적어요. 모델, 작업 방식, 종료 시각도 같은 자리에서 골라요.</p>
+                                <figure><img src="../../screenshots/ready.png" alt="AutoPilot 시작 화면" /></figure>
+                            </div>
+                            <div class="step" data-stage="1">
+                                <h3>자리를 비워요</h3>
+                                <p>Claude Code가 수정하고 테스트를 돌려요. 지금 무엇을 하는지 짧은 문장으로 들려줘요.</p>
+                                <figure><img src="../../screenshots/running.png" alt="AutoPilot 실행 화면" /></figure>
+                            </div>
+                            <div class="step" data-stage="2">
+                                <h3>돌아와서 확인해요</h3>
+                                <p>회차마다 커밋이 남고 리포트가 쌓여요. 바뀐 점을 살펴보고 반영할지 직접 정해요.</p>
+                                <figure><img src="../../screenshots/done.png" alt="AutoPilot 결과 화면" /></figure>
+                            </div>
+                        </div>
+                        <div class="stage" data-tilt="self" aria-hidden="true">
+                            <img src="../../screenshots/ready.png" alt="" />
+                            <img src="../../screenshots/running.png" alt="" />
+                            <img src="../../screenshots/done.png" alt="" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section outcomes">
+                <div class="wrap">
+                    <h2 class="split-fill" data-split>열심히 했다는 말 대신,<br />바뀐 숫자로 남겨요.</h2>
+                    <div class="outcomes-list">
+                        <div class="outcome reveal">
+                            <div class="outcome-label">상품 검색 응답 시간<span>3회차</span></div>
+                            <div class="outcome-value" aria-label="1.4초에서 0.2초로">
+                                <span class="before">1.4<small>초</small></span><span class="arrow" aria-hidden="true">→</span><span class="after"><b class="num" data-from="1.4" data-to="0.2" data-dec="1">0.2</b><small>초</small></span>
+                            </div>
+                        </div>
+                        <div class="outcome reveal">
+                            <div class="outcome-label">결제 중복 청구 재현<span>2회차</span></div>
+                            <div class="outcome-value" aria-label="4건에서 0건으로">
+                                <span class="before">4<small>건</small></span><span class="arrow" aria-hidden="true">→</span><span class="after"><b class="num" data-from="4" data-to="0" data-dec="0">0</b><small>건</small></span>
+                            </div>
+                        </div>
+                        <div class="outcome reveal">
+                            <div class="outcome-label">주문 목록 첫 응답 크기<span>1회차</span></div>
+                            <div class="outcome-value" aria-label="2.4메가바이트에서 36킬로바이트로">
+                                <span class="before">2.4<small>MB</small></span><span class="arrow" aria-hidden="true">→</span><span class="after"><b class="num" data-from="0" data-to="36" data-dec="0">36</b><small>KB</small></span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="note">검증으로 확인한 변화만 성과로 적어요. 위 수치는 예시 프로젝트의 실행 결과예요.</p>
+                </div>
+            </section>
+
+            <section class="section bento" id="features">
+                <div class="wrap">
+                    <h2 class="split-mask" data-split>프로젝트에 맞춰 조절하고, 직접 검토해요.</h2>
+                    <div class="bento-grid">
+                        <article class="cell cell-mode reveal">
+                            <div class="copy">
+                                <h3>끝낼 시각까지만 일해요</h3>
+                                <p>정한 작업만 처리하거나, 끝난 뒤에도 개선할 곳을 찾게 해요. 사용량 한도에 걸리면 기다렸다 이어가요.</p>
+                            </div>
+                            <img class="crop" src="../../screenshots/ready.png" alt="작업 방식과 종료 시각을 고르는 입력 영역" />
+                        </article>
+
+                        <article class="cell cell-branch reveal">
+                            <div>
+                                <h3>결과는 별도 브랜치에</h3>
+                                <p>내 작업 브랜치는 건드리지 않고, 검증을 통과한 변경만 커밋해요.</p>
+                            </div>
+                            <code class="typer" data-text="ai/autopilot&#10;[ap] 결제 재시도 시 멱등 키를 붙여 중복 청구 방지">ai/autopilot
+[ap] 결제 재시도 시 멱등 키를 붙여 중복 청구 방지</code>
+                        </article>
+
+                        <article class="cell cell-local reveal">
+                            <div>
+                                <h3>내 PC, 내 프로젝트에서</h3>
+                                <p>클라우드에 올리지 않고 내 폴더에서 바로 실행해요.</p>
+                            </div>
+                            <img class="crop" src="../../screenshots/settings.png" alt="대상 프로젝트 폴더를 고르는 설정 화면" />
+                        </article>
+
+                        <article class="cell cell-log reveal">
+                            <div class="copy">
+                                <h3>기록은 한 줄도 빠짐없이</h3>
+                                <p>읽은 파일, 고친 파일, 돌린 명령이 회차별로 남아요. 나중에 이유를 되짚어 볼 수 있어요.</p>
+                            </div>
+                            <img class="crop" src="../../screenshots/history.png" alt="회차별 작업 로그 화면" />
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section faq" id="faq">
+                <div class="wrap faq-grid">
+                    <h2 class="split-mask" data-split>시작하기 전에<br />알아두세요.</h2>
+                    <div class="faq-list reveal">
+                        <details open>
+                            <summary>무엇이 필요한가요?</summary>
+                            <p>Windows 64비트 PC, Git, Claude Code 사용 권한이 필요해요. 프로젝트에는 커밋이 하나 이상 있어야 해요.</p>
+                        </details>
+                        <details>
+                            <summary>컴퓨터를 계속 켜 두어야 하나요?</summary>
+                            <p>네. 클라우드에서 도는 서비스가 아니라 내 PC에서 실행돼요. 앱 창을 닫아도 시스템 트레이에서 계속 동작해요.</p>
+                        </details>
+                        <details>
+                            <summary>만든 코드가 바로 반영되나요?</summary>
+                            <p>아니요. <code>ai/autopilot</code> 브랜치에 커밋으로 남고, 직접 검토한 뒤에 병합해요.</p>
+                        </details>
+                        <details>
+                            <summary>안전한가요?</summary>
+                            <p>Claude Code 명령을 매번 승인받지 않고 실행해요. 중요한 데이터는 백업하고, 신뢰하는 프로젝트에서 써 주세요. 삭제할 파일은 <code>.autopilot/recycle_bin</code>으로 옮겨 두어서 되돌릴 수 있어요.</p>
+                        </details>
+                        <details>
+                            <summary>macOS나 Linux에서도 쓸 수 있나요?</summary>
+                            <p>지금은 Windows 64비트만 지원해요.</p>
+                        </details>
+                    </div>
+                </div>
+            </section>
+
+            <section class="final">
+                <div class="wrap">
+                    <div class="final-box reveal" data-spot>
+                        <h2 class="split-mask" data-split>다음 작업,<br />맡겨볼까요?</h2>
+                        <p>프로젝트 폴더를 열고 첫 작업을 적어 보세요.</p>
+                        <div class="hero-actions">
+                            <a class="btn btn-primary" href="https://github.com/ReguMaster/Autopilot/releases/latest">
+                                <span class="roll">Windows용 다운로드</span><span class="glyph" aria-hidden="true">↓</span>
+                            </a>
+                            <a class="btn btn-ghost" href="https://github.com/ReguMaster/Autopilot/issues"><span class="roll">의견 남기기</span></a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="wrap">
+                <span>© AutoPilot by ReguMaster</span>
+                <nav aria-label="바닥글 링크">
+                    <a href="https://github.com/ReguMaster/Autopilot">GitHub</a>
+                    <a href="https://github.com/ReguMaster/Autopilot/issues">Issues</a>
+                </nav>
+            </div>
+        </footer>
+
+        <script>
+            document.documentElement.classList.add("js");
+
+            const root = document.documentElement;
+            const finePointer = matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+            // 시안은 움직임을 항상 켠다. 실제 페이지(Autopilot-landing)는 움직임 줄이기 설정을 따른다.
+            root.dataset.motion = "on";
+
+            const motionOn = () => root.dataset.motion !== "off";
+
+            // 단어 분할: 제목을 단어 단위 span으로 나눈다.
+            const splitWords = (el) => {
+                let index = 0;
+                const walk = (node) => {
+                    [...node.childNodes].forEach((child) => {
+                        if (child.nodeType === Node.TEXT_NODE) {
+                            const frag = document.createDocumentFragment();
+                            child.textContent.split(/(\s+)/).forEach((part) => {
+                                if (!part) {
+                                    return;
+                                }
+                                if (/^\s+$/.test(part)) {
+                                    frag.append(" ");
+                                    return;
+                                }
+                                const outer = document.createElement("span");
+                                outer.className = "w";
+                                outer.style.setProperty("--i", index++);
+                                const inner = document.createElement("span");
+                                inner.textContent = part;
+                                outer.append(inner);
+                                frag.append(outer);
+                            });
+                            child.replaceWith(frag);
+                        } else if (child.nodeType === Node.ELEMENT_NODE && child.tagName !== "BR" && !child.classList.contains("caret")) {
+                            walk(child);
+                        }
+                    });
+                };
+                walk(el);
+            };
+            document.querySelectorAll("[data-split]").forEach(splitWords);
+
+            // 첫 화면 제목
+            const heroTitle = document.querySelector(".hero h1");
+            requestAnimationFrame(() => requestAnimationFrame(() => heroTitle.classList.add("in")));
+
+            // 상단: 스크롤하면 반투명 배경, 선은 없음
+            const nav = document.querySelector(".nav");
+            new IntersectionObserver(([entry]) => nav.classList.toggle("scrolled", !entry.isIntersecting)).observe(document.getElementById("top-sentinel"));
+
+            // 상단 메뉴: 따라다니는 알약
+            const navLinks = document.querySelector(".nav-links");
+            const pill = navLinks.querySelector(".pill");
+            if (finePointer) {
+                navLinks.querySelectorAll("a:not(.btn)").forEach((link) => {
+                    link.addEventListener("pointerenter", () => {
+                        pill.style.setProperty("--x", link.offsetLeft + "px");
+                        pill.style.setProperty("--w", link.offsetWidth + "px");
+                        pill.classList.add("show");
+                    });
+                });
+                navLinks.addEventListener("pointerleave", () => pill.classList.remove("show"));
+            }
+
+            // 버튼: 글자 롤, 커서 방향 채움, 자석
+            document.querySelectorAll(".btn").forEach((btn) => {
+                const roll = btn.querySelector(".roll");
+                const label = roll.textContent;
+                roll.innerHTML = "";
+                const inner = document.createElement("span");
+                inner.className = "roll-in";
+                inner.dataset.t = label;
+                inner.textContent = label;
+                roll.append(inner);
+
+                if (!finePointer) {
+                    return;
+                }
+                btn.addEventListener("pointerenter", (event) => {
+                    const rect = btn.getBoundingClientRect();
+                    btn.style.setProperty("--bx", event.clientX - rect.left + "px");
+                    btn.style.setProperty("--by", event.clientY - rect.top + "px");
+                });
+                btn.addEventListener("pointermove", (event) => {
+                    if (!motionOn()) {
+                        return;
+                    }
+                    const rect = btn.getBoundingClientRect();
+                    btn.style.setProperty("--tx", (event.clientX - rect.left - rect.width / 2) * 0.2 + "px");
+                    btn.style.setProperty("--ty", (event.clientY - rect.top - rect.height / 2) * 0.3 + "px");
+                });
+                btn.addEventListener("pointerleave", (event) => {
+                    const rect = btn.getBoundingClientRect();
+                    btn.style.setProperty("--bx", event.clientX - rect.left + "px");
+                    btn.style.setProperty("--by", event.clientY - rect.top + "px");
+                    btn.style.setProperty("--tx", "0px");
+                    btn.style.setProperty("--ty", "0px");
+                });
+            });
+
+            // 기울기: 커서를 따라 부드럽게 기울고, 층마다 다르게 움직인다
+            const attachTilt = (target, area, maxDeg) => {
+                let tx = 0;
+                let ty = 0;
+                let cx = 0;
+                let cy = 0;
+                let frame = 0;
+
+                const step = () => {
+                    cx += (tx - cx) * 0.08;
+                    cy += (ty - cy) * 0.08;
+                    target.style.setProperty("--rx", -cy * maxDeg + "deg");
+                    target.style.setProperty("--ry", cx * maxDeg + "deg");
+                    target.style.setProperty("--px", cx);
+                    target.style.setProperty("--py", cy);
+                    frame = Math.abs(tx - cx) + Math.abs(ty - cy) > 0.002 ? requestAnimationFrame(step) : 0;
+                };
+
+                area.addEventListener("pointermove", (event) => {
+                    if (!motionOn()) {
+                        return;
+                    }
+                    const rect = area.getBoundingClientRect();
+                    tx = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+                    ty = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+                    if (!frame) {
+                        frame = requestAnimationFrame(step);
+                    }
+                });
+                area.addEventListener("pointerleave", () => {
+                    tx = 0;
+                    ty = 0;
+                    if (!frame) {
+                        frame = requestAnimationFrame(step);
+                    }
+                });
+            };
+            if (finePointer) {
+                attachTilt(document.querySelector(".hero-stage"), document.getElementById("hero"), 7);
+                attachTilt(document.querySelector(".stage"), document.querySelector(".stage"), 5);
+            }
+
+            // 스포트라이트: 커서 위치만 CSS 변수로 넘긴다
+            if (finePointer) {
+                document.querySelectorAll(".cell, [data-spot]").forEach((el) => {
+                    el.addEventListener("pointermove", (event) => {
+                        const rect = el.getBoundingClientRect();
+                        el.style.setProperty("--mx", event.clientX - rect.left + "px");
+                        el.style.setProperty("--my", event.clientY - rect.top + "px");
+                    });
+                });
+            }
+
+            // 숫자 세기: 이전 값에서 이후 값까지
+            const easeOut = (t) => 1 - Math.pow(1 - t, 4);
+            const countUp = (el) => {
+                const from = Number(el.dataset.from);
+                const to = Number(el.dataset.to);
+                const dec = Number(el.dataset.dec);
+                const start = performance.now();
+                const tick = (now) => {
+                    const t = Math.min((now - start) / 1600, 1);
+                    el.textContent = (from + (to - from) * easeOut(t)).toFixed(dec);
+                    if (t < 1) {
+                        requestAnimationFrame(tick);
+                    }
+                };
+                requestAnimationFrame(tick);
+            };
+            const nums = document.querySelectorAll(".num");
+            if (motionOn()) {
+                nums.forEach((el) => (el.textContent = Number(el.dataset.from).toFixed(Number(el.dataset.dec))));
+            }
+
+            // 타자 효과: 커밋 문장이 써지는 모습
+            const typer = document.querySelector(".typer");
+            const typerText = typer.dataset.text;
+            typer.style.minHeight = typer.offsetHeight + "px";
+            const typeOut = () => {
+                typer.textContent = "";
+                typer.classList.add("typing");
+                let count = 0;
+                const timer = setInterval(() => {
+                    typer.textContent = typerText.slice(0, ++count);
+                    if (count >= typerText.length) {
+                        clearInterval(timer);
+                        setTimeout(() => typer.classList.remove("typing"), 1200);
+                    }
+                }, 34);
+            };
+
+            // 등장: 한 번에 들어온 요소는 순서대로 시차를 둔다
+            const revealObserver = new IntersectionObserver(
+                (entries) => {
+                    let order = 0;
+                    entries.forEach((entry) => {
+                        if (!entry.isIntersecting) {
+                            return;
+                        }
+                        const el = entry.target;
+                        el.style.transitionDelay = order++ * 90 + "ms";
+                        el.classList.add("in");
+                        revealObserver.unobserve(el);
+
+                        if (motionOn()) {
+                            el.querySelectorAll(".num").forEach((num) => setTimeout(() => countUp(num), 300));
+                            if (el.contains(typer)) {
+                                setTimeout(typeOut, 500);
+                            }
+                        }
+                    });
+                },
+                { threshold: 0.25 }
+            );
+            document.querySelectorAll(".reveal, .split-mask:not(.hero h1)").forEach((el) => revealObserver.observe(el));
+            document.querySelectorAll(".num").forEach((num) => {
+                if (!num.closest(".reveal")) {
+                    revealObserver.observe(num.closest(".outcome"));
+                }
+            });
+
+            // 사용 방법: 단계가 바뀌면 화면 전환과 진행선
+            const steps = [...document.querySelectorAll(".step")];
+            const stageImages = [...document.querySelectorAll(".stage img")];
+            const stepsBox = document.querySelector(".steps");
+            const setStage = (index) => {
+                steps.forEach((step, i) => step.classList.toggle("active", i === index));
+                stageImages.forEach((img, i) => img.classList.toggle("active", i === index));
+                const active = steps[index];
+                stepsBox.style.setProperty("--rail", active.offsetTop + active.offsetHeight - 80 + "px");
+            };
+            setStage(0);
+            addEventListener("resize", () => setStage(steps.findIndex((s) => s.classList.contains("active"))));
+
+            const stepObserver = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting) {
+                            setStage(Number(entry.target.dataset.stage));
+                        }
+                    });
+                },
+                { rootMargin: "-45% 0px -45% 0px" }
+            );
+            steps.forEach((step) => stepObserver.observe(step));
+        </script>
+    </body>
+</html>
