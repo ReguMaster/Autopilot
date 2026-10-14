@@ -29,6 +29,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 화면 쪽 도우미: 정규화한 DOM 문자열, 끝나지 않은 애니메이션 수
 const PAGE_HELPERS = `(() => {
+    // 애니메이션을 다시 거는 클래스와 값이 빈 속성은 상태가 아니라 흔적이라 비교에서 뺀다. 숨은 요소의 안쪽도 보이지 않으므로 뺀다.
+    const REPLAY_CLASSES = ["swap", "appear", "tick-up", "tick-down", "tick-up", "model-swap", "effort-swap"];
+    const EMPTY_IGNORED = ["class", "data-tone", "data-length"];
+
     const norm = (node) => {
         if (node.nodeType === 3) {
             return node.data.replace(/\\s+/g, " ").trim();
@@ -39,13 +43,15 @@ const PAGE_HELPERS = `(() => {
         }
 
         const attrs = [...node.attributes]
-            .filter((attr) => attr.name !== "style" && !(attr.name === "class" && attr.value === ""))
+            .map((attr) => (attr.name === "class" ? { name: attr.name, value: attr.value.split(/\\s+/).filter((token) => token && !REPLAY_CLASSES.includes(token)).join(" ") } : attr))
+            .filter((attr) => attr.name !== "style" && !(attr.value === "" && EMPTY_IGNORED.includes(attr.name)))
             .map((attr) => attr.name + "=" + JSON.stringify(attr.value))
             .sort()
             .join(" ");
         const name = node.tagName.toLowerCase();
+        const children = node.hasAttribute("hidden") ? "" : [...node.childNodes].map(norm).join("");
 
-        return "<" + name + (attrs ? " " + attrs : "") + ">" + [...node.childNodes].map(norm).join("") + "</" + name + ">";
+        return "<" + name + (attrs ? " " + attrs : "") + ">" + children + "</" + name + ">";
     };
 
     window.__norm = (selector) => {
@@ -84,6 +90,7 @@ const createTools = (win, scene, sceneDir, report) => {
         state: (patch) => tools.drive("state", patch),
         log: (lines) => tools.drive("log", lines),
         calls: () => evaluate("window.__calls"),
+        clearCalls: () => evaluate("window.__calls.length = 0"),
         settle: async (maxMs = 15000) => {
             const started = Date.now();
             let calm = 0;
@@ -156,11 +163,17 @@ const createTools = (win, scene, sceneDir, report) => {
             await wait(80);
 
             const rect = selector ? await tools.rect(selector) : null;
+            const isEmpty = selector && (!rect || rect.width < 1 || rect.height < 1);
             const bounds = rect ? { x: Math.floor(rect.x), y: Math.floor(rect.y), width: Math.ceil(rect.width), height: Math.ceil(rect.height) } : undefined;
-            const image = bounds ? await win.webContents.capturePage(bounds) : await win.webContents.capturePage();
 
             fs.mkdirSync(sceneDir, { recursive: true });
-            fs.writeFileSync(path.join(sceneDir, `${name}.png`), image.toPNG());
+
+            // 숨겨져 크기가 없는 요소는 찍을 화면이 없다. DOM만 남긴다.
+            if (!isEmpty) {
+                const image = bounds ? await win.webContents.capturePage(bounds) : await win.webContents.capturePage();
+
+                fs.writeFileSync(path.join(sceneDir, `${name}.png`), image.toPNG());
+            }
 
             if (selector && !options.skipDom) {
                 fs.writeFileSync(path.join(sceneDir, `${name}.dom.txt`), await evaluate(`window.__norm(${JSON.stringify(selector)})`));

@@ -98,6 +98,20 @@ const main = () => {
         }
     }
 
+    // 장면이 note로 남긴 값(예: 기록한 IPC 호출)도 같아야 한다.
+    const readReport = (dir) => (fs.existsSync(path.join(dir, "report.json")) ? JSON.parse(fs.readFileSync(path.join(dir, "report.json"), "utf8")) : {});
+    const reportA = readReport(DIR_A);
+    const reportB = readReport(DIR_B);
+
+    for (const [sceneName, entryA] of Object.entries(reportA)) {
+        for (const [key, value] of Object.entries(entryA)) {
+            if (!["console", "error"].includes(key) && reportB[sceneName] && JSON.stringify(value) !== JSON.stringify(reportB[sceneName][key])) {
+                failures++;
+                console.log(`[DIFF] ${sceneName} note ${key}\n      A: ${JSON.stringify(value)}\n      B: ${JSON.stringify(reportB[sceneName][key])}`);
+            }
+        }
+    }
+
     for (const dir of [DIR_A, DIR_B]) {
         const reportFile = path.join(dir, "report.json");
 

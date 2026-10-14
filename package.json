@@ -14,7 +14,7 @@
         "start": "npm run build:ui && electron .",
         "dev": "npm run build:ui && electron . --dev",
         "test": "npm run build:ui && electron . --smoke-test",
-        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js && node tests/checkDesktopUi.js",
+        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js && node tests/checkDesktopUi.js && node tests/checkDesktopStores.js",
         "build": "npm run build:ui && electron-builder --win --x64 --dir",
         "build:mac": "npm run build:ui && electron-builder --mac --dir",
         "build:linux": "npm run build:ui && electron-builder --linux --dir",
@@ -25,8 +25,8 @@
         "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js tests/checkDesktopUi.js \"desktop/ui/**/*.{js,jsx,mjs,css}\" \"tests/tools/ui/**/*.{cjs,mjs}\"",
-        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js tests/checkDesktopUi.js \"desktop/ui/**/*.{js,jsx,mjs,css}\" \"tests/tools/ui/**/*.{cjs,mjs}\""
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js tests/checkDesktopUi.js tests/checkDesktopStores.js \"desktop/ui/**/*.{js,jsx,mjs,css}\" \"tests/tools/ui/**/*.{cjs,mjs}\"",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js tests/checkDesktopUi.js tests/checkDesktopStores.js \"desktop/ui/**/*.{js,jsx,mjs,css}\" \"tests/tools/ui/**/*.{cjs,mjs}\""
     },
     "devDependencies": {
         "electron": "^44.6.0",
@@ -34,7 +34,8 @@
         "esbuild": "0.28.2",
         "prettier": "^3.9.6",
         "react": "19.3.0",
-        "react-dom": "19.3.0"
+        "react-dom": "19.3.0",
+        "zustand": "5.0.15"
     },
     "build": {
         "appId": "com.autopilot.desktop",
