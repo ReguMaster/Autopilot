@@ -72,8 +72,32 @@ const formatEffort = (effort) => {
     return EFFORT_LABELS[effort] || effort;
 };
 
+// 별칭(opus)이나 모델 ID(claude-opus-4-8)가 속한 계열. 모르면 빈 문자열이다.
+const getModelFamily = (model) => {
+    return Object.keys(MODEL_LABELS).find((family) => model === family || model.split("-").includes(family)) || "";
+};
+
+// 별칭은 계열 이름, 모델 ID는 날짜를 뺀 "Opus 4.8"처럼 보여준다. claude-3-5-sonnet처럼 버전이 앞에 와도 같은 모양이다.
+const formatModelName = (model) => {
+    if (MODEL_LABELS[model] || !model.startsWith("claude-")) {
+        return MODEL_LABELS[model] || model;
+    }
+
+    const parts = model
+        .slice("claude-".length)
+        .replace(/-\d{8}$/, "")
+        .split("-");
+    const name = parts
+        .filter((part) => !/^\d+$/.test(part))
+        .map((part) => part[0].toUpperCase() + part.slice(1))
+        .join(" ");
+    const version = parts.filter((part) => /^\d+$/.test(part)).join(".");
+
+    return [name, version].filter(Boolean).join(" ");
+};
+
 const formatOptions = (model, effort) => {
-    return model ? `${MODEL_LABELS[model] || model} · ${formatEffort(effort)}` : "-";
+    return model ? `${formatModelName(model)} · ${formatEffort(effort)}` : "-";
 };
 
 const formatRemaining = (ms) => {

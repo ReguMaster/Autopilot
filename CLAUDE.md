@@ -42,7 +42,7 @@ npm run dist                  # 포터블·설치형 exe
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
@@ -121,7 +121,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - STOP: 시작 시 지우고, 있으면 현재 회차 후 종료한다. 대기 중에도 감지한다.
 - TODO_COMPLETE: 실제 경로는 progress/<실행 시작 날짜>/TODO_COMPLETE다. 시작 시 이전 마커를 지우고, 성공한 지시개선 회차 뒤에만 완료 신호로 인정한다.
-- ROUND_OPTIONS.json: set이 RUNNING 잠금의 pid가 살아 있을 때만 model·effort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES·EFFORT_LEVELS이고 깨진 파일·허용되지 않은 값은 무시한다.
+- ROUND_OPTIONS.json: set이 RUNNING 잠금의 pid가 살아 있을 때만 model·effort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES(별칭, 최신 버전)·MODEL_ID_PATTERN(특정 버전의 모델 ID, 예: claude-opus-4-8)·EFFORT_LEVELS이고 깨진 파일·허용되지 않은 값은 무시한다.
 - RUNNING: 첫 줄에 실행 중인 pid, 둘째 줄에 실행 파일 이름, 셋째 줄에 이번 실행의 로그 파일(로그 위치가 정해진 직후 임시 파일 교체로 덧붙인다)을 적어 같은 프로젝트의 동시 실행을 막고 앱이 연결할 수 있게 한다. status는 이 잠금을 아래 판정으로 해석한 결과다.
     - 잠금을 얻기 전에는 STOP·완료 신호 같은 실행 상태를 건드리지 않고, 잠금은 종료 때 지운다.
     - 기록된 pid가 살아 있지 않거나(강제 종료로 잠금이 남은 경우), 살아 있어도 실행 파일 이름이 다르면(다른 프로그램이 pid를 재사용) 낡은 잠금으로 보고 덮어쓴다.
@@ -140,6 +140,6 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - 우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값).
 - 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이다. 값을 바꾸면 README·지침·검증을 함께 맞춘다.
-- model은 fallback이 sonnet이며 같은 모델이면 생략한다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다.
+- model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다.
 - 종료 시각은 HH:mm만 받는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.
 - 정책 인자는 auto/self/todo/directed 별칭도 지원한다.

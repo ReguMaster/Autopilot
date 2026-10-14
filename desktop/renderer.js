@@ -162,6 +162,8 @@ const elements = {
     timeMinute: byId("time-minute"),
     timeUntil: byId("time-until"),
     extendOnLimit: byId("extend-on-limit"),
+    modelVersions: byId("model-versions"),
+    modelVersionsNote: byId("model-versions-note"),
     tasks: byId("tasks"),
     tasksToggle: byId("tasks-toggle"),
     tasksCount: byId("tasks-count"),
@@ -924,6 +926,10 @@ const applyPanelState = (name, isOpen) => {
     if (name === "profile" && isOpen) {
         renderActiveAccount();
     }
+
+    if (name === "settings" && isOpen) {
+        loadModels();
+    }
 };
 
 // 두 패널은 같은 자리에 뜨므로 하나를 열면 다른 하나는 닫는다.
@@ -1502,6 +1508,25 @@ const renderWork = (state) => {
     setText(elements.workCommits, `남긴 커밋 ${summary.commits}개`);
 };
 
+const HERO_SIZES = ["display", "xl", "lg", "md", "sm"];
+
+// 값이 길면 글자 크기 단계를 내려 한 줄에 맞춘다. 가장 작은 단계에서도 넘치면 CSS가 말줄임한다.
+const fitOutcomeHero = () => {
+    if (elements.outcomeHero.hidden) {
+        return;
+    }
+
+    for (const size of HERO_SIZES) {
+        elements.outcomeHero.dataset.size = size;
+
+        const values = elements.outcomeHero.querySelectorAll(".was, .is");
+
+        if (Array.from(values).every((value) => value.scrollWidth <= value.clientWidth)) {
+            return;
+        }
+    }
+};
+
 // 가장 최근 성과 줄을 크게 보여준다. "이전 → 이후" 형식이 아니면 문장만 보여준다.
 const renderOutcome = (state) => {
     const gain = state.gains.at(-1);
@@ -1516,6 +1541,7 @@ const renderOutcome = (state) => {
     const before = splitFigure(parsed.before);
     const after = splitFigure(parsed.after);
 
+    elements.outcome.dataset.earlier = String(gain.round < state.round);
     setText(elements.outcomeRound, `${gain.round}회차`);
     swapText(elements.outcomeLabel, parsed.label);
     elements.outcomeHero.hidden = !parsed.after;
@@ -1523,7 +1549,10 @@ const renderOutcome = (state) => {
     setText(elements.outcomeBeforeUnit, before.unit);
     swapText(elements.outcomeAfter, after.number);
     setText(elements.outcomeAfterUnit, after.unit);
+    fitOutcomeHero();
 };
+
+new ResizeObserver(fitOutcomeHero).observe(elements.outcomeHero);
 
 const createFigure = (className, value) => {
     const { number, unit } = splitFigure(value);
@@ -1740,12 +1769,17 @@ const handlePolicyOptionClick = (event) => {
     }
 };
 
-const renderModelChip = () => {
-    const model = elements.form.elements.model.value;
+// 모델은 계열 별칭(최신 버전)이거나 설정에서 고정한 모델 ID다. 알약은 계열 마크와 실제로 쓸 모델 이름을 보여준다.
+const resolveModel = (model) => {
+    return settings.modelVersions?.[model] || model;
+};
 
-    elements.modelChip.dataset.model = model;
+const renderModelChip = (model = resolveModel(elements.form.elements.model.value)) => {
+    const family = elements.form.elements.model.value;
 
-    if (updateChip(elements.modelChip, elements.modelChipMark, elements.modelChipName, `mark-${model}`, MODEL_LABELS[model])) {
+    elements.modelChip.dataset.model = family;
+
+    if (updateChip(elements.modelChip, elements.modelChipMark, elements.modelChipName, `mark-${family}`, formatModelName(model))) {
         replayAnimation(elements.modelChip, "model-swap");
     }
 };
@@ -1798,11 +1832,11 @@ const getSelectedOptions = () => {
 };
 
 const setSelectedOptions = ({ model, effort }) => {
-    elements.form.elements.model.value = model;
+    elements.form.elements.model.value = getModelFamily(model) || elements.form.elements.model.value;
     elements.effort.value = String(Math.max(0, EFFORT_LEVELS.indexOf(effort)));
 
     renderEffort();
-    renderModelChip();
+    renderModelChip(resolveModel(model));
 };
 
 const setRadiosDisabled = (name, disabled) => {
@@ -1901,6 +1935,60 @@ const handleOptionChange = (event) => {
     } else {
         renderOptions(currentState);
     }
+};
+
+/* 모델 버전: 계열마다 최신(기본)이거나 공식 목록에서 고른 버전으로 고정한다. 목록은 계정으로 공식 API에서 받아와 새 모델이 나오면 따라온다 */
+
+let availableModels = null;
+
+const loadModels = async () => {
+    const result = await window.autopilot.getModels();
+
+    availableModels = result.status === STATUS_OK ? result.data.models : [];
+    renderModelVersions();
+};
+
+const createModelVersionRow = (family) => {
+    const row = document.createElement("label");
+    const body = document.createElement("span");
+    const title = document.createElement("b");
+    const select = document.createElement("select");
+    const pinned = settings.modelVersions[family] || "";
+    const versions = (availableModels ?? []).filter((model) => model.line === family).map((model) => model.id);
+    const ids = pinned && !versions.includes(pinned) ? [...versions, pinned] : versions;
+
+    row.className = "row version-row";
+    body.className = "row-body";
+    title.textContent = MODEL_LABELS[family];
+    select.className = "version-select";
+    select.dataset.family = family;
+    select.setAttribute("aria-label", `${MODEL_LABELS[family]} 버전`);
+    select.append(new Option("최신 버전 (기본)", ""), ...ids.map((id) => new Option(`${formatModelName(id)} · ${id}`, id)));
+    select.value = pinned;
+    select.disabled = Boolean(currentState) && currentState.status !== "idle";
+    body.append(title);
+    row.append(body, select);
+
+    return row;
+};
+
+const renderModelVersions = () => {
+    elements.modelVersions.replaceChildren(...Object.keys(MODEL_LABELS).map(createModelVersionRow));
+    elements.modelVersionsNote.hidden = Boolean(availableModels?.length);
+    elements.modelVersionsNote.textContent = availableModels ? "버전 목록을 불러오지 못했어요. 로그인 상태를 확인해 주세요." : "버전 목록을 불러오는 중이에요.";
+};
+
+const handleModelVersionChange = async (event) => {
+    const result = await window.autopilot.setModelVersion(event.target.dataset.family, event.target.value);
+
+    showFailure(result);
+
+    if (result.status === STATUS_OK) {
+        settings = { ...settings, modelVersions: result.data.modelVersions };
+    }
+
+    renderModelVersions();
+    renderModelChip();
 };
 
 /* 종료 시각: 비우면 엔진 기본값(07:00)이고, 지난 시각이면 다음 날이다 */
@@ -2024,6 +2112,10 @@ const renderState = (state) => {
     elements.endTime.disabled = !isIdle;
     elements.endTimeButton.disabled = !isIdle;
     elements.extendOnLimit.disabled = !isIdle;
+
+    for (const select of elements.modelVersions.querySelectorAll("select")) {
+        select.disabled = !isIdle;
+    }
 
     if (!isIdle) {
         elements.timePopover.hidePopover();
@@ -2163,6 +2255,10 @@ const initialize = async () => {
     loadRecentRuns();
 
     applyAccountsPayload((await window.autopilot.getAccounts()).data);
+
+    elements.modelVersions.addEventListener("change", handleModelVersionChange);
+    renderModelVersions();
+    loadModels();
 
     window.autopilot.onAccounts(applyAccountsPayload);
     window.autopilot.onLogin(applyLoginState);

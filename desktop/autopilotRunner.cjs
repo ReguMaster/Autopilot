@@ -7,6 +7,7 @@ const STATUS_OK = "OK";
 const STATUS_FAILED = "FAILED";
 
 const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
+const MODEL_ID_PATTERN = /^claude-[a-z0-9][a-z0-9.-]{0,62}$/;
 const EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"];
 const MAX_LOG_LINES = 3000;
 const STOP_TIMEOUT_MS = 10000;
@@ -575,4 +576,4 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
     };
 };
 
-module.exports = { createRunner, createInitialState, parseLine, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED };
+module.exports = { createRunner, createInitialState, parseLine, execEngine, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED };

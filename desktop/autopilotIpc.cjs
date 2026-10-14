@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { createRunner, execEngine, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState } = require("./systemIntegration.cjs");
@@ -13,7 +13,24 @@ const POLICY_CHOICES = ["auto", "todo"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 const TASKS_FILE_NAME = "tasks.md";
-const DEFAULT_SETTINGS = { projectDir: "", tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", effort: "high", accounts: [], accountId: "default", claudeDir: "" };
+const DEFAULT_SETTINGS = {
+    projectDir: "",
+    tasks: "",
+    endTime: "",
+    policy: "auto",
+    extendOnLimit: false,
+    model: "opus",
+    modelVersions: {},
+    effort: "high",
+    accounts: [],
+    accountId: "default",
+    claudeDir: ""
+};
+
+// modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
+const isModelVersions = (value) => {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(([family, id]) => MODEL_CHOICES.includes(family) && MODEL_ID_PATTERN.test(id));
+};
 
 // 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
 const SETTING_VALIDATORS = {
@@ -23,6 +40,7 @@ const SETTING_VALIDATORS = {
     policy: (value) => POLICY_CHOICES.includes(value),
     extendOnLimit: (value) => typeof value === "boolean",
     model: (value) => MODEL_CHOICES.includes(value),
+    modelVersions: isModelVersions,
     effort: (value) => EFFORT_CHOICES.includes(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
@@ -74,6 +92,10 @@ const checkEngine = () => {
 
 const isValidRoundOptions = ({ model, effort }) => {
     return MODEL_CHOICES.includes(model) && EFFORT_CHOICES.includes(effort);
+};
+
+const resolveModel = (family, modelVersions) => {
+    return modelVersions[family] || family;
 };
 
 const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, model, effort, configDir }) => {
@@ -162,11 +184,13 @@ const handleStart = async (event, options = {}) => {
     fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
     writeSettings({ ...settings, ...startOptions });
 
+    const model = resolveModel(startOptions.model, settings.modelVersions);
+
     return runner.start({
         ...getEngineLaunch(),
         projectDir: settings.projectDir,
-        args: getCliArgs({ ...startOptions, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
-        roundOptions: { model: startOptions.model, effort: startOptions.effort }
+        args: getCliArgs({ ...startOptions, model: model, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
+        roundOptions: { model: model, effort: startOptions.effort }
     });
 };
 
@@ -176,13 +200,36 @@ const handleSetOptions = async (event, options = {}) => {
         return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
     }
 
-    const result = await runner.setRoundOptions({ model: options.model, effort: options.effort });
+    const settings = readSettings();
+    const result = await runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort });
 
     if (result.status === STATUS_OK) {
-        writeSettings({ ...readSettings(), model: options.model, effort: options.effort });
+        writeSettings({ ...settings, model: options.model, effort: options.effort });
     }
 
     return result;
+};
+
+// 계열의 모델 버전을 고정하거나(모델 ID) 최신으로 되돌린다(빈 문자열). 실행 중에는 바꾸지 않는다.
+const handleSetModelVersion = (event, family, version) => {
+    if (runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 모델 버전을 바꿀 수 없어요.");
+    }
+
+    if (!MODEL_CHOICES.includes(family) || (version !== "" && !MODEL_ID_PATTERN.test(version))) {
+        return createFailure("INVALID_OPTIONS", "모델 계열 또는 버전 값이 올바르지 않아요.");
+    }
+
+    const settings = readSettings();
+    const modelVersions = { ...settings.modelVersions, [family]: version };
+
+    if (!version) {
+        delete modelVersions[family];
+    }
+
+    writeSettings({ ...settings, modelVersions: modelVersions });
+
+    return { status: STATUS_OK, data: { modelVersions: modelVersions } };
 };
 
 // 앱을 닫았다 켠 사이에 계속 실행된 엔진이 선택한 프로젝트에 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
@@ -424,6 +471,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:start", handleStart);
     ipcMain.handle("autopilot:stop", () => runner.stop());
     ipcMain.handle("autopilot:set-options", handleSetOptions);
+    ipcMain.handle("autopilot:set-model-version", handleSetModelVersion);
     ipcMain.handle("autopilot:kill", handleKill);
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);

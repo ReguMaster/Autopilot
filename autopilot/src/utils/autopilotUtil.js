@@ -11,7 +11,6 @@ import {
     EXIT_CODE_SUCCESS,
     FALLBACK_MODEL,
     LOCK_FILE_NAME,
-    MODEL_CHOICES,
     PROGRESS_DIR_NAME,
     PROGRESS_FILE_NAME,
     ROUND_OPTIONS_FILE_NAME,
@@ -27,6 +26,7 @@ import {
 } from "./config.js";
 import fileUtil from "./fileUtil.js";
 import processUtil from "./processUtil.js";
+import util from "./util.js";
 
 const LOCK_MAX_ATTEMPTS = 2;
 
@@ -158,7 +158,7 @@ const readRoundOptions = (roundOptionsFile) => {
     const savedOptions = JSON.parse(text);
 
     return {
-        ...(MODEL_CHOICES.includes(savedOptions?.model) ? { model: savedOptions.model } : {}),
+        ...(util.isValidModel(savedOptions?.model) ? { model: savedOptions.model } : {}),
         ...(EFFORT_LEVELS.includes(savedOptions?.effort) ? { effort: savedOptions.effort } : {})
     };
 };

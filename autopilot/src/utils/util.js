@@ -1,3 +1,5 @@
+import { MODEL_CHOICES, MODEL_ID_PATTERN } from "./config.js";
+
 const HTML_ESCAPE_MAP = {
     "&": "&amp;",
     "<": "&lt;",
@@ -22,4 +24,9 @@ const escapeHtml = (value) => {
     return String(value ?? "").replace(/[&<>"']/g, (character) => HTML_ESCAPE_MAP[character]);
 };
 
-export default { sleep, formatError, formatCost, escapeHtml };
+// 별칭(최신 버전)이거나 특정 버전의 모델 ID여야 한다.
+const isValidModel = (model) => {
+    return MODEL_CHOICES.includes(model) || MODEL_ID_PATTERN.test(model);
+};
+
+export default { sleep, formatError, formatCost, escapeHtml, isValidModel };

@@ -67,6 +67,7 @@ const checkCommandArgs = () => {
         effort: "max",
         open: false
     });
+    assert.equal(parseRunArgs([...project, "--model", "claude-opus-4-8"]).model, "claude-opus-4-8");
     assert.equal(parseRunArgs(project).open, undefined);
     assert.equal(parseRunArgs(project).extendOnLimit, undefined);
     assert.deepEqual(parseRunArgs([...project, "--extend-on-limit", "--no-open"]), { projectDir: "C:\\work\\demo project", open: false, extendOnLimit: true });
@@ -77,6 +78,8 @@ const checkCommandArgs = () => {
     assert.throws(() => parseRunArgs([...project, "--unknown"]), /알 수 없는 인자/);
     assert.throws(() => parseRunArgs([...project, "--effort", "high & echo bad"]));
     assert.throws(() => parseRunArgs([...project, "--model", "gpt"]), /model/);
+    assert.throws(() => parseRunArgs([...project, "--model", "claude-opus & echo bad"]), /model/);
+    assert.throws(() => parseRunArgs([...project, "--model", "claude-"]), /model/);
     assert.throws(() => parseRunArgs([...project, "--model"]));
     assert.throws(() => parseRunArgs(["--project", "--no-open"]));
 
@@ -86,6 +89,7 @@ const checkCommandArgs = () => {
     assert.throws(() => parseProjectArgs([...project, "--model", "opus"]), /알 수 없는 인자/);
 
     assert.deepEqual(parseSetArgs([...project, "--model", "haiku", "--effort", "low"]), { projectDir: "C:\\work\\demo project", model: "haiku", effort: "low" });
+    assert.equal(parseSetArgs([...project, "--model", "claude-sonnet-4-6"]).model, "claude-sonnet-4-6");
     assert.deepEqual(parseSetArgs([...project, "--effort", "xhigh"]), { projectDir: "C:\\work\\demo project", effort: "xhigh" });
 
     for (const invalidArgs of [[], project, [...project, "--no-open"], [...project, "23:00"], [...project, "--model", "gpt"], [...project, "--effort", "extreme"], [...project, "--model"]]) {
@@ -101,6 +105,10 @@ const checkClaudeArgs = () => {
     assert.equal(getValue(getClaudeArgs(), "--effort"), "high");
     assert.equal(getValue(getClaudeArgs(), "--fallback-model"), "sonnet");
     assert.equal(getValue(getClaudeArgs({ model: "haiku", effort: "max" }), "--effort"), "max");
+
+    // 특정 버전의 모델 ID도 그대로 넘기고 fallback은 별칭으로 둔다.
+    assert.equal(getValue(getClaudeArgs({ model: "claude-opus-4-8" }), "--model"), "claude-opus-4-8");
+    assert.equal(getValue(getClaudeArgs({ model: "claude-opus-4-8" }), "--fallback-model"), "sonnet");
 
     // 같은 모델로는 fallback을 지정하지 않는다.
     assert(!getClaudeArgs({ model: "sonnet", effort: "low" }).includes("--fallback-model"));

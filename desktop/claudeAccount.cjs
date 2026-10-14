@@ -1,10 +1,14 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { MODEL_CHOICES, MODEL_ID_PATTERN } = require("./autopilotRunner.cjs");
 
 const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
+const MODELS_URL = "https://api.anthropic.com/v1/models?limit=1000";
 const OAUTH_BETA_HEADER = "oauth-2025-04-20";
+const API_VERSION_HEADER = "2023-06-01";
+const MODELS_TTL_MS = 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_REFRESH_GAP_MS = 15000;
@@ -103,6 +107,20 @@ const parseProfile = (body) => {
     return { name: name, email: email, plan: getPlanName(body.account, body.organization), organization: String(body.organization?.name || "") };
 };
 
+// 공식 모델 목록(/v1/models)에서 쓸 수 있는 모델을 읽는다. 계열(line)이 없으면 ID에 들어 있는 계열 이름으로 대신하고, 새 모델이 나와도 목록이 그대로 따라온다.
+const parseModels = (body) => {
+    const entries = Array.isArray(body?.data) ? body.data : [];
+
+    return entries
+        .filter((entry) => typeof entry?.id === "string" && MODEL_ID_PATTERN.test(entry.id))
+        .map((entry) => ({
+            id: entry.id,
+            line: String(entry.line || MODEL_CHOICES.find((family) => entry.id.includes(family)) || ""),
+            createdAt: Date.parse(entry.created_at) || 0
+        }))
+        .sort((a, b) => b.createdAt - a.createdAt);
+};
+
 const createEmptyAccount = () => {
     return { profile: null, limits: [], fetchedAt: 0, error: null };
 };
@@ -118,10 +136,12 @@ const createAccountReader = (options = {}) => {
     let lastRenewAt = 0;
     let inFlight = null;
     let timer = null;
+    let models = [];
+    let modelsFetchedAt = 0;
 
-    const fetchJson = async (url, token) => {
+    const fetchJson = async (url, token, extraHeaders = {}) => {
         const response = await fetchImpl(url, {
-            headers: { Authorization: `Bearer ${token}`, "anthropic-beta": OAUTH_BETA_HEADER },
+            headers: { Authorization: `Bearer ${token}`, "anthropic-beta": OAUTH_BETA_HEADER, ...extraHeaders },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
         });
 
@@ -215,6 +235,30 @@ const createAccountReader = (options = {}) => {
         return inFlight;
     };
 
+    // 모델 목록은 잘 바뀌지 않아 MODELS_TTL_MS 동안 보관한다. 조회가 안 되면(만료·오프라인) 이전 목록을 그대로 돌려주고 다음 호출 때 다시 시도한다.
+    const getModels = async () => {
+        if (models.length > 0 && now() - modelsFetchedAt < MODELS_TTL_MS) {
+            return models;
+        }
+
+        const oauth = readOAuth(options.credentialsFile || getCredentialsFile());
+
+        if (!oauth?.accessToken || Number(oauth.expiresAt) <= now()) {
+            return models;
+        }
+
+        try {
+            const fetched = parseModels((await fetchJson(MODELS_URL, oauth.accessToken, { "anthropic-version": API_VERSION_HEADER })).body);
+
+            if (fetched.length > 0) {
+                models = fetched;
+                modelsFetchedAt = now();
+            }
+        } catch {}
+
+        return models;
+    };
+
     const start = () => {
         refresh();
 
@@ -226,7 +270,7 @@ const createAccountReader = (options = {}) => {
         clearInterval(timer);
     };
 
-    return { start: start, stop: stop, refresh: refresh, getAccount: () => account };
+    return { start: start, stop: stop, refresh: refresh, getModels: getModels, getAccount: () => account };
 };
 
 module.exports = { createAccountReader };

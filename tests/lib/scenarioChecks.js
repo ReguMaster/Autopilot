@@ -351,6 +351,15 @@ const checkRoundOptions = async (runScenario, context) => {
 
     assert.deepEqual(readRoundOptions(roundOptionsFile), { effort: "max" });
 
+    // 특정 버전의 모델 ID는 받고, 형식이 다른 값은 걸러낸다.
+    fs.writeFileSync(roundOptionsFile, JSON.stringify({ model: "claude-opus-4-8", effort: "low" }));
+
+    assert.deepEqual(readRoundOptions(roundOptionsFile), { model: "claude-opus-4-8", effort: "low" });
+
+    fs.writeFileSync(roundOptionsFile, JSON.stringify({ model: "claude-opus 4; rm -rf", effort: "low" }));
+
+    assert.deepEqual(readRoundOptions(roundOptionsFile), { effort: "low" });
+
     fs.writeFileSync(roundOptionsFile, "{broken");
 
     assert.throws(() => readRoundOptions(roundOptionsFile));

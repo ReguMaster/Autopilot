@@ -612,6 +612,11 @@ body[data-view="done"] .view-done {
     border-bottom: 1px solid var(--hair);
 }
 
+/* 지난 회차의 성과는 이야기 맨 위에 두어, 새 회차의 문장이 그 위로 올라오지 않게 한다 */
+.outcome[data-earlier="true"] {
+    order: -1;
+}
+
 .outcome-say {
     display: flex;
     align-items: baseline;
@@ -643,6 +648,31 @@ body[data-view="done"] .view-done {
     font-size: 0.42em;
     font-weight: 400;
     letter-spacing: 0;
+}
+
+.hero[data-size="xl"] {
+    font-size: var(--title-xl);
+}
+
+.hero[data-size="lg"] {
+    font-size: var(--title-lg);
+}
+
+.hero[data-size="md"] {
+    font-size: var(--title-md);
+}
+
+.hero[data-size="sm"] {
+    font-size: var(--title-sm);
+}
+
+.hero .was,
+.hero .is {
+    min-width: 0;
+    overflow: hidden;
+    padding-block: 0.1em;
+    margin-block: -0.1em;
+    text-overflow: ellipsis;
 }
 
 .hero .was {
@@ -2063,6 +2093,35 @@ body.profile-open #profile {
     color: var(--muted);
     font-size: var(--text-sm);
     line-height: 1.45;
+}
+
+/* 모델 버전: 계열 이름과 버전 선택을 한 줄에 둔다 */
+.versions > .row {
+    padding-block: 10px;
+    border-bottom: 0;
+}
+
+.version-select {
+    flex: 0 1 220px;
+    min-width: 0;
+    height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+}
+
+.version-select:disabled {
+    opacity: 0.5;
+}
+
+.version-note {
+    padding: 0 0 12px;
 }
 
 .path {

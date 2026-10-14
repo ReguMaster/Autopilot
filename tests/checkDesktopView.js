@@ -9,6 +9,8 @@ const EXPORTED_NAMES = [
     "formatClock",
     "formatDeadline",
     "formatOptions",
+    "getModelFamily",
+    "formatModelName",
     "getLineKind",
     "getRunPhase",
     "getRoundTone",
@@ -41,7 +43,7 @@ const loadViewFormat = () => {
     return vm.runInNewContext(`${source}\n({ ${EXPORTED_NAMES.join(", ")} })`);
 };
 
-const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOptions }) => {
+const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
     assert.equal(formatDuration(0), "00:00:00");
     assert.equal(formatDuration(3661000), "01:01:01");
     assert.equal(formatDuration(59999), "00:00:59");
@@ -57,6 +59,17 @@ const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOp
     assert.equal(formatOptions("sonnet", "xhigh"), "Sonnet · XHigh");
     assert.equal(formatOptions("unknown-model", "low"), "unknown-model · Low");
     assert.equal(formatOptions("", "high"), "-");
+
+    assert.equal(formatModelName("opus"), "Opus");
+    assert.equal(formatModelName("claude-opus-5-5"), "Opus 5.5");
+    assert.equal(formatModelName("claude-opus-4-5-20251101"), "Opus 4.5");
+    assert.equal(formatModelName("claude-sonnet-5"), "Sonnet 5");
+    assert.equal(formatModelName("claude-3-5-sonnet-20241022"), "Sonnet 3.5");
+    assert.equal(formatOptions("claude-haiku-5-5", "low"), "Haiku 5.5 · Low");
+    assert.equal(getModelFamily("fable"), "fable");
+    assert.equal(getModelFamily("claude-fable-5-1"), "fable");
+    assert.equal(getModelFamily("claude-3-5-sonnet-20241022"), "sonnet");
+    assert.equal(getModelFamily("claude-mystery-1"), "");
 };
 
 const checkLineKind = ({ getLineKind }) => {

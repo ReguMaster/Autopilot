@@ -5,10 +5,18 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { MODEL_CHOICES as ENGINE_MODELS, EFFORT_LEVELS as ENGINE_EFFORTS, DEFAULT_MODEL, DEFAULT_EFFORT, POLICY_ALIASES, POLICY_SELF } from "../autopilot/src/utils/config.js";
+import {
+    MODEL_CHOICES as ENGINE_MODELS,
+    MODEL_ID_PATTERN as ENGINE_MODEL_ID_PATTERN,
+    EFFORT_LEVELS as ENGINE_EFFORTS,
+    DEFAULT_MODEL,
+    DEFAULT_EFFORT,
+    POLICY_ALIASES,
+    POLICY_SELF
+} from "../autopilot/src/utils/config.js";
 
 const require = createRequire(import.meta.url);
-const { createRunner, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
+const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
 const { createAccountReader } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
@@ -801,6 +809,7 @@ const checkChoiceSync = () => {
     const effort = readEffortChoices(html);
 
     assert.deepEqual(MODEL_CHOICES, ENGINE_MODELS);
+    assert.equal(MODEL_ID_PATTERN.source, ENGINE_MODEL_ID_PATTERN.source);
     assert.deepEqual(EFFORT_CHOICES, ENGINE_EFFORTS);
     assert.deepEqual(model.values, ENGINE_MODELS);
     assert.deepEqual(effort.values, ENGINE_EFFORTS);
@@ -812,6 +821,82 @@ const checkChoiceSync = () => {
     assert.deepEqual(policy.values, ["auto", "todo"]);
     assert(policy.values.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
     assert.equal(POLICY_ALIASES[policy.defaultValue], POLICY_SELF);
+};
+
+// 공식 모델 목록: 새 모델은 목록에서 그대로 따라오고, 형식이 다른 항목은 걸러내며, 조회가 안 되면 이전 목록을 유지한다.
+const checkModelList = async (testDir) => {
+    const credentialsFile = path.join(testDir, "model-credentials.json");
+    const clock = { now: Date.parse("2026-10-14T00:00:00Z") };
+    const requests = [];
+    const state = { response: null, isDown: false };
+    const modelsBody = {
+        data: [
+            { id: "claude-opus-4-8", line: "opus", created_at: "2026-05-28T00:00:00Z" },
+            { id: "claude-opus-5-5", line: "opus", created_at: "2026-09-21T16:24:00Z" },
+            { id: "claude-nova-1", line: "nova", created_at: "2026-10-01T00:00:00Z" },
+            { id: "claude-haiku-4-5-20251001", created_at: "2025-10-15T00:00:00Z" },
+            { id: "gpt-5", line: "other" },
+            { id: "claude-opus 4; rm", line: "opus" },
+            { line: "opus" }
+        ]
+    };
+    const reader = createAccountReader({
+        credentialsFile: credentialsFile,
+        now: () => clock.now,
+        fetchImpl: async (url, init) => {
+            requests.push({ url: url, headers: init.headers });
+
+            if (state.isDown) {
+                throw new Error("fetch failed");
+            }
+
+            return state.response;
+        }
+    });
+
+    state.response = { ok: true, status: 200, json: async () => modelsBody };
+
+    // 토큰이 없거나 만료됐으면 요청하지 않는다.
+    assert.deepEqual(await reader.getModels(), []);
+
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: "secret-token", expiresAt: clock.now - 1 } }));
+
+    assert.deepEqual(await reader.getModels(), []);
+    assert.equal(requests.length, 0);
+
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: "secret-token", expiresAt: clock.now + 3600000 } }));
+
+    const models = await reader.getModels();
+
+    assert.deepEqual(
+        models.map((model) => [model.id, model.line]),
+        [
+            ["claude-nova-1", "nova"],
+            ["claude-opus-5-5", "opus"],
+            ["claude-opus-4-8", "opus"],
+            ["claude-haiku-4-5-20251001", "haiku"]
+        ]
+    );
+    assert.equal(requests.length, 1);
+    assert.equal(new URL(requests[0].url).pathname, "/v1/models");
+    assert.equal(requests[0].headers.Authorization, "Bearer secret-token");
+    assert.equal(requests[0].headers["anthropic-version"], "2023-06-01");
+    assert(models.every((model) => MODEL_ID_PATTERN.test(model.id)));
+
+    // 보관 시간 안에는 다시 요청하지 않고, 지나면 다시 읽되 실패하면 이전 목록을 유지한다.
+    assert.equal(await reader.getModels(), models);
+    assert.equal(requests.length, 1);
+
+    clock.now += 61 * 60 * 1000;
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: "secret-token", expiresAt: clock.now + 3600000 } }));
+    state.response = { ok: false, status: 500, json: async () => ({}) };
+
+    assert.equal(await reader.getModels(), models);
+
+    state.isDown = true;
+
+    assert.equal(await reader.getModels(), models);
+    assert.equal(requests.length, 3);
 };
 
 const runChecks = async () => {
@@ -827,6 +912,7 @@ const runChecks = async () => {
         checkReportOpenGuard(testDir);
 
         await checkClaudeAccount(testDir);
+        await checkModelList(testDir);
         await checkUpdateCheck();
         await checkFinishedRun(testDir);
 

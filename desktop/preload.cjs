@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     start: (options) => ipcRenderer.invoke("autopilot:start", options),
     stop: () => ipcRenderer.invoke("autopilot:stop"),
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
+    setModelVersion: (family, version) => ipcRenderer.invoke("autopilot:set-model-version", family, version),
+    getModels: () => ipcRenderer.invoke("autopilot:get-models"),
     kill: () => ipcRenderer.invoke("autopilot:kill"),
     resetProgress: () => ipcRenderer.invoke("autopilot:reset-progress"),
     openReport: () => ipcRenderer.invoke("autopilot:open-report"),

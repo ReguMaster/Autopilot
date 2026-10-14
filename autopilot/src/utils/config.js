@@ -28,6 +28,7 @@ const DEFAULT_END_TIME = "07:00";
 const DEFAULT_MODEL = "opus";
 const FALLBACK_MODEL = "sonnet";
 const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
+const MODEL_ID_PATTERN = /^claude-[a-z0-9][a-z0-9.-]{0,62}$/;
 const DEFAULT_EFFORT = "high";
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
@@ -84,6 +85,7 @@ export {
     DEFAULT_MODEL,
     FALLBACK_MODEL,
     MODEL_CHOICES,
+    MODEL_ID_PATTERN,
     DEFAULT_EFFORT,
     EFFORT_LEVELS,
     WORK_DIR_NAME,

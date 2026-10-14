@@ -165,6 +165,13 @@ const createAccountIpc = ({
         return { status: STATUS_OK, data: { id: accountId, account: await getReader(accountId).refresh() } };
     };
 
+    // 선택한 계정으로 쓸 수 있는 모델 목록. 조회하지 못하면 빈 목록이고 화면은 "최신"만 보여준다.
+    const handleGetModels = async () => {
+        const models = await getReader(getActiveId(readSettings())).getModels();
+
+        return { status: STATUS_OK, data: { models: models } };
+    };
+
     const handleSelect = (event, accountId) => {
         const settings = readSettings();
 
@@ -391,6 +398,7 @@ const createAccountIpc = ({
     const register = () => {
         ipcMain.handle("autopilot:get-accounts", handleGetAccounts);
         ipcMain.handle("autopilot:refresh-account", handleRefresh);
+        ipcMain.handle("autopilot:get-models", handleGetModels);
         ipcMain.handle("autopilot:select-account", handleSelect);
         ipcMain.handle("autopilot:add-account", handleAdd);
         ipcMain.handle("autopilot:login-account", handleLogin);

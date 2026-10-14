@@ -26,7 +26,9 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 종료 신호는 같은 엔진의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다.
 - 실행 중에는 model·effort를 고르는 즉시 set으로 보낸다(Effort는 팝오버의 단계를 누를 때 한 번). 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다(renderer의 applyRoundOptions).
 - 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 본다. 둘이 다르면 적용 대기로 표시한다.
-- 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES, index.html의 모델 라디오(name="model")·Effort 단계 목록(datalist#effort-levels의 option label)·정책 라디오(name="policy")이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 data-default가 붙은 기본값을 대조한다.
+- 모델은 화면에서 계열 별칭(MODEL_CHOICES, 최신 버전)만 고르고, 설정 패널의 "모델 버전"(#model-versions)이 계열마다 모델 ID를 고정한다(settings.json의 modelVersions, 비면 별칭). 별칭→ID 변환은 메인(autopilotIpc.resolveModel)이 시작·set에서만 하고 settings.model에는 계열을 저장한다. 엔진·러너 state의 model은 ID일 수 있어 renderer·viewFormat이 getModelFamily·formatModelName으로 계열과 이름을 읽는다. 고정은 실행 중에 막고 메인도 거부한다(autopilot:set-model-version).
+- 버전 목록은 claudeAccount.createAccountReader().getModels()가 계정 토큰으로 공식 `GET /v1/models`(anthropic-version 헤더 필요)를 읽어 1시간 보관한다. ID 형식(MODEL_ID_PATTERN)을 벗어난 항목은 걸러내고 실패하면 이전 목록을 유지한다. 새 모델은 목록이 따라오지만 새 계열(line)은 별칭 라디오·MODEL_CHOICES·viewFormat의 MODEL_LABELS·마크를 함께 더해야 보인다. tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
+- 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·MODEL_ID_PATTERN·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES, index.html의 모델 라디오(name="model")·Effort 단계 목록(datalist#effort-levels의 option label)·정책 라디오(name="policy")이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 data-default가 붙은 기본값을 대조한다.
 
 ## 계정
 

@@ -1,7 +1,8 @@
 import { EFFORT_LEVELS, MODEL_CHOICES } from "./config.js";
+import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus] [--effort high] [--config-dir .claude] [--extend-on-limit] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>"
 ].join("\n");
@@ -22,8 +23,8 @@ const parseOptionValue = (args, index) => {
 };
 
 const assertModelAndEffort = (options) => {
-    if (options.model && !MODEL_CHOICES.includes(options.model)) {
-        throw new Error(`잘못된 model 값입니다 (${MODEL_CHOICES.join(" | ")}).`);
+    if (options.model && !util.isValidModel(options.model)) {
+        throw new Error(`잘못된 model 값입니다 (${MODEL_CHOICES.join(" | ")} 또는 claude-로 시작하는 모델 ID).`);
     }
 
     if (options.effort && !EFFORT_LEVELS.includes(options.effort)) {
