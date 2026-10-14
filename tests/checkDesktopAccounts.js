@@ -292,7 +292,7 @@ const checkClaudeCli = async (testDir) => {
 };
 
 const runChecks = async () => {
-    const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-accounts-"));
+    const testDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-accounts-"));
 
     try {
         checkNormalizeAccounts();

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { FAKE_CLI_SOURCE, createTestContext } from "./lib/fixtures.js";
 import {
+    checkProcessIdentity,
     checkInvalidProject,
     checkRunFilePrune,
     checkProgressEnsure,
@@ -36,7 +37,7 @@ import {
 } from "./lib/scenarioChecks.js";
 
 const checkAutopilot = async () => {
-    const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "ap-node-check-"));
+    const testDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "ap-node-check-"));
     const originalConsoleLog = console.log;
     const originalConsoleError = console.error;
     const errorMessages = [];
@@ -48,6 +49,7 @@ const checkAutopilot = async () => {
 
         await checkInvalidProject(context, errorMessages);
 
+        checkProcessIdentity();
         checkRunSettings();
         checkCommandArgs();
         checkClaudeArgs();
@@ -92,7 +94,7 @@ const checkAutopilot = async () => {
         // 임시 폴더만 지우도록 경로를 확인한다.
         const resolvedTestDir = path.resolve(testDir);
 
-        assert.equal(path.dirname(resolvedTestDir), path.resolve(os.tmpdir()));
+        assert.equal(path.dirname(resolvedTestDir), fs.realpathSync.native(os.tmpdir()));
         assert(path.basename(resolvedTestDir).startsWith("ap-node-check-"));
 
         fs.rmSync(resolvedTestDir, { recursive: true, force: true });

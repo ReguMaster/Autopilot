@@ -261,7 +261,7 @@ const checkResetConditions = () => {
 };
 
 const makeEnvironment = (overrides = {}) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ap-schedule-"));
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "ap-schedule-"));
     const env = {
         dir: dir,
         stateFile: path.join(dir, "state.json"),

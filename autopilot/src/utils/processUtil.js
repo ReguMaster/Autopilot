@@ -115,8 +115,27 @@ const isProcessRunning = (pid) => {
     }
 };
 
+// Linux의 comm은 스레드 이름이라 Node 24부터 메인 스레드가 "MainThread"로 보인다. 실행 파일 링크가 실제 이름이다.
+const MAIN_THREAD_NAME = "MainThread";
+
+const getLinuxProcessName = (pid) => {
+    try {
+        return path.basename(fs.readlinkSync(`/proc/${pid}/exe`).replace(/ \(deleted\)$/, ""));
+    } catch {
+        return "";
+    }
+};
+
 // 실행 파일 이름만 돌려준다. 조회에 실패하면 빈 문자열이다.
 const getProcessName = (pid) => {
+    if (process.platform === "linux") {
+        const linuxName = getLinuxProcessName(pid);
+
+        if (linuxName) {
+            return linuxName;
+        }
+    }
+
     const queryResult = IS_WINDOWS
         ? spawnSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { encoding: "utf8", windowsHide: true })
         : spawnSync("ps", ["-p", String(pid), "-o", "comm="], { encoding: "utf8" });
@@ -127,7 +146,9 @@ const getProcessName = (pid) => {
 
     const output = queryResult.stdout.trim();
 
-    return IS_WINDOWS ? output.match(/^"([^"]+)"/)?.[1] || "" : path.basename(output);
+    const name = IS_WINDOWS ? output.match(/^"([^"]+)"/)?.[1] || "" : path.basename(output);
+
+    return name === MAIN_THREAD_NAME ? "" : name;
 };
 
 // 종료된 프로세스의 pid를 다른 프로그램이 재사용한 경우를 걸러낸다. 이름을 알 수 없으면 같은 프로세스로 본다.

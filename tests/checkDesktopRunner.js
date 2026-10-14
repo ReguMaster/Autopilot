@@ -815,7 +815,7 @@ const checkChoiceSync = () => {
 };
 
 const runChecks = async () => {
-    const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-desktop-"));
+    const testDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-desktop-"));
 
     process.env.AP_TEST_DIR = testDir;
 
