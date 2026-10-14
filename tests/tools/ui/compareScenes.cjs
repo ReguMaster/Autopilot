@@ -146,6 +146,14 @@ const main = () => {
 
     for (const [sceneName, entryA] of Object.entries(reportA)) {
         for (const [key, value] of Object.entries(entryA)) {
+            if (key.startsWith("perf")) {
+                console.log(`[PERF] ${sceneName} ${key}
+      A: ${JSON.stringify(value)}
+      B: ${JSON.stringify(reportB[sceneName]?.[key])}`);
+
+                continue;
+            }
+
             if (!["console", "error"].includes(key) && reportB[sceneName] && JSON.stringify(value) !== JSON.stringify(reportB[sceneName][key])) {
                 failures++;
                 console.log(`[DIFF] ${sceneName} note ${key}\n      A: ${JSON.stringify(value)}\n      B: ${JSON.stringify(reportB[sceneName][key])}`);

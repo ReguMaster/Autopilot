@@ -20,6 +20,7 @@ const loadModules = async () => {
         export * as accounts from "./actions/accounts.js";
         export * as schedules from "./actions/schedules.js";
         export * as scheduleStore from "./stores/scheduleStore.js";
+        export * as storyModel from "./features/run/storyModel.js";
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -354,6 +355,18 @@ const checkSchedules = async ({ schedules, scheduleStore, composerStore }) => {
     assert.equal(scheduleStore.useScheduleStore.getState().payload.schedules.length, 0);
 };
 
+const checkStoryView = ({ storyModel }) => {
+    const view = { key: "item:3", text: "문장", time: "10:00:03", pastItems: [{ key: "1:0:앞" }, { key: "2:1:뒤" }] };
+    const copy = { ...view, pastItems: view.pastItems.map((item) => ({ ...item })) };
+
+    assert.equal(storyModel.isSameView(view, copy), true, "같은 모양이면 다시 그리지 않는다");
+    assert.equal(storyModel.isSameView(view, { ...copy, text: "다른 문장" }), false);
+    assert.equal(storyModel.isSameView(view, { ...copy, key: "item:4" }), false, "새 문장이면 다시 그린다");
+    assert.equal(storyModel.isSameView(view, { ...copy, time: "10:00:04" }), false);
+    assert.equal(storyModel.isSameView(view, { ...copy, pastItems: [...copy.pastItems, { key: "3:0:끝" }] }), false, "지난 문장이 늘면 다시 그린다");
+    assert.equal(storyModel.isSameView(view, { ...copy, pastItems: [{ key: "1:0:앞" }, { key: "2:2:뒤" }] }), false, "지난 문장의 도구 수가 바뀌면 다시 그린다");
+};
+
 const checkStores = async () => {
     const modules = await loadModules();
 
@@ -366,6 +379,7 @@ const checkStores = async () => {
     await checkRunActions(modules);
     await checkLoginResume(modules);
     await checkSchedules(modules);
+    checkStoryView(modules);
 
     console.log("Desktop store checks passed.");
     process.exit(0);

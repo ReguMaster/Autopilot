@@ -7,7 +7,7 @@ import { ui, useUiStore } from "../../stores/uiStore.js";
 import { ApplyNote } from "./ApplyNote.jsx";
 import { Outcome } from "./Outcome.jsx";
 import { startReveal } from "./reveal.js";
-import { createStoryModel } from "./storyModel.js";
+import { createStoryModel, isSameView } from "./storyModel.js";
 import { Work } from "./Work.jsx";
 
 const PAST_SLIDE_MS = 520;
@@ -72,7 +72,9 @@ const RunView = () => {
     const pastRef = useRef(null);
     const lineRef = useRef(null);
     const initialVersion = useRef(storyModel.getVersion());
-    const gate = useRef({ isBusy: false, isDirty: false, tops: new Map(), reveal: null, previous: { key: null, text: "" }, run: () => {} });
+    const gate = useRef({ isBusy: false, isDirty: false, tops: new Map(), reveal: null, previous: { key: null, text: "" }, view: null, run: () => {} });
+
+    gate.current.view = view;
     const isHistoryOpen = useUiStore((store) => store.history);
 
     gate.current.run = () => {
@@ -84,9 +86,15 @@ const RunView = () => {
             return;
         }
 
+        const next = storyModel.getView();
+
+        if (isSameView(current.view, next)) {
+            return;
+        }
+
         current.isBusy = true;
         current.tops = measureTops(pastRef.current);
-        flushSync(() => setView(storyModel.getView()));
+        flushSync(() => setView(next));
     };
 
     useEffect(() => {

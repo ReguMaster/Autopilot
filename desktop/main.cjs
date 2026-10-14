@@ -173,6 +173,16 @@ const createWindow = () => {
 
     if (isSmokeTest) {
         const timeout = setTimeout(() => app.exit(1), SMOKE_TEST_TIMEOUT_MS);
+        const consoleErrors = [];
+
+        // 진짜 메인·preload로 부팅하는 동안 화면이 콘솔 오류를 하나라도 남기면 실패한다(IPC 응답 모양이 어긋난 경우 등).
+        window.webContents.on("console-message", (...args) => {
+            const detail = args[0]?.message === undefined ? { level: args[1], message: args[2] } : args[0];
+
+            if (detail.level === "error" || detail.level === 3) {
+                consoleErrors.push(detail.message);
+            }
+        });
 
         window.webContents.once("did-fail-load", () => app.exit(1));
         window.webContents.once("did-finish-load", async () => {
@@ -181,7 +191,8 @@ const createWindow = () => {
             const isBridgeReady = await window.webContents.executeJavaScript(SMOKE_CHECK_SCRIPT).catch(() => false);
             const isEngineReady = await checkEngine();
 
-            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady ? 0 : 1);
+            consoleErrors.forEach((message) => console.error(`화면 콘솔 오류: ${message}`));
+            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && consoleErrors.length === 0 ? 0 : 1);
         });
     }
 
