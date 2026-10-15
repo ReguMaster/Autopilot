@@ -37,6 +37,8 @@ const DEFAULT_SETTINGS = {
     policy: "auto",
     extendOnLimit: false,
     extendLimitMinutes: 0,
+    commitPrefix: "[ap]",
+    workBranch: "ai/autopilot",
     model: "opus",
     modelVersions: {},
     effort: "high",
@@ -52,6 +54,8 @@ const OVERRIDABLE_DEFAULTS = {
     policy: DEFAULT_SETTINGS.policy,
     extendOnLimit: DEFAULT_SETTINGS.extendOnLimit,
     extendLimitMinutes: DEFAULT_SETTINGS.extendLimitMinutes,
+    commitPrefix: DEFAULT_SETTINGS.commitPrefix,
+    workBranch: DEFAULT_SETTINGS.workBranch,
     model: DEFAULT_SETTINGS.model,
     modelVersions: DEFAULT_SETTINGS.modelVersions,
     effort: DEFAULT_SETTINGS.effort

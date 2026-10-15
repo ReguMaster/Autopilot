@@ -12,6 +12,7 @@ import { useAccountStore } from "../../stores/accountStore.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
+import { GitGroup } from "./GitGroup.jsx";
 import { ModelVersions } from "./ModelVersions.jsx";
 import { RunDefaults } from "./RunDefaults.jsx";
 import { ScopeGroup, ScopeNote, useScopedValue } from "./ScopeControls.jsx";
@@ -282,6 +283,7 @@ const SettingsPanel = () => {
             </SettingsGroup>
 
             <LimitGroup />
+            <GitGroup />
             <ProviderGroup />
             <SystemGroup />
             <NotificationGroup />

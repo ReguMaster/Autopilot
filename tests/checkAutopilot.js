@@ -28,6 +28,7 @@ import {
     checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,
+    checkGitNames,
     checkRetriesAndRateLimit,
     checkTimeout,
     checkInterrupt,
@@ -75,6 +76,7 @@ const checkAutopilot = async () => {
         await checkTasksRequired(context, fakeCliFile);
         checkProgressResetCommand(context);
         await checkRoundOptions(scenarioRunner.runScenario, context);
+        await checkGitNames(scenarioRunner.runScenario);
         await checkRetriesAndRateLimit(scenarioRunner.runScenario);
         await checkTimeout(scenarioRunner.runScenario);
         await checkProgressCleanupPrompt(scenarioRunner.runScenario);

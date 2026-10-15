@@ -486,6 +486,7 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
     window.autopilot.updateSettings = async () => ({ status: "FAILED", error: { code: "RUNNING", msg: "실행 중에는 설정을 바꿀 수 없어요." } });
 
     assert.equal(await settings.update({ model: "haiku" }), false);
+    assert.equal(await settings.save({ model: "haiku" }), "실행 중에는 설정을 바꿀 수 없어요.", "save는 입력 줄이 보여줄 이유를 돌려준다");
     assert.equal(useUiStore.getState().notice.message, "실행 중에는 설정을 바꿀 수 없어요.");
 
     window.autopilot.setPreferences = async (patch) => OK({ ...getView({}), settings: { ...getView({}).settings, ...patch } });

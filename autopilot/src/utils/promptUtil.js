@@ -1,6 +1,6 @@
 import { POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
 import dateUtil from "./dateUtil.js";
-import { AUTOPILOT_GUIDE, AUTOPILOT_POLICY } from "./guideText.js";
+import { getAutopilotGuide, getAutopilotPolicy } from "./guideText.js";
 
 const getPolicyPrompt = (policy, todoDoneRelPath) => {
     if (policy === POLICY_TODO) {
@@ -50,7 +50,7 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
         .join(" ");
     const tasksBlock = runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>\n\n` : "";
 
-    return `${roundPrompt}\n\n${tasksBlock}<AUTOPILOT.md>\n${AUTOPILOT_GUIDE}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${AUTOPILOT_POLICY}\n</AUTOPILOT_POLICY.md>`;
+    return `${roundPrompt}\n\n${tasksBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch)}\n</AUTOPILOT_POLICY.md>`;
 };
 
 export default { getProgressCleanupPrompt, getRoundPrompt };

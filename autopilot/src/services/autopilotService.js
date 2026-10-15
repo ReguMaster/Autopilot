@@ -72,7 +72,7 @@ const prepareRun = (options) => {
     const runStart = new Date();
     const runDate = dateUtil.getDateString(runStart);
     const tasks = (options.tasks || "").trim();
-    const runSettings = settingsUtil.getRunSettings(options.endTime, options.policy, runStart);
+    const runSettings = { ...settingsUtil.getRunSettings(options.endTime, options.policy, runStart), ...settingsUtil.getGitSettings(options.commitPrefix, options.workBranch) };
 
     if (runSettings.policy === POLICY_TODO && !tasks) {
         throw new Error("지시개선 정책에는 처리할 작업이 필요합니다.");

@@ -53,6 +53,24 @@ const checkRunSettings = () => {
 
     assert.throws(() => getRunSettings("", "not-todo"));
     assert.throws(() => getRunSettings("", "constructor"));
+
+    // 커밋 접두어와 작업 브랜치: 기본값이 있고, 지침과 git 이름으로 쓸 수 없는 값은 거부한다.
+    const { getGitSettings } = settingsUtil;
+
+    assert.deepEqual(getGitSettings(), { commitPrefix: "[ap]", workBranch: "ai/autopilot" });
+    assert.deepEqual(getGitSettings("chore(ai):", "bot/work-1.2"), { commitPrefix: "chore(ai):", workBranch: "bot/work-1.2" });
+
+    for (const invalidPrefix of ["", " x", "x ", "a`b", "x".repeat(21), "--x", "a\nb", "a\u0000b"]) {
+        assert.throws(() => getGitSettings(invalidPrefix), /커밋 접두어/, JSON.stringify(invalidPrefix));
+    }
+
+    for (const invalidBranch of ["", "main", "Master", "HEAD", "a..b", "/a", "a/", "a//b", "-a", "a b", "x.lock", "a/b.lock", "a.", ".a", "a/.b", "a".repeat(101), "한글", "a;rm", "a@{1}"]) {
+        assert.throws(() => getGitSettings(undefined, invalidBranch), /작업 브랜치/, invalidBranch);
+    }
+
+    for (const validBranch of ["ai/autopilot", "bot", "feature/x-1.2", "a_b", "A1/b2/c3"]) {
+        assert.equal(getGitSettings(undefined, validBranch).workBranch, validBranch);
+    }
 };
 
 const checkCommandArgs = () => {
@@ -72,6 +90,10 @@ const checkCommandArgs = () => {
     assert.equal(parseRunArgs(project).open, undefined);
     assert.equal(parseRunArgs(project).extendOnLimit, undefined);
     assert.equal(parseRunArgs(project).maxExtendMinutes, undefined);
+    assert.deepEqual(parseRunArgs([...project, "--commit-prefix", "chore(ai):", "--branch", "bot/work"]), { projectDir: "C:\\work\\demo project", commitPrefix: "chore(ai):", workBranch: "bot/work" });
+    assert.throws(() => parseRunArgs([...project, "--branch", "main"]), /작업 브랜치/);
+    assert.throws(() => parseRunArgs([...project, "--commit-prefix", "a`b"]), /커밋 접두어/);
+    assert.throws(() => parseRunArgs([...project, "--branch"]));
     assert.equal(parseRunArgs([...project, "--extend-on-limit", "--max-extend-minutes", "90"]).maxExtendMinutes, 90);
 
     for (const invalidMinutes of ["0", "-5", "abc", "1.5", "90분", "10081", "1e3"]) {

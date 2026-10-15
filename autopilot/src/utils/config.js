@@ -30,6 +30,8 @@ const FALLBACK_MODEL = "sonnet";
 const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
 const MODEL_ID_PATTERN = /^claude-[a-z0-9][a-z0-9.-]{0,62}$/;
 const DEFAULT_EFFORT = "high";
+const DEFAULT_COMMIT_PREFIX = "[ap]";
+const DEFAULT_WORK_BRANCH = "ai/autopilot";
 const MAX_EXTEND_MINUTES = 7 * 24 * 60;
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
@@ -88,6 +90,8 @@ export {
     MODEL_CHOICES,
     MODEL_ID_PATTERN,
     DEFAULT_EFFORT,
+    DEFAULT_COMMIT_PREFIX,
+    DEFAULT_WORK_BRANCH,
     MAX_EXTEND_MINUTES,
     EFFORT_LEVELS,
     WORK_DIR_NAME,

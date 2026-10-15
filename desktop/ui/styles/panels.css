@@ -266,6 +266,18 @@ body.profile-open #profile {
     padding: 0 0 12px;
 }
 
+/* 입력 줄 아래에 보이는 저장하지 못한 이유 */
+.field-error {
+    margin-top: 6px;
+    color: var(--warn);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+}
+
+.git-field .scope-note {
+    margin-top: 6px;
+}
+
 /* 이 프로젝트 범위: 전역 값을 따라가는지, 프로젝트가 덮어썼는지 */
 .scope-note {
     display: block;

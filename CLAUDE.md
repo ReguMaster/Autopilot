@@ -51,7 +51,7 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
@@ -119,7 +119,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 - 실제 세션은 claude -p로 실행한다.
 - 프롬프트는 UTF-8 stdin으로 전달한다. shell에는 사용자 프롬프트를 삽입하지 않는다. Windows .cmd 래퍼 실행 인자도 검증한다.
 - 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·예약 작업·진행 기록 경로·정책·남은 시간·작업 수 상한을 명시한다.
-- AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
+- AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고(커밋 접두어와 작업 브랜치를 받는 getAutopilotGuide·getAutopilotPolicy) 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
 - guideText.js의 `진행 문장` 절은 세션이 작업 중 메시지를 1인칭 해요체로 짧게 쓰고, 검증으로 확인한 수치 변화가 있으면 `성과:` 한 줄을 남기게 한다.
 - Claude 세션과 그 하위 프로세스에 ELECTRON_RUN_AS_NODE를 넘기지 않는다(autopilotUtil.getRunEnv가 지운다). 넘기면 대상 프로젝트의 electron 실행이 깨진다.
 - stream-json을 줄 단위로 처리한다. stderr는 별도로 읽으며, CLI가 종료되면 손자 프로세스의 상속 파이프 EOF를 기다리지 않는다.
@@ -140,7 +140,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - 실패: exit code가 0이 아니거나 result.is_error가 true이면 실패다. 5·15·30분 후 재시도하고 연속 4회 실패 시 exit 1로 중단한다.
 - 사용량 한도: rate_limit_event의 allowed* 상태는 정상이다. 한도 도달과 회차 실패가 함께 있고 미래 resetsAt이 있을 때만 실패로 세지 않고 리셋 1분 뒤까지 대기한다. 대기 후 작업 시간이 부족하면 종료한다.
-- --extend-on-limit(앱 설정의 "사용량 한도")이면 대기하기 전에 대기 시간(초 단위 올림)만큼 종료 시각을 늦추고 `[사용량 한도] 종료 시각 연장` 줄을 남긴다. 이때는 대기 전 남은 시간이 최소 남은 시간 이상이면 계속한다. --max-extend-minutes N(1~10080의 정수, 앱 설정의 "연장 상한")이 있으면 한 실행에서 늘리는 총량이 N분으로 묶인다. 남은 상한보다 더 필요하면 남은 만큼만 늘리고(`[사용량 한도] 종료 시각 연장` 줄은 그대로) `[사용량 한도] 연장 상한 N분에 도달해 종료 시각을 더 늘리지 않습니다` 줄을 남기며, 상한 때문에 시간이 모자라 끝나면 종료 이유는 `사용량 한도 연장 상한 도달`이다. 연장 줄이 "까지 대기" 형식과 겹치지 않아야 앱 파서가 대기로 읽지 않는다.
+- --extend-on-limit(앱 설정의 "사용량 한도")이면 대기하기 전에 대기 시간(초 단위 올림)만큼 종료 시각을 늦추고 `[사용량 한도] 종료 시각 연장` 줄을 남긴다. 이때는 대기 전 남은 시간이 최소 남은 시간 이상이면 계속한다. --max-extend-minutes N(1~10080의 정수, 앱 설정의 "연장 상한")이 있으면 한 실행에서 늘리는 총량이 N분으로 묶인다. 남은 상한보다 더 필요하면 남은 만큼만 늘리고(`[사용량 한도] 종료 시각 연장` 줄은 그대로) `[사용량 한도] 연장 상한 N분에 도달해 종료 시각을 더 늘리지 않습니다` 줄을 남기며, 상한 때문에 시간이 모자라 끝나면 종료 이유는 `사용량 한도 연장 상한 도달`이다. 이 줄은 앱 파서의 `까지 대기` 형식과 겹치지 않게 쓴다.
 - 시한: 회차 시한은 min(전체 종료 시각, 회차 시작 + 120분)이다. 출력이 계속 와도 시한을 적용한다. 프로세스 종료는 Windows가 taskkill /T /F, macOS/Linux가 별도 프로세스 그룹 종료다. 독립 세션으로 이탈한 프로세스까지 추적하지 않는다.
 - idle: 정상 회차의 전후로 HEAD의 파일 내용이 바뀌지 않았으면(새 commit이 없음) idle이다. 진행 기록은 저장소 밖이라 따로 제외하지 않는다. 연속 2회면 종료한다.
 - 리포트: HTML 리포트는 실행 중 30초마다, 대기 진입과 종료 때 갱신한다. 실행 중에는 git status를 호출하지 않는다. 모든 외부 문자열을 HTML escape한다.
@@ -149,6 +149,6 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - 우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값).
 - 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이다. 값을 바꾸면 README·지침·검증을 함께 맞춘다.
-- model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다.
+- model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어(기본 [ap], --commit-prefix)와 작업 브랜치(기본 ai/autopilot, --branch)는 실행 인자로 바꾸며 지침과 정책에 끼워 넣는다(엔진이 브랜치를 직접 다루지는 않고 세션이 지침대로 전환·생성한다). 접두어는 앞뒤 공백·백틱·제어 문자가 없고 `--`로 시작하지 않는 1~20자, 브랜치는 영문·숫자·._-와 /로 된 100자 이하 이름(`..`·`.lock`·끝 점 금지)이고, AI가 기본 브랜치에 직접 커밋하지 않도록 main·master·HEAD는 쓸 수 없다. 검증의 원본은 util.js(isValidCommitPrefix·isValidWorkBranch)이고 앱의 desktop/engineArgs.cjs가 같은 규칙을 갖는다(tests/checkDesktopRunner.js가 대조). 값이 있어도 기본값과 같으면 앱은 인자를 생략한다.
 - 종료 시각은 HH:mm만 받는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.
 - 정책 인자는 auto/self/todo/directed 별칭도 지원한다.

@@ -30,24 +30,28 @@ const getSettingsScope = () => {
     return useUiStore.getState().settingsScope === "project" && getSettings().projectDir ? "project" : "global";
 };
 
+const save = async (patch) => {
+    const result = await window.autopilot.updateSettings({ scope: getSettingsScope(), patch: patch });
+
+    ui.showFailure(result);
+
+    if (result.status !== STATUS_OK) {
+        return result.error.msg;
+    }
+
+    applyView(result.data, Object.keys(patch));
+
+    return "";
+};
+
 const settings = {
     applyView: applyView,
     getScope: getSettingsScope,
 
-    // 설정 패널에서 고른 범위(전역 또는 이 프로젝트)에 저장한다.
-    update: async (patch) => {
-        const result = await window.autopilot.updateSettings({ scope: getSettingsScope(), patch: patch });
+    // 설정 패널에서 고른 범위(전역 또는 이 프로젝트)에 저장한다. 실패하면 이유를, 성공하면 빈 문자열을 돌려준다(입력 줄이 이유를 보여준다).
+    save: save,
 
-        ui.showFailure(result);
-
-        if (result.status !== STATUS_OK) {
-            return false;
-        }
-
-        applyView(result.data, Object.keys(patch));
-
-        return true;
-    },
+    update: async (patch) => (await save(patch)) === "",
 
     // 알림처럼 실행과 무관한 전역 환경설정은 범위 없이 바로 저장한다.
     setPreferences: async (patch) => {

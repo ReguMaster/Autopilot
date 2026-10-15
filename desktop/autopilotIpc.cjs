@@ -24,6 +24,11 @@ const SETTINGS_FILE_FILTERS = [{ name: "AutoPilot 설정", extensions: ["json"] 
 const MAX_SETTINGS_IMPORT_BYTES = 2 * 1024 * 1024;
 
 const SETTINGS_SCOPES = ["global", "project"];
+// 값이 올바르지 않을 때 입력 줄이 보여줄 이유. 없는 키는 일반 문구를 쓴다.
+const SETTING_ERROR_MESSAGES = {
+    commitPrefix: "커밋 접두어는 앞뒤 공백·백틱·제어 문자가 없는 1~20자여야 해요.",
+    workBranch: "작업 브랜치는 영문·숫자·._-/로 된 git 브랜치 이름이어야 하고 main·master는 쓸 수 없어요."
+};
 
 const settingsStore = createSettingsStore({ dir: app.getPath("userData") });
 // 계정·시스템·선택한 프로젝트처럼 전역에만 있는 값과 전역 기본값. 프로젝트마다 달라지는 값은 readEffective로 읽는다.
@@ -212,6 +217,8 @@ const launchRun = async (settings, startOptions, { remember }) => {
             args: getCliArgs({
                 ...startOptions,
                 extendLimitMinutes: settings.extendLimitMinutes,
+                commitPrefix: settings.commitPrefix,
+                workBranch: settings.workBranch,
                 model: model,
                 projectDir: settings.projectDir,
                 tasksFile: tasksFile,
@@ -265,7 +272,9 @@ const handleUpdateSettings = (event, request = {}) => {
     }
 
     if (!SETTINGS_SCOPES.includes(scope) || keys.length === 0 || !keys.every((key) => OVERRIDABLE_KEYS.includes(key) && SETTING_VALIDATORS[key](patch[key]))) {
-        return createFailure("INVALID_OPTIONS", "설정 범위나 값이 올바르지 않아요.");
+        const invalidKey = keys.find((key) => !OVERRIDABLE_KEYS.includes(key) || !SETTING_VALIDATORS[key](patch[key]));
+
+        return createFailure("INVALID_OPTIONS", SETTING_ERROR_MESSAGES[invalidKey] || "설정 범위나 값이 올바르지 않아요.");
     }
 
     const { projectDir } = readSettings();

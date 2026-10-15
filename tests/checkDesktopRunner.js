@@ -19,16 +19,19 @@ import {
     EFFORT_LEVELS as ENGINE_EFFORTS,
     DEFAULT_MODEL,
     DEFAULT_EFFORT,
+    DEFAULT_COMMIT_PREFIX as ENGINE_COMMIT_PREFIX,
+    DEFAULT_WORK_BRANCH as ENGINE_WORK_BRANCH,
     POLICY_ALIASES,
     POLICY_SELF
 } from "../autopilot/src/utils/config.js";
+import engineUtil from "../autopilot/src/utils/util.js";
 
 const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
-const { getCliArgs } = require("../desktop/engineArgs.cjs");
+const { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH } = require("../desktop/engineArgs.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -867,6 +870,31 @@ const checkCliArgs = () => {
     assert(getCliArgs({ ...base, extendOnLimit: true }).includes("--extend-on-limit"));
     assert(!getCliArgs({ ...base, extendOnLimit: true }).includes("--max-extend-minutes"), "제한 없음(0)이면 연장 상한을 보내지 않는다");
     assert.deepEqual(getCliArgs({ ...base, extendOnLimit: true, extendLimitMinutes: 180 }).slice(-3), ["--extend-on-limit", "--max-extend-minutes", "180"]);
+
+    const defaults = getCliArgs({ ...base, commitPrefix: DEFAULT_COMMIT_PREFIX, workBranch: DEFAULT_WORK_BRANCH });
+
+    assert(!defaults.includes("--commit-prefix") && !defaults.includes("--branch"), "기본값이면 인자를 생략한다");
+    assert.deepEqual(getCliArgs({ ...base, commitPrefix: "chore(ai):", workBranch: "bot/work" }).slice(-4), ["--commit-prefix", "chore(ai):", "--branch", "bot/work"]);
+};
+
+// 커밋 접두어·작업 브랜치의 기본값과 검증 규칙은 엔진과 앱이 같아야 한다.
+const checkGitNameSync = () => {
+    assert.equal(DEFAULT_COMMIT_PREFIX, ENGINE_COMMIT_PREFIX);
+    assert.equal(DEFAULT_WORK_BRANCH, ENGINE_WORK_BRANCH);
+
+    const prefixes = ["[ap]", "chore(ai):", "", " x", "x ", "a`b", "x".repeat(20), "x".repeat(21), "--x", "a\nb", "한글 접두어", "🤖"];
+    const branches = ["ai/autopilot", "main", "MASTER", "head", "a..b", "/a", "a/", "a//b", "-a", "a b", "x.lock", "a/b.lock", "a.", ".a", "a".repeat(100), "a".repeat(101), "한글", "a_b", "A1/b2"];
+
+    for (const value of prefixes) {
+        assert.equal(isValidCommitPrefix(value), engineUtil.isValidCommitPrefix(value), `커밋 접두어 ${JSON.stringify(value)}`);
+    }
+
+    for (const value of branches) {
+        assert.equal(isValidWorkBranch(value), engineUtil.isValidWorkBranch(value), `작업 브랜치 ${JSON.stringify(value)}`);
+    }
+
+    assert.equal(isValidCommitPrefix(undefined), false);
+    assert.equal(isValidWorkBranch(null), false);
 };
 
 // 허용 값은 엔진(config.js)·러너·화면(desktop/ui/lib/constants.js) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
@@ -970,6 +998,7 @@ const runChecks = async () => {
     try {
         checkChoiceSync();
         checkCliArgs();
+        checkGitNameSync();
         checkProjectError(testDir);
         checkReportOpenGuard(testDir);
 

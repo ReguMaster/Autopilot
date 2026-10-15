@@ -111,6 +111,11 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({}).extendLimitMinutes, 0, "연장 상한은 기본이 제한 없음");
     assert.equal(normalizeSettings({ extendLimitMinutes: 180 }).extendLimitMinutes, 180);
     assert.equal(normalizeSettings({ extendLimitMinutes: 100 }).extendLimitMinutes, 0, "허용되지 않은 값은 기본값");
+    assert.equal(normalizeSettings({}).commitPrefix, "[ap]");
+    assert.equal(normalizeSettings({}).workBranch, "ai/autopilot");
+    assert.equal(normalizeSettings({ commitPrefix: "feat:", workBranch: "bot/x" }).workBranch, "bot/x");
+    assert.equal(normalizeSettings({ workBranch: "main" }).workBranch, "ai/autopilot", "보호 브랜치는 기본값으로");
+    assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
     assert.equal(normalizeSettings({}).sleepBlock, "always");
     assert.equal(normalizeSettings({ sleepBlock: "plugged" }).sleepBlock, "plugged");
     assert.equal(normalizeSettings({ sleepBlock: "sometimes" }).sleepBlock, "always", "허용되지 않은 값은 기본값");

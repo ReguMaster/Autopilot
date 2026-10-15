@@ -1,7 +1,7 @@
-import { PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
+import { DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
 
-// 회차 프롬프트 끝에 그대로 들어가는 작업 지침과 안전 정책 본문.
-const AUTOPILOT_GUIDE = `# AutoPilot
+// 회차 프롬프트 끝에 그대로 들어가는 작업 지침과 안전 정책 본문. 커밋 접두어와 작업 브랜치는 실행 인자로 바뀐다.
+const getAutopilotGuide = (commitPrefix = DEFAULT_COMMIT_PREFIX) => `# AutoPilot
 
 AutoPilot은 프로젝트를 분석하고 스스로 개선 작업을 수행하는 자율 개발 모드다.
 안전 정책은 \`AUTOPILOT_POLICY.md\`에 있으며 이 문서의 모든 절차보다 우선한다.
@@ -123,13 +123,13 @@ AutoPilot은 AutoPilot 앱이 돌리는 여러 회차로 나뉘어 실행된다.
 
 정상적으로 완료되고 검증된 경우에만 commit한다.
 하나의 commit에는 하나의 의미 있는 작업만 담고, commit 메시지는 변경 목적을 한국어로 명확하게 쓴다.
-AutoPilot 작업임을 나타내도록 앞에 \`[ap]\`를 붙인다.
+AutoPilot 작업임을 나타내도록 앞에 \`${commitPrefix}\`를 붙인다.
 
 \`\`\`
-[ap] fix: 상태 손실 방지
-[ap] feat: 복구 개선
-[ap] perf: 처리량 최적화
-[ap] refactor: 구조 정리
+${commitPrefix} fix: 상태 손실 방지
+${commitPrefix} feat: 복구 개선
+${commitPrefix} perf: 처리량 최적화
+${commitPrefix} refactor: 구조 정리
 \`\`\`
 
 ## 작업 중단
@@ -154,17 +154,17 @@ AutoPilot 작업임을 나타내도록 앞에 \`[ap]\`를 붙인다.
 AutoPilot의 목표는 많은 코드를 변경하는 것이 아니다.
 **프로젝트를 더 안정적이고 완성도 높게 만드는 의미 있는 변경을 안전하게 축적하는 것**이다.`;
 
-const AUTOPILOT_POLICY = `# AutoPilot Policy
+const getAutopilotPolicy = (workBranch = DEFAULT_WORK_BRANCH) => `# AutoPilot Policy
 
 AutoPilot 작업 중 반드시 지켜야 하는 안전 정책이다. 작업 절차는 \`AUTOPILOT.md\`에 있다.
 
 ## (중요) Git Branch
 
-모든 수정사항은 반드시 \`ai/autopilot\` 브랜치에서 작업한다.
-AutoPilot을 시작하면 가장 먼저 Git 상태와 현재 브랜치를 확인하고, \`ai/autopilot\`이 아니면 전환한다.
+모든 수정사항은 반드시 \`${workBranch}\` 브랜치에서 작업한다.
+AutoPilot을 시작하면 가장 먼저 Git 상태와 현재 브랜치를 확인하고, \`${workBranch}\`이 아니면 전환한다.
 변경사항이나 untracked 파일 때문에 checkout이 실패하면 stash로 안전하게 저장한 뒤 전환한다.
 기존 사용자의 변경사항을 삭제하거나 강제로 되돌리지 않는다.
-\`ai/autopilot\` 브랜치가 존재하지 않으면 \`main\`에서 분기해 생성한 뒤 그 브랜치로 전환한다.
+\`${workBranch}\` 브랜치가 존재하지 않으면 \`main\`에서 분기해 생성한 뒤 그 브랜치로 전환한다.
 
 ## (중요) 작업 범위
 
@@ -244,4 +244,4 @@ dependency 변경이 프로젝트 전체에 영향을 줄 가능성이 있으면
 
 작업 중 오류가 발생하면 무리하게 수정하거나 우회하지 않고, 현재 변경사항을 확인해 가능한 안전한 상태로 유지한다.`;
 
-export { AUTOPILOT_GUIDE, AUTOPILOT_POLICY };
+export { getAutopilotGuide, getAutopilotPolicy };

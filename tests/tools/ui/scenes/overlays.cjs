@@ -128,6 +128,28 @@ const SCENES = [
         }
     },
     {
+        name: "settings-git",
+        init: {
+            ...withProject,
+            accounts: ACCOUNTS,
+            models: MODELS,
+            responses: { updateSettings: { status: "FAILED", error: { code: "INVALID_OPTIONS", msg: "작업 브랜치는 영문·숫자·._-/로 된 git 브랜치 이름이어야 하고 main·master는 쓸 수 없어요." } } }
+        },
+        run: async (t) => {
+            await openSettings(t);
+            await t.eval('document.querySelector("#git-group").scrollIntoView({ block: "center" })');
+            await t.wait(200);
+            await t.shot("git", "#git-group");
+            await t.click("#git-workBranch");
+            await t.press("End");
+            await t.type("/");
+            await t.press("Enter");
+            await t.wait(500);
+            await t.shot("git-error", "#git-group");
+            await t.note("calls", await callsWithArgs(t));
+        }
+    },
+    {
         name: "settings-model-versions",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {

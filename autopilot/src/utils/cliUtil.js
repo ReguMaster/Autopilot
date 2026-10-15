@@ -1,15 +1,25 @@
 import { EFFORT_LEVELS, MAX_EXTEND_MINUTES, MODEL_CHOICES } from "./config.js";
+import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
 const SET_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--model": "model", "--effort": "effort" };
-const RUN_OPTION_KEYS = { ...SET_OPTION_KEYS, "--config-dir": "configDir", "--end-time": "endTime", "--policy": "policy", "--tasks-file": "tasksFile", "--max-extend-minutes": "maxExtendMinutes" };
+const RUN_OPTION_KEYS = {
+    ...SET_OPTION_KEYS,
+    "--config-dir": "configDir",
+    "--end-time": "endTime",
+    "--policy": "policy",
+    "--tasks-file": "tasksFile",
+    "--max-extend-minutes": "maxExtendMinutes",
+    "--commit-prefix": "commitPrefix",
+    "--branch": "workBranch"
+};
 const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
 
 const parseOptionValue = (args, index) => {
@@ -73,6 +83,8 @@ const parseRunArgs = (args) => {
     if (options.maxExtendMinutes !== undefined) {
         options.maxExtendMinutes = parseMaxExtendMinutes(options.maxExtendMinutes);
     }
+
+    settingsUtil.getGitSettings(options.commitPrefix, options.workBranch);
 
     return { ...options, ...(args.includes("--no-open") && { open: false }), ...(args.includes("--extend-on-limit") && { extendOnLimit: true }) };
 };

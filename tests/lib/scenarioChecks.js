@@ -409,6 +409,24 @@ const checkProgressCleanupPrompt = async (runScenario) => {
     assert.equal(readCleanupLog(await runScenario("commit")), "000");
 };
 
+// 커밋 접두어와 작업 브랜치는 지침과 정책에 들어가고, 바꾸면 기본값은 프롬프트에서 사라진다.
+const checkGitNames = async (runScenario) => {
+    const readPrompt = (runData) => fs.readFileSync(path.join(runData.projectDir, "prompt.txt"), "utf8");
+    const defaultPrompt = readPrompt(await runScenario("idle"));
+
+    assert(defaultPrompt.includes("앞에 `[ap]`를 붙인다."));
+    assert(defaultPrompt.includes("[ap] fix: 상태 손실 방지"));
+    assert(defaultPrompt.includes("`ai/autopilot` 브랜치에서 작업한다"));
+
+    const customPrompt = readPrompt(await runScenario("idle", { commitPrefix: "chore(ai):", workBranch: "bot/work" }));
+
+    assert(customPrompt.includes("앞에 `chore(ai):`를 붙인다."));
+    assert(customPrompt.includes("chore(ai): fix: 상태 손실 방지"));
+    assert(customPrompt.includes("`bot/work` 브랜치에서 작업한다"));
+    assert(!customPrompt.includes("[ap]"));
+    assert(!customPrompt.includes("ai/autopilot"));
+};
+
 const checkRetriesAndRateLimit = async (runScenario) => {
     for (const mode of ["failure", "is-error"]) {
         const failedRunData = await runScenario(mode, { limits: FAILURE_LIMITS });
@@ -612,12 +630,17 @@ const checkCliRun = (context, fakeCliFile, appExe) => {
     assert.match(noTasksResult.stderr, /작업이 필요/);
     assert.equal(runCli([...projectArgs, "--tasks-file", path.join(context.testDir, "missing.md"), "--no-open"]).status, 1);
 
-    const result = runCli([...projectArgs, "--end-time", getEndTime(), "--policy", "todo", "--tasks-file", tasksFile, "--no-open"]);
+    // 잘못된 커밋 접두어·보호 브랜치는 시작 전에 거부한다.
+    assert.equal(runCli([...projectArgs, "--tasks-file", tasksFile, "--branch", "main", "--no-open"]).status, 1);
+    assert.equal(runCli([...projectArgs, "--tasks-file", tasksFile, "--commit-prefix", "a`b", "--no-open"]).status, 1);
+
+    const result = runCli([...projectArgs, "--end-time", getEndTime(), "--policy", "todo", "--tasks-file", tasksFile, "--commit-prefix", "chore(ai):", "--branch", "bot/work", "--no-open"]);
 
     assert.equal(result.status, 0, result.stderr + result.stdout);
     assert.match(result.stdout, /예약 작업 완료/);
     assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<TASKS>\n첫째 작업\n둘째 작업\n<\/TASKS>/);
     assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
+    assert(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8").includes("`bot/work` 브랜치에서 작업한다"));
 
     // 진행 기록은 앱 데이터 폴더(APPDATA)에 만든다.
     const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
@@ -717,6 +740,7 @@ export {
     checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,
+    checkGitNames,
     checkRetriesAndRateLimit,
     checkTimeout,
     checkInterrupt,
