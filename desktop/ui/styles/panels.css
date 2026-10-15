@@ -266,6 +266,12 @@ body.profile-open #profile {
     padding: 0 0 12px;
 }
 
+/* 로그 보관: 지금 차지하는 용량 한 줄 */
+.storage-usage {
+    margin: 0;
+    padding: 12px 0;
+}
+
 /* 입력 줄 아래에 보이는 저장하지 못한 이유 */
 .field-error {
     margin-top: 6px;

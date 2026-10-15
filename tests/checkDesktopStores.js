@@ -565,6 +565,25 @@ const checkSettingsPorting = async ({ appStore, settingsActions, composerStore, 
     assert.deepEqual(calls, ["restoreDefaultSettings"]);
     assert.equal(uiStore.useUiStore.getState().notice.message, "설정을 기본값으로 되돌렸어요.");
     assert.equal(useModalStore.getState().request.tone, "danger", "되돌리기는 위험 모달이다");
+
+    // 보관 기간이 지난 기록 지우기: 확인해야 지우고, 지운 뒤 개수와 용량을 알린다.
+    window.autopilot.pruneRuns = async () => {
+        calls.push("pruneRuns");
+
+        return OK({ deletedCount: 3, freedBytes: 2048 });
+    };
+    window.autopilot.listRuns = async () => OK({ runs: [] });
+    calls.length = 0;
+
+    await answer(settings.pruneStaleRuns, false);
+    assert.deepEqual(calls, [], "취소하면 지우지 않는다");
+    await answer(settings.pruneStaleRuns, true);
+    assert.deepEqual(calls, ["pruneRuns"]);
+    assert.equal(uiStore.useUiStore.getState().notice.message, "오래된 기록 3개를 지웠어요 (2.0 KB).");
+
+    window.autopilot.pruneRuns = async () => OK({ deletedCount: 0, freedBytes: 0 });
+    await answer(settings.pruneStaleRuns, true);
+    assert.equal(uiStore.useUiStore.getState().notice.message, "지울 기록이 없었어요.");
 };
 
 const checkModal = async ({ modalStore }) => {

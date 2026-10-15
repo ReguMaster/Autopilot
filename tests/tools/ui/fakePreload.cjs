@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS = {
     extendLimitMinutes: 0,
     commitPrefix: "[ap]",
     workBranch: "ai/autopilot",
+    logRetentionDays: 30,
     model: "opus",
     modelVersions: {},
     effort: "high",
@@ -56,6 +57,7 @@ const OVERRIDABLE_DEFAULTS = {
     extendLimitMinutes: DEFAULT_SETTINGS.extendLimitMinutes,
     commitPrefix: DEFAULT_SETTINGS.commitPrefix,
     workBranch: DEFAULT_SETTINGS.workBranch,
+    logRetentionDays: DEFAULT_SETTINGS.logRetentionDays,
     model: DEFAULT_SETTINGS.model,
     modelVersions: DEFAULT_SETTINGS.modelVersions,
     effort: DEFAULT_SETTINGS.effort
@@ -188,6 +190,13 @@ const api = {
 
         return ok(getSettingsView());
     }),
+    getRunUsage: respond("getRunUsage", async () =>
+        ok({
+            usage:
+                model.usage === undefined ? { runCount: 12, bytes: 4400000, staleCount: 8, staleBytes: 3900000, oldestDay: "2026-08-02", retentionDays: model.settings.logRetentionDays } : model.usage
+        })
+    ),
+    pruneRuns: respond("pruneRuns", async () => ok({ deletedCount: 8, freedBytes: 3900000 })),
     getModels: respond("getModels", async () => ok({ models: model.models })),
     kill: respond("kill", async () => ok({})),
     resetProgress: respond("resetProgress", async () => ok({ isReset: true })),

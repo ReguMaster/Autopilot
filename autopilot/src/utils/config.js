@@ -33,6 +33,7 @@ const DEFAULT_EFFORT = "high";
 const DEFAULT_COMMIT_PREFIX = "[ap]";
 const DEFAULT_WORK_BRANCH = "ai/autopilot";
 const MAX_EXTEND_MINUTES = 7 * 24 * 60;
+const MAX_LOG_RETENTION_DAYS = 3650;
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
 const WORK_DIR_NAME = ".autopilot";
@@ -93,6 +94,7 @@ export {
     DEFAULT_COMMIT_PREFIX,
     DEFAULT_WORK_BRANCH,
     MAX_EXTEND_MINUTES,
+    MAX_LOG_RETENTION_DAYS,
     EFFORT_LEVELS,
     WORK_DIR_NAME,
     APP_DATA_DIR_NAME,

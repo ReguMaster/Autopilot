@@ -150,6 +150,22 @@ const SCENES = [
         }
     },
     {
+        name: "settings-storage",
+        init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
+        run: async (t) => {
+            await openSettings(t);
+            await t.eval('document.querySelector("#storage-group").scrollIntoView({ block: "center" })');
+            await t.wait(300);
+            await t.shot("storage", "#storage-group");
+            await t.clearCalls();
+            await t.click("#prune-runs");
+            await t.wait(300);
+            await t.confirm();
+            await t.wait(500);
+            await t.note("calls", await callsWithArgs(t));
+        }
+    },
+    {
         name: "settings-model-versions",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {

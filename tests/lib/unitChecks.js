@@ -90,6 +90,14 @@ const checkCommandArgs = () => {
     assert.equal(parseRunArgs(project).open, undefined);
     assert.equal(parseRunArgs(project).extendOnLimit, undefined);
     assert.equal(parseRunArgs(project).maxExtendMinutes, undefined);
+    assert.equal(parseRunArgs(project).logRetentionDays, undefined);
+    assert.equal(parseRunArgs([...project, "--log-retention-days", "7"]).logRetentionDays, 7);
+
+    for (const invalidDays of ["0", "-1", "abc", "1.5", "7일", "3651"]) {
+        assert.throws(() => parseRunArgs([...project, "--log-retention-days", invalidDays]), /log-retention-days/, invalidDays);
+    }
+
+    assert.throws(() => parseRunArgs([...project, "--log-retention-days"]));
     assert.deepEqual(parseRunArgs([...project, "--commit-prefix", "chore(ai):", "--branch", "bot/work"]), { projectDir: "C:\\work\\demo project", commitPrefix: "chore(ai):", workBranch: "bot/work" });
     assert.throws(() => parseRunArgs([...project, "--branch", "main"]), /작업 브랜치/);
     assert.throws(() => parseRunArgs([...project, "--commit-prefix", "a`b"]), /커밋 접두어/);

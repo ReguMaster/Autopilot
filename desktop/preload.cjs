@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     readRun: (id) => ipcRenderer.invoke("autopilot:read-run", id),
     openRunFile: (id, kind) => ipcRenderer.invoke("autopilot:open-run-file", id, kind),
     deleteRun: (id) => ipcRenderer.invoke("autopilot:delete-run", id),
+    getRunUsage: () => ipcRenderer.invoke("autopilot:get-run-usage"),
+    pruneRuns: () => ipcRenderer.invoke("autopilot:prune-runs"),
     openUpdate: () => ipcRenderer.invoke("autopilot:open-update"),
     getSchedules: () => ipcRenderer.invoke("autopilot:get-schedules"),
     saveSchedule: (payload) => ipcRenderer.invoke("autopilot:save-schedule", payload),

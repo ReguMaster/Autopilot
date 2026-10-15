@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
-const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
+const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState, notify, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
 const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
@@ -219,6 +219,7 @@ const launchRun = async (settings, startOptions, { remember }) => {
                 extendLimitMinutes: settings.extendLimitMinutes,
                 commitPrefix: settings.commitPrefix,
                 workBranch: settings.workBranch,
+                logRetentionDays: settings.logRetentionDays,
                 model: model,
                 projectDir: settings.projectDir,
                 tasksFile: tasksFile,
@@ -693,6 +694,36 @@ const handleDeleteRun = async (event, id) => {
     }
 };
 
+// 선택한 프로젝트의 지난 로그·리포트 용량과, 지금 보관 기간 설정으로 정리될 몫. 프로젝트를 고르지 않았으면 null이다.
+const handleGetRunUsage = async () => {
+    const { projectDir, logRetentionDays } = readEffective();
+
+    if (getProjectError(projectDir)) {
+        return { status: STATUS_OK, data: { usage: null } };
+    }
+
+    try {
+        return { status: STATUS_OK, data: { usage: { ...(await getRunUsage(projectDir, logRetentionDays)), retentionDays: logRetentionDays } } };
+    } catch (error) {
+        return createFailure("USAGE_FAILED", `기록 용량을 읽지 못했어요: ${error.message}`);
+    }
+};
+
+// 보관 기간이 지난 로그와 리포트를 지금 지운다. 되돌릴 수 없는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handlePruneRuns = async () => {
+    const { projectDir, logRetentionDays } = readEffective();
+
+    if (getProjectError(projectDir)) {
+        return createFailure("INVALID_PROJECT", "프로젝트를 먼저 선택해 주세요.");
+    }
+
+    try {
+        return { status: STATUS_OK, data: await pruneRuns(projectDir, logRetentionDays, { activeLogFile: getActiveLogFile() }) };
+    } catch (error) {
+        return createFailure("PRUNE_FAILED", `오래된 기록을 지우지 못했어요: ${error.message}`);
+    }
+};
+
 const registerIpc = () => {
     settingsStore.recover();
     settingsStore.upgrade();
@@ -716,6 +747,8 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:read-run", handleReadRun);
     ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
     ipcMain.handle("autopilot:delete-run", handleDeleteRun);
+    ipcMain.handle("autopilot:get-run-usage", handleGetRunUsage);
+    ipcMain.handle("autopilot:prune-runs", handlePruneRuns);
     ipcMain.handle("autopilot:open-update", handleOpenUpdate);
     ipcMain.handle("autopilot:set-system", handleSetSystem);
     ipcMain.handle("autopilot:get-schedules", () => ({ status: STATUS_OK, data: scheduler.getPayload() }));

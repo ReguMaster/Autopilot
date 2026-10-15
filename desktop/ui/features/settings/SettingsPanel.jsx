@@ -15,6 +15,7 @@ import { ui, useUiStore } from "../../stores/uiStore.js";
 import { GitGroup } from "./GitGroup.jsx";
 import { ModelVersions } from "./ModelVersions.jsx";
 import { RunDefaults } from "./RunDefaults.jsx";
+import { StorageGroup } from "./StorageGroup.jsx";
 import { ScopeGroup, ScopeNote, useScopedValue } from "./ScopeControls.jsx";
 
 const SLEEP_BLOCK_OPTIONS = [
@@ -288,6 +289,7 @@ const SettingsPanel = () => {
             <SystemGroup />
             <NotificationGroup />
             <HistoryGroup />
+            <StorageGroup />
             <ManageGroup />
 
             <SettingsGroup id="group-dev" sectionId="dev-group" title="개발자" hidden={!isDev}>

@@ -1,8 +1,10 @@
+import { formatBytes } from "../../viewFormat.js";
 import { STATUS_OK } from "../lib/constants.js";
 import { applySettingsView, getSettings } from "../stores/appStore.js";
 import { composer } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
+import { loadRecentRuns } from "./runs.js";
 
 // 메인이 돌려준 설정(적용되는 값·덮어쓴 키·전역 값)을 스토어에 반영한다. composerKeys를 주면 컴포저도 그 키만 따라가고, 안내가 있으면 보여준다.
 const applyView = (view, composerKeys) => {
@@ -114,6 +116,29 @@ const settings = {
         if (result.status === STATUS_OK) {
             applyView(result.data, COMPOSER_KEYS);
             ui.showNotice("설정을 기본값으로 되돌렸어요.", "ok");
+        }
+    },
+
+    // 보관 기간이 지난 로그·리포트를 지금 지운다. 되돌릴 수 없어 확인을 먼저 받는다.
+    pruneStaleRuns: async () => {
+        const isConfirmed = await modal.confirm({
+            title: "오래된 기록을 지울까요?",
+            message: "보관 기간이 지난 로그와 리포트를 지금 지워요. 지난 실행 목록에서도 사라지고 되돌릴 수 없어요. 커밋과 진행 기록은 그대로예요.",
+            confirmLabel: "지우기",
+            tone: "danger"
+        });
+
+        if (!isConfirmed) {
+            return;
+        }
+
+        const result = await window.autopilot.pruneRuns();
+
+        ui.showFailure(result);
+
+        if (result.status === STATUS_OK) {
+            ui.showNotice(result.data.deletedCount ? `오래된 기록 ${result.data.deletedCount}개를 지웠어요 (${formatBytes(result.data.freedBytes)}).` : "지울 기록이 없었어요.", "ok");
+            loadRecentRuns();
         }
     },
 

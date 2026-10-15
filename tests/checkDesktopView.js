@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import * as viewFormat from "../desktop/viewFormat.js";
 
-const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
+const checkFormatting = ({ formatDuration, formatBytes, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
     assert.equal(formatDuration(0), "00:00:00");
     assert.equal(formatDuration(3661000), "01:01:01");
     assert.equal(formatDuration(59999), "00:00:59");
     assert.equal(formatDuration(100 * 3600000), "100:00:00");
     assert.equal(formatDuration(-5000), "00:00:00");
+
+    assert.deepEqual([0, 512, 1536, 12 * 1024 * 1024, 5 * 1024 ** 3, -1, "x"].map(formatBytes), ["0 B", "512 B", "1.5 KB", "12 MB", "5.0 GB", "0 B", "0 B"]);
 
     const morning = new Date(2026, 9, 10, 7, 5).getTime();
 

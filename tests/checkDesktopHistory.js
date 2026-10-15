@@ -5,7 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { listRuns, readRun, deleteRun, getRunFiles, MAX_DETAIL_LINES } = require("../desktop/runHistory.cjs");
+const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_DETAIL_LINES } = require("../desktop/runHistory.cjs");
 
 const DAY = "2026-10-13";
 const OTHER_DAY = "2026-10-12";
@@ -272,6 +272,55 @@ const checkDelete = async (projectDir) => {
     assert.equal(fs.existsSync(path.dirname(log)), false);
 };
 
+// 용량과 정리: 보관 기간이 지난 날짜 폴더의 로그·리포트만 세고 지우며, 완료 마커·보관한 진행 기록·형식이 다른 파일·진행 중인 로그는 건드리지 않는다.
+const checkUsageAndPrune = async () => {
+    const projectDir = createProject();
+    const now = new Date(2026, 9, 15, 12, 0, 0);
+    const progressDir = path.join(projectDir, ".autopilot", "progress");
+
+    try {
+        assert.deepEqual(await getRunUsage(projectDir, 30, { now: now }), { runCount: 0, bytes: 0, staleCount: 0, staleBytes: 0, oldestDay: "" });
+        assert.deepEqual(await pruneRuns(path.join(projectDir, "missing"), 30, { now: now }), { deletedCount: 0, freedBytes: 0 });
+
+        // 보관 기간 7일이면 2026-10-08보다 이른 폴더가 정리 대상이다(10-08 폴더는 남는다).
+        writeRun(projectDir, "2026-10-01", "autopilot_000000_aaaa0001.log", "x".repeat(1000));
+        writeRun(projectDir, "2026-10-01", "report_000000_aaaa0001.html", "y".repeat(500));
+        writeRun(projectDir, "2026-10-01", "TODO_COMPLETE", "");
+        writeRun(projectDir, "2026-10-01", "AUTOPILOT_PROGRESS_aaaa0001.md", "archived");
+        writeRun(projectDir, "2026-10-02", "autopilot_000000_aaaa0002.log", "z".repeat(200));
+        writeRun(projectDir, "2026-10-08", "autopilot_000000_aaaa0003.log", "w".repeat(100));
+        writeRun(projectDir, "2026-10-14", "autopilot_000000_aaaa0004.log", "v".repeat(50));
+        writeRun(projectDir, "2026-10-14", "notes.txt", "ignored");
+
+        const usage = await getRunUsage(projectDir, 7, { now: now });
+
+        assert.deepEqual(usage, { runCount: 4, bytes: 1850, staleCount: 2, staleBytes: 1700, oldestDay: "2026-10-01" });
+        assert.equal((await getRunUsage(projectDir, 30, { now: now })).staleCount, 0, "보관 기간이 길면 정리 대상이 없다");
+        assert.equal((await getRunUsage(projectDir, 1, { now: now })).staleCount, 3);
+
+        const activeLog = path.join(progressDir, "2026-10-02", "autopilot_000000_aaaa0002.log");
+        const kept = await pruneRuns(projectDir, 7, { activeLogFile: activeLog, now: now });
+
+        assert.deepEqual(kept, { deletedCount: 1, freedBytes: 1500 }, "진행 중인 로그는 지우지 않는다");
+        assert(fs.existsSync(activeLog));
+        assert(!fs.existsSync(path.join(progressDir, "2026-10-01", "autopilot_000000_aaaa0001.log")));
+        assert(!fs.existsSync(path.join(progressDir, "2026-10-01", "report_000000_aaaa0001.html")));
+        assert(fs.existsSync(path.join(progressDir, "2026-10-01", "TODO_COMPLETE")), "완료 마커는 남긴다");
+        assert(fs.existsSync(path.join(progressDir, "2026-10-01", "AUTOPILOT_PROGRESS_aaaa0001.md")), "보관한 진행 기록 원본은 남긴다");
+        assert(fs.existsSync(path.join(progressDir, "2026-10-08", "autopilot_000000_aaaa0003.log")));
+        assert(fs.existsSync(path.join(progressDir, "2026-10-14", "notes.txt")));
+
+        const rest = await pruneRuns(projectDir, 7, { now: now });
+
+        assert.deepEqual(rest, { deletedCount: 1, freedBytes: 200 });
+        assert(!fs.existsSync(path.join(progressDir, "2026-10-02")), "비게 된 날짜 폴더는 지운다");
+        assert(fs.existsSync(path.join(progressDir, "2026-10-01")), "다른 파일이 남은 날짜 폴더는 지우지 않는다");
+        assert.deepEqual(await pruneRuns(projectDir, 7, { now: now }), { deletedCount: 0, freedBytes: 0 });
+    } finally {
+        fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+};
+
 const checkHistory = async () => {
     const projectDir = createProject();
 
@@ -283,6 +332,7 @@ const checkHistory = async () => {
         await checkSafety(projectDir);
         await checkUnreadable(projectDir);
         await checkDelete(projectDir);
+        await checkUsageAndPrune();
 
         console.log("Desktop history checks passed.");
     } finally {

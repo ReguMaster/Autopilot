@@ -61,7 +61,7 @@ const getProjectPaths = (options) => {
 
 // 실행 전 검증과 폴더·로그 준비를 마치고 회차 실행에 필요한 값을 모아 반환한다.
 const prepareRun = (options) => {
-    const runConfig = { ...AUTOPILOT_DEFAULTS, ...options.limits };
+    const runConfig = { ...AUTOPILOT_DEFAULTS, ...(options.logRetentionDays && { logRetentionDays: options.logRetentionDays }), ...options.limits };
     const { projectDir, workDir } = getProjectPaths(options);
     const env = autopilotUtil.getRunEnv(options);
     const runGitCommand = gitUtil.createGitRunner(processUtil.getExecutablePath("git", env), projectDir, env);

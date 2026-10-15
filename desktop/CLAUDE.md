@@ -69,10 +69,11 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 ## 지난 실행(기록 보기)
 
 - 시작 화면(#recent)에 최근 3개, 설정 패널의 지난 실행 보기·#archive-all의 전체 보기가 시트(#archive)로 목록과 상세(채팅 모양 #archive-chat)를 연다.
-- 원본은 대상 프로젝트의 .autopilot/progress/<날짜>/autopilot_*.log뿐이다. 별도 저장소를 두지 않는다(보관 기간은 엔진의 logRetentionDays를 따른다).
+- 원본은 대상 프로젝트의 .autopilot/progress/<날짜>/autopilot_*.log뿐이다. 별도 저장소를 두지 않는다(보관 기간은 엔진의 logRetentionDays를 따르고, 앱의 설정 logRetentionDays(7·14·30·90·180일, 기본 30, 덮어쓸 수 있는 키)를 기본값과 다를 때 `--log-retention-days`로 넘긴다).
 - 읽기는 메인 프로세스의 runHistory.cjs(listRuns·readRun)가 하고 IPC는 autopilot:list-runs·read-run·open-run-file이다. 렌더러가 보내는 값은 실행 id(`YYYY-MM-DD/autopilot_*.log`)뿐이고 getRunFiles가 형식을 검사해 진행 기록 폴더 안의 경로로만 바꾼다. 열기(리포트·원본 로그)는 projectFiles의 isProjectReportFile·isProjectLogFile로 실제 경로까지 검사한다. 목록의 심볼릭 링크·junction은 따라가지 않는다.
 - 시작 시각은 폴더 날짜와 파일 이름의 HHmmss, 끝 시각은 파일 수정 시각이다(7일을 넘기면 알 수 없음). 요약 문장은 viewFormat.describePastRun이 만든다. 대화 변환(viewFormat.buildTranscript)은 알아볼 수 없는 줄을 건너뛰고 1500개까지만 둔다.
 - 깨진 로그 대응: 잘못된 UTF-8·BOM·CRLF·제어 문자·2000자 넘는 줄을 정리한다. 16MB를 넘으면 끝부분만 읽고(isPartial) 상세는 최근 20000줄까지 보낸다. 비었거나 알아볼 줄이 없으면 isEmpty, 읽기 오류는 isUnreadable, 끝맺음 줄이 없으면 reason이 비어 `끝맺음 없음`이다. 실행 중인 엔진의 로그(isActive)는 끝맺음이 없어도 비정상으로 보지 않는다.
+- 설정 패널의 "로그 보관"(StorageGroup)은 보관 기간과 지금 차지하는 용량(runHistory.getRunUsage, autopilot:get-run-usage. 보관 기간이 지나 정리될 몫 포함)을 보여주고 "지금 지우기"(runHistory.pruneRuns, autopilot:prune-runs)로 그 몫을 바로 지운다. 정리 기준은 엔진 pruneRunFiles와 같다(오늘 0시에서 보관 기간만큼 거슬러 올라간 날짜보다 이른 폴더의 autopilot_*.log·report_*.html만, 링크는 따라가지 않음. 진행 중인 로그·완료 마커·보관한 진행 기록 원본·다른 파일은 건드리지 않고 비게 된 날짜 폴더만 지움). 되돌릴 수 없어 화면의 확인 모달을 먼저 거친다.
 - 삭제(autopilot:delete-run, runHistory.deleteRun)는 화면의 확인 모달(actions/runs.js의 deleteArchiveRun)을 거쳐 그 실행의 로그·리포트만 지운다. 진행 중인 실행(isActive)은 거부하고 날짜 폴더는 비었을 때만 지운다(완료 마커·보관 원본은 건드리지 않는다).
 
 ## 새 버전 알림

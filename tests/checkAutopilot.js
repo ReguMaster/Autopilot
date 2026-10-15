@@ -22,6 +22,7 @@ import {
     createScenarioRunner,
     checkRoundOutcomes,
     checkLogRetention,
+    checkLogRetentionOption,
     checkProgressResetFlow,
     checkProgressCreated,
     checkTasksRequired,
@@ -71,6 +72,7 @@ const checkAutopilot = async () => {
 
         await checkRoundOutcomes(scenarioRunner.runScenario);
         await checkLogRetention(scenarioRunner.runScenario);
+        await checkLogRetentionOption(scenarioRunner.runScenario);
         await checkProgressResetFlow(scenarioRunner.runScenario);
         await checkProgressCreated(scenarioRunner, context, fakeCliFile);
         await checkTasksRequired(context, fakeCliFile);

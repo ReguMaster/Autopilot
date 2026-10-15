@@ -116,6 +116,9 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({ commitPrefix: "feat:", workBranch: "bot/x" }).workBranch, "bot/x");
     assert.equal(normalizeSettings({ workBranch: "main" }).workBranch, "ai/autopilot", "보호 브랜치는 기본값으로");
     assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
+    assert.equal(normalizeSettings({}).logRetentionDays, 30);
+    assert.equal(normalizeSettings({ logRetentionDays: 7 }).logRetentionDays, 7);
+    assert.equal(normalizeSettings({ logRetentionDays: 10 }).logRetentionDays, 30, "허용되지 않은 값은 기본값");
     assert.equal(normalizeSettings({}).sleepBlock, "always");
     assert.equal(normalizeSettings({ sleepBlock: "plugged" }).sleepBlock, "plugged");
     assert.equal(normalizeSettings({ sleepBlock: "sometimes" }).sleepBlock, "always", "허용되지 않은 값은 기본값");

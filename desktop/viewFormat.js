@@ -11,6 +11,20 @@ const formatDuration = (ms) => {
     return `${padNumber(Math.floor(totalSeconds / 3600))}:${padNumber(Math.floor((totalSeconds % 3600) / 60))}:${padNumber(totalSeconds % 60)}`;
 };
 
+// 파일 크기를 1024 단위로 읽기 쉽게(1.5 KB, 12 MB).
+const formatBytes = (bytes) => {
+    const units = ["B", "KB", "MB", "GB"];
+    let value = Math.max(0, Number(bytes) || 0);
+    let index = 0;
+
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index++;
+    }
+
+    return `${index === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+};
+
 const formatClock = (ms) => {
     const date = new Date(ms);
 
@@ -932,6 +946,7 @@ export {
     MODEL_LABELS,
     padNumber,
     formatDuration,
+    formatBytes,
     formatClock,
     formatDeadline,
     DEFAULT_END_TIME,

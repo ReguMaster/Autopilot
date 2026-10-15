@@ -305,6 +305,20 @@ const checkLogRetention = async (runScenario) => {
     assert.match(fs.readFileSync(result.logFile, "utf8"), /^\[정리\] 보관 기간 30일이 지난 로그·리포트 2개를 삭제했습니다\.$/m);
 };
 
+// 보관 기간을 인자로 줄이면 그 기간이 지난 파일만 지운다. 같은 파일이 기본(30일)에서는 남는다.
+const checkLogRetentionOption = async (runScenario) => {
+    const tenDaysAgo = dateUtil.getDateString(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000));
+    const oldLog = `progress/${tenDaysAgo}/autopilot_000000_cccc3333.log`;
+    const keptRunData = await runScenario("idle", { staleFiles: [oldLog] });
+
+    assert(fs.existsSync(path.join(keptRunData.projectDir, ".autopilot", oldLog)));
+
+    const prunedRunData = await runScenario("idle", { staleFiles: [oldLog], logRetentionDays: 7 });
+
+    assert(!fs.existsSync(path.join(prunedRunData.projectDir, ".autopilot", oldLog)));
+    assert.match(fs.readFileSync(prunedRunData.logFile, "utf8"), /^\[정리\] 보관 기간 7일이 지난 로그·리포트 1개를 삭제했습니다\.$/m);
+};
+
 // 실행 중에 바꾼 model·effort는 다음 회차부터 적용하고, 이전 실행의 변경 파일은 시작할 때 지운다.
 const checkRoundOptions = async (runScenario, context) => {
     const readStartLines = (runData) => {
@@ -734,6 +748,7 @@ export {
     createScenarioRunner,
     checkRoundOutcomes,
     checkLogRetention,
+    checkLogRetentionOption,
     checkProgressResetFlow,
     checkProgressCreated,
     checkTasksRequired,

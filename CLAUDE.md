@@ -51,7 +51,7 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
@@ -96,7 +96,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - --project는 Git 저장소의 루트 폴더여야 한다(엔진이 확인).
 - 프로젝트 안의 .autopilot/은 progress/(로그·리포트·실행 신호)와 recycle_bin/을 두는 작업 폴더이며 엔진이 만들고 .gitignore(*)를 써서 프로젝트 git에서 제외한다(이미 있는 .gitignore는 건드리지 않는다). 중첩 .git은 두지 않는다.
-- 실행을 시작할 때 보관 기간(기본 30일, limits의 logRetentionDays로만 조정)이 지난 날짜 폴더의 autopilot_*.log·report_*.html만 지운다. 보관한 진행 기록 원본·완료 마커·날짜가 아닌 폴더는 건드리지 않고 링크는 따라가지 않으며, 실패해도 실행은 계속한다.
+- 실행을 시작할 때 보관 기간(기본 30일, --log-retention-days N(1~3650의 정수, 앱 설정의 "보관 기간") 또는 테스트용 limits의 logRetentionDays로 조정. limits가 우선)이 지난 날짜 폴더의 autopilot_*.log·report_*.html만 지운다. 보관한 진행 기록 원본·완료 마커·날짜가 아닌 폴더는 건드리지 않고 링크는 따라가지 않으며, 실패해도 실행은 계속한다.
 
 ### 예약 작업
 
