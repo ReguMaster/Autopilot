@@ -105,6 +105,29 @@ const SCENES = [
         }
     },
     {
+        name: "settings-scope",
+        init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
+        run: async (t) => {
+            await openSettings(t);
+            await t.shot("global-top", "#settings");
+            await t.clearCalls();
+            await t.click("#settings .seg-option:nth-child(2)");
+            await t.wait(300);
+            await t.shot("project-top", "#settings");
+            await t.click("#defaults-group .version-row:nth-child(2) .select-trigger");
+            await t.click("#defaults-group .version-row:nth-child(2) .select-option:nth-child(2)");
+            await t.wait(500);
+            await t.shot("project-overridden", "#defaults-group");
+            await t.note("calls", await callsWithArgs(t));
+            await t.click("#settings .scope-reset");
+            await t.wait(500);
+            await t.shot("project-reset", "#defaults-group");
+            await t.note("calls-after-reset", await callsWithArgs(t));
+            await t.scrollTo("#settings .panel-scroll", 380);
+            await t.shot("project-middle", "#settings");
+        }
+    },
+    {
         name: "settings-model-versions",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {

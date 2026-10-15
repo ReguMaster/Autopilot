@@ -6,7 +6,8 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { readJsonFile, writeJsonFile, recoverJsonFile } = require("../desktop/jsonFile.cjs");
-const { createSettingsStore, normalizeSettings, migrateSettings, DEFAULT_SETTINGS, SETTINGS_VERSION } = require("../desktop/settingsStore.cjs");
+const { createSettingsStore, normalizeSettings, normalizeOverrides, migrateSettings, getProjectKey, DEFAULT_SETTINGS, SETTINGS_VERSION } = require("../desktop/settingsStore.cjs");
+const { getDefaultSchedule } = require("../desktop/scheduleRules.cjs");
 
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-settings-"));
 
@@ -162,10 +163,149 @@ const checkStore = () => {
     }
 };
 
+// 전역과 프로젝트: 덮어쓴 키만 프로젝트 파일에 있고, 없는 키는 전역 값을 따른다.
+const checkProjectSettings = () => {
+    const dir = createTempDir();
+    const projectA = createTempDir();
+    const projectB = createTempDir();
+
+    try {
+        const store = createSettingsStore({ dir: dir });
+
+        store.update({ projectDir: projectA, model: "sonnet", effort: "low" });
+
+        let view = store.resolve();
+
+        assert.equal(view.settings.model, "sonnet");
+        assert.deepEqual(view.overridden, []);
+        assert.equal(view.globals.model, "sonnet");
+
+        store.updateProject(projectA, { effort: "max", tasks: "A 작업", unknown: 1, model: "nope" });
+
+        view = store.resolve();
+
+        assert.equal(view.settings.effort, "max");
+        assert.equal(view.settings.tasks, "A 작업");
+        assert.equal(view.settings.model, "sonnet", "허용되지 않은 값은 버리고 전역 값을 따른다");
+        assert.deepEqual([...view.overridden].sort(), ["effort", "tasks"]);
+        assert.equal(view.globals.effort, "low", "전역 값은 그대로");
+        assert.equal(view.settings.accountId, "default", "전역에만 있는 키는 그대로 보인다");
+
+        store.update({ projectDir: projectB });
+        view = store.resolve();
+
+        assert.equal(view.settings.effort, "low", "다른 프로젝트는 전역 값");
+        assert.equal(view.settings.tasks, "");
+        assert.deepEqual(store.readProject(projectA), { effort: "max", tasks: "A 작업" });
+
+        // 시작할 때 기억: 전역과 같은 값은 덮어쓰지 않고, 이미 덮어쓴 값이 전역과 같아지면 지운다.
+        store.remember(projectB, { model: "sonnet", effort: "high", policy: "todo", tasks: "B", endTime: "" });
+
+        assert.deepEqual(store.readProject(projectB), { effort: "high", policy: "todo", tasks: "B" });
+
+        store.remember(projectB, { effort: "low", tasks: "" });
+
+        assert.deepEqual(store.readProject(projectB), { policy: "todo" });
+
+        store.remember("", { model: "haiku" });
+
+        assert.equal(store.read().model, "haiku", "프로젝트가 없으면 전역에 기억한다");
+
+        store.clearProject(projectB, ["policy", "nope"]);
+
+        assert.deepEqual(store.readProject(projectB), {});
+        assert.deepEqual(store.readProject(""), {});
+
+        // 예약은 전역 목록과 프로젝트 목록이 따로 있다.
+        const schedule = { ...getDefaultSchedule("time"), id: "sch-0123abcd" };
+
+        store.updateProject(projectA, { schedules: [schedule, { nope: true }] });
+
+        assert.deepEqual(store.readProject(projectA).schedules, [schedule]);
+        assert.deepEqual(store.read().schedules, []);
+        assert.equal(store.resolve().settings.schedules.length, 0);
+        assert.deepEqual(
+            store
+                .listProjects()
+                .map((project) => project.projectDir)
+                .sort(),
+            [projectA, projectB].sort()
+        );
+
+        // 파일 이름은 폴더 이름과 실제 경로의 해시이고 항상 같다.
+        assert.equal(getProjectKey(projectA), getProjectKey(projectA));
+        assert.notEqual(getProjectKey(projectA), getProjectKey(projectB));
+        assert(getProjectKey(projectA).startsWith(path.basename(projectA) + "-"));
+        assert(fs.existsSync(path.join(dir, "project-settings", getProjectKey(projectA) + ".json")));
+
+        // 손상된 프로젝트 파일은 백업으로 복구하고 안내를 한 번 남긴다.
+        const file = path.join(dir, "project-settings", getProjectKey(projectA) + ".json");
+
+        store.updateProject(projectA, { effort: "xhigh" });
+        fs.writeFileSync(file, "{ 깨진");
+
+        assert.equal(store.readProject(projectA).effort, "max", "복구한 값은 직전 쓰기 전의 백업이다");
+        assert.match(store.takeNotice(), /백업으로 복구/);
+        assert.equal(store.takeNotice(), "");
+        assert.deepEqual(normalizeOverrides(null), {});
+    } finally {
+        for (const target of [dir, projectA, projectB]) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
+// 옛 형식(전역 작업 하나)을 올리면 작업이 마지막으로 고른 프로젝트로 옮겨 가고, 이미 새 형식이면 건드리지 않는다.
+const checkUpgrade = () => {
+    const dir = createTempDir();
+    const project = createTempDir();
+
+    try {
+        const store = createSettingsStore({ dir: dir });
+
+        fs.writeFileSync(store.file, JSON.stringify({ projectDir: project, tasks: "옛 작업", model: "sonnet", effort: "low" }));
+
+        assert.equal(store.upgrade(), true);
+
+        const upgraded = JSON.parse(readText(store.file));
+
+        assert.equal(upgraded.version, SETTINGS_VERSION);
+        assert.equal(upgraded.tasks, "");
+        assert.equal(upgraded.model, "sonnet", "나머지는 전역 기본값으로 남는다");
+        assert.deepEqual(store.readProject(project), { tasks: "옛 작업" });
+        assert.equal(store.resolve().settings.tasks, "옛 작업");
+        assert.equal(JSON.parse(readText(`${store.file}.bak`)).tasks, "옛 작업", "올리기 전 파일은 백업으로 남는다");
+        assert.equal(store.upgrade(), false);
+
+        const empty = createTempDir();
+
+        try {
+            const other = createSettingsStore({ dir: empty });
+
+            fs.writeFileSync(other.file, JSON.stringify({ version: 1, tasks: "프로젝트 없음" }));
+
+            assert.equal(other.upgrade(), true);
+            assert.equal(other.read().tasks, "", "프로젝트를 모르면 옮길 곳이 없어 비운다");
+            assert.deepEqual(other.listProjects(), []);
+        } finally {
+            fs.rmSync(empty, { recursive: true, force: true });
+        }
+
+        const missing = createSettingsStore({ dir: path.join(dir, "none") });
+
+        assert.equal(missing.upgrade(), false);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+};
+
 checkJsonFile();
 checkRecover();
 checkMigrate();
 checkNormalize();
 checkStore();
+checkProjectSettings();
+checkUpgrade();
 
 console.log("Desktop settings checks passed.");

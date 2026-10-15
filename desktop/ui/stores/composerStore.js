@@ -69,6 +69,26 @@ const handleOptionChange = () => {
     }
 };
 
+const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort"];
+
+// 저장된 설정으로 컴포저의 값을 채운다. keys를 주면 그 키만 바꿔, 설정 패널에서 한 값을 바꿨다고 쓰던 작업 문구까지 되돌리지 않는다.
+const loadSettings = (settings, keys = COMPOSER_KEYS) => {
+    const patch = {};
+
+    for (const key of keys.filter((candidate) => COMPOSER_KEYS.includes(candidate))) {
+        if (key === "model") {
+            patch.model = settings.model;
+            patch.modelId = settings.model;
+        } else if (key === "effort") {
+            patch.effort = Math.max(0, EFFORT_LEVELS.indexOf(settings.effort));
+        } else {
+            patch[key] = settings[key];
+        }
+    }
+
+    useComposerStore.setState(patch);
+};
+
 const composer = {
     chooseModel: (family) => {
         useComposerStore.setState({ model: family, modelId: family });
@@ -86,6 +106,7 @@ const composer = {
     setEndTimeAfter: (minutes) => useComposerStore.setState({ endTime: getEndTimeAfter(Date.now(), minutes) }),
     // 모델 버전 고정이 바뀌면 알약은 다시 계열 기준으로 보여준다.
     showFamily: () => useComposerStore.setState((current) => ({ modelId: current.model })),
+    loadSettings: loadSettings,
     syncFromRun: syncFromRun,
     getSelectedOptions: getSelectedOptions,
     setSelectedOptions: setSelectedOptions

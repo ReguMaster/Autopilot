@@ -18,7 +18,10 @@ const ScheduleItem = ({ schedule, status, nowMs }) => {
     return (
         <li className="schedule-item" data-id={schedule.id} data-off={schedule.enabled ? undefined : ""}>
             <button type="button" className="schedule-body" title="눌러서 수정" onClick={() => schedules.openForm(schedule)}>
-                <b>{description.title}</b>
+                <b>
+                    {description.title}
+                    {schedule.scope === "project" ? <span className="tag schedule-scope">이 프로젝트</span> : null}
+                </b>
                 <small>{description.detail}</small>
                 <small className="schedule-status" data-tone={state.tone}>
                     {state.text}

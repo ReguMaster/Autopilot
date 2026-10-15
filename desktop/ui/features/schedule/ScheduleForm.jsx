@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { schedules } from "../../actions/schedules.js";
 import { Button } from "../../components/Button.jsx";
+import { Seg } from "../../components/Seg.jsx";
+import { getProjectName } from "../../lib/projectName.js";
+import { useAppStore } from "../../stores/appStore.js";
 
 const WEEKDAYS = [
     { value: 1, label: "월" },
@@ -35,23 +38,10 @@ const DURATION_OPTIONS = [
     { value: 720, label: "12시간" }
 ];
 
-// 라디오로 하나를 고르는 묶음
-const Seg = ({ name, label, options, value, onChange }) => {
-    return (
-        <div className="seg" role="radiogroup" aria-label={label}>
-            {options.map((option) => (
-                <label key={option.value} className="seg-option">
-                    <input type="radio" name={name} value={option.value} checked={String(value) === String(option.value)} onChange={() => onChange(option.value)} />
-                    <span>{option.label}</span>
-                </label>
-            ))}
-        </div>
-    );
-};
-
-// 수정 중인 예약(또는 새 예약의 기본값)으로 폼 값을 채운다.
-const getInitialValues = (schedule, defaults) => {
+// 수정 중인 예약(또는 새 예약의 기본값)으로 폼 값을 채운다. 새 예약은 프로젝트를 골랐으면 그 프로젝트의 예약이 기본이다.
+const getInitialValues = (schedule, defaults, hasProject) => {
     return {
+        scope: schedule.scope || (hasProject ? "project" : "global"),
         kind: schedule.kind,
         window: schedule.window,
         minRemaining: schedule.minRemaining,
@@ -66,7 +56,8 @@ const getInitialValues = (schedule, defaults) => {
 
 // 폼은 열 때마다 새로 만들어져 값이 처음부터 채워진다.
 const ScheduleForm = ({ editing, defaults }) => {
-    const [values, setValues] = useState(() => getInitialValues(editing || defaults.time, defaults));
+    const projectDir = useAppStore((store) => store.settings.projectDir);
+    const [values, setValues] = useState(() => getInitialValues(editing || defaults.time, defaults, Boolean(projectDir)));
     const [error, setError] = useState("");
     const isReset = values.kind === "reset";
 
@@ -95,6 +86,7 @@ const ScheduleForm = ({ editing, defaults }) => {
         const isRanged = isReset && !values.isAnytime;
         const message = await schedules.save({
             id: editing?.id || "",
+            scope: values.scope,
             enabled: editing ? editing.enabled : true,
             kind: values.kind,
             time: values.time,
@@ -111,6 +103,21 @@ const ScheduleForm = ({ editing, defaults }) => {
 
     return (
         <form id="schedule-form" className="archive-pane schedule-pane schedule-form" noValidate onSubmit={submit}>
+            <div className="form-group" hidden={Boolean(editing) || !projectDir}>
+                <span className="form-label">어디에 적용할까요?</span>
+                <Seg
+                    name="schedule-scope"
+                    label="예약 적용 범위"
+                    options={[
+                        { value: "project", label: `${getProjectName(projectDir)} 프로젝트` },
+                        { value: "global", label: "모든 프로젝트" }
+                    ]}
+                    value={values.scope}
+                    onChange={(scope) => update({ scope: scope })}
+                />
+                <p className="form-hint">모든 프로젝트 예약은 그때 선택돼 있는 프로젝트에서 실행돼요.</p>
+            </div>
+
             <div className="form-group">
                 <span className="form-label">언제 시작할까요?</span>
                 <Seg name="schedule-kind" label="시작 조건" options={KIND_OPTIONS} value={values.kind} onChange={changeKind} />

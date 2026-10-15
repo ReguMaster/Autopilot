@@ -45,6 +45,15 @@ const DEFAULT_SETTINGS = {
     keepInTray: true,
     launchAtLogin: false
 };
+const OVERRIDABLE_DEFAULTS = {
+    tasks: DEFAULT_SETTINGS.tasks,
+    endTime: DEFAULT_SETTINGS.endTime,
+    policy: DEFAULT_SETTINGS.policy,
+    extendOnLimit: DEFAULT_SETTINGS.extendOnLimit,
+    model: DEFAULT_SETTINGS.model,
+    modelVersions: DEFAULT_SETTINGS.modelVersions,
+    effort: DEFAULT_SETTINGS.effort
+};
 const DEFAULT_ACCOUNTS = {
     accounts: [{ id: "default", label: "기본 계정", shared: false }],
     activeId: "default",
@@ -68,6 +77,8 @@ const model = {
     canLaunchAtLogin: false,
     update: null,
     settings: { ...DEFAULT_SETTINGS, ...init.settings },
+    overridden: init.overridden || [],
+    globals: { ...OVERRIDABLE_DEFAULTS, ...init.globals },
     state: { ...createInitialState(), ...init.state },
     logs: init.logs || [],
     accounts: { ...DEFAULT_ACCOUNTS, ...init.accounts },
@@ -82,6 +93,8 @@ const model = {
 const listeners = {};
 const calls = [];
 const ok = (data) => ({ status: "OK", data: data });
+// 설정 화면이 쓰는 모양: 적용되는 값, 프로젝트가 덮어쓴 키, 전역 값. 옛 화면은 settings만 읽는다.
+const getSettingsView = () => ({ settings: model.settings, overridden: model.overridden, globals: model.globals, notice: "" });
 const fail = (code, msg) => ({ status: "FAILED", error: { code: code, msg: msg } });
 
 const subscribe = (channel) => (callback) => {
@@ -118,11 +131,11 @@ const api = {
         platform: model.platform,
         canLaunchAtLogin: model.canLaunchAtLogin,
         update: model.update,
-        settings: model.settings,
+        ...getSettingsView(),
         state: model.state,
         logs: model.logs
     })),
-    selectProject: respond("selectProject", async () => ok({ settings: model.settings })),
+    selectProject: respond("selectProject", async () => ok(getSettingsView())),
     start: respond("start", async () => ok({})),
     stop: respond("stop", async () => ok({})),
     setOptions: respond("setOptions", async () => ok({})),
@@ -138,6 +151,23 @@ const api = {
         model.settings = { ...model.settings, modelVersions: modelVersions };
 
         return ok({ modelVersions: modelVersions });
+    }),
+    updateSettings: respond("updateSettings", async ({ scope, patch }) => {
+        if (scope === "project") {
+            model.settings = { ...model.settings, ...patch };
+            model.overridden = [...new Set([...model.overridden, ...Object.keys(patch)])];
+        } else {
+            model.globals = { ...model.globals, ...patch };
+            model.settings = { ...model.settings, ...Object.fromEntries(Object.entries(patch).filter(([key]) => !model.overridden.includes(key))) };
+        }
+
+        return ok(getSettingsView());
+    }),
+    resetSettings: respond("resetSettings", async (keys) => {
+        model.overridden = model.overridden.filter((key) => !keys.includes(key));
+        model.settings = { ...model.settings, ...Object.fromEntries(keys.map((key) => [key, model.globals[key]])) };
+
+        return ok(getSettingsView());
     }),
     getModels: respond("getModels", async () => ok({ models: model.models })),
     kill: respond("kill", async () => ok({})),
@@ -155,7 +185,7 @@ const api = {
     setSystemSettings: respond("setSystemSettings", async (next) => {
         model.settings = { ...model.settings, ...next };
 
-        return ok({ settings: model.settings });
+        return ok(getSettingsView());
     }),
     getAccounts: respond("getAccounts", async () => ok(model.accounts)),
     refreshAccount: respond("refreshAccount", async (id) => ok({ id: id, account: model.accounts.snapshots[id] })),

@@ -284,6 +284,7 @@ const makeEnvironment = (overrides = {}) => {
             writeSchedules: (schedules) => {
                 env.schedules = schedules;
             },
+            getKnownIds: () => env.knownIds || env.schedules.map((schedule) => schedule.id),
             getUsage: () => env.usage,
             refreshUsage: async () => {
                 env.refreshes++;
@@ -407,6 +408,38 @@ const checkSchedulerLimits = async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 };
 
+// 프로젝트 예약은 범위를 달고 저장되고 수정해도 바뀌지 않으며, 목록에서 빠진 예약의 판단 상태도 알려진 id면 남는다.
+const checkSchedulerScope = async () => {
+    const env = makeEnvironment({ now: at(23, 1) });
+    const scheduler = env.create();
+    const project = await scheduler.save({ ...getDefaultSchedule("time"), time: "23:00", scope: "project" });
+
+    assert.equal(project.schedule.scope, "project");
+    assert.equal(env.schedules[0].scope, "project");
+
+    const global = await scheduler.save({ ...getDefaultSchedule("time"), time: "23:30", scope: "global" });
+
+    assert.equal(global.schedule.scope, undefined, "전역 예약은 범위 표시 없이 저장된다");
+
+    await scheduler.save({ ...env.schedules[0], time: "23:10", scope: "global" });
+
+    assert.equal(env.schedules[0].scope, "project", "수정으로 범위를 바꾸지 않는다");
+    assert.equal(env.schedules[0].time, "23:10");
+
+    const states = () => JSON.parse(fs.readFileSync(env.stateFile, "utf8"));
+    const id = env.schedules[0].id;
+
+    assert(states()[id]);
+
+    env.schedules = [];
+    env.knownIds = [id];
+    await scheduler.tick();
+
+    assert(states()[id], "다른 프로젝트를 골라 목록에서 빠져도 알려진 예약의 판단 상태는 남는다");
+
+    fs.rmSync(env.dir, { recursive: true, force: true });
+};
+
 checkParse();
 checkNormalize();
 checkOccurrences();
@@ -418,5 +451,6 @@ checkResetConditions();
 await checkScheduler();
 await checkSchedulerFailureAndBusy();
 await checkSchedulerLimits();
+await checkSchedulerScope();
 
 console.log("Desktop schedule checks passed.");

@@ -6,12 +6,14 @@ import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Panel } from "../../components/Panel.jsx";
 import { NavRow, SettingsGroup, SwitchRow } from "../../components/SettingsGroup.jsx";
+import { settings } from "../../actions/settings.js";
 import { useAccountStore } from "../../stores/accountStore.js";
 import { useAppStore } from "../../stores/appStore.js";
-import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 import { ModelVersions } from "./ModelVersions.jsx";
+import { RunDefaults } from "./RunDefaults.jsx";
+import { ScopeGroup, ScopeNote, useScopedValue } from "./ScopeControls.jsx";
 
 const KEEP_IN_TRAY_NOTE = "창을 닫아도 앱이 트레이에 남아 실행과 예약 시작이 이어져요. 끄면 실행 중이 아닐 때 창을 닫으면 앱이 종료돼요.";
 const LAUNCH_AT_LOGIN_NOTE = "컴퓨터에 로그인하면 창 없이 트레이로 조용히 켜져요. 켜면 트레이 상주도 함께 켜져요.";
@@ -117,6 +119,25 @@ const SystemGroup = () => {
     );
 };
 
+const LimitGroup = () => {
+    const isIdle = useRunStore((store) => store.state.status === "idle");
+    const { value } = useScopedValue("extendOnLimit");
+
+    return (
+        <SettingsGroup id="group-limit" title="사용량 한도">
+            <SwitchRow
+                id="extend-on-limit"
+                title="대기한 시간만큼 종료 시각 연장"
+                note="한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요."
+                extra={<ScopeNote settingKey="extendOnLimit" disabled={!isIdle} />}
+                checked={Boolean(value)}
+                disabled={!isIdle}
+                onChange={(isOn) => settings.update({ extendOnLimit: isOn })}
+            />
+        </SettingsGroup>
+    );
+};
+
 const HistoryGroup = () => {
     const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
     const isIdle = useRunStore((store) => store.state.status === "idle");
@@ -144,8 +165,6 @@ const HistoryGroup = () => {
 
 const SettingsPanel = () => {
     const open = useUiStore((store) => store.panel === "settings");
-    const isIdle = useRunStore((store) => store.state.status === "idle");
-    const extendOnLimit = useComposerStore((store) => store.extendOnLimit);
     const { version, isDev } = useAppStore(useShallow((store) => ({ version: store.version, isDev: store.isDev })));
 
     return (
@@ -154,31 +173,22 @@ const SettingsPanel = () => {
                 설정
             </h2>
 
-            <ProviderGroup />
+            <ProjectGroup />
+            <ScopeGroup />
+            <RunDefaults />
 
             <SettingsGroup id="group-model" title="모델 버전">
                 <div className="field">
                     <p className="field-desc">기본은 각 모델의 최신 버전이에요. 버전을 고르면 그 모델을 쓸 때 고른 버전으로 실행해요. 실행 중에는 바꿀 수 없어요.</p>
+                    <ScopeNote settingKey="modelVersions" />
                 </div>
                 <div id="model-versions">
                     <ModelVersions />
                 </div>
             </SettingsGroup>
 
-            <ProjectGroup />
-
-            <SettingsGroup id="group-limit" title="사용량 한도">
-                <SwitchRow
-                    id="extend-on-limit"
-                    title="대기한 시간만큼 종료 시각 연장"
-                    note="한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요."
-                    checked={extendOnLimit}
-                    disabled={!isIdle}
-                    onChange={composer.setExtendOnLimit}
-                    form="run-form"
-                />
-            </SettingsGroup>
-
+            <LimitGroup />
+            <ProviderGroup />
             <SystemGroup />
             <HistoryGroup />
 

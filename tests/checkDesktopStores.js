@@ -22,6 +22,8 @@ const loadModules = async () => {
         export * as runsStore from "./stores/runsStore.js";
         export * as accounts from "./actions/accounts.js";
         export * as schedules from "./actions/schedules.js";
+        export * as settingsActions from "./actions/settings.js";
+        export * as appStore from "./stores/appStore.js";
         export * as scheduleStore from "./stores/scheduleStore.js";
         export * as storyModel from "./features/run/storyModel.js";
     `;
@@ -428,6 +430,73 @@ const checkSchedules = async ({ schedules, scheduleStore, composerStore }) => {
     assert.equal(scheduleStore.useScheduleStore.getState().payload.schedules.length, 0);
 };
 
+// 설정 범위: 패널에서 바꾼 값은 고른 범위로 보내고 컴포저는 바뀐 키만 따라가며, 프로젝트를 바꾸면 컴포저를 새 프로젝트의 값으로 채운다.
+const checkSettingsScope = async ({ appStore, settingsActions, composerStore, uiStore, run }) => {
+    const { settings } = settingsActions;
+    const { composer, useComposerStore } = composerStore;
+    const { ui, useUiStore } = uiStore;
+    const requests = [];
+    const getView = (patch, overridden = [], notice = "") => ({
+        settings: { projectDir: "/p", tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high", ...patch },
+        overridden: overridden,
+        globals: { model: "opus", effort: "high" },
+        notice: notice
+    });
+
+    appStore.applySettingsView(getView({}));
+    composer.loadSettings(getView({}).settings);
+    composer.setTasks("작성 중인 작업");
+
+    window.autopilot = {
+        updateSettings: async (request) => {
+            requests.push(request);
+
+            return OK(getView({ model: request.patch.model }, ["model"]));
+        },
+        resetSettings: async (keys) => {
+            requests.push({ keys: keys });
+
+            return OK(getView({}));
+        },
+        selectProject: async () => OK(getView({ projectDir: "/other", tasks: "다른 작업", effort: "low" }, [], "설정을 복구했어요.")),
+        listRuns: async () => OK({ runs: [] })
+    };
+
+    assert.equal(settings.getScope(), "global", "기본은 전역");
+
+    ui.set({ settingsScope: "project" });
+
+    assert.equal(settings.getScope(), "project");
+    assert.equal(await settings.update({ model: "sonnet" }), true);
+    assert.deepEqual(requests[0], { scope: "project", patch: { model: "sonnet" } });
+    assert.equal(useComposerStore.getState().model, "sonnet", "바뀐 키는 컴포저가 따라간다");
+    assert.equal(useComposerStore.getState().tasks, "작성 중인 작업", "쓰던 작업 문구는 건드리지 않는다");
+    assert.deepEqual(appStore.useAppStore.getState().overridden, ["model"]);
+
+    await settings.reset(["model"]);
+
+    assert.deepEqual(requests[1], { keys: ["model"] });
+    assert.equal(useComposerStore.getState().model, "opus");
+    assert.deepEqual(appStore.useAppStore.getState().overridden, []);
+
+    appStore.applySettingsView(getView({ projectDir: "" }));
+
+    assert.equal(settings.getScope(), "global", "프로젝트를 고르지 않았으면 이 프로젝트 범위는 전역으로 본다");
+
+    window.autopilot.updateSettings = async () => ({ status: "FAILED", error: { code: "RUNNING", msg: "실행 중에는 설정을 바꿀 수 없어요." } });
+
+    assert.equal(await settings.update({ model: "haiku" }), false);
+    assert.equal(useUiStore.getState().notice.message, "실행 중에는 설정을 바꿀 수 없어요.");
+
+    await run.selectProject();
+
+    assert.equal(useComposerStore.getState().tasks, "다른 작업", "프로젝트를 바꾸면 컴포저가 새 프로젝트의 값으로 채워진다");
+    assert.equal(useComposerStore.getState().effort, 0);
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/other");
+    assert.equal(useUiStore.getState().notice.message, "설정을 복구했어요.");
+    assert.equal(useUiStore.getState().notice.tone, "warn");
+};
+
 const checkModal = async ({ modalStore }) => {
     const { modal, useModalStore } = modalStore;
 
@@ -482,6 +551,7 @@ const checkStores = async () => {
     await checkConfirmedActions(modules);
     await checkLoginResume(modules);
     await checkSchedules(modules);
+    await checkSettingsScope(modules);
     await checkModal(modules);
     checkStoryView(modules);
 

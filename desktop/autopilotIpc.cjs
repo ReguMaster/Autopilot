@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } = require("el
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createRunner, execEngine, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState, notify } = require("./systemIntegration.cjs");
@@ -12,17 +12,50 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
-const { createSettingsStore, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
+const { createSettingsStore, SETTING_VALIDATORS, OVERRIDABLE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
 const SCHEDULE_RESUME_DELAY_MS = 5000;
 const TASKS_FILE_NAME = "tasks.md";
 
+const SETTINGS_SCOPES = ["global", "project"];
+
 const settingsStore = createSettingsStore({ dir: app.getPath("userData") });
+// 계정·시스템·선택한 프로젝트처럼 전역에만 있는 값과 전역 기본값. 프로젝트마다 달라지는 값은 readEffective로 읽는다.
 const readSettings = settingsStore.read;
 const writeSettings = settingsStore.write;
 const updateSettings = settingsStore.update;
+// 선택한 프로젝트가 덮어쓴 값을 전역 값 위에 얹은 설정. 프로젝트가 없으면 전역 값이다.
+const readEffective = () => settingsStore.resolve().settings;
+
+// 화면이 설정을 그리는 데 필요한 것: 적용되는 값, 프로젝트가 덮어쓴 키, 전역 기본값, 한 번 알릴 안내.
+const getSettingsView = () => {
+    return { ...settingsStore.resolve(), notice: settingsStore.takeNotice() };
+};
+
+// 예약은 전역 목록과 선택한 프로젝트의 목록을 합쳐 보여준다(덮어쓰기가 아니라 합침). 목록에서는 scope로 어느 쪽인지 구분하고, 저장할 때 다시 나눈다.
+const readAllSchedules = () => {
+    const { projectDir, schedules } = readSettings();
+    const projectSchedules = settingsStore.readProject(projectDir).schedules ?? [];
+
+    return [...schedules.map((schedule) => ({ ...schedule, scope: "global" })), ...projectSchedules.map((schedule) => ({ ...schedule, scope: "project" }))];
+};
+
+const writeAllSchedules = (list) => {
+    const { projectDir } = readSettings();
+
+    updateSettings({ schedules: list.filter((schedule) => schedule.scope !== "project") });
+
+    if (projectDir) {
+        settingsStore.updateProject(projectDir, { schedules: list.filter((schedule) => schedule.scope === "project") });
+    }
+};
+
+// 다른 프로젝트를 골라 목록에서 빠져 있는 예약도 판단 상태(마지막 시작 등)는 남겨 둔다.
+const getKnownScheduleIds = () => {
+    return [...readSettings().schedules, ...settingsStore.listProjects().flatMap((project) => project.overrides.schedules ?? [])].map((schedule) => schedule.id);
+};
 
 const createFailure = (code, msg) => {
     return { status: STATUS_FAILED, error: { code: code, msg: msg } };
@@ -104,7 +137,7 @@ const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChan
 // 예약이 조건을 만족하면 마지막으로 저장한 작업·정책·모델·Effort로 시작한다. 종료 시각은 예약이 정한 값이라 다음 시작의 기본값으로 저장하지 않는다.
 const startScheduledRun = async (schedule, plan) => {
     try {
-        const settings = readSettings();
+        const settings = readEffective();
         const result = await launchRun(
             settings,
             { tasks: settings.tasks, endTime: plan.endTime, policy: settings.policy, extendOnLimit: settings.extendOnLimit, model: settings.model, effort: settings.effort },
@@ -126,8 +159,9 @@ const isEngineBusy = async () => {
 
 const scheduler = createScheduler({
     stateFile: path.join(app.getPath("userData"), "schedule-state.json"),
-    readSchedules: () => readSettings().schedules,
-    writeSchedules: (schedules) => writeSettings({ ...readSettings(), schedules: schedules }),
+    readSchedules: readAllSchedules,
+    writeSchedules: writeAllSchedules,
+    getKnownIds: getKnownScheduleIds,
     getUsage: () => accounts.getActiveUsage(),
     refreshUsage: () => accounts.refreshActiveUsage(),
     isBusy: isEngineBusy,
@@ -181,7 +215,7 @@ const launchRun = async (settings, startOptions, { remember }) => {
         fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
 
         if (remember) {
-            updateSettings(startOptions);
+            settingsStore.remember(settings.projectDir, startOptions);
         }
 
         const model = resolveModel(startOptions.model, settings.modelVersions);
@@ -199,7 +233,7 @@ const launchRun = async (settings, startOptions, { remember }) => {
 
 const handleStart = async (event, options = {}) => {
     return launchRun(
-        readSettings(),
+        readEffective(),
         {
             tasks: typeof options.tasks === "string" ? options.tasks : "",
             endTime: String(options.endTime || ""),
@@ -218,36 +252,63 @@ const handleSetOptions = async (event, options = {}) => {
         return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
     }
 
-    const settings = readSettings();
+    const settings = readEffective();
     const result = await runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort });
 
     if (result.status === STATUS_OK) {
-        updateSettings({ model: options.model, effort: options.effort });
+        settingsStore.remember(settings.projectDir, { model: options.model, effort: options.effort });
     }
 
     return result;
 };
 
-// 계열의 모델 버전을 고정하거나(모델 ID) 최신으로 되돌린다(빈 문자열). 실행 중에는 바꾸지 않는다.
-const handleSetModelVersion = (event, family, version) => {
+// 설정 패널에서 바꾼 값을 전역 기본값(global)이나 선택한 프로젝트의 덮어쓰기(project)로 저장한다. 실행 중에는 바꾸지 않는다.
+const handleUpdateSettings = (event, request = {}) => {
+    const { scope, patch } = request;
+    const keys = patch && typeof patch === "object" ? Object.keys(patch) : [];
+
     if (runner.isRunning()) {
-        return createFailure("RUNNING", "실행 중에는 모델 버전을 바꿀 수 없어요.");
+        return createFailure("RUNNING", "실행 중에는 설정을 바꿀 수 없어요.");
     }
 
-    if (!MODEL_CHOICES.includes(family) || (version !== "" && !MODEL_ID_PATTERN.test(version))) {
-        return createFailure("INVALID_OPTIONS", "모델 계열 또는 버전 값이 올바르지 않아요.");
+    if (!SETTINGS_SCOPES.includes(scope) || keys.length === 0 || !keys.every((key) => OVERRIDABLE_KEYS.includes(key) && SETTING_VALIDATORS[key](patch[key]))) {
+        return createFailure("INVALID_OPTIONS", "설정 범위나 값이 올바르지 않아요.");
     }
 
-    const settings = readSettings();
-    const modelVersions = { ...settings.modelVersions, [family]: version };
+    const { projectDir } = readSettings();
 
-    if (!version) {
-        delete modelVersions[family];
+    if (scope === "project" && !projectDir) {
+        return createFailure("INVALID_PROJECT", "프로젝트를 먼저 선택해 주세요.");
     }
 
-    writeSettings({ ...settings, modelVersions: modelVersions });
+    if (scope === "project") {
+        settingsStore.updateProject(projectDir, patch);
+    } else {
+        updateSettings(patch);
+    }
 
-    return { status: STATUS_OK, data: { modelVersions: modelVersions } };
+    return { status: STATUS_OK, data: getSettingsView() };
+};
+
+// 선택한 프로젝트가 덮어쓴 값을 지워 전역 값을 따라가게 한다.
+const handleResetSettings = (event, keys) => {
+    const { projectDir } = readSettings();
+
+    if (runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 바꿀 수 없어요.");
+    }
+
+    if (!Array.isArray(keys) || keys.length === 0 || !keys.every((key) => OVERRIDABLE_KEYS.includes(key))) {
+        return createFailure("INVALID_OPTIONS", "되돌릴 설정이 올바르지 않아요.");
+    }
+
+    if (!projectDir) {
+        return createFailure("INVALID_PROJECT", "프로젝트를 먼저 선택해 주세요.");
+    }
+
+    settingsStore.clearProject(projectDir, keys);
+
+    return { status: STATUS_OK, data: getSettingsView() };
 };
 
 // 앱을 닫았다 켠 사이에 계속 실행된 엔진이 선택한 프로젝트에 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
@@ -283,7 +344,7 @@ const handleSelectProject = async (event) => {
     });
 
     if (selection.canceled) {
-        return { status: STATUS_OK, data: { settings: settings } };
+        return { status: STATUS_OK, data: getSettingsView() };
     }
 
     const projectError = getProjectError(selection.filePaths[0]);
@@ -292,13 +353,11 @@ const handleSelectProject = async (event) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    const nextSettings = { ...settings, projectDir: selection.filePaths[0] };
-
-    writeSettings(nextSettings);
+    updateSettings({ projectDir: selection.filePaths[0] });
 
     await attachRunningEngine();
 
-    return { status: STATUS_OK, data: { settings: nextSettings } };
+    return { status: STATUS_OK, data: getSettingsView() };
 };
 
 const handleGetState = async () => {
@@ -309,8 +368,7 @@ const handleGetState = async () => {
         platform: process.platform,
         canLaunchAtLogin: loginItem.isSupported(),
         update: updateCheck.getUpdate(),
-        settings: readSettings(),
-        settingsNotice: settingsStore.takeNotice(),
+        ...getSettingsView(),
         state: runner.getState(),
         logs: runner.getLogs()
     };
@@ -342,11 +400,9 @@ const handleSetSystem = (event, options = {}) => {
         return createFailure("LOGIN_ITEM_FAILED", "시스템이 로그인 자동 실행 설정을 받아들이지 않았어요. 보안 정책이나 권한을 확인해 주세요.");
     }
 
-    const settings = { ...readSettings(), keepInTray: keepInTray, launchAtLogin: launchAtLogin };
+    updateSettings({ keepInTray: keepInTray, launchAtLogin: launchAtLogin });
 
-    writeSettings(settings);
-
-    return { status: STATUS_OK, data: { settings: settings } };
+    return { status: STATUS_OK, data: getSettingsView() };
 };
 
 // 앱을 켤 때 저장된 자동 실행 설정으로 로그인 항목의 경로를 다시 맞춘다(업데이트·재설치로 실행 파일 위치가 바뀌었을 수 있다).
@@ -393,7 +449,7 @@ const handleSaveSchedule = async (event, payload = {}) => {
         return createFailure("TASKS_REQUIRED", "지시개선은 처리할 작업을 입력해야 예약할 수 있어요.");
     }
 
-    writeSettings({ ...settings, ...options });
+    settingsStore.remember(settings.projectDir, options);
 
     const result = await scheduler.save(payload.schedule);
 
@@ -541,13 +597,15 @@ const handleDeleteRun = async (event, id) => {
 
 const registerIpc = () => {
     settingsStore.recover();
+    settingsStore.upgrade();
 
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
     ipcMain.handle("autopilot:start", handleStart);
     ipcMain.handle("autopilot:stop", () => runner.stop());
     ipcMain.handle("autopilot:set-options", handleSetOptions);
-    ipcMain.handle("autopilot:set-model-version", handleSetModelVersion);
+    ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
+    ipcMain.handle("autopilot:reset-settings", handleResetSettings);
     ipcMain.handle("autopilot:kill", () => runner.kill());
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);

@@ -266,6 +266,36 @@ body.profile-open #profile {
     padding: 0 0 12px;
 }
 
+/* 이 프로젝트 범위: 전역 값을 따라가는지, 프로젝트가 덮어썼는지 */
+.scope-note {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+}
+
+.scope-note[data-overridden] {
+    color: var(--ink-2);
+}
+
+.scope-reset {
+    margin-left: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink-2);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.scope-reset:disabled {
+    color: var(--faint);
+    cursor: not-allowed;
+}
+
 .path {
     padding: 7px 10px;
     overflow: hidden;

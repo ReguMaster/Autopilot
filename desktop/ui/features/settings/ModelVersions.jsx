@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { MODEL_LABELS, formatModelName } from "../../../viewFormat.js";
+import { settings } from "../../actions/settings.js";
 import { Select } from "../../components/Select.jsx";
 import { STATUS_OK } from "../../lib/constants.js";
-import { setSettings, useAppStore } from "../../stores/appStore.js";
 import { composer } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
+import { ScopeNote, useScopedValue } from "./ScopeControls.jsx";
 
 const FAMILIES = Object.keys(MODEL_LABELS);
 const LATEST_OPTION = { value: "", label: "최신 버전 (기본)", hint: "새 모델이 나오면 따라가요" };
@@ -57,25 +58,23 @@ const getModelsNote = (models) => {
 const ModelVersions = () => {
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const isPanelOpen = useUiStore((store) => store.panel === "settings");
-    const versions = useAppStore((store) => store.settings.modelVersions) ?? {};
+    const versions = useScopedValue("modelVersions").value ?? {};
     const models = useModels(isPanelOpen);
-    const [error, setError] = useState("");
 
+    // 범위 안의 모델 버전 묶음 전체를 저장한다. 이 프로젝트가 처음 바꿀 때는 지금 적용 중인 묶음에서 한 계열만 바꾼 것이 된다.
     const handleChange = async (family, version) => {
-        const result = await window.autopilot.setModelVersion(family, version);
+        const next = { ...versions, [family]: version };
 
-        if (result.status !== STATUS_OK) {
-            setError(result.error.msg);
-
-            return;
+        if (!version) {
+            delete next[family];
         }
 
-        setError("");
-        setSettings({ ...useAppStore.getState().settings, modelVersions: result.data.modelVersions });
-        composer.showFamily();
+        if (await settings.update({ modelVersions: next })) {
+            composer.showFamily();
+        }
     };
 
-    const note = error || getModelsNote(models);
+    const note = getModelsNote(models);
 
     return (
         <>
@@ -96,7 +95,7 @@ const ModelVersions = () => {
                     </div>
                 ))}
             </div>
-            <p className="row-note version-note" role={error ? "alert" : undefined} hidden={!note}>
+            <p className="row-note version-note" hidden={!note}>
                 {note}
             </p>
         </>

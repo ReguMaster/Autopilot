@@ -1,10 +1,11 @@
 import { STATUS_OK } from "../lib/constants.js";
-import { getSettings, setSettings } from "../stores/appStore.js";
+import { getSettings } from "../stores/appStore.js";
 import { composer, useComposerStore } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { getRunState } from "../stores/runStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { loadRecentRuns } from "./runs.js";
+import { settings } from "./settings.js";
 
 const STOP_CONFIRM_MS = 4000;
 
@@ -75,8 +76,8 @@ const selectProject = async () => {
     ui.showFailure(result);
 
     if (result.status === STATUS_OK) {
-        setSettings(result.data.settings);
-        ui.set({ finishDismissed: true });
+        settings.applyView(result.data, ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort"]);
+        ui.set({ finishDismissed: true, settingsScope: result.data.settings.projectDir ? useUiStore.getState().settingsScope : "global" });
         loadRecentRuns();
     }
 };
@@ -112,7 +113,7 @@ const changeSystemSettings = async (patch) => {
     ui.showFailure(result);
 
     if (result.status === STATUS_OK) {
-        setSettings(result.data.settings);
+        settings.applyView(result.data);
     }
 };
 

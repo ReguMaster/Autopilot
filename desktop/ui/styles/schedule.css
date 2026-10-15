@@ -160,6 +160,19 @@
         box-shadow 0.2s var(--ease-out);
 }
 
+.schedule-scope {
+    margin-left: 8px;
+    vertical-align: 1px;
+}
+
+.seg-option input:disabled {
+    cursor: not-allowed;
+}
+
+.seg-option input:disabled + span {
+    opacity: 0.45;
+}
+
 .seg-option:hover input:not(:checked) + span {
     background: var(--surface);
     box-shadow: inset 0 0 0 1px var(--hair-strong);

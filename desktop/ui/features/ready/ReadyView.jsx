@@ -4,6 +4,7 @@ import { openArchiveDetail, openArchiveList } from "../../actions/runs.js";
 import { schedules } from "../../actions/schedules.js";
 import { Icon } from "../../components/Icon.jsx";
 import { RunList } from "../../components/RunList.jsx";
+import { getProjectName } from "../../lib/projectName.js";
 import { useClock } from "../../stores/clock.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { useComposerStore } from "../../stores/composerStore.js";
@@ -12,10 +13,6 @@ import { useScheduleStore } from "../../stores/scheduleStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
 
 const RECENT_RUN_COUNT = 3;
-
-const getProjectName = (projectDir) => {
-    return projectDir ? projectDir.split(/[\\/]/).filter(Boolean).pop() : "";
-};
 
 // 시작 전 인사. 프로젝트 이름은 따로 꾸미고, 문구는 시각·정책·종료 시각에 따라 달라진다.
 const Greeting = () => {

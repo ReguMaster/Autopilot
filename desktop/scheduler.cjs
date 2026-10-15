@@ -11,7 +11,7 @@ const createId = () => {
 
 // 예약을 주기적으로 살펴 조건이 맞으면 실행을 시작한다. 설정 저장·사용량 조회·실행 시작·알림은 호출한 쪽이 넘겨 준 함수를 쓴다.
 // 예약마다의 진행 상태(마지막으로 시작한 때, 기억해 둔 한도 리셋 시각 등)는 stateFile에 보관해 앱을 다시 켜도 이어간다.
-const createScheduler = ({ stateFile, readSchedules, writeSchedules, getUsage, refreshUsage, isBusy, startRun, notify, onChange, now = Date.now }) => {
+const createScheduler = ({ stateFile, readSchedules, writeSchedules, getKnownIds, getUsage, refreshUsage, isBusy, startRun, notify, onChange, now = Date.now }) => {
     let states = {};
     let statuses = [];
     let isTicking = false;
@@ -82,8 +82,10 @@ const createScheduler = ({ stateFile, readSchedules, writeSchedules, getUsage, r
     const run = async () => {
         const schedules = readSchedules();
 
+        const knownIds = new Set(getKnownIds ? getKnownIds() : schedules.map((schedule) => schedule.id));
+
         for (const id of Object.keys(states)) {
-            if (!schedules.some((schedule) => schedule.id === id)) {
+            if (!knownIds.has(id)) {
                 delete states[id];
             }
         }
@@ -159,7 +161,8 @@ const createScheduler = ({ stateFile, readSchedules, writeSchedules, getUsage, r
             delete states[schedule.id];
         }
 
-        const saved = { ...schedule, id: index >= 0 ? schedule.id : createId() };
+        const scope = index >= 0 ? schedules[index].scope : draft?.scope;
+        const saved = { ...schedule, id: index >= 0 ? schedule.id : createId(), ...(scope === "project" && { scope: scope }) };
 
         writeSchedules(index >= 0 ? schedules.map((entry, position) => (position === index ? saved : entry)) : [...schedules, saved]);
         await tick();

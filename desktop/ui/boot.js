@@ -4,7 +4,7 @@ import { loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
 import { setAccountSnapshot } from "./stores/accountStore.js";
 import { useAppStore } from "./stores/appStore.js";
-import { composer, useComposerStore } from "./stores/composerStore.js";
+import { composer } from "./stores/composerStore.js";
 import { applyRunState, appendEntries, flushNow, getRunState, useRunStore } from "./stores/runStore.js";
 import { applySchedulePayload } from "./stores/scheduleStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
@@ -39,17 +39,18 @@ const boot = async () => {
         canLaunchAtLogin: snapshot.canLaunchAtLogin,
         update: snapshot.update,
         settings: settings,
+        overridden: snapshot.overridden,
+        globals: snapshot.globals,
         isDev: await window.appWindow.isDev()
     });
-    useComposerStore.setState({ endTime: settings.endTime, tasks: settings.tasks, policy: settings.policy, extendOnLimit: settings.extendOnLimit });
-    composer.setSelectedOptions(settings);
+    composer.loadSettings(settings);
     applyRunState(snapshot.state);
     composer.syncFromRun(snapshot.state);
     appendEntries(snapshot.logs);
     flushNow();
 
-    if (snapshot.settingsNotice) {
-        ui.showNotice(snapshot.settingsNotice, "warn");
+    if (snapshot.notice) {
+        ui.showNotice(snapshot.notice, "warn");
     }
 
     const accountsResult = await window.autopilot.getAccounts();
