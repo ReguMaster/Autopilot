@@ -11,74 +11,18 @@ const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
-const { normalizeSchedules, parseSchedule } = require("./scheduleRules.cjs");
+const { parseSchedule } = require("./scheduleRules.cjs");
+const { createSettingsStore, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 
-const POLICY_CHOICES = ["auto", "todo"];
-const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
 const SCHEDULE_RESUME_DELAY_MS = 5000;
 const TASKS_FILE_NAME = "tasks.md";
-const DEFAULT_SETTINGS = {
-    projectDir: "",
-    tasks: "",
-    endTime: "",
-    policy: "auto",
-    extendOnLimit: false,
-    model: "opus",
-    modelVersions: {},
-    effort: "high",
-    accounts: [],
-    accountId: "default",
-    claudeDir: "",
-    keepInTray: false,
-    launchAtLogin: false,
-    schedules: []
-};
 
-// modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
-const isModelVersions = (value) => {
-    return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(([family, id]) => MODEL_CHOICES.includes(family) && MODEL_ID_PATTERN.test(id));
-};
-
-// 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
-const SETTING_VALIDATORS = {
-    projectDir: (value) => typeof value === "string",
-    tasks: (value) => typeof value === "string",
-    endTime: (value) => value === "" || END_TIME_PATTERN.test(value),
-    policy: (value) => POLICY_CHOICES.includes(value),
-    extendOnLimit: (value) => typeof value === "boolean",
-    model: (value) => MODEL_CHOICES.includes(value),
-    modelVersions: isModelVersions,
-    effort: (value) => EFFORT_CHOICES.includes(value),
-    accounts: (value) => Array.isArray(value),
-    accountId: (value) => typeof value === "string",
-    claudeDir: (value) => typeof value === "string",
-    keepInTray: (value) => typeof value === "boolean",
-    launchAtLogin: (value) => typeof value === "boolean",
-    schedules: (value) => Array.isArray(value)
-};
-
-const getSettingsFile = () => {
-    return path.join(app.getPath("userData"), "settings.json");
-};
-
-const readSettings = () => {
-    try {
-        const saved = JSON.parse(fs.readFileSync(getSettingsFile(), "utf8"));
-
-        const settings = Object.fromEntries(Object.entries(SETTING_VALIDATORS).map(([key, isValid]) => [key, isValid(saved[key]) ? saved[key] : DEFAULT_SETTINGS[key]]));
-
-        return { ...settings, schedules: normalizeSchedules(settings.schedules) };
-    } catch {
-        return { ...DEFAULT_SETTINGS };
-    }
-};
-
-const writeSettings = (settings) => {
-    fs.mkdirSync(app.getPath("userData"), { recursive: true });
-    fs.writeFileSync(getSettingsFile(), JSON.stringify(settings, null, 4));
-};
+const settingsStore = createSettingsStore({ dir: app.getPath("userData") });
+const readSettings = settingsStore.read;
+const writeSettings = settingsStore.write;
+const updateSettings = settingsStore.update;
 
 const createFailure = (code, msg) => {
     return { status: STATUS_FAILED, error: { code: code, msg: msg } };
@@ -237,7 +181,7 @@ const launchRun = async (settings, startOptions, { remember }) => {
         fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
 
         if (remember) {
-            writeSettings({ ...settings, ...startOptions });
+            updateSettings(startOptions);
         }
 
         const model = resolveModel(startOptions.model, settings.modelVersions);
@@ -278,7 +222,7 @@ const handleSetOptions = async (event, options = {}) => {
     const result = await runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort });
 
     if (result.status === STATUS_OK) {
-        writeSettings({ ...settings, model: options.model, effort: options.effort });
+        updateSettings({ model: options.model, effort: options.effort });
     }
 
     return result;
@@ -366,6 +310,7 @@ const handleGetState = async () => {
         canLaunchAtLogin: loginItem.isSupported(),
         update: updateCheck.getUpdate(),
         settings: readSettings(),
+        settingsNotice: settingsStore.takeNotice(),
         state: runner.getState(),
         logs: runner.getLogs()
     };
@@ -595,6 +540,8 @@ const handleDeleteRun = async (event, id) => {
 };
 
 const registerIpc = () => {
+    settingsStore.recover();
+
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
     ipcMain.handle("autopilot:start", handleStart);

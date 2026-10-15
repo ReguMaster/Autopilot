@@ -48,6 +48,10 @@ const boot = async () => {
     appendEntries(snapshot.logs);
     flushNow();
 
+    if (snapshot.settingsNotice) {
+        ui.showNotice(snapshot.settingsNotice, "warn");
+    }
+
     const accountsResult = await window.autopilot.getAccounts();
 
     if (accountsResult.status === STATUS_OK) {

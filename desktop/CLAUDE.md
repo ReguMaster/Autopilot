@@ -23,12 +23,13 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 - 대상 프로젝트는 Git 저장소의 루트(.git이 있는 폴더)만 받는다(projectFiles.getProjectError). 고르기 전에는 시작 버튼이 잠기고 실행 중에는 바꿀 수 없다.
 - 프로젝트·작업·종료 시각·정책·model·effort는 userData/settings.json에 저장해 다음 실행 때 복원한다. 프로젝트는 고를 때, 나머지는 시작할 때 저장하고, model·effort는 실행 중 set에 성공해도 저장한다.
+- 설정 파일은 settingsStore.cjs(스키마·기본값·검증·마이그레이션)와 jsonFile.cjs(저장)가 맡는다. 쓰기는 임시 파일에 다 쓰고 디스크에 반영한 뒤 교체하며, 읽을 수 있던 직전 파일만 .bak으로 남긴다(깨진 파일이 좋은 백업을 덮지 않는다). 앱을 켤 때 손상을 발견하면 깨진 파일을 .corrupt로 옮기고 .bak으로 복구하며(없으면 기본값) 화면이 안내를 한 번 보여준다. 저장 형식은 `version` 키로 구분하고(없으면 0) 형식을 바꾸는 변경은 settingsStore의 MIGRATIONS에 더한다. 저장은 `update(patch)`로 읽은 직후의 값에 바뀐 키만 얹어 await 사이에 다른 곳이 저장한 값을 되돌리지 않게 한다. tests/checkDesktopSettings.js가 검증한다.
 - 종료 신호는 같은 엔진의 stop, 실행 중 model·effort 변경은 set(다음 회차부터 적용), 강제 종료는 Windows taskkill /T /F(그 외 SIGTERM)다.
 - 실행 중에는 model·effort를 고르는 즉시 set으로 보낸다(Effort는 팝오버의 단계를 누를 때 한 번). 전달 중에 또 바뀌면 마지막 선택만 한 번 더 보낸다(composerStore의 applyRoundOptions).
 - 대시보드는 회차 시작 로그의 (model X, effort Y)를 적용 중인 값으로, 마지막으로 set에 성공한 값을 요청 값으로 본다. 둘이 다르면 적용 대기로 표시한다.
 - 모델은 화면에서 계열 별칭(MODEL_CHOICES, 최신 버전)만 고르고, 설정 패널의 "모델 버전"(#model-versions, ui/features/settings/ModelVersions.jsx)이 계열마다 모델 ID를 고정한다(settings.json의 modelVersions, 비면 별칭). 별칭→ID 변환은 메인(autopilotIpc.resolveModel)이 시작·set에서만 하고 settings.model에는 계열을 저장한다. 엔진·러너 state의 model은 ID일 수 있어 화면(composerStore·viewFormat)이 getModelFamily·formatModelName으로 계열과 이름을 읽는다. 고정은 실행 중에 막고 메인도 거부한다(autopilot:set-model-version).
 - 버전 목록은 claudeAccount.createAccountReader().getModels()가 계정 토큰으로 공식 `GET /v1/models`(anthropic-version 헤더 필요)를 읽어 1시간 보관한다. ID 형식(MODEL_ID_PATTERN)을 벗어난 항목은 걸러내고 실패하면 이전 목록을 유지한다. 새 모델은 목록이 따라오지만 새 계열(line)은 별칭 라디오·MODEL_CHOICES·viewFormat의 MODEL_LABELS·마크를 함께 더해야 보인다. tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
-- 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·MODEL_ID_PATTERN·EFFORT_CHOICES, autopilotIpc.cjs의 POLICY_CHOICES, 화면의 ui/lib/constants.js(MODEL_FAMILIES·EFFORT_LEVELS·POLICIES와 DEFAULT_*)이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 기본값을 대조한다.
+- 허용 값은 autopilotRunner.cjs의 MODEL_CHOICES·MODEL_ID_PATTERN·EFFORT_CHOICES, settingsStore.cjs의 POLICY_CHOICES, 화면의 ui/lib/constants.js(MODEL_FAMILIES·EFFORT_LEVELS·POLICIES와 DEFAULT_*)이며 엔진 config.js와 함께 바꾼다. tests/checkDesktopRunner.js가 값과 기본값을 대조한다.
 
 ## 계정
 
