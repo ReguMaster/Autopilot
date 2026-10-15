@@ -135,9 +135,9 @@ const createWindow = () => {
         }
     });
 
-    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다. 로그인 자동 실행이면 트레이에만 둔다.
+    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다. 로그인 자동 실행이면 트레이에만 두고, 스모크 테스트는 창을 띄우지 않는다.
     window.once("ready-to-show", () => {
-        if (!isSmokeTest && wasLaunchedHidden()) {
+        if (isSmokeTest || wasLaunchedHidden()) {
             return;
         }
 
@@ -205,7 +205,12 @@ const createWindow = () => {
             const isEngineReady = await checkEngine();
 
             consoleErrors.forEach((message) => console.error(`화면 콘솔 오류: ${message}`));
-            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && consoleErrors.length === 0 ? 0 : 1);
+
+            if (window.isVisible()) {
+                console.error("스모크 테스트는 창을 화면에 띄우지 않아야 해요.");
+            }
+
+            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && consoleErrors.length === 0 && !window.isVisible() ? 0 : 1);
         });
     }
 
