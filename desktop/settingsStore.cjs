@@ -21,6 +21,8 @@ const RECOVERY_NOTICES = {
 // 프로젝트가 따로 정하지 않으면 전역 값을 쓰는 키. 전역 파일에는 기본값으로, 프로젝트 파일에는 덮어쓴 값만 들어간다.
 const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "modelVersions", "effort"];
 const SCHEDULES_KEY = "schedules";
+// 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
+const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
 const MACHINE_KEYS = ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"];
 const EXPORT_APP = "AutoPilot";
@@ -42,7 +44,12 @@ const DEFAULT_SETTINGS = {
     claudeDir: "",
     keepInTray: false,
     launchAtLogin: false,
-    schedules: []
+    schedules: [],
+    notifyFinish: true,
+    notifyFailure: true,
+    notifyLimit: true,
+    notifySchedule: true,
+    notifyFocused: false
 };
 
 // modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
@@ -65,7 +72,12 @@ const SETTING_VALIDATORS = {
     claudeDir: (value) => typeof value === "string",
     keepInTray: (value) => typeof value === "boolean",
     launchAtLogin: (value) => typeof value === "boolean",
-    schedules: (value) => Array.isArray(value)
+    schedules: (value) => Array.isArray(value),
+    notifyFinish: (value) => typeof value === "boolean",
+    notifyFailure: (value) => typeof value === "boolean",
+    notifyLimit: (value) => typeof value === "boolean",
+    notifySchedule: (value) => typeof value === "boolean",
+    notifyFocused: (value) => typeof value === "boolean"
 };
 
 // MIGRATIONS[n]은 버전 n의 저장 내용을 n+1 형식으로 바꾼다. 키 이름이나 의미를 바꿀 때 여기에 더한다. context.writeProject는 프로젝트 파일에 쓰는 함수다.
@@ -359,6 +371,7 @@ module.exports = {
     SETTING_VALIDATORS,
     OVERRIDABLE_KEYS,
     SCHEDULES_KEY,
+    PREFERENCE_KEYS,
     MACHINE_KEYS,
     EXPORT_APP,
     EXPORT_KIND,

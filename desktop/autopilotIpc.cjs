@@ -5,7 +5,7 @@ const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
-const { handleState, notify } = require("./systemIntegration.cjs");
+const { handleState, notify, configure: configureSystem } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
 const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
@@ -13,7 +13,7 @@ const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, SETTING_VALIDATORS, OVERRIDABLE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
+const { createSettingsStore, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
@@ -169,7 +169,7 @@ const scheduler = createScheduler({
     refreshUsage: () => accounts.refreshActiveUsage(),
     isBusy: isEngineBusy,
     startRun: startScheduledRun,
-    notify: notify,
+    notify: (title, body) => notify(title, body, "schedule"),
     onChange: (payload) => broadcast("autopilot:schedules", payload)
 });
 
@@ -361,6 +361,19 @@ const handleRestoreDefaults = () => {
     }
 
     settingsStore.resetPreferences();
+
+    return { status: STATUS_OK, data: getSettingsView() };
+};
+
+// 알림처럼 실행과 무관하게 언제든 바꾸는 전역 환경설정을 저장한다.
+const handleSetPreferences = (event, patch) => {
+    const keys = patch && typeof patch === "object" ? Object.keys(patch) : [];
+
+    if (keys.length === 0 || !keys.every((key) => PREFERENCE_KEYS.includes(key) && SETTING_VALIDATORS[key](patch[key]))) {
+        return createFailure("INVALID_OPTIONS", "환경설정 값이 올바르지 않아요.");
+    }
+
+    updateSettings(patch);
 
     return { status: STATUS_OK, data: getSettingsView() };
 };
@@ -673,6 +686,7 @@ const handleDeleteRun = async (event, id) => {
 const registerIpc = () => {
     settingsStore.recover();
     settingsStore.upgrade();
+    configureSystem({ getPreferences: readSettings });
 
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
@@ -681,6 +695,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
     ipcMain.handle("autopilot:reset-settings", handleResetSettings);
+    ipcMain.handle("autopilot:set-preferences", handleSetPreferences);
     ipcMain.handle("autopilot:export-settings", handleExportSettings);
     ipcMain.handle("autopilot:import-settings", handleImportSettings);
     ipcMain.handle("autopilot:restore-defaults", handleRestoreDefaults);

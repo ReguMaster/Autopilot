@@ -7,8 +7,11 @@ const TRAY_ICON_SCALE = 2;
 const PAUSED_PHASE_PATTERN = /재시도|사용량 한도/;
 const LIMIT_PHASE_PREFIX = "사용량 한도 대기";
 const KILLED_REASON = "강제 종료";
+// 알림 종류와 그것을 켜고 끄는 설정 키
+const NOTIFY_PREFERENCE_KEYS = { finish: "notifyFinish", failure: "notifyFailure", limit: "notifyLimit", schedule: "notifySchedule" };
 
 let tray = null;
+let readPreferences = () => ({});
 let sleepBlockerId = null;
 let previousStatus = "idle";
 let previousPhase = "";
@@ -83,10 +86,20 @@ const showWindow = () => {
     window.focus();
 };
 
-const notify = (title, body) => {
+// 알림 설정은 호출한 쪽이 넘겨 준 함수로 읽는다(저장 위치를 이 모듈이 알 필요가 없다).
+const configure = ({ getPreferences }) => {
+    readPreferences = getPreferences;
+};
+
+// 종류가 꺼져 있으면 보내지 않고, 창을 보고 있을 때는 따로 켠 경우에만 보낸다.
+const shouldNotify = (kind, preferences, isWindowFocused) => {
+    return preferences[NOTIFY_PREFERENCE_KEYS[kind]] === true && (!isWindowFocused || preferences.notifyFocused === true);
+};
+
+const notify = (title, body, kind) => {
     const window = getMainWindow();
 
-    if (!Notification.isSupported() || window?.isFocused()) {
+    if (!Notification.isSupported() || !shouldNotify(kind, readPreferences(), Boolean(window?.isFocused()))) {
         return;
     }
 
@@ -96,14 +109,26 @@ const notify = (title, body) => {
     notification.show();
 };
 
-// 창을 보고 있지 않을 때 알아야 하는 전환(종료·사용량 한도 대기)만 알린다. 직접 강제 종료한 경우는 알리지 않는다.
-const notifyTransition = (state) => {
-    if (isActiveStatus(previousStatus) && !isActiveStatus(state.status) && state.reason !== KILLED_REASON) {
+// 알아야 하는 전환(종료·실패·사용량 한도 대기)의 알림 내용. 직접 강제 종료한 경우는 알리지 않는다. 없으면 null.
+const getTransitionNotice = (previous, state) => {
+    if (isActiveStatus(previous.status) && !isActiveStatus(state.status) && state.reason !== KILLED_REASON) {
         const isFailure = state.exitCode !== null && state.exitCode !== 0;
 
-        notify(isFailure ? "AutoPilot 실패" : "AutoPilot 종료", `${state.reason} (${state.round}회차)`);
-    } else if (state.phase.startsWith(LIMIT_PHASE_PREFIX) && !previousPhase.startsWith(LIMIT_PHASE_PREFIX)) {
-        notify("AutoPilot 대기 중", state.phase);
+        return { kind: isFailure ? "failure" : "finish", title: isFailure ? "AutoPilot 실패" : "AutoPilot 종료", body: `${state.reason} (${state.round}회차)` };
+    }
+
+    if (state.phase.startsWith(LIMIT_PHASE_PREFIX) && !previous.phase.startsWith(LIMIT_PHASE_PREFIX)) {
+        return { kind: "limit", title: "AutoPilot 대기 중", body: state.phase };
+    }
+
+    return null;
+};
+
+const notifyTransition = (state) => {
+    const notice = getTransitionNotice({ status: previousStatus, phase: previousPhase }, state);
+
+    if (notice) {
+        notify(notice.title, notice.body, notice.kind);
     }
 };
 
@@ -133,4 +158,4 @@ const createTray = ({ onQuit }) => {
     tray.on("click", showWindow);
 };
 
-module.exports = { handleState, createTray, showWindow, notify };
+module.exports = { handleState, createTray, showWindow, notify, configure, shouldNotify, getTransitionNotice };

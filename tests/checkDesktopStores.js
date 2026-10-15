@@ -488,6 +488,12 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
     assert.equal(await settings.update({ model: "haiku" }), false);
     assert.equal(useUiStore.getState().notice.message, "실행 중에는 설정을 바꿀 수 없어요.");
 
+    window.autopilot.setPreferences = async (patch) => OK({ ...getView({}), settings: { ...getView({}).settings, ...patch } });
+
+    await settings.setPreferences({ notifyFinish: false });
+
+    assert.equal(appStore.useAppStore.getState().settings.notifyFinish, false, "환경설정은 범위 없이 바로 반영된다");
+
     await run.selectProject();
 
     assert.equal(useComposerStore.getState().tasks, "다른 작업", "프로젝트를 바꾸면 컴포저가 새 프로젝트의 값으로 채워진다");

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
     updateSettings: (request) => ipcRenderer.invoke("autopilot:update-settings", request),
     resetSettings: (keys) => ipcRenderer.invoke("autopilot:reset-settings", keys),
+    setPreferences: (patch) => ipcRenderer.invoke("autopilot:set-preferences", patch),
     exportSettings: () => ipcRenderer.invoke("autopilot:export-settings"),
     importSettings: () => ipcRenderer.invoke("autopilot:import-settings"),
     restoreDefaultSettings: () => ipcRenderer.invoke("autopilot:restore-defaults"),

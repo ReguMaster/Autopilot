@@ -119,6 +119,34 @@ const SystemGroup = () => {
     );
 };
 
+const NOTIFICATION_ROWS = [
+    { key: "notifyFinish", title: "실행이 끝나면", note: "정상으로 끝나거나 종료 신호로 멈췄을 때 알려요." },
+    { key: "notifyFailure", title: "실패하거나 중단되면", note: "연속 실패로 중단되는 등 오류로 끝났을 때 알려요." },
+    { key: "notifyLimit", title: "사용량 한도로 기다리면", note: "한도에 걸려 리셋까지 기다리기 시작할 때 알려요." },
+    { key: "notifySchedule", title: "예약이 시작되면", note: "예약이 실행을 시작했거나 시작하지 못했을 때 알려요." },
+    { key: "notifyFocused", title: "창을 보고 있을 때도", note: "끄면 창이 가려져 있거나 트레이에 있을 때만 알려요." }
+];
+
+const NotificationGroup = () => {
+    const preferences = useAppStore((store) => store.settings);
+
+    return (
+        <SettingsGroup id="group-notify" sectionId="notify-group" title="알림">
+            {NOTIFICATION_ROWS.map((row) => (
+                <SwitchRow
+                    key={row.key}
+                    id={`notify-${row.key}`}
+                    noteId={`notify-${row.key}-note`}
+                    title={row.title}
+                    note={row.note}
+                    checked={Boolean(preferences[row.key])}
+                    onChange={(isOn) => settings.setPreferences({ [row.key]: isOn })}
+                />
+            ))}
+        </SettingsGroup>
+    );
+};
+
 const LimitGroup = () => {
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const { value } = useScopedValue("extendOnLimit");
@@ -209,6 +237,7 @@ const SettingsPanel = () => {
             <LimitGroup />
             <ProviderGroup />
             <SystemGroup />
+            <NotificationGroup />
             <HistoryGroup />
             <ManageGroup />
 

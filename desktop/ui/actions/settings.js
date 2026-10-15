@@ -49,6 +49,17 @@ const settings = {
         return true;
     },
 
+    // 알림처럼 실행과 무관한 전역 환경설정은 범위 없이 바로 저장한다.
+    setPreferences: async (patch) => {
+        const result = await window.autopilot.setPreferences(patch);
+
+        ui.showFailure(result);
+
+        if (result.status === STATUS_OK) {
+            applyView(result.data);
+        }
+    },
+
     exportToFile: async () => {
         const result = await window.autopilot.exportSettings();
 

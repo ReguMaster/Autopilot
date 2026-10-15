@@ -169,6 +169,11 @@ const api = {
 
         return ok(getSettingsView());
     }),
+    setPreferences: respond("setPreferences", async (patch) => {
+        model.settings = { ...model.settings, ...patch };
+
+        return ok(getSettingsView());
+    }),
     exportSettings: respond("exportSettings", async () => ok({ canceled: false })),
     importSettings: respond("importSettings", async () => ok({ canceled: false, ...getSettingsView(), keyCount: 3, projectCount: 1, skippedCount: 0 })),
     restoreDefaultSettings: respond("restoreDefaultSettings", async () => {
