@@ -1,6 +1,7 @@
 import { accounts } from "../../actions/accounts.js";
 import { selectProject } from "../../actions/run.js";
 import { Button } from "../../components/Button.jsx";
+import { useLoginExpiry } from "../../hooks/useLoginExpiry.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
@@ -11,6 +12,7 @@ const Notices = () => {
     const loginBanner = useUiStore((store) => store.loginBanner);
     const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
     const isIdle = useRunStore((store) => store.state.status === "idle");
+    const expiry = useLoginExpiry();
 
     return (
         <div className="notices">
@@ -19,8 +21,14 @@ const Notices = () => {
             </p>
             <p id="login-banner" className="notice" data-tone="warn" hidden={loginBanner === null}>
                 <span id="login-banner-message">{loginBanner}</span>{" "}
-                <Button id="banner-login" onClick={accounts.loginFromBanner}>
+                <Button id="banner-login" onClick={() => accounts.loginFromBanner()}>
                     로그인
+                </Button>
+            </p>
+            <p id="login-expiry-banner" className="notice" data-tone="warn" hidden={!expiry?.banner}>
+                <span id="login-expiry-message">{expiry?.banner}</span>{" "}
+                <Button id="banner-relogin" disabled={!isIdle} onClick={accounts.reloginBeforeExpiry}>
+                    다시 로그인
                 </Button>
             </p>
             <p id="project-banner" className="notice" data-tone="warn" hidden={hasProject}>

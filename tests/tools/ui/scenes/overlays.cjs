@@ -1,4 +1,4 @@
-const { ACCOUNTS, HOUR, MODELS, NOW, PROJECT, RUNS, RUN_LINES, doneState, makeRun, runningState, withProject } = require("./data.cjs");
+const { ACCOUNTS, DAY, HOUR, MODELS, NOW, PROJECT, RUNS, RUN_LINES, doneState, makeRun, runningState, withProject } = require("./data.cjs");
 
 const callNames = async (t) => JSON.stringify((await t.calls()).map((call) => call[0]));
 const callsWithArgs = async (t) => JSON.stringify(await t.calls());
@@ -177,6 +177,31 @@ const SCENES = [
         }
     },
     {
+        // 로그인 만료 안내: 옛 화면에는 없어 기준과 다른 것이 의도한 차이다. 여유가 있으면 프로필 패널 줄만 보이고, 3일 안이면 안내 줄과 다시 로그인 버튼이 더해지며, 안내 줄의 버튼은 로그인을 시작해 패널을 연다.
+        name: "login-expiry",
+        init: { ...withProject, accounts: { ...ACCOUNTS, snapshots: { ...ACCOUNTS.snapshots, default: { ...ACCOUNTS.snapshots.default, loginExpiresAt: NOW + 29 * DAY } } } },
+        run: async (t) => {
+            const expiresAt = (loginExpiresAt) => ({ ...ACCOUNTS.snapshots.default, loginExpiresAt: loginExpiresAt });
+
+            await t.click("#profile-toggle");
+            await t.wait(700);
+            await t.shot("far", "#profile");
+            await t.press("Escape");
+            await t.wait(700);
+            await t.drive("account", "default", expiresAt(NOW + 2 * DAY + 5 * HOUR));
+            await t.shot("banner", ".notices");
+            await t.clearCalls();
+            await t.click("#banner-relogin");
+            await t.wait(700);
+            await t.note("calls", await callsWithArgs(t));
+            await t.shot("expiring", "#profile");
+            await t.press("Escape");
+            await t.wait(700);
+            await t.drive("account", "default", expiresAt(NOW - HOUR));
+            await t.shot("expired", ".notices");
+        }
+    },
+    {
         name: "profile-panel-running",
         init: { ...withProject, accounts: ACCOUNTS, state: runningState() },
         run: async (t) => {
@@ -278,6 +303,7 @@ const SCENES = [
             await t.shot("detail-partial", "#archive");
             await t.clearCalls();
             await t.click("#archive-delete");
+            await t.confirm();
             await t.wait(500);
             await t.note("delete-calls", await callNames(t));
             await t.shot("after-delete", "#archive");
@@ -303,7 +329,6 @@ const SCENES = [
                     { id: "sch-4", code: "outside-window", opensAt: NOW + 20 * HOUR }
                 ]
             });
-            await t.confirm();
             await t.shot("list", "#schedule");
             await t.shot("peek", "#schedule-peek", { skipDom: true });
             await t.clearCalls();

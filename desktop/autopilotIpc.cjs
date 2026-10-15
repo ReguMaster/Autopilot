@@ -7,6 +7,7 @@ const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./pr
 const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState, notify } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
+const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
@@ -145,7 +146,14 @@ const runner = createRunner({
     }
 });
 
-const accounts = createAccountIpc({ readSettings: readSettings, writeSettings: writeSettings, broadcast: broadcast, isRunning: () => runner.isRunning() });
+// --debug-login-expiry는 만료 화면을 보는 개발용이라 패키지 앱에서는 읽지 않는다.
+const accounts = createAccountIpc({
+    readSettings: readSettings,
+    writeSettings: writeSettings,
+    broadcast: broadcast,
+    isRunning: () => runner.isRunning(),
+    loginExpiresAtOverride: app.isPackaged ? 0 : parseLoginExpiryFlag(process.argv)
+});
 
 const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update) });
 

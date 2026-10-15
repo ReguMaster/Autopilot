@@ -630,6 +630,10 @@ body.profile-open #profile {
     padding: 4px 8px 6px;
 }
 
+.profile-panel .login-expiry {
+    padding: 2px 8px 10px;
+}
+
 .usage-list {
     display: grid;
 }

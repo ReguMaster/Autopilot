@@ -5,6 +5,7 @@ import { accounts } from "../../actions/accounts.js";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Panel } from "../../components/Panel.jsx";
+import { useLoginExpiry } from "../../hooks/useLoginExpiry.js";
 import { useClock } from "../../stores/clock.js";
 import { EMPTY_ACCOUNT, useAccountStore } from "../../stores/accountStore.js";
 import { useRunStore } from "../../stores/runStore.js";
@@ -14,7 +15,7 @@ const MAX_ACCOUNT_COUNT = 9;
 const DEFAULT_ACCOUNT_ID = "default";
 const SKELETON_ITEM_COUNT = 3;
 const SESSION_LIMIT_PREFIX = "5시간";
-// 로그인 정보가 없거나 만료돼 사용량을 읽지 못할 때만 다시 로그인이 필요하다.
+// 로그인 정보가 없거나 만료돼 사용량을 읽지 못할 때, 또는 로그인 만료가 가까울 때 다시 로그인이 필요하다.
 const RELOGIN_ERROR_CODES = ["NO_CREDENTIALS", "TOKEN_EXPIRED"];
 
 const getAvatarLetter = ({ name, email }) => {
@@ -259,6 +260,8 @@ const ProfilePanel = () => {
     const isLoading = !account.fetchedAt && !account.error;
     const isLocked = !isIdle || login?.phase === "waiting";
     const status = getAccountStatus(account, isLoading);
+    const expiry = useLoginExpiry();
+    const needsRelogin = RELOGIN_ERROR_CODES.includes(account.error?.code) || Boolean(expiry?.isExpiring);
 
     return (
         <Panel id="profile" className="profile-panel" aria-label="프로필" open={open}>
@@ -268,7 +271,7 @@ const ProfilePanel = () => {
                     <Icon symbol="icon-plus" />
                     계정 추가
                 </Button>
-                <Button id="account-login" hidden={!RELOGIN_ERROR_CODES.includes(account.error?.code)} disabled={isLocked} onClick={accounts.login}>
+                <Button id="account-login" hidden={!needsRelogin} disabled={isLocked} onClick={accounts.login}>
                     다시 로그인
                 </Button>
                 <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isLocked} onClick={accounts.remove}>
@@ -282,6 +285,9 @@ const ProfilePanel = () => {
             <LoginBox />
             <ProfileCard profile={account.profile} isLoading={isLoading} />
             <Usage limits={account.limits} isLoading={isLoading} />
+            <p id="login-expiry" className="panel-note login-expiry" hidden={!expiry} data-tone={expiry?.isExpiring ? "warn" : undefined}>
+                {expiry?.text}
+            </p>
             <div className="panel-foot">
                 <p id="usage-status" className="panel-note" aria-live="polite" data-tone={status.tone || undefined}>
                     {status.text}

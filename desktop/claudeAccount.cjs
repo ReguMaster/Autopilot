@@ -23,6 +23,9 @@ const LEGACY_LIMITS = [
 ];
 const PLAN_NAMES = { claude_pro: "Pro", claude_max: "Max", claude_team: "Team", claude_enterprise: "Enterprise" };
 const MAX_MULTIPLIER_PATTERN = /max_(\d+)x/;
+const LOGIN_EXPIRY_FLAG = "--debug-login-expiry=";
+const LOGIN_EXPIRY_FLAG_PATTERN = /^(-?\d{1,4})([mhd])$/;
+const LOGIN_EXPIRY_UNIT_MS = { m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
 
 const createFailure = (code, msg) => {
     return { code: code, msg: msg };
@@ -39,6 +42,21 @@ const readOAuth = (credentialsFile) => {
     } catch {
         return null;
     }
+};
+
+// 저장된 로그인(refresh token)의 만료 시각. 시각 값만 읽고 토큰은 건드리지 않는다. 모르면 0이다.
+const parseLoginExpiresAt = (oauth) => {
+    const expiresAt = Number(oauth?.refreshTokenExpiresAt);
+
+    return Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : 0;
+};
+
+// 개발 실행에서 만료 화면을 보려는 --debug-login-expiry=<값>(2d·5h·30m·-1m)을 지금 기준 만료 시각으로 바꾼다. 형식이 틀리면 0(사용 안 함)이다.
+const parseLoginExpiryFlag = (argv, nowMs = Date.now()) => {
+    const value = argv.find((arg) => arg.startsWith(LOGIN_EXPIRY_FLAG))?.slice(LOGIN_EXPIRY_FLAG.length);
+    const match = LOGIN_EXPIRY_FLAG_PATTERN.exec(value ?? "");
+
+    return match ? nowMs + Number(match[1]) * LOGIN_EXPIRY_UNIT_MS[match[2]] : 0;
 };
 
 const getLimitLabel = (entry) => {
@@ -122,7 +140,7 @@ const parseModels = (body) => {
 };
 
 const createEmptyAccount = () => {
-    return { profile: null, limits: [], fetchedAt: 0, error: null };
+    return { profile: null, limits: [], fetchedAt: 0, error: null, loginExpiresAt: 0 };
 };
 
 // 토큰은 이 파일 안에서만 읽어 Anthropic 엔드포인트 두 곳으로만 보내고 화면·로그에는 넘기지 않는다. 만료돼도 갱신하지 않는다(refresh token을 쓰면 Claude Code 로그인에 영향을 줄 수 있다).
@@ -196,6 +214,11 @@ const createAccountReader = (options = {}) => {
         return (await options.renewCredentials()) ? fetchOnce() : result;
     };
 
+    // 조회가 실패해도 로그인 만료 시각은 파일에서 읽을 수 있다. 갱신이 파일을 고쳤을 수 있어 조회 뒤에 읽는다.
+    const getLoginExpiresAt = () => {
+        return options.loginExpiresAtOverride || parseLoginExpiresAt(readOAuth(options.credentialsFile || getCredentialsFile()));
+    };
+
     const run = async () => {
         lastAttemptAt = now();
 
@@ -213,6 +236,7 @@ const createAccountReader = (options = {}) => {
             account = { ...account, error: createFailure("REQUEST_FAILED", `계정 정보를 가져오지 못했어요. ${error.message}`) };
         }
 
+        account = { ...account, loginExpiresAt: getLoginExpiresAt() };
         onChange(account);
 
         return account;
@@ -273,4 +297,4 @@ const createAccountReader = (options = {}) => {
     return { start: start, stop: stop, refresh: refresh, getModels: getModels, getAccount: () => account };
 };
 
-module.exports = { createAccountReader };
+module.exports = { createAccountReader, parseLoginExpiryFlag };

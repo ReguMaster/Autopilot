@@ -45,7 +45,20 @@ let isQuitting = false;
 
 // 화면은 메인이 보관한 첫 상태를 받은 뒤에 그려지므로 마운트를 잠깐 기다린 다음, preload 다리와 화면의 주요 자리가 모두 있는지 확인한다.
 const SMOKE_BRIDGE_APIS = ["start", "loginAccount", "getAccounts", "listRuns", "openUpdate", "getSchedules"];
-const SMOKE_SELECTORS = ["#titlebar", "#update-chip", "#login-banner", "#run-form", "#profile", "#settings", "#history", "#archive", "#schedule", "#schedule-peek", "#model-versions .select-trigger"];
+const SMOKE_SELECTORS = [
+    "#titlebar",
+    "#update-chip",
+    "#login-banner",
+    "#login-expiry-banner",
+    "#run-form",
+    "#profile",
+    "#settings",
+    "#history",
+    "#archive",
+    "#schedule",
+    "#schedule-peek",
+    "#model-versions .select-trigger"
+];
 const SMOKE_MOUNT_TIMEOUT_MS = 8000;
 const SMOKE_CHECK_SCRIPT = `(async () => {
     const deadline = Date.now() + ${SMOKE_MOUNT_TIMEOUT_MS};

@@ -13,6 +13,8 @@ const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
 const LOGIN_URL_HOSTS = ["claude.com", "claude.ai", "anthropic.com"];
 const LOGIN_CODE_PATTERN = /^[\w#.~-]{4,400}$/;
 const LOGIN_OUTPUT_TAIL_LENGTH = 4000;
+// CMD 래퍼의 명령줄에 들어가므로 CMD가 해석하는 문자(& | < > ^ " % 공백)와 옵션처럼 보이는 앞의 -는 받지 않는다.
+const LOGIN_EMAIL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}$/;
 
 const isExecutableFile = (file) => {
     try {
@@ -42,7 +44,7 @@ const findClaude = (processEnv = process.env) => {
     return "";
 };
 
-// 이 파일이 넘기는 인자는 고정 값뿐이라 CMD 래퍼도 안전하게 실행할 수 있다. 경로에 CMD가 해석하는 문자가 있으면 거부한다.
+// 이 파일이 넘기는 인자는 고정 값과 LOGIN_EMAIL_PATTERN을 통과한 이메일뿐이라 CMD 래퍼도 안전하게 실행할 수 있다. 경로에 CMD가 해석하는 문자가 있으면 거부한다.
 const spawnClaudeProcess = (launch, args, options) => {
     if (!IS_WINDOWS || !WINDOWS_SCRIPT_PATTERN.test(launch.command)) {
         return spawn(launch.command, [...launch.prefixArgs, ...args], options);
@@ -170,6 +172,7 @@ const isLoginUrl = (text) => {
 
 // `claude auth login`을 실행한다. 브라우저는 CLI가 직접 열고, 열리지 않았을 때를 위해 출력의 로그인 주소를 알려준다.
 // 브라우저가 코드를 보여 주면 submitCode로 CLI에 전달한다. 끝나면 로그인 상태를 다시 읽어 결과를 돌려준다.
+// options.email은 로그인 페이지에 미리 채울 이메일이다(인증을 대신하지 않는다). 형식이 맞지 않으면 넘기지 않는다.
 const startLogin = (configDir, handlers, options = {}) => {
     const launch = getLaunch(options);
 
@@ -179,7 +182,8 @@ const startLogin = (configDir, handlers, options = {}) => {
         return { submitCode: () => false, cancel: () => {} };
     }
 
-    const child = spawnClaudeProcess(launch, ["auth", "login", "--claudeai"], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    const emailArgs = LOGIN_EMAIL_PATTERN.test(options.email ?? "") ? ["--email", options.email] : [];
+    const child = spawnClaudeProcess(launch, ["auth", "login", "--claudeai", ...emailArgs], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
     let outputTail = "";
     let isCancelled = false;
     let isFinished = false;
@@ -249,4 +253,4 @@ const startLogin = (configDir, handlers, options = {}) => {
     };
 };
 
-module.exports = { findClaude, getAuthStatus, renewCredentials, startLogin, isLoginUrl, LOGIN_CODE_PATTERN };
+module.exports = { findClaude, getAuthStatus, renewCredentials, startLogin, isLoginUrl, LOGIN_CODE_PATTERN, LOGIN_EMAIL_PATTERN };

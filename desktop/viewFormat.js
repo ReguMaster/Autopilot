@@ -124,6 +124,29 @@ const formatUsageReset = (resetsAt, now) => {
     return `${isSameDay ? formatClock(resetsAt) : formatDeadline(resetsAt)} 리셋 · ${formatRemaining(resetsAt - now)} 후`;
 };
 
+const LOGIN_EXPIRY_WARN_MS = 3 * 24 * 60 * 60 * 1000;
+
+// 저장된 로그인의 만료 안내. 만료 3일 전(Claude Code가 경고를 내는 시점)부터 isExpiring이고 banner에 안내 문장이 있다. 만료 시각을 모르면 null이다.
+const describeLoginExpiry = (loginExpiresAt, now) => {
+    if (!loginExpiresAt) {
+        return null;
+    }
+
+    const remaining = loginExpiresAt - now;
+
+    if (remaining <= 0) {
+        return { text: "로그인이 만료됐어요", banner: "Claude 로그인이 만료됐어요. 다시 로그인해 주세요.", isExpiring: true };
+    }
+
+    const isExpiring = remaining <= LOGIN_EXPIRY_WARN_MS;
+
+    return {
+        text: `로그인 만료 ${formatDeadline(loginExpiresAt)} · ${formatRemaining(remaining)} 후`,
+        banner: isExpiring ? `Claude 로그인이 ${formatRemaining(remaining)} 뒤 만료돼요. 미리 다시 로그인하면 실행이 중간에 멈추지 않아요.` : "",
+        isExpiring: isExpiring
+    };
+};
+
 const getUsageTone = (percent) => {
     if (percent >= 90) {
         return "danger";
@@ -926,6 +949,7 @@ export {
     formatOptions,
     formatRemaining,
     formatUsageReset,
+    describeLoginExpiry,
     getUsageTone,
     getLineKind,
     getRunPhase,

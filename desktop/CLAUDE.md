@@ -36,8 +36,11 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 - 조회는 메인 프로세스의 claudeAccount.cjs가 계정마다 하나씩(accountIpc.cjs가 관리) 한다. 그 계정 설정 폴더의 .credentials.json 토큰으로 비공식 엔드포인트 api.anthropic.com/api/oauth/usage·/api/oauth/profile 두 곳만 부른다.
 - 앱을 켤 때(startAccountWatch, 스모크 테스트 제외) 모든 계정을 한 번 읽어 메인에 보관하고 5분마다 다시 읽어 autopilot:account({id, account})로 화면에 보낸다. 새로 고침(autopilot:refresh-account)은 15초 안의 재요청을 막는다. 일부만 실패하면 성공한 쪽만 갱신하고 이전 값은 유지한다.
-- 토큰은 이 모듈 밖으로 내보내거나 로그에 쓰지 않고 읽기만 한다. 앱이 refresh하지 않는다(refresh token을 쓰면 Claude Code 로그인이 깨질 수 있다).
+- 토큰은 이 모듈 밖으로 내보내거나 로그에 쓰지 않고 읽기만 한다. 앱이 refresh하지 않는다(refresh token은 회전해서 같은 토큰으로 두 번 갱신하면 저장된 로그인이 폐기되고, CLI는 프로세스끼리 갱신 잠금을 나눠 쓰지만 앱은 그 잠금에 끼지 못한다). 갱신은 CLI에 맡긴다.
+- Anthropic 정책(Claude Code 문서의 Legal and compliance)은 개발자가 Claude.ai 자격 증명·세션 토큰을 수집·보관·중개하는 것을 막고 로그인은 Anthropic의 흐름으로 끝내라고 한다. 그래서 refresh token은 물론 `claude setup-token`의 장기 토큰도 앱이 저장하지 않는다. 장기 토큰은 사용자가 OS 환경 변수 CLAUDE_CODE_OAUTH_TOKEN으로 직접 쓰는 방법만 안내하고, 이 토큰은 사용량·프로필 조회에 필요한 user:profile 권한이 없어 그 조회(/api/oauth/usage·profile)가 403이다(/v1/models는 된다).
 - 액세스 토큰은 수명이 약 8시간이라 만료되면 claudeCli.renewCredentials가 가장 작은 `claude -p` 요청 한 번(haiku, effort low, 도구·사용자 설정·MCP를 빼서 입력 약 3k 토큰, 약 $0.0006)으로 CLI가 직접 갱신하게 맡기고 다시 읽는다. 실행·로그인 중에는 하지 않고 계정마다 30분에 한 번만 시도하며, 갱신이 안 되면 그때 안내를 낸다.
+- 로그인 만료 안내: 저장된 로그인에는 만료일이 있고(.credentials.json의 refreshTokenExpiresAt, ms 시각) 만료되면 `/login`만이 복구다. claudeAccount가 그 시각 값만 읽어 계정 스냅샷의 loginExpiresAt(모르면 0)으로 보내고, 사용량 조회가 실패해도 파일에서 읽는다. 화면은 viewFormat.describeLoginExpiry가 만든 문구를 프로필 패널의 #login-expiry 줄로 보여주고, 만료 3일 전(LOGIN_EXPIRY_WARN_MS, Claude Code의 경고와 같다)부터는 컴포저 위 #login-expiry-banner와 프로필 패널의 다시 로그인 버튼을 띄운다. 안내 줄의 버튼(accounts.reloginBeforeExpiry)은 로그인 뒤 시작을 잇지 않고, 로그인은 알고 있는 이메일을 `claude auth login --email`로 미리 채운다(claudeCli의 LOGIN_EMAIL_PATTERN을 통과한 값만. CMD 래퍼 명령줄에 들어가므로 검사한다. 인증은 대신하지 않아 코드는 사용자가 입력한다).
+- 만료 화면 시험: `npm run dev -- --debug-login-expiry=<값>`(30m·5h·2d, 이미 만료는 -1m)이 앱을 켠 시각 기준의 만료 시각을 모든 계정에 돌려준다(claudeAccount.parseLoginExpiryFlag, 형식이 틀리면 무시). 패키지 앱(app.isPackaged)에서는 읽지 않고, tests/tools/ui의 login-expiry 장면이 같은 화면을 가짜 데이터로 찍는다.
 - 프로필에는 아바타 URL이 없다. 사용량은 limits[](session·weekly_all·weekly_scoped)를 기준으로 읽고 없으면 five_hour·seven_day로 대신한다. 형식이 바뀌어도 앱이 깨지지 않게 실패 안내만 낸다.
 - 엔진·로그 형식과는 무관하다. tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
 

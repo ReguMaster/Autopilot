@@ -19,6 +19,7 @@ const createAccountIpc = ({
     writeSettings,
     broadcast,
     isRunning,
+    loginExpiresAtOverride = 0,
     store = createAccountStore({ accountsRoot: path.join(app.getPath("userData"), "accounts"), getBaseDir: () => resolveBaseDir(readSettings().claudeDir) })
 }) => {
     const readers = new Map();
@@ -40,6 +41,7 @@ const createAccountIpc = ({
         if (!readers.has(accountId)) {
             const reader = createAccountReader({
                 credentialsFile: path.join(store.getConfigDir(accountId), CREDENTIALS_FILE_NAME),
+                loginExpiresAtOverride: loginExpiresAtOverride,
                 renewCredentials: async () => (isRunning() || login ? false : renewCredentials(store.getConfigDir(accountId))),
                 onChange: (account) => broadcast("autopilot:account", { id: accountId, account: account })
             });
@@ -135,18 +137,23 @@ const createAccountIpc = ({
         broadcast("autopilot:login", { accountId: accountId, phase: getLoginPhase(result), url: "", message: result.ok ? "로그인했어요." : result.message });
     };
 
+    // 이미 로그인했던 계정은 알고 있는 이메일을 로그인 페이지에 미리 채워 인증 코드만 입력하면 되게 한다.
     const beginLogin = (accountId, isNew) => {
         login = { accountId: accountId, isNew: isNew, session: null, url: "" };
 
-        const session = startLogin(store.getConfigDir(accountId), {
-            onUrl: (url) => {
-                if (login?.accountId === accountId) {
-                    login.url = url;
-                    broadcast("autopilot:login", getLoginState());
-                }
+        const session = startLogin(
+            store.getConfigDir(accountId),
+            {
+                onUrl: (url) => {
+                    if (login?.accountId === accountId) {
+                        login.url = url;
+                        broadcast("autopilot:login", getLoginState());
+                    }
+                },
+                onFinish: (result) => finishLogin(accountId, isNew, result)
             },
-            onFinish: (result) => finishLogin(accountId, isNew, result)
-        });
+            { email: isNew ? "" : getReader(accountId).getAccount().profile?.email }
+        );
 
         if (login?.accountId === accountId) {
             login.session = session;

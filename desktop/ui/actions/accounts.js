@@ -131,17 +131,19 @@ const accounts = {
             setAccountSnapshot(result.data.id, result.data.account);
         }
     },
-    // 안내 줄의 로그인 버튼: 선택한 계정의 로그인을 시작하고 주소·코드 입력이 있는 프로필 패널을 연다.
-    loginFromBanner: async () => {
+    // 안내 줄의 로그인 버튼: 선택한 계정의 로그인을 시작하고 주소·코드 입력이 있는 프로필 패널을 연다. 시작이 막혀서 누른 것이면 로그인 뒤 시작을 이어간다.
+    loginFromBanner: async (isStartAfter = true) => {
         const result = await window.autopilot.loginAccount(useAccountStore.getState().activeId);
 
         ui.showFailure(result);
 
         if (result.status === STATUS_OK) {
-            ui.set({ startAfterLogin: true });
+            ui.set({ startAfterLogin: isStartAfter });
             ui.setPanel("profile");
         }
-    }
+    },
+    // 만료가 다가온 로그인을 미리 갱신한다. 막혀 있던 시작이 없으므로 로그인 뒤 시작하지 않는다.
+    reloginBeforeExpiry: () => accounts.loginFromBanner(false)
 };
 
 export { accounts, applyPayload, applyLogin };

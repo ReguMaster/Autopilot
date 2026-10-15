@@ -26,7 +26,7 @@ import {
 const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
-const { createAccountReader } = require("../desktop/claudeAccount.cjs");
+const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
@@ -570,7 +570,7 @@ const checkClaudeAccount = async (testDir) => {
     };
     const requests = [];
     const changes = [];
-    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials } = {}) => {
+    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials, loginExpiresAtOverride } = {}) => {
         const responses = { usage: usage, profile: profile, isDown: false };
         const fetchImpl = async (url, init) => {
             requests.push({ url: url, headers: init.headers });
@@ -586,6 +586,7 @@ const checkClaudeAccount = async (testDir) => {
             fetchImpl: fetchImpl,
             now: () => clock.now,
             renewCredentials: renewCredentials,
+            loginExpiresAtOverride: loginExpiresAtOverride,
             onChange: (account) => changes.push(account)
         });
 
@@ -596,7 +597,7 @@ const checkClaudeAccount = async (testDir) => {
 
     const reader = createReader();
 
-    assert.deepEqual(reader.getAccount(), { profile: null, limits: [], fetchedAt: 0, error: null });
+    assert.deepEqual(reader.getAccount(), { profile: null, limits: [], fetchedAt: 0, error: null, loginExpiresAt: 0 });
 
     const account = await reader.refresh();
 
@@ -692,6 +693,34 @@ const checkClaudeAccount = async (testDir) => {
         clock.now += 16000;
 
         assert.equal((await createReader(responses).refresh()).error.code, code);
+    }
+
+    // 로그인 만료 시각은 refreshTokenExpiresAt의 시각 값만 읽고(없거나 숫자가 아니면 0) 토큰은 담지 않는다. 조회가 실패해도 알 수 있고, 개발용 재정의가 있으면 그 값을 쓴다.
+    assert.equal(account.loginExpiresAt, 0);
+
+    const loginExpiresAt = clock.now + 29 * 86400000;
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now + 3600000, refreshToken: "secret-refresh", refreshTokenExpiresAt: loginExpiresAt });
+
+    const expiring = await createReader().refresh();
+
+    assert.equal(expiring.loginExpiresAt, loginExpiresAt);
+    assert(!JSON.stringify(expiring).includes("secret-refresh"));
+    assert.equal((await createReader({ usage: jsonResponse({}, 401) }).refresh()).loginExpiresAt, loginExpiresAt);
+    assert.equal((await createReader({ loginExpiresAtOverride: clock.now + 1000 }).refresh()).loginExpiresAt, clock.now + 1000);
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now + 3600000, refreshTokenExpiresAt: "soon" });
+
+    assert.equal((await createReader().refresh()).loginExpiresAt, 0);
+
+    const flagNow = Date.parse("2026-10-13T00:00:00Z");
+
+    assert.equal(parseLoginExpiryFlag(["electron", ".", "--debug-login-expiry=2d"], flagNow), flagNow + 2 * 86400000);
+    assert.equal(parseLoginExpiryFlag(["--debug-login-expiry=5h"], flagNow), flagNow + 5 * 3600000);
+    assert.equal(parseLoginExpiryFlag(["--debug-login-expiry=-1m"], flagNow), flagNow - 60000);
+
+    for (const rejected of [[], ["--dev"], ["--debug-login-expiry="], ["--debug-login-expiry=2w"], ["--debug-login-expiry=abc"], ["--debug-login-expiry=99999d"], ["--debug-login-expiry=1.5d"]]) {
+        assert.equal(parseLoginExpiryFlag(rejected, flagNow), 0, rejected.join(" "));
     }
 
     // 만료된 토큰은 요청하지 않고, 로그인 정보가 없거나 깨져도 실패로 알린다.

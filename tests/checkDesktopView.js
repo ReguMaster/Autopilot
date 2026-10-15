@@ -116,6 +116,33 @@ const checkEndTime = ({ shiftEndTime, getEndTimeAfter, formatTimeUntil }) => {
     assert.equal(formatTimeUntil("07:00", at0700), "24시간 뒤");
 };
 
+const checkLoginExpiry = ({ describeLoginExpiry }) => {
+    const now = new Date(2026, 9, 13, 10, 0).getTime();
+    const minutes = (count) => count * 60000;
+    const day = minutes(1440);
+
+    assert.equal(describeLoginExpiry(0, now), null, "만료 시각을 모르면 아무것도 보이지 않는다");
+
+    assert.deepEqual(describeLoginExpiry(now + 29 * day + minutes(5 * 60), now), {
+        text: "로그인 만료 11월 11일 15:00 · 29일 5시간 후",
+        banner: "",
+        isExpiring: false
+    });
+
+    assert.deepEqual(describeLoginExpiry(now + 3 * day, now), {
+        text: "로그인 만료 10월 16일 10:00 · 3일 0시간 후",
+        banner: "Claude 로그인이 3일 0시간 뒤 만료돼요. 미리 다시 로그인하면 실행이 중간에 멈추지 않아요.",
+        isExpiring: true
+    });
+
+    assert.equal(describeLoginExpiry(now + 3 * day + minutes(1), now).isExpiring, false, "3일을 조금이라도 넘으면 아직 알리지 않는다");
+    assert.equal(describeLoginExpiry(now + minutes(90), now).banner, "Claude 로그인이 1시간 30분 뒤 만료돼요. 미리 다시 로그인하면 실행이 중간에 멈추지 않아요.");
+
+    for (const expiresAt of [now, now - minutes(1)]) {
+        assert.deepEqual(describeLoginExpiry(expiresAt, now), { text: "로그인이 만료됐어요", banner: "Claude 로그인이 만료됐어요. 다시 로그인해 주세요.", isExpiring: true });
+    }
+};
+
 const checkUsageFormat = ({ formatUsageReset, getUsageTone }) => {
     const now = new Date(2026, 9, 13, 10, 0).getTime();
     const minutes = (count) => count * 60000;
@@ -502,6 +529,7 @@ const checkViewFormat = () => {
     checkPhases(viewFormat);
     checkRoundTime(viewFormat);
     checkUsageFormat(viewFormat);
+    checkLoginExpiry(viewFormat);
     checkSchedules(viewFormat);
 
     console.log("Desktop view checks passed.");
