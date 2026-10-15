@@ -200,6 +200,11 @@
     font-family: inherit;
 }
 
+.schedule-number {
+    width: 76px;
+    font-family: inherit;
+}
+
 .schedule-range {
     display: flex;
     flex-wrap: wrap;

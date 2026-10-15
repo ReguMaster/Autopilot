@@ -826,7 +826,14 @@ const describeDays = (days) => {
 };
 
 const formatScheduleDuration = (minutes) => {
-    return minutes % 60 ? `${minutes}분` : `${minutes / 60}시간`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+
+    if (!hours) {
+        return `${rest}분`;
+    }
+
+    return rest ? `${hours}시간 ${rest}분` : `${hours}시간`;
 };
 
 // 예약 하나를 두 줄로 설명한다. 제목은 언제 시작하는지, 설명은 어떻게 돌고 어떤 조건이 붙는지다.

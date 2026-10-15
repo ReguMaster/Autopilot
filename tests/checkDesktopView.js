@@ -463,7 +463,8 @@ const checkSchedules = (viewFormat) => {
     assert.equal(describeSchedule({ ...base, days: [1, 2, 3, 4, 5], minRemaining: 50, duration: 90 }).title, "평일 23:00에 시작");
     assert.equal(describeSchedule({ ...base, days: [5, 0, 3] }).title, "수·금·일 23:00에 시작");
     assert.equal(describeSchedule({ ...base, days: [0, 6] }).title, "주말 23:00에 시작");
-    assert.equal(describeSchedule({ ...base, minRemaining: 50, duration: 90 }).detail, "90분 실행, 남은 한도 50% 이상일 때만");
+    assert.equal(describeSchedule({ ...base, minRemaining: 50, duration: 90 }).detail, "1시간 30분 실행, 남은 한도 50% 이상일 때만");
+    assert.equal(describeSchedule({ ...base, duration: 45 }).detail, "45분 실행");
 
     const reset = { ...base, kind: "reset", time: "", window: "weekly", from: "22:00", to: "07:00", minRemaining: 30, duration: 300 };
 

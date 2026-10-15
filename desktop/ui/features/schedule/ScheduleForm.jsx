@@ -38,6 +38,18 @@ const DURATION_OPTIONS = [
     { value: 720, label: "12시간" }
 ];
 
+const splitDuration = (duration) => {
+    return { hours: Math.floor(duration / 60), minutes: duration % 60 };
+};
+
+const getDuration = (values) => {
+    return Number(values.hours) * 60 + Number(values.minutes);
+};
+
+const NumberField = ({ id, label, max, value, onChange }) => {
+    return <input id={id} className="account-input schedule-number num" type="number" min={0} max={max} step={1} aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} />;
+};
+
 // 수정 중인 예약(또는 새 예약의 기본값)으로 폼 값을 채운다. 새 예약은 프로젝트를 골랐으면 그 프로젝트의 예약이 기본이다.
 const getInitialValues = (schedule, defaults, hasProject) => {
     return {
@@ -45,7 +57,7 @@ const getInitialValues = (schedule, defaults, hasProject) => {
         kind: schedule.kind,
         window: schedule.window,
         minRemaining: schedule.minRemaining,
-        duration: schedule.duration,
+        ...splitDuration(schedule.duration),
         time: schedule.time || defaults.time.time,
         isAnytime: !schedule.from,
         from: schedule.from || defaults.reset.from,
@@ -73,7 +85,7 @@ const ScheduleForm = ({ editing, defaults }) => {
 
         const preset = defaults[kind];
 
-        update({ kind: kind, minRemaining: preset.minRemaining, duration: preset.duration, isAnytime: !preset.from });
+        update({ kind: kind, minRemaining: preset.minRemaining, ...splitDuration(preset.duration), isAnytime: !preset.from });
     };
 
     const toggleDay = (day, isOn) => {
@@ -95,7 +107,7 @@ const ScheduleForm = ({ editing, defaults }) => {
             to: isRanged ? values.to : "",
             days: WEEKDAYS.map((day) => day.value).filter((day) => values.days.includes(day)),
             minRemaining: Number(values.minRemaining),
-            duration: Number(values.duration)
+            duration: getDuration(values)
         });
 
         setError(message);
@@ -173,12 +185,23 @@ const ScheduleForm = ({ editing, defaults }) => {
             <div className="form-group">
                 <span className="form-label">남은 한도가 이만큼 있을 때만</span>
                 <Seg name="schedule-min" label="남은 한도 조건" options={MIN_OPTIONS} value={values.minRemaining} onChange={(minRemaining) => update({ minRemaining: minRemaining })} />
-                <p className="form-hint">5시간·주간 한도 중 더 적게 남은 쪽을 봐요. 부족하면 조건이 맞을 때까지 기다려요.</p>
+                <div className="schedule-range">
+                    <NumberField id="schedule-min-value" label="남은 한도 퍼센트" max={100} value={values.minRemaining} onChange={(minRemaining) => update({ minRemaining: minRemaining })} />
+                    <span aria-hidden="true">% 이상</span>
+                </div>
+                <p className="form-hint">5시간·주간 한도 중 더 적게 남은 쪽을 봐요. 부족하면 조건이 맞을 때까지 기다려요. 0이면 한도를 따지지 않아요.</p>
             </div>
 
             <div className="form-group">
                 <span className="form-label">얼마나 실행할까요?</span>
-                <Seg name="schedule-duration" label="실행 시간" options={DURATION_OPTIONS} value={values.duration} onChange={(duration) => update({ duration: duration })} />
+                <Seg name="schedule-duration" label="실행 시간" options={DURATION_OPTIONS} value={getDuration(values)} onChange={(duration) => update(splitDuration(duration))} />
+                <div className="schedule-range">
+                    <NumberField id="schedule-hours" label="실행 시간(시간)" max={23} value={values.hours} onChange={(hours) => update({ hours: hours })} />
+                    <span aria-hidden="true">시간</span>
+                    <NumberField id="schedule-minutes" label="실행 시간(분)" max={59} value={values.minutes} onChange={(minutes) => update({ minutes: minutes })} />
+                    <span aria-hidden="true">분</span>
+                </div>
+                <p className="form-hint">30분부터 23시간 59분까지 정할 수 있어요.</p>
             </div>
 
             <p id="schedule-form-error" className="archive-note" data-tone="warn" role="alert" hidden={!error}>

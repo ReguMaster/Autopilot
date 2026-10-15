@@ -8,7 +8,21 @@ const require = createRequire(import.meta.url);
 const rules = require("../desktop/scheduleRules.cjs");
 const { createScheduler } = require("../desktop/scheduler.cjs");
 
-const { parseSchedule, normalizeSchedules, getDefaultSchedule, evaluateSchedule, createState, getLatestOccurrence, getNextOccurrence, getWindowState, getRemaining, MAX_SCHEDULES, MIN_RUN_MS } = rules;
+const {
+    parseSchedule,
+    normalizeSchedules,
+    getDefaultSchedule,
+    evaluateSchedule,
+    createState,
+    getLatestOccurrence,
+    getNextOccurrence,
+    getWindowState,
+    getRemaining,
+    MAX_SCHEDULES,
+    MIN_RUN_MS,
+    MIN_DURATION,
+    MAX_DURATION
+} = rules;
 
 const MINUTE_MS = 60 * 1000;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -65,13 +79,29 @@ const checkParse = () => {
         { ...base, days: [8] },
         { ...base, time: "24:00" },
         { ...base, time: "7:00" },
-        { ...base, duration: 61 },
-        { ...base, minRemaining: 10 },
+        { ...base, duration: MIN_DURATION - 1 },
+        { ...base, duration: MAX_DURATION + 1 },
+        { ...base, duration: 90.5 },
+        { ...base, duration: "90" },
+        { ...base, minRemaining: -1 },
+        { ...base, minRemaining: 101 },
+        { ...base, minRemaining: 12.5 },
         { kind: "reset", window: "daily", days: ALL_DAYS, minRemaining: 0, duration: 60 },
         { kind: "reset", window: "session", from: "22:00", days: ALL_DAYS, minRemaining: 0, duration: 60 },
         { kind: "reset", window: "session", from: "22:00", to: "22:00", days: ALL_DAYS, minRemaining: 0, duration: 60 }
     ]) {
         assert(parseSchedule(broken).error, `거부해야 해요: ${JSON.stringify(broken)}`);
+    }
+
+    for (const [duration, minRemaining] of [
+        [MIN_DURATION, 0],
+        [75, 15],
+        [MAX_DURATION, 100]
+    ]) {
+        const free = parseSchedule({ ...base, duration: duration, minRemaining: minRemaining }).schedule;
+
+        assert.equal(free.duration, duration);
+        assert.equal(free.minRemaining, minRemaining);
     }
 
     const reset = parseSchedule({ kind: "reset", window: "weekly", from: "", to: "", days: ALL_DAYS, minRemaining: 50, duration: 300 }).schedule;
