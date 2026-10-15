@@ -106,6 +106,8 @@ const checkNormalize = () => {
 
     assert.equal(normalizeSettings({}).notifyFinish, true, "알림은 기본으로 켜져 있다");
     assert.equal(normalizeSettings({}).notifyFocused, false);
+    assert.equal(normalizeSettings({}).checkUpdates, true, "새 버전 확인은 기본으로 켜져 있다");
+    assert.equal(normalizeSettings({ checkUpdates: "no" }).checkUpdates, true);
     assert.equal(normalizeSettings({ notifyFinish: false }).notifyFinish, false);
     assert.equal(normalizeSettings({ notifyFocused: "yes" }).notifyFocused, false, "불리언이 아니면 기본값");
 

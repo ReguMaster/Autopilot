@@ -822,6 +822,38 @@ const checkUpdateCheck = async () => {
     responses.body = { tag_name: "v1.2.0/../../evil" };
 
     assert.equal(await updateCheck.check(), null);
+
+    // 꺼 두면 네트워크를 쓰지 않고, 알고 있던 안내는 거둔다.
+    const toggled = { isEnabled: true };
+    const toggledChanges = [];
+    let toggledRequests = 0;
+    const toggledCheck = createUpdateCheck({
+        currentVersion: "1.0.0",
+        fetchImpl: async () => {
+            toggledRequests++;
+
+            return { ok: true, status: 200, json: async () => ({ tag_name: "v1.1.0" }) };
+        },
+        onChange: (update) => toggledChanges.push(update),
+        isEnabled: () => toggled.isEnabled
+    });
+
+    assert.equal((await toggledCheck.check()).version, "1.1.0");
+
+    toggled.isEnabled = false;
+
+    assert.equal(await toggledCheck.check(), null, "끄면 알고 있던 새 버전 안내를 거둔다");
+    assert.equal(await toggledCheck.check(), null);
+    assert.equal(toggledRequests, 1, "꺼져 있는 동안은 요청하지 않는다");
+    assert.deepEqual(
+        toggledChanges.map((update) => update?.version ?? null),
+        ["1.1.0", null],
+        "안내를 거둘 때 한 번만 알린다"
+    );
+
+    toggled.isEnabled = true;
+
+    assert.equal((await toggledCheck.check()).version, "1.1.0");
 };
 
 // 허용 값은 엔진(config.js)·러너·화면(desktop/ui/lib/constants.js) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.

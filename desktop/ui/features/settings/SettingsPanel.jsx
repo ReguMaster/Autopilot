@@ -15,6 +15,7 @@ import { ModelVersions } from "./ModelVersions.jsx";
 import { RunDefaults } from "./RunDefaults.jsx";
 import { ScopeGroup, ScopeNote, useScopedValue } from "./ScopeControls.jsx";
 
+const CHECK_UPDATES_NOTE = "앱을 켤 때와 6시간마다 GitHub에서 새 버전이 있는지 확인해요. 끄면 이 확인을 위한 네트워크 요청을 하지 않아요.";
 const KEEP_IN_TRAY_NOTE = "창을 닫아도 앱이 트레이에 남아 실행과 예약 시작이 이어져요. 끄면 실행 중이 아닐 때 창을 닫으면 앱이 종료돼요.";
 const LAUNCH_AT_LOGIN_NOTE = "컴퓨터에 로그인하면 창 없이 트레이로 조용히 켜져요. 켜면 트레이 상주도 함께 켜져요.";
 const LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE = "설치한 앱에서만 켤 수 있어요. 개발 실행에서는 쓸 수 없어요.";
@@ -92,7 +93,7 @@ const ProjectGroup = () => {
 
 // 로그인 자동 실행을 켜면 트레이 상주는 반드시 켜져 있어야 하므로 끌 수 없게 잠근다. 개발 실행처럼 등록할 수 없는 환경은 켜는 쪽을 막는다.
 const SystemGroup = () => {
-    const { keepInTray, launchAtLogin } = useAppStore((store) => store.settings);
+    const { keepInTray, launchAtLogin, checkUpdates } = useAppStore((store) => store.settings);
     const canLaunchAtLogin = useAppStore((store) => store.canLaunchAtLogin);
 
     return (
@@ -114,6 +115,14 @@ const SystemGroup = () => {
                 checked={Boolean(launchAtLogin)}
                 disabled={!canLaunchAtLogin && !launchAtLogin}
                 onChange={(isOn) => changeSystemSettings({ launchAtLogin: isOn })}
+            />
+            <SwitchRow
+                id="check-updates"
+                noteId="check-updates-note"
+                title="새 버전 확인"
+                note={CHECK_UPDATES_NOTE}
+                checked={Boolean(checkUpdates)}
+                onChange={(isOn) => settings.setPreferences({ checkUpdates: isOn })}
             />
         </SettingsGroup>
     );

@@ -28,9 +28,20 @@ const isNewerVersion = (candidate, current) => {
 const createUpdateCheck = (options) => {
     const fetchImpl = options.fetchImpl || fetch;
     const onChange = options.onChange || (() => {});
+    const isEnabled = options.isEnabled || (() => true);
     let update = null;
 
+    // 꺼져 있으면 네트워크를 쓰지 않고, 이미 알고 있던 새 버전 안내는 거둔다.
     const check = async () => {
+        if (!isEnabled()) {
+            if (update) {
+                update = null;
+                onChange(update);
+            }
+
+            return update;
+        }
+
         try {
             const response = await fetchImpl(LATEST_URL, { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
 

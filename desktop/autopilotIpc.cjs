@@ -135,7 +135,7 @@ const accounts = createAccountIpc({
     loginExpiresAtOverride: app.isPackaged ? 0 : parseLoginExpiryFlag(process.argv)
 });
 
-const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update) });
+const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update), isEnabled: () => readSettings().checkUpdates });
 
 // 예약이 조건을 만족하면 마지막으로 저장한 작업·정책·모델·Effort로 시작한다. 종료 시각은 예약이 정한 값이라 다음 시작의 기본값으로 저장하지 않는다.
 const startScheduledRun = async (schedule, plan) => {
@@ -374,6 +374,11 @@ const handleSetPreferences = (event, patch) => {
     }
 
     updateSettings(patch);
+
+    // 새 버전 확인을 켜거나 끄면 바로 반영한다(켜면 지금 확인하고, 끄면 알고 있던 안내를 거둔다).
+    if (Object.hasOwn(patch, "checkUpdates")) {
+        updateCheck.check();
+    }
 
     return { status: STATUS_OK, data: getSettingsView() };
 };

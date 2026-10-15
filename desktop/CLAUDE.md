@@ -75,6 +75,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ## 새 버전 알림
 
+- 설정의 새 버전 확인(checkUpdates, 기본 켬)을 끄면 확인하지 않고 알고 있던 안내를 거둔다(updateCheck의 isEnabled). 바꾸는 즉시 autopilot:set-preferences가 check()를 불러 켜면 바로 확인하고 끄면 칩을 숨긴다.
 - 메인 프로세스의 updateCheck.cjs가 앱을 켤 때(스모크 테스트 제외)와 6시간마다 GitHub `releases/latest`(공개 저장소, 토큰 없음)의 태그를 app.getVersion()과 숫자로 비교한다. 더 높으면 {version, url}을 보관하고 바뀔 때만 autopilot:update로 화면에 보낸다. 조회 실패는 조용히 넘어가고 이전 값을 유지한다.
 - 열 주소는 `^v?\d+\.\d+\.\d+$`를 통과한 태그로 직접 만든다(응답의 URL은 쓰지 않는다). 렌더러는 주소를 보내지 않고 autopilot:open-update만 요청한다.
 - 헤더 버튼 줄 맨 앞의 #update-chip(회색 칩, 파랑은 진행 중 표시 전용)이 누르면 그 릴리스 페이지를 연다. 자동 설치는 하지 않는다.
