@@ -23,6 +23,11 @@ const SLEEP_BLOCK_OPTIONS = [
     { value: "plugged", label: "전원 연결 때만", hint: "배터리로 돌 때는 PC가 잠들 수 있어요" },
     { value: "never", label: "하지 않음", hint: "PC가 잠들면 회차가 멈춰요" }
 ];
+const POST_RUN_OPTIONS = [
+    { value: "none", label: "아무것도 안 함" },
+    { value: "sleep", label: "PC 절전", hint: "끝나고 1분 안에 취소할 수 있어요" },
+    { value: "shutdown", label: "PC 종료", hint: "끝나고 1분 안에 취소할 수 있어요" }
+];
 const CHECK_UPDATES_NOTE = "앱을 켤 때와 6시간마다 GitHub에서 새 버전이 있는지 확인해요. 끄면 이 확인을 위한 네트워크 요청을 하지 않아요.";
 const KEEP_IN_TRAY_NOTE = "창을 닫아도 앱이 트레이에 남아 실행과 예약 시작이 이어져요. 끄면 실행 중이 아닐 때 창을 닫으면 앱이 종료돼요.";
 const LAUNCH_AT_LOGIN_NOTE = "컴퓨터에 로그인하면 창 없이 트레이로 조용히 켜져요. 켜면 트레이 상주도 함께 켜져요.";
@@ -101,7 +106,7 @@ const ProjectGroup = () => {
 
 // 로그인 자동 실행을 켜면 트레이 상주는 반드시 켜져 있어야 하므로 끌 수 없게 잠근다. 개발 실행처럼 등록할 수 없는 환경은 켜는 쪽을 막는다.
 const SystemGroup = () => {
-    const { keepInTray, launchAtLogin, checkUpdates, sleepBlock } = useAppStore((store) => store.settings);
+    const { keepInTray, launchAtLogin, checkUpdates, sleepBlock, postRunAction } = useAppStore((store) => store.settings);
     const canLaunchAtLogin = useAppStore((store) => store.canLaunchAtLogin);
 
     return (
@@ -127,9 +132,16 @@ const SystemGroup = () => {
             <div className="row version-row">
                 <span className="row-body">
                     <b id="sleep-block-label">실행 중 절전 방지</b>
-                    <small id="sleep-block-note">실행 중 PC가 잠들면 회차가 멈춰요. 노트북은 배터리로 돌 때만 풀어 둘 수 있어요.</small>
+                    <small id="sleep-block-note">PC가 잠들면 회차가 멈춰요. 노트북은 배터리일 때만 풀 수 있어요.</small>
                 </span>
                 <Select value={sleepBlock} options={SLEEP_BLOCK_OPTIONS} labelId="sleep-block-label" onChange={(next) => settings.setPreferences({ sleepBlock: next })} />
+            </div>
+            <div className="row version-row">
+                <span className="row-body">
+                    <b id="post-run-label">실행이 끝난 뒤</b>
+                    <small id="post-run-note">스스로 끝나면 알려 주고 1분 뒤에 해요. 종료 신호·강제 종료 뒤에는 하지 않아요.</small>
+                </span>
+                <Select value={postRunAction} options={POST_RUN_OPTIONS} labelId="post-run-label" onChange={settings.setPostRunAction} />
             </div>
             <SwitchRow
                 id="check-updates"

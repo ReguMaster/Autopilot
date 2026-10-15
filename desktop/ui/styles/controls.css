@@ -43,6 +43,17 @@
     margin-left: auto;
 }
 
+.notice-actions {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.notice-actions .button {
+    margin-left: 0;
+}
+
 /* 버튼 */
 .button {
     display: inline-flex;

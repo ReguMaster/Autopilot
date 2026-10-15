@@ -566,6 +566,46 @@ const checkSettingsPorting = async ({ appStore, settingsActions, composerStore, 
     assert.equal(uiStore.useUiStore.getState().notice.message, "설정을 기본값으로 되돌렸어요.");
     assert.equal(useModalStore.getState().request.tone, "danger", "되돌리기는 위험 모달이다");
 
+    // 끝난 뒤 PC 동작: 종료는 확인을 받아야 저장하고, 절전은 바로 저장한다. 기다리는 동안의 상태는 화면이 보관한다.
+    window.autopilot.setPreferences = async (patch) => {
+        calls.push(["setPreferences", patch]);
+
+        return OK({ ...view, settings: { ...view.settings, ...patch } });
+    };
+    window.autopilot.cancelPostAction = async () => {
+        calls.push("cancelPostAction");
+
+        return OK();
+    };
+    window.autopilot.runPostActionNow = async () => {
+        calls.push("runPostActionNow");
+
+        return OK();
+    };
+    calls.length = 0;
+
+    await answer(() => settings.setPostRunAction("shutdown"), false);
+    assert.deepEqual(calls, [], "종료를 취소하면 저장하지 않는다");
+    assert.equal(useModalStore.getState().request.tone, "danger");
+    await answer(() => settings.setPostRunAction("shutdown"), true);
+    assert.deepEqual(calls, [["setPreferences", { postRunAction: "shutdown" }]]);
+
+    calls.length = 0;
+    await settings.setPostRunAction("sleep");
+    assert.deepEqual(calls, [["setPreferences", { postRunAction: "sleep" }]], "절전은 확인 없이 저장한다");
+
+    settings.applyPostAction({ pending: { action: "sleep", at: 123 }, error: "" });
+    assert.deepEqual(uiStore.useUiStore.getState().postAction, { action: "sleep", at: 123 });
+
+    calls.length = 0;
+    await settings.cancelPostAction();
+    await settings.runPostActionNow();
+    assert.deepEqual(calls, ["cancelPostAction", "runPostActionNow"]);
+
+    settings.applyPostAction({ pending: null, error: "PC를 절전하지 못했어요: 권한이 없어요" });
+    assert.equal(uiStore.useUiStore.getState().postAction, null);
+    assert.equal(uiStore.useUiStore.getState().notice.message, "PC를 절전하지 못했어요: 권한이 없어요");
+
     // 보관 기간이 지난 기록 지우기: 확인해야 지우고, 지운 뒤 개수와 용량을 알린다.
     window.autopilot.pruneRuns = async () => {
         calls.push("pruneRuns");

@@ -1,5 +1,6 @@
 import { STATUS_OK } from "./lib/constants.js";
 import { applyLogin, applyPayload } from "./actions/accounts.js";
+import { settings as settingsActions } from "./actions/settings.js";
 import { loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
 import { setAccountSnapshot } from "./stores/accountStore.js";
@@ -32,6 +33,8 @@ const followRunState = (state, previous) => {
 const boot = async () => {
     const snapshot = await window.autopilot.getState();
     const settings = snapshot.settings;
+
+    ui.set({ postAction: snapshot.postAction });
 
     useAppStore.setState({
         version: snapshot.version,
@@ -80,6 +83,7 @@ const boot = async () => {
     window.autopilot.onAccount(({ id, account }) => setAccountSnapshot(id, account));
     window.autopilot.onLogin(applyLogin);
     window.autopilot.onSchedules(applySchedulePayload);
+    window.autopilot.onPostAction(settingsActions.applyPostAction);
     window.appWindow.onState(({ maximized }) => useAppStore.setState({ maximized: maximized }));
 
     return getRunState();

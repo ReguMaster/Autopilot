@@ -119,6 +119,9 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({}).logRetentionDays, 30);
     assert.equal(normalizeSettings({ logRetentionDays: 7 }).logRetentionDays, 7);
     assert.equal(normalizeSettings({ logRetentionDays: 10 }).logRetentionDays, 30, "허용되지 않은 값은 기본값");
+    assert.equal(normalizeSettings({}).postRunAction, "none", "끝난 뒤 PC 동작은 기본으로 하지 않는다");
+    assert.equal(normalizeSettings({ postRunAction: "sleep" }).postRunAction, "sleep");
+    assert.equal(normalizeSettings({ postRunAction: "reboot" }).postRunAction, "none");
     assert.equal(normalizeSettings({}).sleepBlock, "always");
     assert.equal(normalizeSettings({ sleepBlock: "plugged" }).sleepBlock, "plugged");
     assert.equal(normalizeSettings({ sleepBlock: "sometimes" }).sleepBlock, "always", "허용되지 않은 값은 기본값");
@@ -330,7 +333,17 @@ const checkPorting = () => {
         const source = createSettingsStore({ dir: dirA });
         const schedule = { ...getDefaultSchedule("time"), id: "sch-0123abcd" };
 
-        source.update({ projectDir: projectA, accountId: "acct-1", claudeDir: "/c", launchAtLogin: true, keepInTray: true, model: "haiku", effort: "max", schedules: [schedule] });
+        source.update({
+            projectDir: projectA,
+            accountId: "acct-1",
+            claudeDir: "/c",
+            launchAtLogin: true,
+            postRunAction: "shutdown",
+            keepInTray: true,
+            model: "haiku",
+            effort: "max",
+            schedules: [schedule]
+        });
         source.updateProject(projectA, { policy: "todo", tasks: "A 작업", schedules: [schedule] });
         source.updateProject(projectGone, { effort: "low" });
 
@@ -342,6 +355,7 @@ const checkPorting = () => {
             assert.equal(Object.hasOwn(exported.global, key), false, `${key}는 내보내지 않는다`);
         }
 
+        assert.equal(Object.hasOwn(exported.global, "postRunAction"), false, "PC를 끄는 동작은 내보내지 않는다");
         assert.equal(exported.global.model, "haiku");
         assert.equal(exported.global.keepInTray, true);
         assert.equal(exported.projects.length, 2);
@@ -363,6 +377,7 @@ const checkPorting = () => {
         assert.equal(imported.projectDir, projectB, "이 PC의 선택한 프로젝트는 그대로");
         assert.equal(imported.accountId, "mine");
         assert.equal(imported.launchAtLogin, false);
+        assert.equal(imported.postRunAction, "none", "파일로 PC 종료를 켜지 않는다");
         assert.deepEqual(target.readProject(projectA), { policy: "todo", tasks: "A 작업", schedules: [schedule] });
         assert.deepEqual(target.readProject(projectGone), {}, "이 PC에 없는 프로젝트는 만들지 않는다");
 
@@ -386,7 +401,7 @@ const checkPorting = () => {
         assert.equal(target.read().effort, "low", "거부한 파일은 아무것도 바꾸지 않는다");
 
         // 기본값으로 되돌리기: 이 PC의 값과 예약은 두고 나머지는 기본값, 프로젝트가 덮어쓴 값은 지운다.
-        target.update({ launchAtLogin: true, keepInTray: false, claudeDir: "/keep" });
+        target.update({ launchAtLogin: true, keepInTray: false, claudeDir: "/keep", postRunAction: "sleep" });
         target.resetPreferences();
 
         const reset = target.read();
@@ -398,6 +413,7 @@ const checkPorting = () => {
         assert.equal(reset.accountId, "mine");
         assert.equal(reset.launchAtLogin, true);
         assert.equal(reset.keepInTray, true, "로그인 자동 실행이 켜져 있으면 트레이 상주도 켜 둔다");
+        assert.equal(reset.postRunAction, "none", "되돌리면 PC 동작은 하지 않음으로 돌아간다");
         assert.equal(reset.schedules.length, 1, "예약은 지우지 않는다");
         assert.deepEqual(target.readProject(projectA), { schedules: [schedule] }, "프로젝트가 덮어쓴 값은 지우고 예약만 남긴다");
     } finally {

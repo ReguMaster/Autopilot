@@ -46,8 +46,18 @@ const save = async (patch) => {
     return "";
 };
 
+// 실행이 끝난 뒤 PC를 절전·종료하기 전의 기다림. pending은 {action, at}이거나 null이고, 실행하지 못했으면 error가 온다.
+const applyPostAction = ({ pending, error }) => {
+    ui.set({ postAction: pending });
+
+    if (error) {
+        ui.showNotice(error, "warn");
+    }
+};
+
 const settings = {
     applyView: applyView,
+    applyPostAction: applyPostAction,
     getScope: getSettingsScope,
 
     // 설정 패널에서 고른 범위(전역 또는 이 프로젝트)에 저장한다. 실패하면 이유를, 성공하면 빈 문자열을 돌려준다(입력 줄이 이유를 보여준다).
@@ -64,6 +74,32 @@ const settings = {
         if (result.status === STATUS_OK) {
             applyView(result.data);
         }
+    },
+
+    // 끝난 뒤 PC 동작. 종료는 저장하지 않은 작업을 잃을 수 있어 확인을 먼저 받는다.
+    setPostRunAction: async (action) => {
+        if (action === "shutdown") {
+            const isConfirmed = await modal.confirm({
+                title: "실행이 끝나면 PC를 종료할까요?",
+                message: "끝나고 1분 안에 취소할 수 있어요. 다른 프로그램에서 저장하지 않은 작업은 사라질 수 있어요. 직접 종료 신호를 보내거나 강제 종료하면 실행하지 않아요.",
+                confirmLabel: "종료로 설정",
+                tone: "danger"
+            });
+
+            if (!isConfirmed) {
+                return;
+            }
+        }
+
+        await settings.setPreferences({ postRunAction: action });
+    },
+
+    cancelPostAction: async () => {
+        ui.showFailure(await window.autopilot.cancelPostAction());
+    },
+
+    runPostActionNow: async () => {
+        ui.showFailure(await window.autopilot.runPostActionNow());
     },
 
     exportToFile: async () => {

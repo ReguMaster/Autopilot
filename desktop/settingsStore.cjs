@@ -4,6 +4,7 @@ const path = require("node:path");
 const { MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES } = require("./autopilotRunner.cjs");
 const { normalizeSchedules } = require("./scheduleRules.cjs");
 const { readJsonFile, writeJsonFile, recoverJsonFile, BACKUP_SUFFIX } = require("./jsonFile.cjs");
+const { POST_RUN_ACTIONS } = require("./postAction.cjs");
 const { isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS } = require("./engineArgs.cjs");
 
 // 저장 형식이 바뀔 때마다 올린다. 버전 키가 없는 옛 파일은 0으로 본다.
@@ -29,9 +30,11 @@ const RECOVERY_NOTICES = {
 const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "extendLimitMinutes", "commitPrefix", "workBranch", "logRetentionDays", "model", "modelVersions", "effort"];
 const SCHEDULES_KEY = "schedules";
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
-const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock"];
+const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
 const MACHINE_KEYS = ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"];
+// PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
+const NON_PORTABLE_KEYS = [...MACHINE_KEYS, "postRunAction"];
 const EXPORT_APP = "AutoPilot";
 const EXPORT_KIND = "settings";
 const EXPORT_VERSION = 1;
@@ -62,7 +65,8 @@ const DEFAULT_SETTINGS = {
     notifySchedule: true,
     notifyFocused: false,
     checkUpdates: true,
-    sleepBlock: "always"
+    sleepBlock: "always",
+    postRunAction: "none"
 };
 
 // modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
@@ -96,7 +100,8 @@ const SETTING_VALIDATORS = {
     notifySchedule: (value) => typeof value === "boolean",
     notifyFocused: (value) => typeof value === "boolean",
     checkUpdates: (value) => typeof value === "boolean",
-    sleepBlock: (value) => SLEEP_BLOCK_CHOICES.includes(value)
+    sleepBlock: (value) => SLEEP_BLOCK_CHOICES.includes(value),
+    postRunAction: (value) => POST_RUN_ACTIONS.includes(value)
 };
 
 // MIGRATIONS[n]은 버전 n의 저장 내용을 n+1 형식으로 바꾼다. 키 이름이나 의미를 바꿀 때 여기에 더한다. context.writeProject는 프로젝트 파일에 쓰는 함수다.
@@ -288,7 +293,7 @@ const createSettingsStore = ({ dir }) => {
             kind: EXPORT_KIND,
             version: EXPORT_VERSION,
             exportedAt: new Date().toISOString(),
-            global: Object.fromEntries(Object.entries(globals).filter(([key]) => !MACHINE_KEYS.includes(key))),
+            global: Object.fromEntries(Object.entries(globals).filter(([key]) => !NON_PORTABLE_KEYS.includes(key))),
             projects: listProjects().map((project) => ({ projectDir: project.projectDir, settings: project.overrides }))
         };
     };
@@ -305,7 +310,7 @@ const createSettingsStore = ({ dir }) => {
 
         const incoming = raw.global && typeof raw.global === "object" && !Array.isArray(raw.global) ? raw.global : {};
         const normalized = normalizeSettings(incoming);
-        const keys = Object.keys(incoming).filter((key) => Object.hasOwn(SETTING_VALIDATORS, key) && !MACHINE_KEYS.includes(key) && SETTING_VALIDATORS[key](incoming[key]));
+        const keys = Object.keys(incoming).filter((key) => Object.hasOwn(SETTING_VALIDATORS, key) && !NON_PORTABLE_KEYS.includes(key) && SETTING_VALIDATORS[key](incoming[key]));
         const entries = (Array.isArray(raw.projects) ? raw.projects : []).slice(0, MAX_IMPORT_PROJECTS).filter((entry) => entry && typeof entry.projectDir === "string" && entry.projectDir);
         const usable = entries.filter((entry) => canUseProject(entry.projectDir));
 
@@ -392,6 +397,7 @@ module.exports = {
     SCHEDULES_KEY,
     PREFERENCE_KEYS,
     MACHINE_KEYS,
+    NON_PORTABLE_KEYS,
     EXPORT_APP,
     EXPORT_KIND,
     EXPORT_VERSION,

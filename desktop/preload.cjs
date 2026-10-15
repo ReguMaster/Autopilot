@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     updateSettings: (request) => ipcRenderer.invoke("autopilot:update-settings", request),
     resetSettings: (keys) => ipcRenderer.invoke("autopilot:reset-settings", keys),
     setPreferences: (patch) => ipcRenderer.invoke("autopilot:set-preferences", patch),
+    cancelPostAction: () => ipcRenderer.invoke("autopilot:cancel-post-action"),
+    runPostActionNow: () => ipcRenderer.invoke("autopilot:run-post-action-now"),
     exportSettings: () => ipcRenderer.invoke("autopilot:export-settings"),
     importSettings: () => ipcRenderer.invoke("autopilot:import-settings"),
     restoreDefaultSettings: () => ipcRenderer.invoke("autopilot:restore-defaults"),
@@ -55,7 +57,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     onAccounts: subscribe("autopilot:accounts"),
     onLogin: subscribe("autopilot:login"),
     onUpdate: subscribe("autopilot:update"),
-    onSchedules: subscribe("autopilot:schedules")
+    onSchedules: subscribe("autopilot:schedules"),
+    onPostAction: subscribe("autopilot:post-action")
 });
 
 contextBridge.exposeInMainWorld("appWindow", {

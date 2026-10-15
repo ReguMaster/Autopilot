@@ -166,6 +166,25 @@ const SCENES = [
         }
     },
     {
+        name: "post-action",
+        init: { ...withProject, accounts: ACCOUNTS, models: MODELS, state: doneState },
+        run: async (t) => {
+            await t.drive("postAction", { pending: { action: "sleep", at: await t.eval("Date.now() + 58000") }, error: "" });
+            await t.wait(600);
+            await t.shot("banner", ".notices");
+            await t.clearCalls();
+            await t.click("#post-action-cancel");
+            await t.note("calls", await callsWithArgs(t));
+            await t.drive("postAction", { pending: null, error: "" });
+            await t.wait(300);
+            await t.shot("after-cancel", ".notices");
+            await openSettings(t);
+            await t.eval('document.querySelector("#post-run-label").scrollIntoView({ block: "center" })');
+            await t.wait(300);
+            await t.shot("setting", "#settings .settings-group:has(#post-run-label)");
+        }
+    },
+    {
         name: "settings-model-versions",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {

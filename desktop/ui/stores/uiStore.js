@@ -14,6 +14,7 @@ const useUiStore = create(() => ({
     finishDismissed: false,
     notice: { message: "", tone: "" },
     loginBanner: null,
+    postAction: null,
     startAfterLogin: false
 }));
 

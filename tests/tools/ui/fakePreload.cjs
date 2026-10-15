@@ -182,6 +182,8 @@ const api = {
 
         return ok(getSettingsView());
     }),
+    cancelPostAction: respond("cancelPostAction", async () => ok({})),
+    runPostActionNow: respond("runPostActionNow", async () => ok({})),
     exportSettings: respond("exportSettings", async () => ok({ canceled: false })),
     importSettings: respond("importSettings", async () => ok({ canceled: false, ...getSettingsView(), keyCount: 3, projectCount: 1, skippedCount: 0 })),
     restoreDefaultSettings: respond("restoreDefaultSettings", async () => {
@@ -236,7 +238,8 @@ const api = {
     onAccounts: subscribe("accounts"),
     onLogin: subscribe("login"),
     onUpdate: subscribe("update"),
-    onSchedules: subscribe("schedules")
+    onSchedules: subscribe("schedules"),
+    onPostAction: subscribe("postAction")
 };
 
 window.autopilot = api;
@@ -277,6 +280,7 @@ window.__drive = {
         emit("account", { id: id, account: account });
     },
     login: (login) => emit("login", login),
+    postAction: (payload) => emit("postAction", payload),
     schedules: (patch) => {
         model.schedules = { ...model.schedules, ...patch };
         emit("schedules", model.schedules);

@@ -5,7 +5,8 @@ const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
-const { handleState, notify, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
+const { handleState, notify, showWindow, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
+const { shouldRunPostAction, runPowerAction, createPostAction } = require("./postAction.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
 const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
@@ -23,6 +24,8 @@ const TASKS_FILE_NAME = "tasks.md";
 const SETTINGS_FILE_FILTERS = [{ name: "AutoPilot 설정", extensions: ["json"] }];
 const MAX_SETTINGS_IMPORT_BYTES = 2 * 1024 * 1024;
 
+// 끝난 실행 뒤 PC를 절전·종료하기 전에 취소할 수 있게 기다리는 시간
+const POST_ACTION_DELAY_MS = 60 * 1000;
 const SETTINGS_SCOPES = ["global", "project"];
 // 값이 올바르지 않을 때 입력 줄이 보여줄 이유. 없는 키는 일반 문구를 쓴다.
 const SETTING_ERROR_MESSAGES = {
@@ -106,11 +109,47 @@ const broadcast = (channel, payload) => {
     }
 };
 
+// 앱이 시작한 실행이 스스로 끝나면 설정에 따라 PC를 절전·종료한다. 곧바로 하지 않고 창을 띄워 알린 뒤 기다리며, 그 안에 취소할 수 있다.
+const postAction = createPostAction({
+    delayMs: POST_ACTION_DELAY_MS,
+    run: async (action) => {
+        const error = await runPowerAction(process.platform, action);
+
+        if (error) {
+            broadcast("autopilot:post-action", { pending: null, error: `PC를 ${action === "sleep" ? "절전" : "종료"}하지 못했어요: ${error}` });
+        }
+    },
+    onChange: (pending) => broadcast("autopilot:post-action", { pending: pending, error: "" })
+});
+let previousStatus = "idle";
+let isRunOwned = false;
+
+const watchPostAction = (state) => {
+    const isActive = state.status === "running" || state.status === "stopping";
+
+    if (isActive) {
+        isRunOwned = !state.attached;
+        postAction.cancel();
+    }
+
+    if (!isActive && (previousStatus === "running" || previousStatus === "stopping")) {
+        const action = readSettings().postRunAction;
+
+        if (shouldRunPostAction({ previousStatus: previousStatus, state: state, action: action, isOwned: isRunOwned })) {
+            showWindow();
+            postAction.start(action);
+        }
+    }
+
+    previousStatus = state.status;
+};
+
 const runner = createRunner({
     onLog: (entries) => broadcast("autopilot:log", entries),
     onState: (state) => {
         broadcast("autopilot:state", state);
         handleState(state);
+        watchPostAction(state);
     }
 });
 
@@ -468,6 +507,7 @@ const handleGetState = async () => {
         canLaunchAtLogin: loginItem.isSupported(),
         update: updateCheck.getUpdate(),
         ...getSettingsView(),
+        postAction: postAction.getPending(),
         state: runner.getState(),
         logs: runner.getLogs()
     };
@@ -724,6 +764,18 @@ const handlePruneRuns = async () => {
     }
 };
 
+const handleCancelPostAction = () => {
+    postAction.cancel();
+
+    return { status: STATUS_OK };
+};
+
+const handleRunPostActionNow = async () => {
+    await postAction.runNow();
+
+    return { status: STATUS_OK };
+};
+
 const registerIpc = () => {
     settingsStore.recover();
     settingsStore.upgrade();
@@ -737,6 +789,8 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
     ipcMain.handle("autopilot:reset-settings", handleResetSettings);
     ipcMain.handle("autopilot:set-preferences", handleSetPreferences);
+    ipcMain.handle("autopilot:cancel-post-action", handleCancelPostAction);
+    ipcMain.handle("autopilot:run-post-action-now", handleRunPostActionNow);
     ipcMain.handle("autopilot:export-settings", handleExportSettings);
     ipcMain.handle("autopilot:import-settings", handleImportSettings);
     ipcMain.handle("autopilot:restore-defaults", handleRestoreDefaults);
