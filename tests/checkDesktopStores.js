@@ -497,6 +497,69 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
     assert.equal(useUiStore.getState().notice.tone, "warn");
 };
 
+// 설정 내보내기·가져오기·되돌리기: 덮어쓰는 두 동작은 확인해야 보내고, 취소한 파일 선택은 아무것도 바꾸지 않는다.
+const checkSettingsPorting = async ({ appStore, settingsActions, composerStore, uiStore, modalStore }) => {
+    const { settings } = settingsActions;
+    const { modal, useModalStore } = modalStore;
+    const calls = [];
+    const view = {
+        settings: { projectDir: "/p", tasks: "가져온 작업", endTime: "", policy: "todo", extendOnLimit: true, model: "haiku", modelVersions: {}, effort: "max" },
+        overridden: [],
+        globals: {},
+        notice: ""
+    };
+    const answer = async (action, isConfirmed) => {
+        const pending = action();
+
+        assert.equal(useModalStore.getState().open, true, "확인 모달이 먼저 뜬다");
+        modal.answer(isConfirmed);
+        await pending;
+    };
+
+    window.autopilot = {
+        exportSettings: async () => {
+            calls.push("exportSettings");
+
+            return OK({ canceled: false });
+        },
+        importSettings: async () => {
+            calls.push("importSettings");
+
+            return OK({ canceled: false, ...view, keyCount: 4, projectCount: 2, skippedCount: 1 });
+        },
+        restoreDefaultSettings: async () => {
+            calls.push("restoreDefaultSettings");
+
+            return OK(view);
+        }
+    };
+
+    await settings.exportToFile();
+    assert.deepEqual(calls, ["exportSettings"], "내보내기는 확인 없이 파일 선택으로 간다");
+    assert.equal(uiStore.useUiStore.getState().notice.message, "설정을 파일로 내보냈어요.");
+
+    calls.length = 0;
+    await answer(settings.importFromFile, false);
+    assert.deepEqual(calls, [], "가져오기를 취소하면 파일 선택도 열지 않는다");
+    await answer(settings.importFromFile, true);
+    assert.deepEqual(calls, ["importSettings"]);
+    assert.equal(composerStore.useComposerStore.getState().tasks, "가져온 작업", "가져온 값으로 컴포저가 채워진다");
+    assert.equal(appStore.useAppStore.getState().settings.model, "haiku");
+    assert.match(uiStore.useUiStore.getState().notice.message, /프로젝트 설정 2개.*1개는 건너뛰었어요/);
+
+    calls.length = 0;
+    window.autopilot.importSettings = async () => OK({ canceled: true });
+    await answer(settings.importFromFile, true);
+    assert.equal(uiStore.useUiStore.getState().notice.message, "", "파일 선택을 취소하면 안내도 없다");
+
+    await answer(settings.restoreDefaults, false);
+    assert.deepEqual(calls, []);
+    await answer(settings.restoreDefaults, true);
+    assert.deepEqual(calls, ["restoreDefaultSettings"]);
+    assert.equal(uiStore.useUiStore.getState().notice.message, "설정을 기본값으로 되돌렸어요.");
+    assert.equal(useModalStore.getState().request.tone, "danger", "되돌리기는 위험 모달이다");
+};
+
 const checkModal = async ({ modalStore }) => {
     const { modal, useModalStore } = modalStore;
 
@@ -552,6 +615,7 @@ const checkStores = async () => {
     await checkLoginResume(modules);
     await checkSchedules(modules);
     await checkSettingsScope(modules);
+    await checkSettingsPorting(modules);
     await checkModal(modules);
     checkStoryView(modules);
 

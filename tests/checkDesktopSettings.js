@@ -300,6 +300,92 @@ const checkUpgrade = () => {
     }
 };
 
+// 내보내기·가져오기: 이 PC에서만 뜻이 있는 키는 오가지 않고, 파일의 잘못된 값·낯선 파일·더 새 버전은 막는다.
+const checkPorting = () => {
+    const dirs = [createTempDir(), createTempDir(), createTempDir(), createTempDir(), createTempDir()];
+    const [dirA, dirB, projectA, projectB, projectGone] = dirs;
+
+    try {
+        const source = createSettingsStore({ dir: dirA });
+        const schedule = { ...getDefaultSchedule("time"), id: "sch-0123abcd" };
+
+        source.update({ projectDir: projectA, accountId: "acct-1", claudeDir: "/c", launchAtLogin: true, keepInTray: true, model: "haiku", effort: "max", schedules: [schedule] });
+        source.updateProject(projectA, { policy: "todo", tasks: "A 작업", schedules: [schedule] });
+        source.updateProject(projectGone, { effort: "low" });
+
+        const exported = JSON.parse(JSON.stringify(source.exportData()));
+
+        assert.deepEqual([exported.app, exported.kind, exported.version], ["AutoPilot", "settings", 1]);
+
+        for (const key of ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"]) {
+            assert.equal(Object.hasOwn(exported.global, key), false, `${key}는 내보내지 않는다`);
+        }
+
+        assert.equal(exported.global.model, "haiku");
+        assert.equal(exported.global.keepInTray, true);
+        assert.equal(exported.projects.length, 2);
+
+        const target = createSettingsStore({ dir: dirB });
+
+        target.update({ projectDir: projectB, accountId: "mine", model: "sonnet", launchAtLogin: false });
+
+        const result = target.importData(exported, { canUseProject: (projectDir) => projectDir !== projectGone });
+
+        assert.deepEqual(result, { keyCount: Object.keys(exported.global).length, projectCount: 1, skippedCount: 1 });
+
+        const imported = target.read();
+
+        assert.equal(imported.model, "haiku");
+        assert.equal(imported.effort, "max");
+        assert.equal(imported.keepInTray, true);
+        assert.equal(imported.schedules.length, 1);
+        assert.equal(imported.projectDir, projectB, "이 PC의 선택한 프로젝트는 그대로");
+        assert.equal(imported.accountId, "mine");
+        assert.equal(imported.launchAtLogin, false);
+        assert.deepEqual(target.readProject(projectA), { policy: "todo", tasks: "A 작업", schedules: [schedule] });
+        assert.deepEqual(target.readProject(projectGone), {}, "이 PC에 없는 프로젝트는 만들지 않는다");
+
+        // 파일에 있는 키만, 허용 범위 안의 값만 바꾼다.
+        const partial = target.importData({
+            app: "AutoPilot",
+            kind: "settings",
+            version: 1,
+            global: { model: "nope", effort: "low", accountId: "hack", unknown: 1 },
+            projects: [{ projectDir: "" }, null, "x"]
+        });
+
+        assert.deepEqual(partial, { keyCount: 1, projectCount: 0, skippedCount: 0 });
+        assert.equal(target.read().effort, "low");
+        assert.equal(target.read().model, "haiku", "잘못된 값은 건드리지 않는다");
+        assert.equal(target.read().accountId, "mine");
+
+        assert.match(target.importData({ app: "Other", kind: "settings", version: 1 }).error, /설정 파일이 아니에요/);
+        assert.match(target.importData(null).error, /설정 파일이 아니에요/);
+        assert.match(target.importData({ app: "AutoPilot", kind: "settings", version: 99 }).error, /더 새 버전/);
+        assert.equal(target.read().effort, "low", "거부한 파일은 아무것도 바꾸지 않는다");
+
+        // 기본값으로 되돌리기: 이 PC의 값과 예약은 두고 나머지는 기본값, 프로젝트가 덮어쓴 값은 지운다.
+        target.update({ launchAtLogin: true, keepInTray: false, claudeDir: "/keep" });
+        target.resetPreferences();
+
+        const reset = target.read();
+
+        assert.equal(reset.model, DEFAULT_SETTINGS.model);
+        assert.equal(reset.effort, DEFAULT_SETTINGS.effort);
+        assert.equal(reset.projectDir, projectB);
+        assert.equal(reset.claudeDir, "/keep");
+        assert.equal(reset.accountId, "mine");
+        assert.equal(reset.launchAtLogin, true);
+        assert.equal(reset.keepInTray, true, "로그인 자동 실행이 켜져 있으면 트레이 상주도 켜 둔다");
+        assert.equal(reset.schedules.length, 1, "예약은 지우지 않는다");
+        assert.deepEqual(target.readProject(projectA), { schedules: [schedule] }, "프로젝트가 덮어쓴 값은 지우고 예약만 남긴다");
+    } finally {
+        for (const target of dirs) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
 checkJsonFile();
 checkRecover();
 checkMigrate();
@@ -307,5 +393,6 @@ checkNormalize();
 checkStore();
 checkProjectSettings();
 checkUpgrade();
+checkPorting();
 
 console.log("Desktop settings checks passed.");

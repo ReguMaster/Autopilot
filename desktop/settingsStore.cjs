@@ -21,6 +21,12 @@ const RECOVERY_NOTICES = {
 // 프로젝트가 따로 정하지 않으면 전역 값을 쓰는 키. 전역 파일에는 기본값으로, 프로젝트 파일에는 덮어쓴 값만 들어간다.
 const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "modelVersions", "effort"];
 const SCHEDULES_KEY = "schedules";
+// 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
+const MACHINE_KEYS = ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"];
+const EXPORT_APP = "AutoPilot";
+const EXPORT_KIND = "settings";
+const EXPORT_VERSION = 1;
+const MAX_IMPORT_PROJECTS = 200;
 
 const DEFAULT_SETTINGS = {
     projectDir: "",
@@ -242,6 +248,57 @@ const createSettingsStore = ({ dir }) => {
         });
     };
 
+    // 다른 PC로 옮기거나 보관할 설정. 이 PC에서만 뜻이 있는 값(MACHINE_KEYS)은 빼고, 프로젝트는 경로와 덮어쓴 값을 담는다.
+    const exportData = () => {
+        const globals = read();
+
+        return {
+            app: EXPORT_APP,
+            kind: EXPORT_KIND,
+            version: EXPORT_VERSION,
+            exportedAt: new Date().toISOString(),
+            global: Object.fromEntries(Object.entries(globals).filter(([key]) => !MACHINE_KEYS.includes(key))),
+            projects: listProjects().map((project) => ({ projectDir: project.projectDir, settings: project.overrides }))
+        };
+    };
+
+    // 내보낸 파일의 내용을 적용한다. 파일에 있고 허용 범위 안인 키만 바꾸고, canUseProject가 거짓인 프로젝트(이 PC에 없는 폴더 등)는 건너뛴다.
+    const importData = (raw, { canUseProject = () => true } = {}) => {
+        if (!raw || typeof raw !== "object" || raw.app !== EXPORT_APP || raw.kind !== EXPORT_KIND || !Number.isInteger(raw.version)) {
+            return { error: "AutoPilot 설정 파일이 아니에요." };
+        }
+
+        if (raw.version > EXPORT_VERSION) {
+            return { error: "더 새 버전의 AutoPilot이 내보낸 파일이에요. 앱을 업데이트한 뒤 가져와 주세요." };
+        }
+
+        const incoming = raw.global && typeof raw.global === "object" && !Array.isArray(raw.global) ? raw.global : {};
+        const normalized = normalizeSettings(incoming);
+        const keys = Object.keys(incoming).filter((key) => Object.hasOwn(SETTING_VALIDATORS, key) && !MACHINE_KEYS.includes(key) && SETTING_VALIDATORS[key](incoming[key]));
+        const entries = (Array.isArray(raw.projects) ? raw.projects : []).slice(0, MAX_IMPORT_PROJECTS).filter((entry) => entry && typeof entry.projectDir === "string" && entry.projectDir);
+        const usable = entries.filter((entry) => canUseProject(entry.projectDir));
+
+        update(Object.fromEntries(keys.map((key) => [key, normalized[key]])));
+
+        for (const entry of usable) {
+            writeProject(entry.projectDir, entry.settings);
+        }
+
+        return { keyCount: keys.length, projectCount: usable.length, skippedCount: entries.length - usable.length };
+    };
+
+    // 기본값으로 되돌린다. 계정·선택한 프로젝트·자동 실행(MACHINE_KEYS)과 예약은 그대로 두고, 프로젝트가 덮어쓴 값은 모두 지운다.
+    const resetPreferences = () => {
+        const current = read();
+        const kept = Object.fromEntries([...MACHINE_KEYS, SCHEDULES_KEY].map((key) => [key, current[key]]));
+
+        write({ ...structuredClone(DEFAULT_SETTINGS), ...kept, keepInTray: current.launchAtLogin || DEFAULT_SETTINGS.keepInTray });
+
+        for (const project of listProjects()) {
+            writeProject(project.projectDir, project.overrides.schedules ? { schedules: project.overrides.schedules } : {});
+        }
+    };
+
     // 앱을 켤 때 한 번. 손상됐으면 복구하고, 옛 형식이면 새 형식으로 올려 저장한다. 화면이 한 번 알릴 안내를 남긴다.
     const recover = () => {
         const result = recoverJsonFile(file);
@@ -283,6 +340,9 @@ const createSettingsStore = ({ dir }) => {
         remember: remember,
         resolve: resolve,
         listProjects: listProjects,
+        exportData: exportData,
+        importData: importData,
+        resetPreferences: resetPreferences,
         recover: recover,
         upgrade: upgrade,
         takeNotice: takeNotice
@@ -299,6 +359,10 @@ module.exports = {
     SETTING_VALIDATORS,
     OVERRIDABLE_KEYS,
     SCHEDULES_KEY,
+    MACHINE_KEYS,
+    EXPORT_APP,
+    EXPORT_KIND,
+    EXPORT_VERSION,
     POLICY_CHOICES,
     END_TIME_PATTERN,
     SETTINGS_VERSION,

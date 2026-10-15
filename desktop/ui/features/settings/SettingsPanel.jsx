@@ -138,6 +138,25 @@ const LimitGroup = () => {
     );
 };
 
+// 설정 파일을 내보내고 가져오고, 기본값으로 되돌린다. 덮어쓰는 일이라 실행 중에는 막는다.
+const ManageGroup = () => {
+    const isIdle = useRunStore((store) => store.state.status === "idle");
+
+    return (
+        <SettingsGroup id="group-manage" title="설정 관리">
+            <NavRow id="export-settings" onClick={settings.exportToFile}>
+                설정 내보내기
+            </NavRow>
+            <NavRow id="import-settings" disabled={!isIdle} onClick={settings.importFromFile}>
+                설정 가져오기
+            </NavRow>
+            <NavRow id="restore-defaults" danger disabled={!isIdle} onClick={settings.restoreDefaults}>
+                설정 기본값으로 되돌리기
+            </NavRow>
+        </SettingsGroup>
+    );
+};
+
 const HistoryGroup = () => {
     const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
     const isIdle = useRunStore((store) => store.state.status === "idle");
@@ -191,6 +210,7 @@ const SettingsPanel = () => {
             <ProviderGroup />
             <SystemGroup />
             <HistoryGroup />
+            <ManageGroup />
 
             <SettingsGroup id="group-dev" sectionId="dev-group" title="개발자" hidden={!isDev}>
                 <NavRow id="toggle-devtools" onClick={() => window.appWindow.toggleDevTools()}>

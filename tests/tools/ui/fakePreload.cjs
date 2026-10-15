@@ -169,6 +169,14 @@ const api = {
 
         return ok(getSettingsView());
     }),
+    exportSettings: respond("exportSettings", async () => ok({ canceled: false })),
+    importSettings: respond("importSettings", async () => ok({ canceled: false, ...getSettingsView(), keyCount: 3, projectCount: 1, skippedCount: 0 })),
+    restoreDefaultSettings: respond("restoreDefaultSettings", async () => {
+        model.overridden = [];
+        model.settings = { ...model.settings, ...model.globals };
+
+        return ok(getSettingsView());
+    }),
     getModels: respond("getModels", async () => ok({ models: model.models })),
     kill: respond("kill", async () => ok({})),
     resetProgress: respond("resetProgress", async () => ok({ isReset: true })),

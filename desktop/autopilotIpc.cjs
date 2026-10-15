@@ -12,12 +12,15 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
+const { readJsonFile } = require("./jsonFile.cjs");
 const { createSettingsStore, SETTING_VALIDATORS, OVERRIDABLE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
 const SCHEDULE_RESUME_DELAY_MS = 5000;
 const TASKS_FILE_NAME = "tasks.md";
+const SETTINGS_FILE_FILTERS = [{ name: "AutoPilot 설정", extensions: ["json"] }];
+const MAX_SETTINGS_IMPORT_BYTES = 2 * 1024 * 1024;
 
 const SETTINGS_SCOPES = ["global", "project"];
 
@@ -286,6 +289,78 @@ const handleUpdateSettings = (event, request = {}) => {
     } else {
         updateSettings(patch);
     }
+
+    return { status: STATUS_OK, data: getSettingsView() };
+};
+
+const getExportFileName = () => {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+
+    return `autopilot-settings-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.json`;
+};
+
+// 설정을 파일로 내보낸다. 계정·Claude 데이터 폴더·선택한 프로젝트·자동 실행처럼 이 PC에서만 뜻이 있는 값은 담지 않는다.
+const handleExportSettings = async (event) => {
+    const selection = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: "설정 내보내기",
+        defaultPath: path.join(app.getPath("documents"), getExportFileName()),
+        filters: SETTINGS_FILE_FILTERS
+    });
+
+    if (selection.canceled || !selection.filePath) {
+        return { status: STATUS_OK, data: { canceled: true } };
+    }
+
+    try {
+        fs.writeFileSync(selection.filePath, JSON.stringify(settingsStore.exportData(), null, 4), "utf8");
+
+        return { status: STATUS_OK, data: { canceled: false } };
+    } catch (error) {
+        return createFailure("EXPORT_FAILED", `설정을 내보내지 못했어요: ${error.message}`);
+    }
+};
+
+// 내보낸 파일의 설정으로 덮어쓴다. 프로젝트별 설정은 이 PC에 있는 Git 저장소 루트만 적용한다. 덮어쓰는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handleImportSettings = async (event) => {
+    if (runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 가져올 수 없어요.");
+    }
+
+    const selection = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), { title: "설정 가져오기", properties: ["openFile"], filters: SETTINGS_FILE_FILTERS });
+
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: { canceled: true } };
+    }
+
+    const file = selection.filePaths[0];
+    const loaded = fs.statSync(file).size > MAX_SETTINGS_IMPORT_BYTES ? { state: "corrupt" } : readJsonFile(file);
+
+    if (loaded.state !== "ok") {
+        return createFailure("IMPORT_FAILED", "설정 파일을 읽지 못했어요. AutoPilot이 내보낸 JSON 파일인지 확인해 주세요.");
+    }
+
+    const result = settingsStore.importData(loaded.data, { canUseProject: (projectDir) => !getProjectError(projectDir) });
+
+    if (result.error) {
+        return createFailure("IMPORT_FAILED", result.error);
+    }
+
+    // 로그인 자동 실행은 트레이 상주가 켜져 있어야 하므로 가져온 값이 이를 깨지 않게 한다.
+    if (readSettings().launchAtLogin) {
+        updateSettings({ keepInTray: true });
+    }
+
+    return { status: STATUS_OK, data: { canceled: false, ...getSettingsView(), keyCount: result.keyCount, projectCount: result.projectCount, skippedCount: result.skippedCount } };
+};
+
+// 기본값으로 되돌린다. 계정·Claude 데이터 폴더·선택한 프로젝트·자동 실행·예약은 그대로 두고 프로젝트별 설정은 지운다. 확인은 화면의 모달이 먼저 받는다.
+const handleRestoreDefaults = () => {
+    if (runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 되돌릴 수 없어요.");
+    }
+
+    settingsStore.resetPreferences();
 
     return { status: STATUS_OK, data: getSettingsView() };
 };
@@ -606,6 +681,9 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
     ipcMain.handle("autopilot:reset-settings", handleResetSettings);
+    ipcMain.handle("autopilot:export-settings", handleExportSettings);
+    ipcMain.handle("autopilot:import-settings", handleImportSettings);
+    ipcMain.handle("autopilot:restore-defaults", handleRestoreDefaults);
     ipcMain.handle("autopilot:kill", () => runner.kill());
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
