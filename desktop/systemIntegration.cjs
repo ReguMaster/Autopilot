@@ -1,4 +1,4 @@
-const { BrowserWindow, Menu, Notification, Tray, nativeImage, powerSaveBlocker } = require("electron");
+const { BrowserWindow, Menu, Notification, Tray, nativeImage, powerMonitor, powerSaveBlocker } = require("electron");
 const path = require("node:path");
 
 const TRAY_ICON_SIZE = 16;
@@ -13,6 +13,8 @@ const NOTIFY_PREFERENCE_KEYS = { finish: "notifyFinish", failure: "notifyFailure
 let tray = null;
 let readPreferences = () => ({});
 let sleepBlockerId = null;
+let isActiveSynced = false;
+let lastStatus = "idle";
 let previousStatus = "idle";
 let previousPhase = "";
 let previousProgressKey = "";
@@ -25,9 +27,16 @@ const isActiveStatus = (status) => {
     return status === "running" || status === "stopping";
 };
 
-// 엔진이 도는 동안 PC가 잠들면 회차가 멈춘다. 화면은 꺼져도 되므로 앱 일시 중단만 막는다.
-const syncSleepBlocker = (state) => {
-    const shouldBlock = isActiveStatus(state.status);
+// 엔진이 도는 동안 PC가 잠들면 회차가 멈춘다. 설정에 따라 항상(always), 전원이 연결된 동안만(plugged), 쓰지 않는다(never).
+const shouldBlockSleep = (status, mode, isOnBattery) => {
+    const effectiveMode = mode || "always";
+
+    return isActiveStatus(status) && (effectiveMode === "always" || (effectiveMode === "plugged" && !isOnBattery));
+};
+
+// 화면은 꺼져도 되므로 앱 일시 중단만 막는다.
+const refreshSleepBlocker = () => {
+    const shouldBlock = shouldBlockSleep(lastStatus, readPreferences().sleepBlock, powerMonitor.isOnBatteryPower());
 
     if (shouldBlock && sleepBlockerId === null) {
         sleepBlockerId = powerSaveBlocker.start("prevent-app-suspension");
@@ -36,6 +45,24 @@ const syncSleepBlocker = (state) => {
 
         sleepBlockerId = null;
     }
+};
+
+// 상태가 바뀔 때마다 설정 파일을 읽지 않도록 실행 중인지가 바뀐 때에만 다시 판단한다.
+const syncSleepBlocker = (state) => {
+    const isActive = isActiveStatus(state.status);
+
+    lastStatus = state.status;
+
+    if (isActive !== isActiveSynced) {
+        isActiveSynced = isActive;
+        refreshSleepBlocker();
+    }
+};
+
+// 전원이 연결되거나 배터리로 바뀌면 전원 연결 때만 막는 설정을 다시 판단한다.
+const watchPower = () => {
+    powerMonitor.on("on-ac", refreshSleepBlocker);
+    powerMonitor.on("on-battery", refreshSleepBlocker);
 };
 
 // 종료 시각이 정해져 있으면 시작부터 종료 시각까지의 경과를, 없으면 진행 중 표시만 한다.
@@ -158,4 +185,4 @@ const createTray = ({ onQuit }) => {
     tray.on("click", showWindow);
 };
 
-module.exports = { handleState, createTray, showWindow, notify, configure, shouldNotify, getTransitionNotice };
+module.exports = { handleState, createTray, showWindow, notify, configure, shouldNotify, getTransitionNotice, shouldBlockSleep, refreshSleepBlocker, watchPower };

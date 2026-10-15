@@ -5,7 +5,7 @@ const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
-const { handleState, notify, configure: configureSystem } = require("./systemIntegration.cjs");
+const { handleState, notify, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
 const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
@@ -351,6 +351,8 @@ const handleImportSettings = async (event) => {
         updateSettings({ keepInTray: true });
     }
 
+    applyPreferenceChanges();
+
     return { status: STATUS_OK, data: { canceled: false, ...getSettingsView(), keyCount: result.keyCount, projectCount: result.projectCount, skippedCount: result.skippedCount } };
 };
 
@@ -361,8 +363,15 @@ const handleRestoreDefaults = () => {
     }
 
     settingsStore.resetPreferences();
+    applyPreferenceChanges();
 
     return { status: STATUS_OK, data: getSettingsView() };
+};
+
+// 환경설정이 바뀌면 바로 반영한다. 새 버전 확인은 켜면 지금 확인하고 끄면 알고 있던 안내를 거두고, 절전 방지는 실행 중이어도 다시 판단한다.
+const applyPreferenceChanges = () => {
+    updateCheck.check();
+    refreshSleepBlocker();
 };
 
 // 알림처럼 실행과 무관하게 언제든 바꾸는 전역 환경설정을 저장한다.
@@ -375,10 +384,7 @@ const handleSetPreferences = (event, patch) => {
 
     updateSettings(patch);
 
-    // 새 버전 확인을 켜거나 끄면 바로 반영한다(켜면 지금 확인하고, 끄면 알고 있던 안내를 거둔다).
-    if (Object.hasOwn(patch, "checkUpdates")) {
-        updateCheck.check();
-    }
+    applyPreferenceChanges();
 
     return { status: STATUS_OK, data: getSettingsView() };
 };

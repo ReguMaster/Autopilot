@@ -12,6 +12,8 @@ const SETTINGS_FILE_NAME = "settings.json";
 const PROJECT_SETTINGS_DIR_NAME = "project-settings";
 const PROJECT_KEY_HASH_LENGTH = 8;
 const POLICY_CHOICES = ["auto", "todo"];
+// 실행 중 절전 방지: 항상, 전원이 연결된 동안만, 쓰지 않음
+const SLEEP_BLOCK_CHOICES = ["always", "plugged", "never"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RECOVERY_NOTICES = {
     restored: "설정 파일이 손상돼 직전 백업으로 복구했어요.",
@@ -22,7 +24,7 @@ const RECOVERY_NOTICES = {
 const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "modelVersions", "effort"];
 const SCHEDULES_KEY = "schedules";
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
-const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates"];
+const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
 const MACHINE_KEYS = ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"];
 const EXPORT_APP = "AutoPilot";
@@ -50,7 +52,8 @@ const DEFAULT_SETTINGS = {
     notifyLimit: true,
     notifySchedule: true,
     notifyFocused: false,
-    checkUpdates: true
+    checkUpdates: true,
+    sleepBlock: "always"
 };
 
 // modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
@@ -79,7 +82,8 @@ const SETTING_VALIDATORS = {
     notifyLimit: (value) => typeof value === "boolean",
     notifySchedule: (value) => typeof value === "boolean",
     notifyFocused: (value) => typeof value === "boolean",
-    checkUpdates: (value) => typeof value === "boolean"
+    checkUpdates: (value) => typeof value === "boolean",
+    sleepBlock: (value) => SLEEP_BLOCK_CHOICES.includes(value)
 };
 
 // MIGRATIONS[n]은 버전 n의 저장 내용을 n+1 형식으로 바꾼다. 키 이름이나 의미를 바꿀 때 여기에 더한다. context.writeProject는 프로젝트 파일에 쓰는 함수다.
@@ -379,6 +383,7 @@ module.exports = {
     EXPORT_KIND,
     EXPORT_VERSION,
     POLICY_CHOICES,
+    SLEEP_BLOCK_CHOICES,
     END_TIME_PATTERN,
     SETTINGS_VERSION,
     SETTINGS_FILE_NAME

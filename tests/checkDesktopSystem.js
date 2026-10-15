@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { buildDesktopEntry, HIDDEN_ARG } = require("../desktop/launchAtLogin.cjs");
-const { shouldNotify, getTransitionNotice } = require("../desktop/systemIntegration.cjs");
+const { shouldNotify, getTransitionNotice, shouldBlockSleep } = require("../desktop/systemIntegration.cjs");
 
 // Linux 자동 시작 항목: 공백·특수 문자가 든 경로도 Exec에서 한 인자로 읽혀야 하고 창 없이 켜는 인자가 붙는다.
 const checkDesktopEntry = () => {
@@ -51,7 +51,19 @@ const checkNotifications = () => {
     assert.equal(getTransitionNotice(waiting, waiting), null, "대기 중인 동안 다시 알리지 않는다");
 };
 
+// 절전 방지: 실행 중일 때만, 설정(항상·전원 연결 때만·하지 않음)에 따라 막는다.
+const checkSleepBlock = () => {
+    assert.equal(shouldBlockSleep("running", "always", true), true);
+    assert.equal(shouldBlockSleep("stopping", "always", false), true, "종료 신호 후 마무리 중에도 막는다");
+    assert.equal(shouldBlockSleep("idle", "always", false), false, "실행 중이 아니면 막지 않는다");
+    assert.equal(shouldBlockSleep("running", "plugged", false), true);
+    assert.equal(shouldBlockSleep("running", "plugged", true), false, "배터리로 돌 때는 풀어 둔다");
+    assert.equal(shouldBlockSleep("running", "never", false), false);
+    assert.equal(shouldBlockSleep("running", undefined, true), true, "설정을 모르면 기존대로 항상 막는다");
+};
+
 checkDesktopEntry();
 checkNotifications();
+checkSleepBlock();
 
 console.log("Desktop system checks passed.");

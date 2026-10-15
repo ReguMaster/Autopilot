@@ -13,7 +13,7 @@ const {
     startScheduleWatch
 } = require("./autopilotIpc.cjs");
 const { wasLaunchedHidden } = require("./launchAtLogin.cjs");
-const { createTray, showWindow } = require("./systemIntegration.cjs");
+const { createTray, showWindow, watchPower } = require("./systemIntegration.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
@@ -247,6 +247,7 @@ if (!hasInstanceLock) {
 
         if (!isSmokeTest) {
             syncLaunchAtLogin();
+            watchPower();
             startAccountWatch();
             startUpdateWatch();
             startScheduleWatch();
