@@ -169,9 +169,19 @@ const NotificationGroup = () => {
     );
 };
 
+const EXTEND_LIMIT_OPTIONS = [
+    { value: 0, label: "제한 없음", hint: "한도를 기다린 시간을 모두 더해요" },
+    { value: 60, label: "최대 1시간" },
+    { value: 180, label: "최대 3시간" },
+    { value: 360, label: "최대 6시간" },
+    { value: 720, label: "최대 12시간" },
+    { value: 1440, label: "최대 24시간" }
+];
+
 const LimitGroup = () => {
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const { value } = useScopedValue("extendOnLimit");
+    const limit = useScopedValue("extendLimitMinutes").value;
 
     return (
         <SettingsGroup id="group-limit" title="사용량 한도">
@@ -184,6 +194,21 @@ const LimitGroup = () => {
                 disabled={!isIdle}
                 onChange={(isOn) => settings.update({ extendOnLimit: isOn })}
             />
+            <div className="row version-row">
+                <span className="row-body">
+                    <b id="extend-limit-label">연장 상한</b>
+                    <small id="extend-limit-note">한 번의 실행에서 늘릴 수 있는 시간의 합이에요. 연장을 켰을 때만 적용돼요.</small>
+                    <ScopeNote settingKey="extendLimitMinutes" disabled={!isIdle} />
+                </span>
+                <Select
+                    value={limit}
+                    options={EXTEND_LIMIT_OPTIONS}
+                    disabled={!isIdle}
+                    disabledReason="실행 중에는 바꿀 수 없어요"
+                    labelId="extend-limit-label"
+                    onChange={(next) => settings.update({ extendLimitMinutes: next })}
+                />
+            </div>
         </SettingsGroup>
     );
 };

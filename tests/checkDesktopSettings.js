@@ -108,6 +108,9 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({}).notifyFocused, false);
     assert.equal(normalizeSettings({}).checkUpdates, true, "새 버전 확인은 기본으로 켜져 있다");
     assert.equal(normalizeSettings({ checkUpdates: "no" }).checkUpdates, true);
+    assert.equal(normalizeSettings({}).extendLimitMinutes, 0, "연장 상한은 기본이 제한 없음");
+    assert.equal(normalizeSettings({ extendLimitMinutes: 180 }).extendLimitMinutes, 180);
+    assert.equal(normalizeSettings({ extendLimitMinutes: 100 }).extendLimitMinutes, 0, "허용되지 않은 값은 기본값");
     assert.equal(normalizeSettings({}).sleepBlock, "always");
     assert.equal(normalizeSettings({ sleepBlock: "plugged" }).sleepBlock, "plugged");
     assert.equal(normalizeSettings({ sleepBlock: "sometimes" }).sleepBlock, "always", "허용되지 않은 값은 기본값");

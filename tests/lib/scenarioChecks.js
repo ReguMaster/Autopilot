@@ -431,6 +431,19 @@ const checkRetriesAndRateLimit = async (runScenario) => {
     assert(extendedRunData.deadline.getSeconds() > 0);
     assert.equal(extendedRunData.deadline.getMilliseconds(), 0);
     assert.match(fs.readFileSync(extendedRunData.logFile, "utf8"), /^\[사용량 한도\] 종료 시각 연장 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(\+1분\)$/m);
+
+    // 연장 상한이 있으면 한 실행에서 늘리는 총량이 그만큼으로 묶인다. 첫 대기는 상한만큼만 늘리고, 상한을 다 쓴 뒤의 대기는 늘리지 않고 안내만 남긴다.
+    const cappedRunData = await runScenario("limit-long", {
+        extendOnLimit: true,
+        maxExtendMinutes: 1 / 60,
+        limits: { minMinutes: 0, maxRounds: 2, maxRoundMinutes: 1, retryWaitMinutes: [], resetGraceMs: 0 }
+    });
+    const cappedLog = fs.readFileSync(cappedRunData.logFile, "utf8");
+
+    assert.equal(cappedRunData.rounds.length, 2);
+    assert.equal(cappedLog.match(/^\[사용량 한도\] 종료 시각 연장 /gm).length, 1);
+    assert.equal(cappedLog.match(/^\[사용량 한도\] 연장 상한 [\d.]+분에 도달해 종료 시각을 더 늘리지 않습니다$/gm).length, 2);
+    assert.equal(cappedRunData.deadline.getSeconds(), 1, "상한(1초)만큼만 늘어난다");
 };
 
 const checkTimeout = async (runScenario) => {

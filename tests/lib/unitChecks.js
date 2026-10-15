@@ -71,6 +71,14 @@ const checkCommandArgs = () => {
     assert.equal(parseRunArgs([...project, "--model", "claude-opus-4-8"]).model, "claude-opus-4-8");
     assert.equal(parseRunArgs(project).open, undefined);
     assert.equal(parseRunArgs(project).extendOnLimit, undefined);
+    assert.equal(parseRunArgs(project).maxExtendMinutes, undefined);
+    assert.equal(parseRunArgs([...project, "--extend-on-limit", "--max-extend-minutes", "90"]).maxExtendMinutes, 90);
+
+    for (const invalidMinutes of ["0", "-5", "abc", "1.5", "90분", "10081", "1e3"]) {
+        assert.throws(() => parseRunArgs([...project, "--max-extend-minutes", invalidMinutes]), /max-extend-minutes/, invalidMinutes);
+    }
+
+    assert.throws(() => parseRunArgs([...project, "--max-extend-minutes"]));
     assert.deepEqual(parseRunArgs([...project, "--extend-on-limit", "--no-open"]), { projectDir: "C:\\work\\demo project", open: false, extendOnLimit: true });
 
     // 프로젝트가 없거나 위치 인자·알 수 없는 인자·잘못된 값은 거부한다. 이전 형식(HH:mm todo 위치 인자)은 더 받지 않는다.

@@ -12,6 +12,7 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
+const { getCliArgs } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
 const { createSettingsStore, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 
@@ -90,24 +91,6 @@ const isValidRoundOptions = ({ model, effort }) => {
 
 const resolveModel = (family, modelVersions) => {
     return modelVersions[family] || family;
-};
-
-const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, model, effort, configDir }) => {
-    const args = ["--project", projectDir, "--no-open", "--tasks-file", tasksFile, "--policy", policy, "--model", model, "--effort", effort];
-
-    if (endTime) {
-        args.push("--end-time", endTime);
-    }
-
-    if (extendOnLimit) {
-        args.push("--extend-on-limit");
-    }
-
-    if (configDir) {
-        args.push("--config-dir", configDir);
-    }
-
-    return args;
 };
 
 const broadcast = (channel, payload) => {
@@ -226,7 +209,14 @@ const launchRun = async (settings, startOptions, { remember }) => {
         return await runner.start({
             ...getEngineLaunch(),
             projectDir: settings.projectDir,
-            args: getCliArgs({ ...startOptions, model: model, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
+            args: getCliArgs({
+                ...startOptions,
+                extendLimitMinutes: settings.extendLimitMinutes,
+                model: model,
+                projectDir: settings.projectDir,
+                tasksFile: tasksFile,
+                configDir: runAccount.data.configDir
+            }),
             roundOptions: { model: model, effort: startOptions.effort }
         });
     } finally {

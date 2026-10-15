@@ -137,7 +137,7 @@ const prepareRun = (options) => {
 };
 
 const createLoopState = () => {
-    return { activeProcess: null, isInterrupted: false, isAborted: false, isWorkComplete: false, failureCount: 0, idleCount: 0, reason: "" };
+    return { activeProcess: null, isInterrupted: false, isAborted: false, isWorkComplete: false, failureCount: 0, idleCount: 0, extendedMs: 0, reason: "" };
 };
 
 const isStopRequested = (context, loopState) => {
@@ -318,13 +318,17 @@ const runRound = async (context, loopState, remainingMinutes) => {
 
 // 중단해야 하면 true를 반환한다. 한도 리셋이 종료 시각 이후면 기다리지 않고 끝낸다.
 // extendOnLimit이면 기다린 만큼 종료 시각을 늦춰 대기 전 남은 시간이 그대로 남는다. 로그 시각이 초 단위라 연장분은 올림한다.
+// maxExtendMinutes가 있으면 한 실행에서 늘릴 수 있는 총량이 그만큼으로 묶이고, 남은 상한보다 더 필요하면 남은 만큼만 늘린다.
 const waitForRateLimitReset = async (context, loopState, resetAt) => {
     const { options, runConfig, runState, writeLog } = context;
     const resumeAt = resetAt + runConfig.resetGraceMs;
-    const extensionMs = options.extendOnLimit ? Math.ceil(Math.max(0, resumeAt - Date.now()) / SECOND_MS) * SECOND_MS : 0;
+    const wantedMs = options.extendOnLimit ? Math.ceil(Math.max(0, resumeAt - Date.now()) / SECOND_MS) * SECOND_MS : 0;
+    const capMs = options.maxExtendMinutes ? options.maxExtendMinutes * MINUTE_MS : Infinity;
+    const extensionMs = Math.min(wantedMs, Math.max(0, capMs - loopState.extendedMs));
+    const isCapped = extensionMs < wantedMs;
 
     if (+runState.deadline + extensionMs - resumeAt < runConfig.minMinutes * MINUTE_MS) {
-        loopState.reason = extensionMs ? "사용량 한도 대기 전 남은 시간 부족" : "사용량 한도 리셋이 종료 시각 이후";
+        loopState.reason = isCapped ? "사용량 한도 연장 상한 도달" : extensionMs ? "사용량 한도 대기 전 남은 시간 부족" : "사용량 한도 리셋이 종료 시각 이후";
 
         return true;
     }
@@ -333,8 +337,13 @@ const waitForRateLimitReset = async (context, loopState, resetAt) => {
 
     if (extensionMs) {
         runState.deadline = new Date(+runState.deadline + extensionMs);
+        loopState.extendedMs += extensionMs;
 
         writeLog(`[사용량 한도] 종료 시각 연장 ${dateUtil.getDatetimeString(runState.deadline)} (+${Math.ceil(extensionMs / MINUTE_MS)}분)`);
+    }
+
+    if (isCapped) {
+        writeLog(`[사용량 한도] 연장 상한 ${options.maxExtendMinutes}분에 도달해 종료 시각을 더 늘리지 않습니다`);
     }
 
     writeLog(`[사용량 한도] ${resumeTime}까지 대기 (실패로 세지 않음)`);

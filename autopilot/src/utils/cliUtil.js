@@ -1,15 +1,15 @@
-import { EFFORT_LEVELS, MODEL_CHOICES } from "./config.js";
+import { EFFORT_LEVELS, MAX_EXTEND_MINUTES, MODEL_CHOICES } from "./config.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
 const SET_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--model": "model", "--effort": "effort" };
-const RUN_OPTION_KEYS = { ...SET_OPTION_KEYS, "--config-dir": "configDir", "--end-time": "endTime", "--policy": "policy", "--tasks-file": "tasksFile" };
+const RUN_OPTION_KEYS = { ...SET_OPTION_KEYS, "--config-dir": "configDir", "--end-time": "endTime", "--policy": "policy", "--tasks-file": "tasksFile", "--max-extend-minutes": "maxExtendMinutes" };
 const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
 
 const parseOptionValue = (args, index) => {
@@ -53,11 +53,26 @@ const parseOptions = (args, optionKeys) => {
     return options;
 };
 
+// 사용량 한도 대기로 늘릴 수 있는 종료 시각의 총량(분)은 1 이상의 정수다.
+const parseMaxExtendMinutes = (text) => {
+    const minutes = Number(text);
+
+    if (!/^\d+$/.test(text) || minutes < 1 || minutes > MAX_EXTEND_MINUTES) {
+        throw new Error(`--max-extend-minutes 값은 1~${MAX_EXTEND_MINUTES} 사이의 정수여야 합니다.`);
+    }
+
+    return minutes;
+};
+
 const parseRunArgs = (args) => {
     const options = parseOptions(
         args.filter((arg) => !RUN_FLAGS.includes(arg)),
         RUN_OPTION_KEYS
     );
+
+    if (options.maxExtendMinutes !== undefined) {
+        options.maxExtendMinutes = parseMaxExtendMinutes(options.maxExtendMinutes);
+    }
 
     return { ...options, ...(args.includes("--no-open") && { open: false }), ...(args.includes("--extend-on-limit") && { extendOnLimit: true }) };
 };

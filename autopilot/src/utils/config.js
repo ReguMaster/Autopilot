@@ -30,6 +30,7 @@ const FALLBACK_MODEL = "sonnet";
 const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
 const MODEL_ID_PATTERN = /^claude-[a-z0-9][a-z0-9.-]{0,62}$/;
 const DEFAULT_EFFORT = "high";
+const MAX_EXTEND_MINUTES = 7 * 24 * 60;
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
 const WORK_DIR_NAME = ".autopilot";
@@ -87,6 +88,7 @@ export {
     MODEL_CHOICES,
     MODEL_ID_PATTERN,
     DEFAULT_EFFORT,
+    MAX_EXTEND_MINUTES,
     EFFORT_LEVELS,
     WORK_DIR_NAME,
     APP_DATA_DIR_NAME,

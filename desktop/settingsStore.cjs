@@ -13,6 +13,8 @@ const PROJECT_SETTINGS_DIR_NAME = "project-settings";
 const PROJECT_KEY_HASH_LENGTH = 8;
 const POLICY_CHOICES = ["auto", "todo"];
 // 실행 중 절전 방지: 항상, 전원이 연결된 동안만, 쓰지 않음
+// 사용량 한도 대기로 늘릴 수 있는 종료 시각의 총량(분). 0은 제한 없음
+const EXTEND_LIMIT_CHOICES = [0, 60, 180, 360, 720, 1440];
 const SLEEP_BLOCK_CHOICES = ["always", "plugged", "never"];
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RECOVERY_NOTICES = {
@@ -21,7 +23,7 @@ const RECOVERY_NOTICES = {
 };
 
 // 프로젝트가 따로 정하지 않으면 전역 값을 쓰는 키. 전역 파일에는 기본값으로, 프로젝트 파일에는 덮어쓴 값만 들어간다.
-const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "modelVersions", "effort"];
+const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "extendLimitMinutes", "model", "modelVersions", "effort"];
 const SCHEDULES_KEY = "schedules";
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
 const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock"];
@@ -38,6 +40,7 @@ const DEFAULT_SETTINGS = {
     endTime: "",
     policy: "auto",
     extendOnLimit: false,
+    extendLimitMinutes: 0,
     model: "opus",
     modelVersions: {},
     effort: "high",
@@ -68,6 +71,7 @@ const SETTING_VALIDATORS = {
     endTime: (value) => value === "" || END_TIME_PATTERN.test(value),
     policy: (value) => POLICY_CHOICES.includes(value),
     extendOnLimit: (value) => typeof value === "boolean",
+    extendLimitMinutes: (value) => EXTEND_LIMIT_CHOICES.includes(value),
     model: (value) => MODEL_CHOICES.includes(value),
     modelVersions: isModelVersions,
     effort: (value) => EFFORT_CHOICES.includes(value),
@@ -384,6 +388,7 @@ module.exports = {
     EXPORT_VERSION,
     POLICY_CHOICES,
     SLEEP_BLOCK_CHOICES,
+    EXTEND_LIMIT_CHOICES,
     END_TIME_PATTERN,
     SETTINGS_VERSION,
     SETTINGS_FILE_NAME

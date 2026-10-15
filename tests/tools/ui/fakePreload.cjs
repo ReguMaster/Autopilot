@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS = {
     endTime: "",
     policy: "auto",
     extendOnLimit: false,
+    extendLimitMinutes: 0,
     model: "opus",
     modelVersions: {},
     effort: "high",
@@ -50,6 +51,7 @@ const OVERRIDABLE_DEFAULTS = {
     endTime: DEFAULT_SETTINGS.endTime,
     policy: DEFAULT_SETTINGS.policy,
     extendOnLimit: DEFAULT_SETTINGS.extendOnLimit,
+    extendLimitMinutes: DEFAULT_SETTINGS.extendLimitMinutes,
     model: DEFAULT_SETTINGS.model,
     modelVersions: DEFAULT_SETTINGS.modelVersions,
     effort: DEFAULT_SETTINGS.effort

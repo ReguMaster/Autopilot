@@ -28,6 +28,7 @@ const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
+const { getCliArgs } = require("../desktop/engineArgs.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -856,6 +857,18 @@ const checkUpdateCheck = async () => {
     assert.equal((await toggledCheck.check()).version, "1.1.0");
 };
 
+// 엔진 시작 인자: 종료 시각·한도 연장·연장 상한·계정 폴더는 있을 때만 붙고, 연장 상한은 연장이 켜졌을 때만 붙는다.
+const checkCliArgs = () => {
+    const base = { projectDir: "/p", tasksFile: "/t.md", endTime: "", policy: "auto", extendOnLimit: false, extendLimitMinutes: 0, model: "opus", effort: "high", configDir: "" };
+
+    assert.deepEqual(getCliArgs(base), ["--project", "/p", "--no-open", "--tasks-file", "/t.md", "--policy", "auto", "--model", "opus", "--effort", "high"]);
+    assert.deepEqual(getCliArgs({ ...base, endTime: "07:30", configDir: "/c" }).slice(-4), ["--end-time", "07:30", "--config-dir", "/c"]);
+    assert(!getCliArgs({ ...base, extendLimitMinutes: 180 }).includes("--max-extend-minutes"), "연장이 꺼져 있으면 연장 상한도 보내지 않는다");
+    assert(getCliArgs({ ...base, extendOnLimit: true }).includes("--extend-on-limit"));
+    assert(!getCliArgs({ ...base, extendOnLimit: true }).includes("--max-extend-minutes"), "제한 없음(0)이면 연장 상한을 보내지 않는다");
+    assert.deepEqual(getCliArgs({ ...base, extendOnLimit: true, extendLimitMinutes: 180 }).slice(-3), ["--extend-on-limit", "--max-extend-minutes", "180"]);
+};
+
 // 허용 값은 엔진(config.js)·러너·화면(desktop/ui/lib/constants.js) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
 const checkChoiceSync = () => {
     assert.deepEqual(MODEL_CHOICES, ENGINE_MODELS);
@@ -956,6 +969,7 @@ const runChecks = async () => {
 
     try {
         checkChoiceSync();
+        checkCliArgs();
         checkProjectError(testDir);
         checkReportOpenGuard(testDir);
 
