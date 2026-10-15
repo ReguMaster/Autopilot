@@ -151,6 +151,7 @@ const SCENES = [
             await t.shot("stopping", "#main-action");
             await t.clearCalls();
             await t.click("#main-action");
+            await t.confirm();
             await t.note("kill-calls", JSON.stringify((await t.calls()).map((call) => call[0])));
         }
     },

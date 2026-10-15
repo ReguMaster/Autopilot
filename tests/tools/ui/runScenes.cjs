@@ -137,6 +137,16 @@ const createTools = (win, scene, sceneDir, report) => {
             win.webContents.sendInputEvent({ type: "mouseUp", x: x, y: y, button: "left", clickCount: 1 });
             await wait(120);
         },
+        // 확인 모달이 떠 있으면 확인을 누른다. 모달이 없는 옛 화면(기준)에서는 아무것도 하지 않아 두 화면이 같은 장면으로 이어진다.
+        confirm: async () => {
+            const selector = "dialog[open] .modal-foot .button:last-child";
+            const rect = await tools.rect(selector);
+
+            if (rect && rect.width > 0) {
+                await tools.click(selector);
+                await wait(400);
+            }
+        },
         press: async (keyCode) => {
             const chars = { Return: "\r", Space: " " };
 

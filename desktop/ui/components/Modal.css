@@ -1,0 +1,137 @@
+/* 모달: GitHub Desktop 대화상자의 구성(제목 줄 · 본문 · 오른쪽 정렬 버튼 줄, 크게 맺혔다 빠르게 사라지는 전환)을 이 앱의 흰 카드 톤으로 옮겼다 */
+.modal {
+    --ease-out-back: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    --ease-in-back: cubic-bezier(0.6, -0.28, 0.735, 0.045);
+    width: min(400px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    padding: 0;
+    border: 0;
+    border-radius: 18px;
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    opacity: 0;
+    scale: 0.9;
+    transition:
+        opacity 0.1s var(--ease-in),
+        scale 0.1s var(--ease-in-back),
+        overlay 0.1s allow-discrete,
+        display 0.1s allow-discrete;
+}
+
+/* 닫힌 dialog는 UA가 display: none으로 두므로 열렸을 때만 flex로 바꾼다 */
+.modal[open] {
+    display: flex;
+    flex-direction: column;
+    opacity: 1;
+    scale: 1;
+    transition:
+        opacity 0.18s var(--ease-out),
+        scale 0.25s var(--ease-out-back),
+        overlay 0.25s allow-discrete,
+        display 0.25s allow-discrete;
+}
+
+@starting-style {
+    .modal[open] {
+        opacity: 0;
+        scale: 0.75;
+    }
+}
+
+.modal::backdrop {
+    background: rgb(26 31 54 / 0.3);
+    opacity: 0;
+    transition:
+        opacity 0.1s var(--ease-in),
+        overlay 0.1s allow-discrete,
+        display 0.1s allow-discrete;
+}
+
+.modal[open]::backdrop {
+    opacity: 1;
+}
+
+@starting-style {
+    .modal[open]::backdrop {
+        opacity: 0;
+    }
+}
+
+.modal-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 50px;
+    padding: 0 12px 0 20px;
+    border-bottom: 1px solid var(--hair);
+}
+
+.modal-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--text-lg);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.modal-close {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+    transition:
+        background-color 0.25s var(--ease-out),
+        color 0.25s var(--ease-out);
+}
+
+.modal-close:hover {
+    background: var(--chip);
+    color: var(--ink);
+}
+
+.modal-close .icon {
+    width: 12px;
+    height: 12px;
+}
+
+.modal-body {
+    flex: 1;
+    min-height: 0;
+    padding: 18px 20px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    color: var(--ink-2);
+    line-height: 1.6;
+}
+
+.modal-foot {
+    flex: none;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--hair);
+}
+
+.modal-foot .button {
+    min-width: 96px;
+}
+
+/* 움직임을 줄이는 설정에서는 확대만 끄고 투명도 전환은 남긴다(전역 규칙은 schedule.css) */
+@media (prefers-reduced-motion: reduce) {
+    .modal {
+        scale: none !important;
+    }
+}

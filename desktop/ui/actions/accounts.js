@@ -1,5 +1,6 @@
 import { STATUS_OK } from "../lib/constants.js";
 import { applyAccountsPayload, setAccountSnapshot, useAccountStore } from "../stores/accountStore.js";
+import { modal } from "../stores/modalStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { startRun } from "./run.js";
 
@@ -80,9 +81,22 @@ const accounts = {
         showAccountFailure(await window.autopilot.loginAccount(useAccountStore.getState().activeId));
     },
     remove: async () => {
-        const result = await window.autopilot.removeAccount(useAccountStore.getState().activeId);
+        const { accounts: list, activeId } = useAccountStore.getState();
+        const label = list.find((account) => account.id === activeId)?.label;
+        const isConfirmed = await modal.confirm({
+            title: `'${label}' 계정을 제거할까요?`,
+            message: "앱에 저장된 이 계정의 로그인 정보와 설정 폴더를 지워요. Claude 계정 자체에는 영향이 없고, 다시 추가하면 새로 로그인해야 해요.",
+            confirmLabel: "제거",
+            tone: "danger"
+        });
 
-        if (showAccountFailure(result) && !result.data.cancelled) {
+        if (!isConfirmed) {
+            return;
+        }
+
+        const result = await window.autopilot.removeAccount(activeId);
+
+        if (showAccountFailure(result)) {
             applyPayload(result.data);
         }
     },

@@ -1,4 +1,5 @@
 import { STATUS_OK } from "../lib/constants.js";
+import { modal } from "../stores/modalStore.js";
 import { useRunsStore } from "../stores/runsStore.js";
 import { ui } from "../stores/uiStore.js";
 
@@ -76,6 +77,17 @@ const openArchiveFile = async (kind) => {
 
 // 지운 뒤에는 목록으로 돌아가 지워졌음을 알리고, 시작 화면의 최근 목록도 다시 읽는다.
 const deleteArchiveRun = async () => {
+    const isConfirmed = await modal.confirm({
+        title: "이 실행 기록을 지울까요?",
+        message: "로그와 리포트가 지워지고 되돌릴 수 없어요. 커밋과 진행 기록(AUTOPILOT_PROGRESS.md)은 그대로예요.",
+        confirmLabel: "삭제",
+        tone: "danger"
+    });
+
+    if (!isConfirmed) {
+        return;
+    }
+
     const result = await window.autopilot.deleteRun(useRunsStore.getState().detail.run.id);
 
     if (result.status !== STATUS_OK) {
@@ -84,11 +96,9 @@ const deleteArchiveRun = async () => {
         return;
     }
 
-    if (!result.data.cancelled) {
-        await openArchiveList();
-        loadRecentRuns();
-        setNote("기록을 지웠어요.");
-    }
+    await openArchiveList();
+    loadRecentRuns();
+    setNote("기록을 지웠어요.");
 };
 
 export { loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };

@@ -13,8 +13,10 @@ const loadUi = async () => {
         import { createElement } from "react";
         import { renderToStaticMarkup } from "react-dom/server";
         import { Select } from "./components/Select.jsx";
+        import { Modal } from "./components/Modal.jsx";
         export * from "./selectKeys.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
+        export const renderModal = (props, children) => renderToStaticMarkup(createElement(Modal, props, children));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -95,11 +97,33 @@ const checkSelectMarkup = ({ renderSelect }) => {
     assert.match(unknown, /class="select-value">최신 버전 \(기본\)</, "목록에 없는 값이면 첫 항목을 보여준다");
 };
 
+const checkModalMarkup = ({ renderModal }) => {
+    const html = renderModal({ open: false, title: "강제 종료할까요?", onClose: () => {}, role: "alertdialog", footer: "버튼 줄" }, "되돌릴 수 없어요.");
+
+    assert.match(html, /^<dialog [^>]*class="modal"/, "네이티브 dialog로 그린다");
+    assert.match(html, /role="alertdialog"/);
+    assert.match(html, /aria-labelledby="([^"]+)-title"/);
+    assert.match(html, /aria-describedby="([^"]+)-body"/);
+    assert.equal(html.match(/aria-labelledby="([^"]+)-title"/)[1], html.match(/id="([^"]+)-title"/)[1], "제목 id가 aria-labelledby와 이어진다");
+    assert.equal(html.match(/aria-describedby="([^"]+)-body"/)[1], html.match(/id="([^"]+)-body"/)[1], "본문 id가 aria-describedby와 이어진다");
+    assert.match(html, /<h2 [^>]*class="modal-title">강제 종료할까요\?<\/h2>/);
+    assert.match(html, /<button [^>]*class="modal-close"[^>]*aria-label="닫기"/);
+    assert.match(html, /class="modal-body">되돌릴 수 없어요\.<\/div>/);
+    assert.match(html, /<footer class="modal-foot">버튼 줄<\/footer>/);
+    assert.ok(!html.includes(" open"), "닫힌 채로 그린다. 여는 것은 showModal이다");
+
+    const plain = renderModal({ open: false, title: "안내", onClose: () => {} }, "본문");
+
+    assert.match(plain, /role="dialog"/, "기본 역할은 dialog다");
+    assert.ok(!plain.includes("modal-foot"), "footer가 없으면 버튼 줄도 없다");
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
     checkKeys(ui);
     checkSelectMarkup(ui);
+    checkModalMarkup(ui);
 
     console.log("Desktop UI checks passed.");
 };

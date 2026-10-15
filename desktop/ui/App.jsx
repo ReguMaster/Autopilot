@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ModalHost } from "./components/ModalHost.jsx";
 import { Scrim } from "./components/Scrim.jsx";
 import { Symbols } from "./components/Symbols.jsx";
 import { ArchiveSheet } from "./features/archive/ArchiveSheet.jsx";
@@ -57,6 +58,7 @@ const App = () => {
             <ScheduleSheet />
             <ProfilePanel />
             <SettingsPanel />
+            <ModalHost />
         </>
     );
 };

@@ -67,7 +67,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 읽기는 메인 프로세스의 runHistory.cjs(listRuns·readRun)가 하고 IPC는 autopilot:list-runs·read-run·open-run-file이다. 렌더러가 보내는 값은 실행 id(`YYYY-MM-DD/autopilot_*.log`)뿐이고 getRunFiles가 형식을 검사해 진행 기록 폴더 안의 경로로만 바꾼다. 열기(리포트·원본 로그)는 projectFiles의 isProjectReportFile·isProjectLogFile로 실제 경로까지 검사한다. 목록의 심볼릭 링크·junction은 따라가지 않는다.
 - 시작 시각은 폴더 날짜와 파일 이름의 HHmmss, 끝 시각은 파일 수정 시각이다(7일을 넘기면 알 수 없음). 요약 문장은 viewFormat.describePastRun이 만든다. 대화 변환(viewFormat.buildTranscript)은 알아볼 수 없는 줄을 건너뛰고 1500개까지만 둔다.
 - 깨진 로그 대응: 잘못된 UTF-8·BOM·CRLF·제어 문자·2000자 넘는 줄을 정리한다. 16MB를 넘으면 끝부분만 읽고(isPartial) 상세는 최근 20000줄까지 보낸다. 비었거나 알아볼 줄이 없으면 isEmpty, 읽기 오류는 isUnreadable, 끝맺음 줄이 없으면 reason이 비어 `끝맺음 없음`이다. 실행 중인 엔진의 로그(isActive)는 끝맺음이 없어도 비정상으로 보지 않는다.
-- 삭제(autopilot:delete-run, runHistory.deleteRun)는 메인의 확인 대화상자를 거쳐 그 실행의 로그·리포트만 지운다. 진행 중인 실행(isActive)은 거부하고 날짜 폴더는 비었을 때만 지운다(완료 마커·보관 원본은 건드리지 않는다).
+- 삭제(autopilot:delete-run, runHistory.deleteRun)는 화면의 확인 모달(actions/runs.js의 deleteArchiveRun)을 거쳐 그 실행의 로그·리포트만 지운다. 진행 중인 실행(isActive)은 거부하고 날짜 폴더는 비었을 때만 지운다(완료 마커·보관 원본은 건드리지 않는다).
 
 ## 새 버전 알림
 
@@ -92,10 +92,10 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 화면 전체를 React 19가 그린다. index.html은 `<div id="root">` 하나와 서체 선언(fonts/pretendard.css)·번들(bundle/app.js·app.css)만 불러오고, 소스는 desktop/ui/(ESM·JSX)이며 esbuild(ui/build.mjs)가 desktop/bundle/로 묶는다(npm run build:ui, 저장할 때마다 다시 만들려면 npm run dev:ui). 번들은 커밋하지 않고 패키지에는 번들만 넣는다. 번들이 없으면 스모크 테스트가 #run-form을 못 찾아 실패한다. react·react-dom·esbuild·zustand는 devDependency이고 exact로 고정한다(올릴 때는 최근 2주 안에 나온 버전을 피한다).
 - 구성
     - main.jsx는 메인이 보관한 첫 상태를 모두 받은 뒤(boot.js) App.jsx를 그린다. boot.js는 첫 상태 적재, 메인 이벤트 구독, 실행 상태가 바뀔 때 다른 스토어가 따라야 하는 규칙(옛 renderState가 한꺼번에 하던 일)을 맡는다.
-    - stores/는 zustand 스토어다. runStore(엔진 상태와 로그 3000줄. 로그는 50ms 단위로 모아 반영하고 shareStructure로 바뀌지 않은 조각의 참조를 유지한다), appStore(앱 정보·저장된 설정·창), uiStore(패널·시트 전환 규칙·안내·시작 중 잠금), composerStore(모델·Effort·정책·종료 시각·작업·한도 연장, 실행 중 엔진 값 따라가기, 옵션 전달 큐), accountStore, scheduleStore, runsStore, clock(초 단위 틱 하나를 모두가 나눠 쓰고 useClock은 읽은 값이 바뀔 때만 다시 그린다)이다.
+    - stores/는 zustand 스토어다. runStore(엔진 상태와 로그 3000줄. 로그는 50ms 단위로 모아 반영하고 shareStructure로 바뀌지 않은 조각의 참조를 유지한다), appStore(앱 정보·저장된 설정·창), uiStore(패널·시트 전환 규칙·안내·시작 중 잠금), modalStore(확인 모달 요청), composerStore(모델·Effort·정책·종료 시각·작업·한도 연장, 실행 중 엔진 값 따라가기, 옵션 전달 큐), accountStore, scheduleStore, runsStore, clock(초 단위 틱 하나를 모두가 나눠 쓰고 useClock은 읽은 값이 바뀔 때만 다시 그린다)이다.
     - actions/는 IPC를 부르는 일(run·runs·accounts·schedules)이다. 컴포넌트는 window.autopilot을 직접 부르지 않고 액션을 부른다.
     - features/는 화면 단위(shell·ready·run·done·composer·profile·settings·history·archive·schedule)다. 각 화면은 스토어를 선택자 단위로 구독하고, 객체를 고를 때는 useShallow를 쓴다.
-    - components/는 공통 컴포넌트다(Icon·Button·Chip·Tag·SwapText·TickText·Popover·Select·Panel·Scrim·SettingsGroup·Gains·RunList·Symbols). 그 컴포넌트에만 쓰는 CSS(Select.css)는 같은 이름의 .css로 옆에 두고, 토큰은 styles/base.css의 :root를 쓴다.
+    - components/는 공통 컴포넌트다(Icon·Button·Chip·Tag·SwapText·TickText·Popover·Select·Panel·Scrim·Modal·ModalHost·SettingsGroup·Gains·RunList·Symbols). 그 컴포넌트에만 쓰는 CSS(Select.css·Modal.css)는 같은 이름의 .css로 옆에 두고, 토큰은 styles/base.css의 :root를 쓴다.
     - hooks/(useReplay·useWidthTween·useMergedRef·useView·useBodyFlags·useOverlayDismiss), lib/(constants: 허용 값·MAIN_ACTIONS, shareStructure, runText, cx)가 받친다. 허용 값(constants.js)은 엔진 config.js·autopilotRunner.cjs와 함께 바꾸고 tests/checkDesktopRunner.js가 대조한다.
 - CSS가 body의 data-view·data-status·data-tasks-open·클래스(ready·*-open)에 기대므로 useBodyFlags가 화면 상태를 그 한 곳에 반영한다. #root는 display: contents라 body의 flex 배치에 끼지 않는다.
 - 공통 스타일은 ui/styles/의 영역별 파일이다(base 토큰·기본, shell 헤더·상태 줄, stage 본문 세 화면, controls 안내·버튼, composer 컴포저·팝오버, panels 스크림·설정·프로필, sheets 전체 기록·지난 실행, responsive, motion, schedule 예약 시트). index.css의 @import 순서가 곧 캐스케이드라 바꾸지 않는다. main.jsx가 index.css를 맨 먼저 불러 컴포넌트 전용 CSS보다 앞에 놓이고, esbuild가 bundle/app.css 하나로 묶는다.
@@ -103,7 +103,10 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 애니메이션: 이야기(features/run/RunView)는 렌더 직전에 위치를 재고(measureTops) flushSync로 커밋한 뒤 layout effect에서 FLIP(slidePast)을 걸고, 드러내기 마스크(reveal.js)와 애니메이션 대기 게이트(busy·dirty와 Promise.allSettled)로 끝나기 전에 온 상태를 모았다가 한 번 그린다. 문구가 바뀔 때 맺히는 전환(SwapText·TickText)과 알약 너비 전환(useWidthTween. 출발 너비는 ResizeObserver가 기억한 바뀌기 직전의 실제 너비다)은 훅이 한다. 애니메이션 클래스를 다시 거는 요소의 className prop에는 그 클래스를 넣지 않는다(React가 다시 쓰지 않아 클래스가 남는다).
 - Select는 설정 패널의 옛 선택 상자를 개선한 것이고 새 선택 UI의 기준이다(높이 32·반경 8·안쪽 1px 테두리). 목록은 native popover(auto)와 anchor 위치라 패널 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙다가 자리가 모자라면 위로 뒤집힌다. 항목은 이름 아래에 설명을 두고(알약 팝오버와 같은 흰 카드·모션) 고른 항목은 배경과 체크로 보인다(파랑은 쓰지 않는다). 키보드는 select-only combobox를 따라 트리거에 포커스가 남고(↑↓·Home·End·PageUp/Down·글자 이어 치기·Enter/Space로 고름·Esc로 닫음) 실행 중에는 알약처럼 회색 + 자물쇠로 잠긴다.
 - 팝오버가 열린 동안은 useOverlayDismiss가 Esc를 처리하지 않는다. 안 그러면 선택 목록을 닫는 Esc가 설정 패널까지 닫는다. React 19에서 inert·popoverTarget·form이 속성대로 동작한다(18에서는 inert={true}가 빠진다).
-- 검증: tests/checkDesktopUi.js(키 이동 함수·Select 마크업), tests/checkDesktopStores.js(구조 공유, 로그 묶음·번호, 패널 전환, 옵션 전달 큐, 시작 중복 방지, 종료 신호 확인, 로그인 뒤 시작 이어가기, 예약 저장), 스모크(마운트와 주요 자리 확인)가 있다. 화면 모양과 동작은 tests/tools/ui의 비교 도구로 확인한다. 가짜 preload(fakePreload.cjs)로 두 화면을 같은 장면(scenes/)으로 띄워 진짜 마우스·키보드 입력을 보내고 영역별 PNG·정규화한 DOM·IPC 호출을 비교한다(`npm run ui:parity -- --baseline <git ref> [--full]`. 기준은 그 ref의 desktop·docs이고 화면 번들까지 만들어 쓴다). 화면을 고칠 때는 고치기 전 커밋을 기준으로 의도한 차이만 남는지 확인하고 장면을 더한다. React 전환 직전 커밋 c0333ae가 옛 renderer.js 화면이다.
+- Modal은 GitHub Desktop 대화상자의 구성(제목 줄·본문·오른쪽 정렬 버튼 줄, 크게 맺혔다 빠르게 사라지는 전환)을 이 앱의 흰 카드 톤으로 옮긴 것이다. 네이티브 `<dialog>`를 showModal()로 열어 포커스 가두기·뒤쪽 비활성·Esc·닫힌 뒤 포커스 복원을 브라우저에 맡기고, 닫는 전환(display·overlay allow-discrete)이 보이도록 항상 그려 두고 open으로만 연다. 코드가 닫아서 생긴 close 이벤트는 건너뛴다(isClosingRef). 안 그러면 연달아 연 새 모달을 지난 이벤트가 닫는다. 바깥(::backdrop) 닫기는 누르기와 떼기가 모두 바깥일 때만이다.
+    - 호출은 `await modal.confirm({ title, message, confirmLabel, cancelLabel, tone })`(stores/modalStore.js)이고 확인이면 true, 취소·Esc·X·바깥 클릭이면 false로 풀린다. App의 ModalHost가 하나만 그리고, 떠 있을 때 다시 부르면 앞의 것은 false로 닫힌다. tone: "danger"는 확인 버튼이 붉고 취소에 먼저 포커스를 둔다(되돌릴 수 없는 일의 기본 선택은 안전한 쪽).
+    - 모달이 떠 있는 동안은 useOverlayDismiss가 Esc와 바깥 누름을 처리하지 않는다. 안 그러면 모달 안의 누름·Esc가 뒤의 패널까지 닫는다. 움직임 줄이기에서는 확대만 끄고 투명도 전환은 남긴다(schedule.css의 전역 규칙에서 .modal을 뺐다).
+- 검증: tests/checkDesktopUi.js(키 이동 함수·Select·Modal 마크업), tests/checkDesktopStores.js(구조 공유, 로그 묶음·번호, 패널 전환, 확인 모달 요청, 옵션 전달 큐, 시작 중복 방지, 종료 신호 확인, 로그인 뒤 시작 이어가기, 예약 저장), 스모크(마운트와 주요 자리 확인)가 있다. 화면 모양과 동작은 tests/tools/ui의 비교 도구로 확인한다. 가짜 preload(fakePreload.cjs)로 두 화면을 같은 장면(scenes/)으로 띄워 진짜 마우스·키보드 입력을 보내고 영역별 PNG·정규화한 DOM·IPC 호출을 비교한다(`npm run ui:parity -- --baseline <git ref> [--full]`. 기준은 그 ref의 desktop·docs이고 화면 번들까지 만들어 쓴다). 화면을 고칠 때는 고치기 전 커밋을 기준으로 의도한 차이만 남는지 확인하고 장면을 더한다. React 전환 직전 커밋 c0333ae가 옛 renderer.js 화면이다.
 
 ## 화면 구조
 
@@ -118,13 +121,13 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 ## 컴포저와 패널
 
 - 실행이 시작되면 컴포저가 아래에 붙은 얇은 막대로 줄어든다(position: sticky, 좌우 여백은 그대로 두고 흰 바탕·그림자로 떠 있게 한다). 작업 칸(textarea, 높이 고정, 넘치면 칸 안에서 스크롤)은 접혀 작업 요약 한 줄 #tasks-toggle만 남고, 누르면 .fold의 grid-template-rows 0fr↔1fr 전환으로 읽기 전용 작업 칸이 펴진다. 접힌 칸은 visibility로 포커스를 막고 실행이 끝나면 접힌 상태로 돌아간다. uiStore의 tasksOpen을 useBodyFlags가 body[data-tasks-open]에 반영한다.
-- 주 버튼(#main-action, 글자 #main-action-label)은 시작 → 종료 신호 → 종료로 바뀐다. 종료 신호는 실수 방지로 한 번 누르면 붉게 바뀌어 4초 동안 "한 번 더 눌러 종료"를 보이고(줄어드는 채움이 남은 시간을 알린다) 그 안에 다시 눌러야 stop을 보낸다(actions/run.js의 setStopArmed). 시작은 응답을 기다리는 동안 다시 누르지 못하게 잠근다(uiStore의 isStarting). 종료는 강제 종료이며 메인 프로세스의 확인 대화상자를 거친다.
+- 주 버튼(#main-action, 글자 #main-action-label)은 시작 → 종료 신호 → 종료로 바뀐다. 종료 신호는 실수 방지로 한 번 누르면 붉게 바뀌어 4초 동안 "한 번 더 눌러 종료"를 보이고(줄어드는 채움이 남은 시간을 알린다) 그 안에 다시 눌러야 stop을 보낸다(actions/run.js의 setStopArmed). 시작은 응답을 기다리는 동안 다시 누르지 못하게 잠근다(uiStore의 isStarting). 종료는 강제 종료이며 화면의 확인 모달(actions/run.js)을 거친다.
 - 알약 줄(.composer-bar)은 모델(#model-popover)·Effort(#effort-popover)·개선 정책(#policy-popover)·종료 시각(#end-time-popover)이다. Effort 파형은 EffortChip의 getWavePath가 path의 d를 정하고, Effort·종료 시각(HH:mm 또는 빈 값) 같은 선택 값은 composerStore가 갖는다.
 - 정책 값도 composerStore가 갖고 정책 팝오버의 버튼은 그 값만 바꾼다. 설정 패널에는 정책이 없다.
 - 실행 중에는 정책·종료 시각 알약을 숨긴다(종료 시각과 남은 시간은 상태 줄·진행선에, 정책은 작업 요약의 문구에 이미 있다). 알약 줄은 줄바꿈 없이 한 줄에 들어가야 하므로 좁은 창(560px 이하)에서는 남은 시간과 화살표를 숨긴다.
 - 팝오버는 native popover와 anchor 위치를 쓰고 컴포저가 아래에 있어 위로 열린다. display는 :popover-open에만 준다(닫힌 팝오버에 display를 주면 보이지 않는 목록이 남아 클릭으로 값이 바뀐다). 모델 라디오(name="model")는 팝오버 안에 있지만 form="run-form"으로 폼에 속하고, 마크·아이콘은 svg.symbols의 symbol을 use로 쓴다.
 - 프로필 패널(#profile, #profile-toggle)과 설정 패널(#settings, #settings-toggle)은 헤더 아래에 뜨는 같은 .panel 컴포넌트이며 한 번에 하나만 열린다(uiStore의 setPanel·togglePanel). 설정 패널은 닫혀 있으면 inert이고 열 때 ease-out·닫을 때 ease-in이며, 뒤에 헤더 아래만 덮는 .scrim을 깐다. 프로필 패널의 계정 목록은 #account-select 안에 AccountList가 role=radio 버튼 줄로 그린다.
-- 진행 기록 초기화(설정 패널)는 확인 대화상자를 거쳐 reset-progress를 실행하고 실행 중에는 막는다. 버튼은 공통 .button(primary·danger·small 조합)을 쓴다.
+- 진행 기록 초기화(설정 패널)는 확인 모달을 거쳐 reset-progress를 실행하고 실행 중에는 막는다. 버튼은 공통 .button(primary·danger·small 조합)을 쓴다.
 
 ## 시각 규칙
 

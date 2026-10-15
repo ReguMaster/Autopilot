@@ -14,9 +14,12 @@ const loadModules = async () => {
         export * as shareStructure from "./lib/shareStructure.js";
         export * as runStore from "./stores/runStore.js";
         export * as uiStore from "./stores/uiStore.js";
+        export * as modalStore from "./stores/modalStore.js";
         export * as composerStore from "./stores/composerStore.js";
         export * as accountStore from "./stores/accountStore.js";
         export * as run from "./actions/run.js";
+        export * as runs from "./actions/runs.js";
+        export * as runsStore from "./stores/runsStore.js";
         export * as accounts from "./actions/accounts.js";
         export * as schedules from "./actions/schedules.js";
         export * as scheduleStore from "./stores/scheduleStore.js";
@@ -214,7 +217,7 @@ const checkComposer = async ({ runStore, composerStore }) => {
     assert.equal(useComposerStore.getState().endTime, "23:20");
 };
 
-const checkRunActions = async ({ runStore, uiStore, composerStore, run }) => {
+const checkRunActions = async ({ runStore, uiStore, composerStore, modalStore, run }) => {
     const { ui, useUiStore } = uiStore;
     let startCalls = 0;
     let stopCalls = 0;
@@ -285,10 +288,80 @@ const checkRunActions = async ({ runStore, uiStore, composerStore, run }) => {
     run.setStopArmed(false);
     assert.equal(useUiStore.getState().stopArmed, false);
 
+    // 종료 요청 뒤에는 한 번 더 누르지 않고 바로 강제 종료지만, 되돌릴 수 없어 확인 모달을 먼저 거친다.
     runStore.applyRunState(createState({ status: "stopping" }));
-    await run.handleMainAction();
-    assert.equal(killCalls, 1, "종료 요청 뒤에는 바로 강제 종료다");
+
+    const cancelledKill = run.handleMainAction();
+
+    assert.equal(modalStore.useModalStore.getState().open, true, "강제 종료는 확인 모달을 먼저 띄운다");
+    modalStore.modal.answer(false);
+    await cancelledKill;
+    assert.equal(killCalls, 0, "취소하면 강제 종료를 보내지 않는다");
+
+    const confirmedKill = run.handleMainAction();
+
+    modalStore.modal.answer(true);
+    await confirmedKill;
+    assert.equal(killCalls, 1, "확인하면 강제 종료를 보낸다");
     ui.set({ stopArmed: false });
+};
+
+// 확인을 받는 나머지 동작: 취소하면 IPC를 보내지 않고, 확인해야 보낸다.
+const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, accounts, accountStore }) => {
+    const { modal, useModalStore } = modalStore;
+    const calls = [];
+    const record = (name, result = OK()) => {
+        return async (...args) => {
+            calls.push([name, ...args]);
+
+            return result;
+        };
+    };
+
+    window.autopilot = {
+        resetProgress: record("resetProgress", OK({ isReset: true })),
+        deleteRun: record("deleteRun"),
+        removeAccount: record("removeAccount", OK({ accounts: [{ id: "default", label: "기본 계정" }], activeId: "default", claudeDir: null, snapshots: {} })),
+        listRuns: async () => OK({ runs: [] })
+    };
+
+    const answer = async (action, isConfirmed) => {
+        const pending = action();
+
+        assert.equal(useModalStore.getState().open, true, "확인 모달이 먼저 뜬다");
+        modal.answer(isConfirmed);
+        await pending;
+    };
+
+    await answer(run.resetProgress, false);
+    assert.deepEqual(calls, [], "초기화를 취소하면 보내지 않는다");
+    await answer(run.resetProgress, true);
+    assert.deepEqual(calls, [["resetProgress"]]);
+
+    calls.length = 0;
+    runsStore.useRunsStore.setState({ detail: { run: { id: "2026-10-10/autopilot_090000_aaaa0001.log" } } });
+    await answer(runs.deleteArchiveRun, false);
+    assert.deepEqual(calls, [], "삭제를 취소하면 보내지 않는다");
+    await answer(runs.deleteArchiveRun, true);
+    assert.deepEqual(calls, [["deleteRun", "2026-10-10/autopilot_090000_aaaa0001.log"]]);
+
+    calls.length = 0;
+    accountStore.useAccountStore.setState({
+        accounts: [
+            { id: "default", label: "기본 계정", shared: false },
+            { id: "acct-1", label: "회사", shared: false }
+        ],
+        activeId: "acct-1"
+    });
+
+    const pending = accounts.accounts.remove();
+
+    assert.equal(useModalStore.getState().request.title, "'회사' 계정을 제거할까요?", "제목에 계정 이름이 들어간다");
+    modal.answer(false);
+    await pending;
+    assert.deepEqual(calls, [], "제거를 취소하면 보내지 않는다");
+    await answer(accounts.accounts.remove, true);
+    assert.deepEqual(calls, [["removeAccount", "acct-1"]]);
 };
 
 const checkLoginResume = async ({ runStore, uiStore, accounts, accountStore }) => {
@@ -355,6 +428,35 @@ const checkSchedules = async ({ schedules, scheduleStore, composerStore }) => {
     assert.equal(scheduleStore.useScheduleStore.getState().payload.schedules.length, 0);
 };
 
+const checkModal = async ({ modalStore }) => {
+    const { modal, useModalStore } = modalStore;
+
+    const confirmed = modal.confirm({ title: "지울까요?", message: "되돌릴 수 없어요.", tone: "danger" });
+
+    assert.equal(useModalStore.getState().open, true);
+    assert.equal(useModalStore.getState().request.title, "지울까요?");
+    modal.answer(true);
+    assert.equal(await confirmed, true, "확인하면 true로 풀린다");
+    assert.equal(useModalStore.getState().open, false);
+    assert.equal(useModalStore.getState().request.title, "지울까요?", "닫는 전환 동안 내용이 남는다");
+
+    const cancelled = modal.confirm({ title: "계속할까요?" });
+
+    modal.answer(false);
+    assert.equal(await cancelled, false, "취소·Esc·바깥 클릭은 false로 풀린다");
+
+    const replaced = modal.confirm({ title: "첫 번째" });
+    const latest = modal.confirm({ title: "두 번째" });
+
+    assert.equal(await replaced, false, "떠 있는 모달 위에 새로 부르면 앞의 것은 취소로 닫힌다");
+    assert.equal(useModalStore.getState().request.title, "두 번째");
+    modal.answer(true);
+    assert.equal(await latest, true);
+
+    modal.answer(false);
+    assert.equal(useModalStore.getState().open, false, "이미 풀린 요청에 다시 답해도 오류 없이 닫힌 채다");
+};
+
 const checkStoryView = ({ storyModel }) => {
     const view = { key: "item:3", text: "문장", time: "10:00:03", pastItems: [{ key: "1:0:앞" }, { key: "2:1:뒤" }] };
     const copy = { ...view, pastItems: view.pastItems.map((item) => ({ ...item })) };
@@ -377,8 +479,10 @@ const checkStores = async () => {
     checkOverlays(modules);
     await checkComposer(modules);
     await checkRunActions(modules);
+    await checkConfirmedActions(modules);
     await checkLoginResume(modules);
     await checkSchedules(modules);
+    await checkModal(modules);
     checkStoryView(modules);
 
     console.log("Desktop store checks passed.");

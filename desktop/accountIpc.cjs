@@ -272,20 +272,6 @@ const createAccountIpc = ({
             return createFailure("INVALID_ACCOUNT", "제거할 수 있는 계정이 아니에요.");
         }
 
-        const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender), {
-            type: "warning",
-            title: "AutoPilot",
-            message: `'${target.label}' 계정을 제거할까요?`,
-            detail: "앱에 저장된 이 계정의 로그인 정보와 설정 폴더를 지워요. Claude 계정 자체에는 영향이 없고, 다시 추가하면 새로 로그인해야 해요.",
-            buttons: ["취소", "제거"],
-            defaultId: 0,
-            cancelId: 0
-        });
-
-        if (response === 0) {
-            return { status: STATUS_OK, data: { cancelled: true } };
-        }
-
         dropReader(accountId);
 
         try {

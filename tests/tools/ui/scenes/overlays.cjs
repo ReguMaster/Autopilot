@@ -71,6 +71,7 @@ const SCENES = [
             await t.click("#select-project");
             await t.click("#open-report");
             await t.click("#reset-progress");
+            await t.confirm();
             await t.note("calls", await callsWithArgs(t));
             await t.click("#history-toggle");
             await t.wait(700);
@@ -81,6 +82,26 @@ const SCENES = [
                     'JSON.stringify([document.getElementById("history-toggle").getAttribute("aria-expanded"), document.getElementById("history-toggle").textContent, document.body.className])'
                 )
             );
+        }
+    },
+    {
+        // 확인 모달: 옛 화면에는 없어 기준과 다른 것이 의도한 차이다. 취소·Esc는 IPC를 보내지 않고, 확인해야 보내며, 그동안 설정 패널은 닫히지 않는다.
+        name: "modal-confirm",
+        init: { ...withProject, accounts: ACCOUNTS, models: MODELS, state: doneState(), runs: RUNS },
+        run: async (t) => {
+            await openSettings(t);
+            await t.scrollTo("#settings .panel-scroll", 9999);
+            await t.clearCalls();
+            await t.click("#reset-progress");
+            await t.wait(500);
+            await t.shot("danger", ".modal");
+            await t.note("focus", await t.eval("document.activeElement?.textContent?.trim()"));
+            await t.press("Escape");
+            await t.wait(400);
+            await t.note("after-esc", `${await callNames(t)} ${await t.eval('document.body.classList.contains("settings-open")')}`);
+            await t.click("#reset-progress");
+            await t.confirm();
+            await t.note("after-confirm", `${await callNames(t)} ${await t.eval('document.body.classList.contains("settings-open")')}`);
         }
     },
     {
@@ -282,6 +303,7 @@ const SCENES = [
                     { id: "sch-4", code: "outside-window", opensAt: NOW + 20 * HOUR }
                 ]
             });
+            await t.confirm();
             await t.shot("list", "#schedule");
             await t.shot("peek", "#schedule-peek", { skipDom: true });
             await t.clearCalls();

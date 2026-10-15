@@ -471,27 +471,8 @@ const handleOpenUpdate = async () => {
     return { status: STATUS_OK };
 };
 
-const handleKill = async (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const { response } = await dialog.showMessageBox(window, {
-        type: "warning",
-        title: "AutoPilot",
-        message: "강제 종료할까요?",
-        detail: "실행 중인 회차가 즉시 중단되고 commit 전 변경은 working tree에 남아요. 진행 중인 리포트도 마무리되지 않아요.",
-        buttons: ["취소", "강제 종료"],
-        defaultId: 0,
-        cancelId: 0
-    });
-
-    if (response === 0) {
-        return { status: STATUS_OK, data: { cancelled: true } };
-    }
-
-    return runner.kill();
-};
-
-// 진행 기록을 보관하고 초기화한다. 이어갈 내용이 사라지므로 확인을 받고, 실행 중에는 막는다.
-const handleResetProgress = async (event) => {
+// 진행 기록을 보관하고 초기화한다. 실행 중에는 막는다. 이어갈 내용이 사라지는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handleResetProgress = async () => {
     const { projectDir } = readSettings();
     const projectError = getProjectError(projectDir);
 
@@ -501,21 +482,6 @@ const handleResetProgress = async (event) => {
 
     if (runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 진행 기록을 초기화할 수 없어요.");
-    }
-
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const { response } = await dialog.showMessageBox(window, {
-        type: "question",
-        title: "AutoPilot",
-        message: "진행 기록을 초기화할까요?",
-        detail: "다음 실행이 이전 작업을 이어받지 않고 빈 기록에서 시작해요. 원본은 프로젝트의 .autopilot/progress 폴더에 보관돼요.",
-        buttons: ["취소", "초기화"],
-        defaultId: 0,
-        cancelId: 0
-    });
-
-    if (response === 0) {
-        return { status: STATUS_OK, data: { cancelled: true } };
     }
 
     return new Promise((resolve) => {
@@ -598,7 +564,7 @@ const handleOpenRunFile = async (event, id, kind) => {
     return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
 };
 
-// 지난 실행의 로그와 리포트를 지운다. 되돌릴 수 없으므로 확인을 받는다.
+// 지난 실행의 로그와 리포트를 지운다. 되돌릴 수 없는 일이라 확인은 화면의 모달이 먼저 받는다.
 const handleDeleteRun = async (event, id) => {
     const { projectDir } = readSettings();
     const files = getRunFiles(projectDir, id);
@@ -611,25 +577,10 @@ const handleDeleteRun = async (event, id) => {
         return createFailure("RUN_ACTIVE", "진행 중인 실행은 지울 수 없어요.");
     }
 
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const { response } = await dialog.showMessageBox(window, {
-        type: "warning",
-        title: "AutoPilot",
-        message: "이 실행 기록을 지울까요?",
-        detail: "로그와 리포트가 지워지고 되돌릴 수 없어요. 커밋과 진행 기록(AUTOPILOT_PROGRESS.md)은 그대로예요.",
-        buttons: ["취소", "삭제"],
-        defaultId: 0,
-        cancelId: 0
-    });
-
-    if (response === 0) {
-        return { status: STATUS_OK, data: { cancelled: true } };
-    }
-
     try {
         await deleteRun(projectDir, id, { activeLogFile: getActiveLogFile() });
 
-        return { status: STATUS_OK, data: { cancelled: false } };
+        return { status: STATUS_OK };
     } catch (error) {
         return createFailure("DELETE_RUN_FAILED", `기록을 지우지 못했어요: ${error.message}`);
     }
@@ -642,7 +593,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:stop", () => runner.stop());
     ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:set-model-version", handleSetModelVersion);
-    ipcMain.handle("autopilot:kill", handleKill);
+    ipcMain.handle("autopilot:kill", () => runner.kill());
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
     ipcMain.handle("autopilot:list-runs", handleListRuns);

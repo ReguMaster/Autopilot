@@ -50,6 +50,9 @@ const Symbols = () => {
             <symbol id="icon-plus" viewBox="0 0 16 16">
                 <path d="M8 3.5v9M3.5 8h9" />
             </symbol>
+            <symbol id="icon-x" viewBox="0 0 16 16">
+                <path d="M4 4l8 8M12 4l-8 8" />
+            </symbol>
             <symbol id="icon-clock" viewBox="0 0 16 16">
                 <circle cx="8" cy="8" r="5.6" />
                 <path d="M8 4.8V8l2.1 1.4" />
