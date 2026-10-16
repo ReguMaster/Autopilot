@@ -135,8 +135,43 @@ const checkOpenTabs = () => {
     }
 };
 
+// 탭을 닫으면 그 프로젝트의 세션을 버리고, 열려 있지 않게 된 프로젝트는 더 받지 않는다.
+const checkCloseSession = () => {
+    const projectA = createProject();
+    const projectB = createProject();
+
+    try {
+        const context = createPool(projectA);
+        const { pool } = context;
+
+        context.openDirs = [projectA, projectB];
+
+        const sessionB = pool.get(projectB);
+
+        assert.equal(pool.close(projectB), true);
+
+        context.openDirs = [projectA];
+
+        assert.equal(pool.get(projectB), null, "닫은 탭의 프로젝트는 더 받지 않는다");
+        assert.deepEqual(
+            pool.getAll().map((session) => session.projectDir),
+            [],
+            "닫은 세션은 보관하지 않는다"
+        );
+        assert.equal(pool.close(projectB), false, "이미 닫았으면 아무것도 하지 않는다");
+
+        context.openDirs = [projectA, projectB];
+
+        assert.notEqual(pool.get(projectB), sessionB, "다시 열면 새 세션이다");
+    } finally {
+        fs.rmSync(projectA, { recursive: true, force: true });
+        fs.rmSync(projectB, { recursive: true, force: true });
+    }
+};
+
 checkActiveSession();
 checkOpenedSessions();
 checkOpenTabs();
+checkCloseSession();
 
 console.log("Desktop session checks passed.");

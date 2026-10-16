@@ -19,6 +19,8 @@ const loadModules = async () => {
         export * as accountStore from "./stores/accountStore.js";
         export * as run from "./actions/run.js";
         export * as events from "./actions/events.js";
+        export * as tabs from "./actions/tabs.js";
+        export * as tabsStore from "./stores/tabsStore.js";
         export * as runs from "./actions/runs.js";
         export * as runsStore from "./stores/runsStore.js";
         export * as accounts from "./actions/accounts.js";
@@ -721,6 +723,157 @@ const checkProjectEvents = async ({ events, runStore, appStore, run }) => {
     assert.deepEqual(readLogs(), ["B 기록"]);
 };
 
+// 탭: 전환하면 그 프로젝트의 설정·상태·로그로 바뀌고, 쓰던 작업은 돌아오면 되살아나며, 다른 탭을 닫아도 보던 화면은 그대로다.
+const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, uiStore, modalStore, scheduleStore }) => {
+    const { composer, useComposerStore } = composerStore;
+    const { useUiStore } = uiStore;
+    const { modal, useModalStore } = modalStore;
+    const view = (projectDir, patch = {}) => ({
+        settings: { projectDir: projectDir, tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high", ...patch },
+        overridden: [],
+        globals: {},
+        notice: ""
+    });
+    const tab = (projectDir, status = "idle") => ({ projectDir: projectDir, name: projectDir.slice(1), status: status });
+    const list = (active, dirs = ["/a", "/b"]) => ({ active: active, tabs: dirs.map((dir) => tab(dir)) });
+    const calls = [];
+    const readLogs = () => runStore.useRunStore.getState().logs.map((line) => line.text);
+    const readTabs = () => tabsStore.useTabsStore.getState();
+
+    window.autopilot = {
+        activateTab: async (dir) => {
+            calls.push(["activate", dir]);
+
+            return OK({
+                ...view(dir, { tasks: dir === "/b" ? "B에 저장된 작업" : "" }),
+                tabs: list(dir),
+                state: createState({ status: "idle", round: dir === "/b" ? 7 : 1 }),
+                logs: [{ stream: "out", text: `${dir} 기록` }]
+            });
+        },
+        closeTab: async (dir) => {
+            calls.push(["close", dir]);
+
+            return OK({ ...view(dir === "/b" ? "/a" : "/a"), tabs: list("/a", ["/a"]), state: createState({ round: 1 }), logs: [{ stream: "out", text: "/a 기록" }] });
+        },
+        openTab: async () => OK({ ...view("/c"), canceled: false, existing: false, tabs: list("/c", ["/a", "/b", "/c"]), state: createState({ round: 0 }), logs: [] }),
+        listRuns: async () => OK({ runs: [] })
+    };
+
+    appStore.applySettingsView(view("/a"));
+    composer.loadSettings(view("/a").settings);
+    tabsStore.applyTabs(list("/a"));
+    runStore.applyRunState(createState({ status: "idle", round: 1 }));
+    runStore.resetLogs();
+    composer.setTasks("A에서 쓰던 작업");
+
+    await tabs.activateTab("/a");
+
+    assert.equal(calls.length, 0, "보고 있는 탭을 다시 눌러도 메인에 묻지 않는다");
+
+    await tabs.activateTab("/b");
+
+    assert.deepEqual(calls.at(-1), ["activate", "/b"]);
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/b");
+    assert.equal(readTabs().active, "/b");
+    assert.equal(useComposerStore.getState().tasks, "B에 저장된 작업", "컴포저는 그 프로젝트의 저장된 값으로 채워진다");
+    assert.equal(runStore.getRunState().round, 7, "그 프로젝트의 상태로 바뀐다");
+    assert.deepEqual(readLogs(), ["/b 기록"], "그 프로젝트의 로그로 바뀐다");
+    assert.equal(useUiStore.getState().finishDismissed, false, "마친 상태가 남은 탭으로 가면 마친 화면을 보여준다");
+
+    composer.setTasks("B에서 새로 쓰는 작업");
+
+    await tabs.activateTab("/a");
+
+    assert.equal(useComposerStore.getState().tasks, "A에서 쓰던 작업", "저장하지 않고 떠난 작업은 돌아오면 되살아난다");
+
+    await tabs.activateTab("/b");
+
+    assert.equal(useComposerStore.getState().tasks, "B에서 새로 쓰는 작업");
+
+    composer.setTasks("B에 저장된 작업");
+
+    await tabs.activateTab("/a");
+    await tabs.activateTab("/b");
+
+    assert.equal(useComposerStore.getState().tasks, "B에 저장된 작업", "저장된 값과 같으면 따로 기억하지 않는다");
+
+    // 실행 중이던 탭에서 떠날 때는 작업을 기억하지 않는다(컴포저는 엔진 값을 따라간다).
+    runStore.applyRunState(createState({ status: "running" }));
+    composer.setTasks("실행 중 편집");
+    await tabs.activateTab("/a");
+    runStore.applyRunState(createState({ status: "idle" }));
+    await tabs.activateTab("/b");
+
+    assert.equal(useComposerStore.getState().tasks, "B에 저장된 작업");
+
+    // 다른 탭을 닫아도 보던 화면(컴포저·로그)은 그대로다. 예약이 있는 탭은 먼저 확인한다.
+    appStore.applySettingsView(view("/a"));
+    tabsStore.applyTabs(list("/a"));
+    runStore.applyRunState(createState({ status: "idle", round: 1 }));
+    runStore.resetLogs();
+    runStore.appendEntries([{ stream: "out", text: "보던 로그" }]);
+    runStore.flushNow();
+    composer.setTasks("편집 중");
+    calls.length = 0;
+
+    scheduleStore.applySchedulePayload({ schedules: [{ id: "sch-1", scope: "project", projectDir: "/b" }], statuses: [], maxSchedules: 8, defaults: null });
+
+    let pending = tabs.closeTab("/b");
+
+    assert.equal(useModalStore.getState().open, true, "예약이 있는 탭은 닫기 전에 확인한다");
+    assert.match(useModalStore.getState().request.message, /예약 1개/);
+    modal.answer(false);
+    await pending;
+
+    assert.equal(calls.length, 0, "취소하면 메인에 보내지 않는다");
+
+    pending = tabs.closeTab("/b");
+    modal.answer(true);
+    await pending;
+
+    assert.deepEqual(calls.at(-1), ["close", "/b"]);
+    assert.equal(useComposerStore.getState().tasks, "편집 중", "보던 탭이 그대로면 쓰던 작업을 건드리지 않는다");
+    assert.deepEqual(readLogs(), ["보던 로그"], "보던 탭이 그대로면 로그를 바꾸지 않는다");
+    assert.deepEqual(
+        readTabs().tabs.map((entry) => entry.projectDir),
+        ["/a"]
+    );
+
+    scheduleStore.applySchedulePayload({ schedules: [], statuses: [], maxSchedules: 8, defaults: null });
+    calls.length = 0;
+    await tabs.closeTab("/a");
+
+    assert.equal(useModalStore.getState().open, false, "예약이 없으면 바로 닫는다");
+    assert.deepEqual(calls.at(-1), ["close", "/a"]);
+
+    // 새 탭 열기: 열리면 그 프로젝트로 바뀌고, 이미 열려 있었으면 안내하며, 폴더 선택을 취소하면 아무것도 바꾸지 않는다.
+    await tabs.openTab();
+
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/c");
+    assert.equal(readTabs().tabs.length, 3);
+
+    window.autopilot.openTab = async () => OK({ ...view("/a"), canceled: false, existing: true, tabs: list("/a", ["/a", "/b", "/c"]), state: createState({ round: 1 }), logs: [] });
+
+    await tabs.openTab();
+
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/a");
+    assert.match(useUiStore.getState().notice.message, /이미 열려 있는 프로젝트/);
+
+    window.autopilot.openTab = async () => OK({ ...view("/b"), canceled: true, tabs: list("/b") });
+
+    await tabs.openTab();
+
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/a", "폴더 선택을 취소하면 바뀌지 않는다");
+
+    window.autopilot.activateTab = async () => ({ status: "FAILED", error: { code: "INVALID_PROJECT", msg: "열려 있는 프로젝트가 아니에요." } });
+
+    await tabs.activateTab("/zzz");
+
+    assert.equal(useUiStore.getState().notice.message, "열려 있는 프로젝트가 아니에요.");
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/a");
+};
+
 const checkStoryView = ({ storyModel }) => {
     const view = { key: "item:3", text: "문장", time: "10:00:03", pastItems: [{ key: "1:0:앞" }, { key: "2:1:뒤" }] };
     const copy = { ...view, pastItems: view.pastItems.map((item) => ({ ...item })) };
@@ -750,6 +903,7 @@ const checkStores = async () => {
     await checkSettingsPorting(modules);
     await checkModal(modules);
     await checkProjectEvents(modules);
+    await checkTabs(modules);
     checkStoryView(modules);
 
     console.log("Desktop store checks passed.");

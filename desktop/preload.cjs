@@ -13,6 +13,9 @@ const subscribe = (channel) => {
 contextBridge.exposeInMainWorld("autopilot", {
     getState: (projectDir) => ipcRenderer.invoke("autopilot:get-state", projectDir),
     selectProject: () => ipcRenderer.invoke("autopilot:select-project"),
+    openTab: () => ipcRenderer.invoke("autopilot:open-tab"),
+    activateTab: (projectDir) => ipcRenderer.invoke("autopilot:activate-tab", projectDir),
+    closeTab: (projectDir) => ipcRenderer.invoke("autopilot:close-tab", projectDir),
     start: (options) => ipcRenderer.invoke("autopilot:start", options),
     stop: (projectDir) => ipcRenderer.invoke("autopilot:stop", projectDir),
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
@@ -51,6 +54,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     removeAccount: (accountId) => ipcRenderer.invoke("autopilot:remove-account", accountId),
     selectClaudeDir: () => ipcRenderer.invoke("autopilot:select-claude-dir"),
     resetClaudeDir: () => ipcRenderer.invoke("autopilot:reset-claude-dir"),
+    onTabs: subscribe("autopilot:tabs"),
     onLog: subscribe("autopilot:log"),
     onState: subscribe("autopilot:state"),
     onAccount: subscribe("autopilot:account"),

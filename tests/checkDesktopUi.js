@@ -14,9 +14,11 @@ const loadUi = async () => {
         import { renderToStaticMarkup } from "react-dom/server";
         import { Select } from "./components/Select.jsx";
         import { Modal } from "./components/Modal.jsx";
+        import { TabList } from "./features/shell/TabBar.jsx";
         export * from "./selectKeys.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
         export const renderModal = (props, children) => renderToStaticMarkup(createElement(Modal, props, children));
+        export const renderTabList = (props) => renderToStaticMarkup(createElement(TabList, props));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -126,12 +128,41 @@ const checkModalClosingLayout = () => {
     assert.match(base, /flex-direction:\s*column/, "모달의 세로 쌓기는 .modal 기본 규칙에 있어야 닫히는 동안에도 유지된다");
 };
 
+// 탭 줄: 열린 탭이 없으면 그리지 않고, 활성 탭만 탭 순서에 들며, 실행 중인 탭은 점이 있고 닫을 수 없다.
+const checkTabBarMarkup = ({ renderTabList }) => {
+    assert.equal(renderTabList({ tabs: [], active: "" }), "", "열린 탭이 없으면 탭 줄이 없다");
+
+    const html = renderTabList({
+        active: "E:/Work/app",
+        tabs: [
+            { projectDir: "E:/Work/app", name: "app", status: "idle" },
+            { projectDir: "E:/Personal/app", name: "app", status: "running" },
+            { projectDir: "E:/Work/api", name: "api", status: "idle" }
+        ]
+    });
+
+    assert.match(html, /<nav id="tabbar" class="tabbar" aria-label="열린 프로젝트">/);
+    assert.match(html, /role="tablist"/);
+    assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
+    assert.equal((html.match(/aria-selected="true"/g) ?? []).length, 1, "활성 탭은 하나다");
+    assert.equal((html.match(/tabindex="0"/g) ?? []).length, 1, "탭 순서에는 활성 탭만 든다(방향키로 옮긴다)");
+    assert.equal((html.match(/class="tab-dot"/g) ?? []).length, 1, "실행 중인 탭에만 점이 있다");
+    assert.match(html, /class="tab-name">Work\/app</, "폴더 이름이 같으면 상위 폴더까지 보인다");
+    assert.match(html, /class="tab-name">Personal\/app</);
+    assert.match(html, /class="tab-name">api</);
+    assert.match(html, /aria-label="Personal\/app 탭 닫기"[^>]*disabled/, "실행 중인 탭은 닫기 버튼이 잠긴다");
+    assert.equal((html.match(/disabled/g) ?? []).length, 1);
+    assert.match(html, /id="tab-add" class="tab-add" aria-label="프로젝트 탭 추가"/);
+    assert.match(html, /title="E:\/Work\/app"/, "탭에 마우스를 올리면 전체 경로가 보인다");
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
     checkKeys(ui);
     checkSelectMarkup(ui);
     checkModalMarkup(ui);
+    checkTabBarMarkup(ui);
     checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");

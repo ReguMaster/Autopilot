@@ -336,6 +336,25 @@ const createSettingsStore = ({ dir }) => {
         return { projectDir: projectDir, existing: false };
     };
 
+    // 탭을 닫는다. 활성 탭을 닫으면 오른쪽 탭(없으면 왼쪽)이 활성이 되고, 하나도 없으면 활성 프로젝트가 비게 된다.
+    const closeTab = (projectDir) => {
+        const { tabs, projectDir: activeDir } = read();
+        const key = getProjectKey(projectDir);
+        const index = tabs.findIndex((dir) => getProjectKey(dir) === key);
+
+        if (index < 0) {
+            return { projectDir: activeDir, closed: false };
+        }
+
+        const remaining = tabs.filter((dir, position) => position !== index);
+        const isActive = Boolean(activeDir) && getProjectKey(activeDir) === key;
+        const nextActive = isActive ? (remaining[index] ?? remaining[index - 1] ?? "") : activeDir;
+
+        update({ tabs: remaining, projectDir: nextActive });
+
+        return { projectDir: nextActive, closed: true };
+    };
+
     // 프로젝트 파일 목록(내보내기와 예약 상태 정리에 쓴다). 읽을 수 없는 파일은 건너뛴다.
     const listProjects = () => {
         let names = [];
@@ -445,6 +464,7 @@ const createSettingsStore = ({ dir }) => {
         remember: remember,
         resolve: resolve,
         openTab: openTab,
+        closeTab: closeTab,
         listProjects: listProjects,
         exportData: exportData,
         importData: importData,

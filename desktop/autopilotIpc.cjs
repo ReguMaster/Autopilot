@@ -161,7 +161,7 @@ const watchPostAction = (session, state) => {
 
 // 프로젝트 하나의 실행 세션. 러너와 함께 시작·재연결 진행 여부, 직전 상태를 프로젝트마다 따로 갖는다.
 const createSession = (projectDir) => {
-    const session = { projectDir: projectDir, runner: null, isLaunching: false, isCheckingEngine: false, previousStatus: "idle", isRunOwned: false };
+    const session = { projectDir: projectDir, runner: null, isLaunching: false, isCheckingEngine: false, previousStatus: "idle", isRunOwned: false, tabStatus: "idle" };
 
     session.runner = createRunner({
         onLog: (entries) => broadcast("autopilot:log", { projectDir: session.projectDir, entries: entries }),
@@ -169,6 +169,11 @@ const createSession = (projectDir) => {
             broadcast("autopilot:state", { projectDir: session.projectDir, state: state });
             handleState(session.projectDir, state, { getProjectName: () => (readSettings().tabs.length > 1 ? path.basename(session.projectDir) : "") });
             watchPostAction(session, state);
+
+            if (state.status !== session.tabStatus) {
+                session.tabStatus = state.status;
+                broadcastTabs();
+            }
         }
     });
 
@@ -188,6 +193,27 @@ const isAnyRunning = () => sessionPool.getAll().some((session) => session.runner
 const isProjectRunning = (projectDir) => Boolean(sessionPool.get(projectDir)?.runner.isRunning());
 
 // 프로젝트(탭)가 고른 계정. 고르지 않았으면 전역 계정을 따른다. 프로젝트가 없으면 전역에 저장한다.
+// 열린 탭과 각 탭의 실행 상태. 화면은 이 요약으로 탭 줄을 그린다(탭 이름은 폴더 이름).
+const getTabsPayload = () => {
+    const { tabs, projectDir } = readSettings();
+
+    return { active: projectDir, tabs: tabs.map((dir) => ({ projectDir: dir, name: path.basename(dir), status: sessionPool.get(dir)?.runner.getState().status ?? "idle" })) };
+};
+
+let lastTabsKey = "";
+
+const broadcastTabs = ({ force = false } = {}) => {
+    const payload = getTabsPayload();
+    const key = JSON.stringify(payload);
+
+    if (force || key !== lastTabsKey) {
+        lastTabsKey = key;
+        broadcast("autopilot:tabs", payload);
+    }
+
+    return payload;
+};
+
 const getAccountId = (projectDir) => readEffective(projectDir).accountId;
 const setAccountId = (projectDir, accountId) => {
     if (projectDir) {
@@ -383,7 +409,7 @@ const handleUpdateSettings = (event, request = {}) => {
         return createNoSessionFailure();
     }
 
-    if (isAnyRunning()) {
+    if (session.runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 설정을 바꿀 수 없어요.");
     }
 
@@ -514,7 +540,7 @@ const handleResetSettings = (event, keys, requestedDir) => {
 
     const { projectDir } = session;
 
-    if (isAnyRunning()) {
+    if (session.runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 설정을 바꿀 수 없어요.");
     }
 
@@ -553,6 +579,16 @@ const attachRunningEngines = async () => {
     await Promise.all(readSettings().tabs.map((projectDir) => attachRunningEngine(projectDir)));
 };
 
+// 보는 프로젝트가 바뀐 뒤 화면이 받을 것. 계정은 프로젝트마다 달라 선택한 계정도 바뀔 수 있어 다시 보내고, 계속 실행 중인 엔진에는 연결한다.
+// 연결하는 동안 나간 이벤트는 렌더러가 아직 이전 프로젝트를 보고 있어 버리므로, 응답에 새 프로젝트의 지금 상태와 로그를 담는다(응답 뒤의 이벤트는 반영된다).
+const getSwitchResult = async (session, extra = {}) => {
+    accounts.broadcastPayload();
+
+    await attachRunningEngine(session.projectDir);
+
+    return { status: STATUS_OK, data: { ...getSettingsView(), ...extra, tabs: broadcastTabs({ force: true }), state: session.runner.getState(), logs: session.runner.getLogs() } };
+};
+
 const handleSelectProject = async (event) => {
     if (sessionPool.get().runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
@@ -583,15 +619,70 @@ const handleSelectProject = async (event) => {
         return createFailure("TOO_MANY_TABS", opened.error);
     }
 
-    const session = sessionPool.open(opened.projectDir);
+    // 바뀐 탭의 이전 프로젝트는 더 열려 있지 않으므로 세션을 버린다.
+    if (!opened.existing && settings.projectDir) {
+        sessionPool.close(settings.projectDir);
+    }
 
-    // 계정은 프로젝트마다 달라 프로젝트를 바꾸면 선택한 계정도 바뀔 수 있다.
-    accounts.broadcastPayload();
+    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
+};
 
-    await attachRunningEngine();
+// 폴더를 골라 새 탭으로 연다. 이미 열린 프로젝트면 새 탭 없이 그 탭으로 간다.
+const handleOpenTab = async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const selection = await dialog.showOpenDialog(window, {
+        title: "프로젝트 탭으로 열 폴더 선택",
+        defaultPath: readSettings().projectDir || undefined,
+        properties: ["openDirectory"]
+    });
 
-    // 연결하는 동안 나간 이벤트는 렌더러가 아직 이전 프로젝트를 보고 있어 버리므로, 응답에 새 프로젝트의 지금 상태와 로그를 담는다(응답 뒤의 이벤트는 반영된다).
-    return { status: STATUS_OK, data: { ...getSettingsView(), existing: opened.existing, state: session.runner.getState(), logs: session.runner.getLogs() } };
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: { ...getSettingsView(), canceled: true, tabs: getTabsPayload() } };
+    }
+
+    const projectError = getProjectError(selection.filePaths[0]);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    const opened = settingsStore.openTab(selection.filePaths[0]);
+
+    if (opened.error) {
+        return createFailure("TOO_MANY_TABS", opened.error);
+    }
+
+    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
+};
+
+const handleActivateTab = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session?.projectDir) {
+        return createNoSessionFailure();
+    }
+
+    settingsStore.openTab(session.projectDir);
+
+    return getSwitchResult(session);
+};
+
+// 탭을 닫는다. 실행 중인 탭은 닫지 않는다(종료한 뒤 닫는다). 활성 탭을 닫으면 이웃 탭이 활성이 된다.
+const handleCloseTab = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session?.projectDir) {
+        return createNoSessionFailure();
+    }
+
+    if (session.runner.isRunning() || session.isLaunching) {
+        return createFailure("RUNNING", "실행 중인 탭은 닫을 수 없어요. 먼저 종료해 주세요.");
+    }
+
+    settingsStore.closeTab(session.projectDir);
+    sessionPool.close(session.projectDir);
+
+    return getSwitchResult(sessionPool.get());
 };
 
 const handleGetState = async (event, requestedDir) => {
@@ -609,6 +700,7 @@ const handleGetState = async (event, requestedDir) => {
         canLaunchAtLogin: loginItem.isSupported(),
         update: updateCheck.getUpdate(),
         ...getSettingsView(session.projectDir),
+        tabs: getTabsPayload(),
         postAction: postAction.getPending(),
         state: session.runner.getState(),
         logs: session.runner.getLogs()
@@ -944,6 +1036,9 @@ const registerIpc = () => {
 
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
+    ipcMain.handle("autopilot:open-tab", handleOpenTab);
+    ipcMain.handle("autopilot:activate-tab", handleActivateTab);
+    ipcMain.handle("autopilot:close-tab", handleCloseTab);
     ipcMain.handle("autopilot:start", handleStart);
     ipcMain.handle("autopilot:stop", handleStop);
     ipcMain.handle("autopilot:set-options", handleSetOptions);

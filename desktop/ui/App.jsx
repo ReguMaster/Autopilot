@@ -13,6 +13,7 @@ import { ScheduleSheet } from "./features/schedule/ScheduleSheet.jsx";
 import { SettingsPanel } from "./features/settings/SettingsPanel.jsx";
 import { Course } from "./features/shell/Course.jsx";
 import { Notices } from "./features/shell/Notices.jsx";
+import { TabBar } from "./features/shell/TabBar.jsx";
 import { TitleBar } from "./features/shell/TitleBar.jsx";
 import { useBodyFlags, useNativeFeel, useRevealWhenReady } from "./hooks/useBodyFlags.js";
 import { useOverlayDismiss } from "./hooks/useOverlayDismiss.js";
@@ -41,6 +42,7 @@ const App = () => {
     return (
         <>
             <TitleBar />
+            <TabBar />
             <div className="content">
                 <Course />
                 <main className="stage">

@@ -5,6 +5,7 @@ import { accounts } from "../../actions/accounts.js";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Panel } from "../../components/Panel.jsx";
+import { useAnyRunning } from "../../hooks/useAnyRunning.js";
 import { useLoginExpiry } from "../../hooks/useLoginExpiry.js";
 import { useClock } from "../../stores/clock.js";
 import { EMPTY_ACCOUNT, useAccountStore } from "../../stores/accountStore.js";
@@ -258,7 +259,10 @@ const ProfilePanel = () => {
     );
     const account = snapshots[activeId] || EMPTY_ACCOUNT;
     const isLoading = !account.fetchedAt && !account.error;
+    const isAnyRunning = useAnyRunning();
     const isLocked = !isIdle || login?.phase === "waiting";
+    const isManageLocked = isAnyRunning || login?.phase === "waiting";
+    const manageTitle = isAnyRunning && isIdle ? "다른 프로젝트가 실행 중이에요." : undefined;
     const status = getAccountStatus(account, isLoading);
     const expiry = useLoginExpiry();
     const needsRelogin = RELOGIN_ERROR_CODES.includes(account.error?.code) || Boolean(expiry?.isExpiring);
@@ -267,14 +271,14 @@ const ProfilePanel = () => {
         <Panel id="profile" className="profile-panel" aria-label="프로필" open={open}>
             <AccountList isLocked={isLocked} isIdle={isIdle} />
             <div className="account-actions">
-                <Button id="account-add" disabled={isLocked || list.length >= MAX_ACCOUNT_COUNT} onClick={accounts.openForm}>
+                <Button id="account-add" disabled={isManageLocked || list.length >= MAX_ACCOUNT_COUNT} title={manageTitle} onClick={accounts.openForm}>
                     <Icon symbol="icon-plus" />
                     계정 추가
                 </Button>
-                <Button id="account-login" hidden={!needsRelogin} disabled={isLocked} onClick={accounts.login}>
+                <Button id="account-login" hidden={!needsRelogin} disabled={isManageLocked} title={manageTitle} onClick={accounts.login}>
                     다시 로그인
                 </Button>
-                <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isLocked} onClick={accounts.remove}>
+                <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isManageLocked} title={manageTitle} onClick={accounts.remove}>
                     제거
                 </Button>
             </div>

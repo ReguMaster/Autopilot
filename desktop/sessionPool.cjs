@@ -31,7 +31,10 @@ const createSessionPool = ({ getKey, getActiveDir, getOpenDirs = () => [], creat
 
     const getAll = () => [...sessions.values()];
 
-    return { open: open, get: get, getAll: getAll };
+    // 탭을 닫을 때 그 프로젝트의 세션을 버린다. 실행 중인 세션은 호출한 쪽이 먼저 막는다.
+    const close = (projectDir) => sessions.delete(getKey(projectDir));
+
+    return { open: open, get: get, getAll: getAll, close: close };
 };
 
 module.exports = { createSessionPool };

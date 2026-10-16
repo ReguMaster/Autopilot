@@ -548,6 +548,48 @@ const checkTabs = () => {
     }
 };
 
+// 탭 닫기: 활성 탭을 닫으면 오른쪽(없으면 왼쪽) 탭이 활성이 되고, 열려 있지 않은 프로젝트는 아무것도 바꾸지 않는다.
+const checkCloseTab = () => {
+    const dir = createTempDir();
+    const projects = [createTempDir(), createTempDir(), createTempDir()];
+    const [projectA, projectB, projectC] = projects;
+    const link = `${projectB}-link`;
+
+    try {
+        fs.symlinkSync(projectB, link, "junction");
+
+        const store = createSettingsStore({ dir: dir });
+
+        store.update({ tabs: projects, projectDir: projectB });
+
+        assert.deepEqual(store.closeTab(projectA), { projectDir: projectB, closed: true }, "활성이 아닌 탭을 닫아도 활성 탭은 그대로다");
+        assert.deepEqual(store.read().tabs, [projectB, projectC]);
+
+        assert.deepEqual(store.closeTab(link), { projectDir: projectC, closed: true }, "활성 탭을 닫으면 오른쪽 탭이 활성이 된다(경로 표기가 달라도)");
+        assert.deepEqual(store.read().tabs, [projectC]);
+        assert.equal(store.read().projectDir, projectC);
+
+        store.update({ tabs: [projectA, projectB, projectC], projectDir: projectC });
+
+        assert.deepEqual(store.closeTab(projectC), { projectDir: projectB, closed: true }, "오른쪽 탭이 없으면 왼쪽 탭이 활성이 된다");
+
+        assert.deepEqual(store.closeTab(path.join(dir, "nowhere")), { projectDir: projectB, closed: false }, "열려 있지 않은 프로젝트는 아무것도 바꾸지 않는다");
+        assert.deepEqual(store.read().tabs, [projectA, projectB]);
+
+        store.closeTab(projectB);
+
+        assert.deepEqual(store.closeTab(projectA), { projectDir: "", closed: true }, "마지막 탭을 닫으면 활성 프로젝트가 비게 된다");
+        assert.deepEqual(store.read().tabs, []);
+        assert.equal(store.read().projectDir, "");
+    } finally {
+        fs.rmSync(link, { recursive: true, force: true });
+
+        for (const target of [dir, ...projects]) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
 // 계정은 프로젝트(탭)마다 고른다: 고르지 않으면 전역 계정을 따르고, 이 PC에서만 뜻이 있어 파일로 오가지 않는다.
 const checkProjectAccount = () => {
     const dir = createTempDir();
@@ -604,6 +646,7 @@ checkStore();
 checkProjectSettings();
 checkResolveByProject();
 checkTabs();
+checkCloseTab();
 checkProjectAccount();
 checkUpgrade();
 checkPorting();

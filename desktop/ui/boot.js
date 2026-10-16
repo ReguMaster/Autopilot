@@ -8,6 +8,7 @@ import { setAccountSnapshot } from "./stores/accountStore.js";
 import { useAppStore } from "./stores/appStore.js";
 import { composer } from "./stores/composerStore.js";
 import { applyRunState, appendEntries, flushNow, getRunState, useRunStore } from "./stores/runStore.js";
+import { applyTabs } from "./stores/tabsStore.js";
 import { applySchedulePayload } from "./stores/scheduleStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
 
@@ -48,6 +49,7 @@ const boot = async () => {
         isDev: await window.appWindow.isDev()
     });
     composer.loadSettings(settings);
+    applyTabs(snapshot.tabs);
     applyRunState(snapshot.state);
     composer.syncFromRun(snapshot.state);
     appendEntries(snapshot.logs);
@@ -77,6 +79,7 @@ const boot = async () => {
         }
     });
 
+    window.autopilot.onTabs(applyTabs);
     window.autopilot.onState(handleStateEvent);
     window.autopilot.onLog(handleLogEvent);
     window.autopilot.onUpdate((update) => useAppStore.setState({ update: update }));

@@ -1,5 +1,5 @@
 import { applyStoryEntry, createStory, getWaitSentence } from "../../../viewFormat.js";
-import { getRunState, subscribeEntries, useRunStore } from "../../stores/runStore.js";
+import { getRunState, subscribeEntries, subscribeReset, useRunStore } from "../../stores/runStore.js";
 
 const STORY_PAST_LINES = 9;
 const EMPTY_SENTENCE = "곧 첫 문장을 들려드릴게요.";
@@ -30,7 +30,7 @@ const isSameView = (a, b) => {
 
 // 실행 스토어가 모아 준 로그 묶음을 이야기 엔진에 반영한다. 로그 묶음과 상태 변화가 모두 알림이 되고, 화면은 알림을 받아 getView로 그 순간의 모양을 읽는다.
 const createStoryModel = () => {
-    const story = createStory();
+    let story = createStory();
     const listeners = new Set();
     let version = 0;
 
@@ -41,6 +41,10 @@ const createStoryModel = () => {
 
     subscribeEntries((entries) => {
         entries.forEach((entry) => applyStoryEntry(story, entry));
+        notify();
+    });
+    subscribeReset(() => {
+        story = createStory();
         notify();
     });
     useRunStore.subscribe((current, previous) => {

@@ -112,4 +112,4 @@ const composer = {
     setSelectedOptions: setSelectedOptions
 };
 
-export { useComposerStore, composer };
+export { useComposerStore, composer, COMPOSER_KEYS };

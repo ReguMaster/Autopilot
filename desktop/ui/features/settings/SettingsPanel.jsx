@@ -8,6 +8,7 @@ import { Panel } from "../../components/Panel.jsx";
 import { Select } from "../../components/Select.jsx";
 import { NavRow, SettingsGroup, SwitchRow } from "../../components/SettingsGroup.jsx";
 import { settings } from "../../actions/settings.js";
+import { useAnyRunning } from "../../hooks/useAnyRunning.js";
 import { useAccountStore } from "../../stores/accountStore.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { useRunStore } from "../../stores/runStore.js";
@@ -36,8 +37,8 @@ const LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE = "설치한 앱에서만 켤 수 있어�
 const ProviderGroup = () => {
     const claudeDir = useAccountStore((store) => store.claudeDir);
     const login = useAccountStore((store) => store.login);
-    const isIdle = useRunStore((store) => store.state.status === "idle");
-    const isLocked = !isIdle || login?.phase === "waiting";
+    const isAnyRunning = useAnyRunning();
+    const isLocked = isAnyRunning || login?.phase === "waiting";
 
     return (
         <SettingsGroup id="group-provider" title="AI 제공자">
@@ -229,7 +230,7 @@ const LimitGroup = () => {
 
 // 설정 파일을 내보내고 가져오고, 기본값으로 되돌린다. 덮어쓰는 일이라 실행 중에는 막는다.
 const ManageGroup = () => {
-    const isIdle = useRunStore((store) => store.state.status === "idle");
+    const isIdle = !useAnyRunning();
 
     return (
         <SettingsGroup id="group-manage" title="설정 관리">

@@ -88,6 +88,8 @@ const model = {
     overridden: init.overridden || [],
     globals: { ...OVERRIDABLE_DEFAULTS, ...init.globals },
     state: { ...createInitialState(), ...init.state },
+    // 열린 탭 요약. 장면이 tabs를 주었을 때만 탭 줄이 보인다(주지 않은 장면은 탭 줄이 없던 옛 화면과 같다).
+    tabs: init.tabs || [],
     logs: init.logs || [],
     accounts: { ...DEFAULT_ACCOUNTS, ...init.accounts },
     schedules: { ...DEFAULT_SCHEDULES, ...init.schedules },
@@ -103,6 +105,9 @@ const calls = [];
 const ok = (data) => ({ status: "OK", data: data });
 // 설정 화면이 쓰는 모양: 적용되는 값, 프로젝트가 덮어쓴 키, 전역 값. 옛 화면은 settings만 읽는다.
 const getSettingsView = () => ({ settings: model.settings, overridden: model.overridden, globals: model.globals, notice: "" });
+const getTabsPayload = () => ({ active: model.settings.projectDir, tabs: model.tabs });
+// 프로젝트를 바꾼 뒤 화면이 받는 모양: 설정, 탭 요약, 그 프로젝트의 상태와 로그
+const getSwitchData = (extra = {}) => ({ ...getSettingsView(), tabs: getTabsPayload(), state: model.state, logs: model.logs, ...extra });
 const fail = (code, msg) => ({ status: "FAILED", error: { code: code, msg: msg } });
 
 const subscribe = (channel) => (callback) => {
@@ -145,9 +150,22 @@ const api = {
         update: model.update,
         ...getSettingsView(),
         state: model.state,
+        tabs: getTabsPayload(),
         logs: model.logs
     })),
     selectProject: respond("selectProject", async () => ok(getSettingsView())),
+    openTab: respond("openTab", async () => ok({ ...getSettingsView(), canceled: true, tabs: getTabsPayload() })),
+    activateTab: respond("activateTab", async (projectDir) => {
+        model.settings = { ...model.settings, projectDir: projectDir };
+
+        return ok(getSwitchData());
+    }),
+    closeTab: respond("closeTab", async (projectDir) => {
+        model.tabs = model.tabs.filter((tab) => tab.projectDir !== projectDir);
+        model.settings = { ...model.settings, projectDir: model.tabs[0]?.projectDir || "" };
+
+        return ok(getSwitchData());
+    }),
     start: respond("start", async () => ok({})),
     stop: respond("stop", async () => ok({})),
     setOptions: respond("setOptions", async () => ok({})),
@@ -236,6 +254,7 @@ const api = {
     removeAccount: respond("removeAccount", async () => ok(model.accounts)),
     selectClaudeDir: respond("selectClaudeDir", async () => ok(model.accounts)),
     resetClaudeDir: respond("resetClaudeDir", async () => ok(model.accounts)),
+    onTabs: subscribe("tabs"),
     onLog: subscribe("log"),
     onState: subscribe("state"),
     onAccount: subscribe("account"),
@@ -274,6 +293,10 @@ window.__drive = {
 
         model.logs.push(...entries);
         emit("log", tag("entries", entries));
+    },
+    tabs: (tabs, active) => {
+        model.tabs = tabs;
+        emit("tabs", { active: active ?? model.settings.projectDir, tabs: tabs });
     },
     accounts: (patch) => {
         model.accounts = { ...model.accounts, ...patch };

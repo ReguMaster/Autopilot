@@ -56,6 +56,20 @@ const clearLogs = () => {
     useRunStore.setState({ logs: [] });
 };
 
+// 보는 프로젝트가 바뀌어 로그를 통째로 바꿀 때. clearLogs(전체 기록 비우기)와 달리 이야기도 다시 짜야 하므로 구독자에게 알린다.
+const resetListeners = new Set();
+
+const resetLogs = () => {
+    clearLogs();
+    resetListeners.forEach((listener) => listener());
+};
+
+const subscribeReset = (listener) => {
+    resetListeners.add(listener);
+
+    return () => resetListeners.delete(listener);
+};
+
 // 이야기처럼 로그 원본 묶음이 필요한 곳이 구독한다.
 const subscribeEntries = (listener) => {
     entryListeners.add(listener);
@@ -65,4 +79,4 @@ const subscribeEntries = (listener) => {
 
 const getRunState = () => useRunStore.getState().state;
 
-export { MAX_LOG_LINES, useRunStore, applyRunState, appendEntries, flushNow, clearLogs, subscribeEntries, getRunState };
+export { MAX_LOG_LINES, useRunStore, applyRunState, appendEntries, flushNow, clearLogs, resetLogs, subscribeEntries, subscribeReset, getRunState };
