@@ -171,7 +171,7 @@ const createWindow = () => {
             isQuitting = false;
         }
     });
-    window.on("focus", attachRunningEngine);
+    window.on("focus", () => attachRunningEngine());
     // macOS는 창이 모두 닫혀도 앱이 남으므로, 트레이 메뉴의 종료는 창이 닫힌 뒤 직접 끝낸다.
     window.on("closed", () => {
         if (isQuitting) {

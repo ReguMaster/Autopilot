@@ -254,15 +254,16 @@ const createSettingsStore = ({ dir }) => {
 
         writeProject(projectDir, next);
 
-        return resolve();
+        return resolve(projectDir);
     };
 
-    // 선택한 프로젝트 기준의 설정. settings는 프로젝트가 덮어쓴 값을 전역 값 위에 얹은 것, overridden은 덮어쓴 키, globals는 전역에 저장된 덮어쓸 수 있는 키의 값이다.
-    const resolve = () => {
+    // 프로젝트 기준의 설정(생략하면 활성 프로젝트). settings는 프로젝트가 덮어쓴 값을 전역 값 위에 얹은 것이고 projectDir은 그 프로젝트다. overridden은 덮어쓴 키, globals는 전역에 저장된 덮어쓸 수 있는 키의 값이다.
+    const resolve = (projectDir) => {
         const globals = read();
-        const overrides = readProject(globals.projectDir);
+        const target = typeof projectDir === "string" ? projectDir : globals.projectDir;
+        const overrides = readProject(target);
         const overridden = OVERRIDABLE_KEYS.filter((key) => Object.hasOwn(overrides, key));
-        const settings = { ...globals, ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])) };
+        const settings = { ...globals, ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])), projectDir: target };
 
         return { settings: settings, overridden: overridden, globals: Object.fromEntries(OVERRIDABLE_KEYS.map((key) => [key, globals[key]])) };
     };

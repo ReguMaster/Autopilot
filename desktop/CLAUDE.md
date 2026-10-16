@@ -12,6 +12,13 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 재연결: 앱을 닫았다 켠 사이에도 엔진이 살아 있어 선택한 프로젝트에서 실행 중이면, 앱을 켤 때와 창에 포커스가 올 때 엔진의 status로 확인해 연결한다. 연결하면 로그 파일을 처음부터 읽어 상태를 복원하고(이때 읽은 회차는 시각을 알 수 없다) 1초마다 새 로그와 pid 생존을 확인한다. 종료 신호는 stop, 모델 변경은 set, 강제 종료는 pid로 하며, 종료 코드는 알 수 없어 사유는 로그의 종료 줄에서 읽는다. 연결한 엔진은 앱 소유가 아니므로 창을 닫아도 종료하지 않는다.
 - 로그는 메인 프로세스가 최근 3000줄만 보관한다.
 
+## 프로젝트 세션
+
+- 실행은 프로젝트마다 세션 하나(러너·시작 중·재연결 확인 중·직전 상태·앱 소유 여부)를 갖는다. sessionPool.cjs(Electron에 의존하지 않는 순수 모듈, tests/checkDesktopSessions.js가 검증)가 getProjectKey 기준으로 보관하므로 경로 표기(대소문자·슬래시·junction)가 달라도 같은 프로젝트는 세션 하나다. 세션을 만드는 곳은 autopilotIpc.cjs의 createSession이다.
+- 프로젝트를 다루는 IPC(start·stop·kill·set-options·reset-settings·update-settings·reset-progress·open-report·지난 실행 목록/읽기/열기/삭제·용량·정리·get-state)는 `projectDir`을 받는다(start·set-options·update-settings는 요청 객체 안, 나머지는 마지막 인자). 생략하면 활성 프로젝트(settings.json의 projectDir)다. 렌더러가 보낸 경로는 sessionPool.get이 이미 열린 프로젝트인지 확인하고, 아니면 INVALID_PROJECT로 거부한다(열린 적 없는 경로를 지우거나 읽는 일을 막는다).
+- 집계: 계정 변경 잠금(accounts의 isRunning)과 설정 변경·가져오기·되돌리기 거부는 어느 세션이든 실행 중이면 적용하고, 종료 확인·트레이 숨김(confirmClose·isOwnedEngineRunning)은 앱이 시작한 세션 전체를 본다. 예약(isEngineBusy)·알림·절전 방지·PC 동작은 아직 활성 프로젝트 하나 기준이다.
+- 설정은 settingsStore.resolve(projectDir)로 프로젝트를 지정해 읽는다(생략하면 활성 프로젝트). 이때 settings.projectDir은 지정한 프로젝트이고 remember도 그 프로젝트의 뷰를 돌려준다.
+
 ## 보안과 경로
 
 - 렌더러에는 Node 권한을 주지 않는다. preload.cjs가 window.autopilot·window.appWindow만 노출한다.

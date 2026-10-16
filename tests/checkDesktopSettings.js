@@ -423,12 +423,51 @@ const checkPorting = () => {
     }
 };
 
+// 프로젝트를 지정해 읽는다: 활성 프로젝트가 아니어도 그 프로젝트의 설정이 나오고, 기억한 값의 뷰도 그 프로젝트 기준이다.
+const checkResolveByProject = () => {
+    const dir = createTempDir();
+    const projectA = createTempDir();
+    const projectB = createTempDir();
+
+    try {
+        const store = createSettingsStore({ dir: dir });
+
+        store.update({ projectDir: projectA, effort: "low" });
+        store.updateProject(projectA, { tasks: "A 작업" });
+        store.updateProject(projectB, { tasks: "B 작업", effort: "max" });
+
+        const active = store.resolve();
+        const background = store.resolve(projectB);
+
+        assert.equal(active.settings.projectDir, projectA);
+        assert.equal(active.settings.tasks, "A 작업");
+        assert.equal(background.settings.projectDir, projectB, "지정한 프로젝트가 settings.projectDir이다");
+        assert.equal(background.settings.tasks, "B 작업");
+        assert.equal(background.settings.effort, "max");
+        assert.deepEqual([...background.overridden].sort(), ["effort", "tasks"]);
+        assert.deepEqual(store.resolve(projectA), active, "활성 프로젝트를 지정해도 생략한 것과 같다");
+        assert.equal(store.resolve("").settings.projectDir, "", "빈 경로는 프로젝트 없음이다");
+
+        const remembered = store.remember(projectB, { tasks: "B 다음 작업" });
+
+        assert.equal(remembered.settings.projectDir, projectB, "활성이 아닌 프로젝트에 기억해도 그 프로젝트의 뷰를 돌려준다");
+        assert.equal(remembered.settings.tasks, "B 다음 작업");
+        assert.equal(store.read().projectDir, projectA, "활성 프로젝트는 바뀌지 않는다");
+        assert.equal(store.resolve().settings.tasks, "A 작업");
+    } finally {
+        for (const target of [dir, projectA, projectB]) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
 checkJsonFile();
 checkRecover();
 checkMigrate();
 checkNormalize();
 checkStore();
 checkProjectSettings();
+checkResolveByProject();
 checkUpgrade();
 checkPorting();
 
