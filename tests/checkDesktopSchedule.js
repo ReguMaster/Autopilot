@@ -470,6 +470,80 @@ const checkSchedulerScope = async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 };
 
+// 예약마다 대상 프로젝트가 달라서, 바쁨·사용량·시작을 프로젝트별로 판단하고 한 판단 안에서 같은 프로젝트는 한 번만 시작한다.
+const checkSchedulerTargets = async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-schedule-"));
+    const busyKeys = new Set(["A", "B"]);
+    const usageByKey = { A: makeUsage({ session: { percent: 0 }, weekly: { percent: 0 } }), B: makeUsage({ session: { percent: 0 }, weekly: { percent: 0 } }) };
+    const refreshed = [];
+    const starts = [];
+    let schedules = [];
+    const keyOf = (schedule) => schedule.projectDir || "A";
+    const scheduler = createScheduler({
+        stateFile: path.join(dir, "state.json"),
+        readSchedules: () => schedules,
+        writeSchedules: (list) => {
+            schedules = list;
+        },
+        getKnownIds: () => schedules.map((schedule) => schedule.id),
+        getUsage: (schedule) => usageByKey[keyOf(schedule)],
+        refreshUsage: async (schedule) => {
+            refreshed.push(keyOf(schedule));
+        },
+        getTargetKey: keyOf,
+        isBusy: async (schedule) => busyKeys.has(keyOf(schedule)),
+        startRun: async (schedule) => {
+            starts.push(keyOf(schedule));
+
+            return { ok: true, message: "시작했어요" };
+        },
+        notify: () => {},
+        onChange: () => {},
+        now: () => at(23, 1)
+    });
+
+    try {
+        const a1 = await scheduler.save({ ...getDefaultSchedule("time"), time: "23:00", scope: "project", projectDir: "A" });
+        const a2 = await scheduler.save({ ...getDefaultSchedule("time"), time: "23:00", scope: "project", projectDir: "A" });
+        const b1 = await scheduler.save({ ...getDefaultSchedule("time"), time: "23:00", scope: "project", projectDir: "B" });
+        const statusOf = (id) => scheduler.getPayload().statuses.find((status) => status.id === id).code;
+
+        assert.equal(a1.schedule.projectDir, "A", "프로젝트 예약은 대상 프로젝트를 달고 저장된다");
+        assert.equal(schedules.find((schedule) => schedule.id === b1.schedule.id).projectDir, "B");
+        assert.deepEqual(starts, [], "두 프로젝트가 모두 바쁘면 시작하지 않는다");
+        assert.equal(statusOf(a1.schedule.id), "busy");
+
+        busyKeys.delete("B");
+        await scheduler.tick();
+
+        assert.deepEqual(starts, ["B"], "바쁜 A는 건너뛰고 한가한 B만 시작한다");
+        assert.equal(statusOf(b1.schedule.id), "started");
+        assert.equal(statusOf(a1.schedule.id), "busy");
+
+        busyKeys.delete("A");
+        await scheduler.tick();
+
+        assert.deepEqual(starts, ["B", "A"], "A는 한 번만 시작하고, 같은 판단 안에서 A의 두 번째 예약은 바쁘다고 본다");
+        assert.equal(statusOf(a1.schedule.id), "started");
+        assert.equal(statusOf(a2.schedule.id), "busy");
+
+        await scheduler.save({ ...schedules.find((schedule) => schedule.id === b1.schedule.id), time: "23:10", scope: "global", projectDir: "A" });
+
+        assert.equal(schedules.find((schedule) => schedule.id === b1.schedule.id).projectDir, "B", "수정으로 대상 프로젝트를 바꾸지 않는다");
+
+        // 한도 리셋을 기다리는 예약은 자기 프로젝트의 사용량이 낡았을 때 그 프로젝트의 것을 읽는다.
+        usageByKey.B = makeUsage({ fetchedAt: 0 });
+        schedules = [];
+
+        await scheduler.save({ ...getDefaultSchedule("reset"), from: "", to: "", scope: "project", projectDir: "B" });
+
+        assert(refreshed.includes("B"));
+        assert.equal(refreshed.includes("A"), false, "다른 프로젝트의 사용량은 다시 읽지 않는다");
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+};
+
 checkParse();
 checkNormalize();
 checkOccurrences();
@@ -482,5 +556,6 @@ await checkScheduler();
 await checkSchedulerFailureAndBusy();
 await checkSchedulerLimits();
 await checkSchedulerScope();
+await checkSchedulerTargets();
 
 console.log("Desktop schedule checks passed.");

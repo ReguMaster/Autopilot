@@ -49,20 +49,30 @@ const getSettingsView = (projectDir) => {
 
 // 예약은 전역 목록과 선택한 프로젝트의 목록을 합쳐 보여준다(덮어쓰기가 아니라 합침). 목록에서는 scope로 어느 쪽인지 구분하고, 저장할 때 다시 나눈다.
 const readAllSchedules = () => {
-    const { projectDir, schedules } = readSettings();
-    const projectSchedules = settingsStore.readProject(projectDir).schedules ?? [];
+    const { tabs, schedules } = readSettings();
+    const projectSchedules = tabs.flatMap((projectDir) => (settingsStore.readProject(projectDir).schedules ?? []).map((schedule) => ({ ...schedule, scope: "project", projectDir: projectDir })));
 
-    return [...schedules.map((schedule) => ({ ...schedule, scope: "global" })), ...projectSchedules.map((schedule) => ({ ...schedule, scope: "project" }))];
+    return [...schedules.map((schedule) => ({ ...schedule, scope: "global" })), ...projectSchedules];
 };
 
+// 프로젝트 예약은 projectDir이 가리키는 열린 탭의 프로젝트 파일에 나눠 쓴다(projectDir이 없는 항목은 활성 탭의 것이다).
 const writeAllSchedules = (list) => {
-    const { projectDir } = readSettings();
+    const { tabs, projectDir: activeDir } = readSettings();
 
     updateSettings({ schedules: list.filter((schedule) => schedule.scope !== "project") });
 
-    if (projectDir) {
-        settingsStore.updateProject(projectDir, { schedules: list.filter((schedule) => schedule.scope === "project") });
+    for (const projectDir of tabs) {
+        const mine = list.filter((schedule) => schedule.scope === "project" && getSessionKey(schedule.projectDir || activeDir) === getSessionKey(projectDir));
+
+        if (mine.length > 0 || (settingsStore.readProject(projectDir).schedules ?? []).length > 0) {
+            settingsStore.updateProject(projectDir, { schedules: mine });
+        }
     }
+};
+
+// 프로젝트 예약은 그 프로젝트에서, 전역 예약은 그때 활성인 탭의 프로젝트에서 돈다.
+const getScheduleDir = (schedule) => {
+    return schedule.scope === "project" && schedule.projectDir ? schedule.projectDir : getActiveDir();
 };
 
 // 다른 프로젝트를 골라 목록에서 빠져 있는 예약도 판단 상태(마지막 시작 등)는 남겨 둔다.
@@ -138,7 +148,9 @@ const watchPostAction = (session, state) => {
     if (!isActive && (session.previousStatus === "running" || session.previousStatus === "stopping")) {
         const action = readSettings().postRunAction;
 
-        if (shouldRunPostAction({ previousStatus: session.previousStatus, state: state, action: action, isOwned: session.isRunOwned })) {
+        const hasOtherActive = sessionPool.getAll().some((other) => other !== session && other.runner.isRunning());
+
+        if (shouldRunPostAction({ previousStatus: session.previousStatus, state: state, action: action, isOwned: session.isRunOwned, hasOtherActive: hasOtherActive })) {
             showWindow();
             postAction.start(action);
         }
@@ -155,7 +167,7 @@ const createSession = (projectDir) => {
         onLog: (entries) => broadcast("autopilot:log", { projectDir: session.projectDir, entries: entries }),
         onState: (state) => {
             broadcast("autopilot:state", { projectDir: session.projectDir, state: state });
-            handleState(state);
+            handleState(session.projectDir, state, { getProjectName: () => (readSettings().tabs.length > 1 ? path.basename(session.projectDir) : "") });
             watchPostAction(session, state);
         }
     });
@@ -165,8 +177,9 @@ const createSession = (projectDir) => {
 
 const getActiveDir = () => readSettings().projectDir;
 
+const getSessionKey = (projectDir) => (projectDir ? getProjectKey(projectDir) : "");
 const sessionPool = createSessionPool({
-    getKey: (projectDir) => (projectDir ? getProjectKey(projectDir) : ""),
+    getKey: getSessionKey,
     getActiveDir: getActiveDir,
     getOpenDirs: () => readSettings().tabs,
     createSession: createSession
@@ -202,9 +215,15 @@ const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChan
 // 예약이 조건을 만족하면 마지막으로 저장한 작업·정책·모델·Effort로 시작한다. 종료 시각은 예약이 정한 값이라 다음 시작의 기본값으로 저장하지 않는다.
 const startScheduledRun = async (schedule, plan) => {
     try {
-        const settings = readEffective();
+        const session = sessionPool.get(getScheduleDir(schedule));
+
+        if (!session) {
+            return { ok: false, message: "예약한 프로젝트가 열려 있지 않아요." };
+        }
+
+        const settings = readEffective(session.projectDir);
         const result = await launchRun(
-            sessionPool.get(),
+            session,
             settings,
             { tasks: settings.tasks, endTime: plan.endTime, policy: settings.policy, extendOnLimit: settings.extendOnLimit, model: settings.model, effort: settings.effort },
             { remember: false }
@@ -217,12 +236,14 @@ const startScheduledRun = async (schedule, plan) => {
 };
 
 // 앱을 닫았다 켠 사이에 계속 실행된 엔진이 있으면 먼저 연결해 둔다. 모르고 두 번째 엔진을 시작하지 않게 하기 위해서다.
-const isEngineBusy = async () => {
-    await attachRunningEngine();
+const isEngineBusy = async (schedule) => {
+    const projectDir = getScheduleDir(schedule);
 
-    const session = sessionPool.get();
+    await attachRunningEngine(projectDir);
 
-    return session.runner.isRunning() || session.isLaunching;
+    const session = sessionPool.get(projectDir);
+
+    return !session || session.runner.isRunning() || session.isLaunching;
 };
 
 const scheduler = createScheduler({
@@ -230,8 +251,9 @@ const scheduler = createScheduler({
     readSchedules: readAllSchedules,
     writeSchedules: writeAllSchedules,
     getKnownIds: getKnownScheduleIds,
-    getUsage: () => accounts.getActiveUsage(),
-    refreshUsage: () => accounts.refreshActiveUsage(),
+    getUsage: (schedule) => accounts.getActiveUsage(getScheduleDir(schedule)),
+    refreshUsage: (schedule) => accounts.refreshActiveUsage(getScheduleDir(schedule)),
+    getTargetKey: (schedule) => getSessionKey(getScheduleDir(schedule)),
     isBusy: isEngineBusy,
     startRun: startScheduledRun,
     notify: (title, body) => notify(title, body, "schedule"),
@@ -526,6 +548,11 @@ const attachRunningEngine = async (requestedDir) => {
     }
 };
 
+// 열려 있는 모든 탭의 프로젝트에서 계속 실행 중인 엔진에 연결한다(창에 포커스가 올 때).
+const attachRunningEngines = async () => {
+    await Promise.all(readSettings().tabs.map((projectDir) => attachRunningEngine(projectDir)));
+};
+
 const handleSelectProject = async (event) => {
     if (sessionPool.get().runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
@@ -665,7 +692,7 @@ const handleSaveSchedule = async (event, payload = {}) => {
 
     settingsStore.remember(settings.projectDir, options);
 
-    const result = await scheduler.save(payload.schedule);
+    const result = await scheduler.save({ ...payload.schedule, projectDir: settings.projectDir });
 
     return result.error ? createFailure("INVALID_SCHEDULE", result.error) : { status: STATUS_OK, data: scheduler.getPayload() };
 };
@@ -1001,4 +1028,16 @@ const startUpdateWatch = () => {
     updateCheck.start();
 };
 
-module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, isTrayResident, syncLaunchAtLogin, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch, startScheduleWatch };
+module.exports = {
+    registerIpc,
+    confirmClose,
+    isOwnedEngineRunning,
+    isTrayResident,
+    syncLaunchAtLogin,
+    attachRunningEngine,
+    attachRunningEngines,
+    checkEngine,
+    startAccountWatch,
+    startUpdateWatch,
+    startScheduleWatch
+};

@@ -14,10 +14,9 @@ let tray = null;
 let readPreferences = () => ({});
 let sleepBlockerId = null;
 let isActiveSynced = false;
-let lastStatus = "idle";
-let previousStatus = "idle";
-let previousPhase = "";
 let previousProgressKey = "";
+// 열려 있는 프로젝트 세션마다 마지막으로 알린 상태. 절전 방지·진행률·트레이는 이 모두를 모아 판단한다.
+const sessionStates = new Map();
 
 const getMainWindow = () => {
     return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
@@ -25,6 +24,10 @@ const getMainWindow = () => {
 
 const isActiveStatus = (status) => {
     return status === "running" || status === "stopping";
+};
+
+const getActiveStates = () => {
+    return [...sessionStates.values()].filter((state) => isActiveStatus(state.status));
 };
 
 // 엔진이 도는 동안 PC가 잠들면 회차가 멈춘다. 설정에 따라 항상(always), 전원이 연결된 동안만(plugged), 쓰지 않는다(never).
@@ -36,7 +39,7 @@ const shouldBlockSleep = (status, mode, isOnBattery) => {
 
 // 화면은 꺼져도 되므로 앱 일시 중단만 막는다.
 const refreshSleepBlocker = () => {
-    const shouldBlock = shouldBlockSleep(lastStatus, readPreferences().sleepBlock, powerMonitor.isOnBatteryPower());
+    const shouldBlock = shouldBlockSleep(getActiveStates().length > 0 ? "running" : "idle", readPreferences().sleepBlock, powerMonitor.isOnBatteryPower());
 
     if (shouldBlock && sleepBlockerId === null) {
         sleepBlockerId = powerSaveBlocker.start("prevent-app-suspension");
@@ -47,11 +50,9 @@ const refreshSleepBlocker = () => {
     }
 };
 
-// 상태가 바뀔 때마다 설정 파일을 읽지 않도록 실행 중인지가 바뀐 때에만 다시 판단한다.
-const syncSleepBlocker = (state) => {
-    const isActive = isActiveStatus(state.status);
-
-    lastStatus = state.status;
+// 상태가 바뀔 때마다 설정 파일을 읽지 않도록 실행 중인 프로젝트가 있는지가 바뀐 때에만 다시 판단한다.
+const syncSleepBlocker = () => {
+    const isActive = getActiveStates().length > 0;
 
     if (isActive !== isActiveSynced) {
         isActiveSynced = isActive;
@@ -84,8 +85,25 @@ const getProgress = (state) => {
     return { mode: "indeterminate", fraction: 1 };
 };
 
-const syncTaskbarProgress = (state) => {
-    const { mode, fraction } = getProgress(state);
+// 실행 중인 프로젝트가 여럿이면 종료 시각이 있는 것들의 평균 경과를 보이고, 모두 대기 중이면 대기로 본다.
+const getAggregateProgress = (states) => {
+    const progresses = states.map(getProgress).filter((progress) => progress.mode !== "none");
+
+    if (progresses.length === 0) {
+        return { mode: "none", fraction: -1 };
+    }
+
+    const measured = progresses.filter((progress) => progress.mode === "normal");
+
+    if (measured.length > 0) {
+        return { mode: "normal", fraction: measured.reduce((sum, progress) => sum + progress.fraction, 0) / measured.length };
+    }
+
+    return progresses.every((progress) => progress.mode === "paused") ? { mode: "paused", fraction: 1 } : { mode: "indeterminate", fraction: 1 };
+};
+
+const syncTaskbarProgress = () => {
+    const { mode, fraction } = getAggregateProgress(getActiveStates());
     const key = `${mode}:${Math.round(fraction * 100)}`;
     const window = getMainWindow();
 
@@ -151,27 +169,40 @@ const getTransitionNotice = (previous, state) => {
     return null;
 };
 
-const notifyTransition = (state) => {
-    const notice = getTransitionNotice({ status: previousStatus, phase: previousPhase }, state);
+// 알림은 프로젝트마다 직전 상태와 비교한다. 프로젝트 이름은 알림을 보낼 때만 getProjectName으로 구한다(상태 변화는 매우 잦다).
+const notifyTransition = (previous, state, getProjectName) => {
+    const notice = getTransitionNotice(previous, state);
 
     if (notice) {
-        notify(notice.title, notice.body, notice.kind);
+        const projectName = getProjectName();
+
+        notify(notice.title, projectName ? `${projectName} · ${notice.body}` : notice.body, notice.kind);
     }
 };
 
-const syncTrayTooltip = (state) => {
-    tray?.setToolTip(isActiveStatus(state.status) ? `AutoPilot - ${state.phase}` : "AutoPilot");
+// 실행 중인 프로젝트가 하나면 그 단계를, 여럿이면 개수를 보인다.
+const getTrayTooltip = (activeStates) => {
+    if (activeStates.length === 0) {
+        return "AutoPilot";
+    }
+
+    return activeStates.length === 1 ? `AutoPilot - ${activeStates[0].phase}` : `AutoPilot - ${activeStates.length}개 프로젝트 실행 중`;
 };
 
-// 러너의 상태 변화마다 호출한다. 절전 방지·작업표시줄 진행·트레이 툴팁·알림을 한곳에서 맞춘다.
-const handleState = (state) => {
-    syncSleepBlocker(state);
-    syncTaskbarProgress(state);
-    syncTrayTooltip(state);
-    notifyTransition(state);
+const syncTrayTooltip = () => {
+    tray?.setToolTip(getTrayTooltip(getActiveStates()));
+};
 
-    previousStatus = state.status;
-    previousPhase = state.phase;
+// 프로젝트 세션의 상태 변화마다 호출한다. 절전 방지·작업표시줄 진행·트레이 툴팁은 모든 세션을 모아, 알림은 그 프로젝트의 직전 상태와 비교해 맞춘다.
+const handleState = (key, state, { getProjectName = () => "" } = {}) => {
+    const previous = sessionStates.get(key) || { status: "idle", phase: "" };
+
+    sessionStates.set(key, { status: state.status, phase: state.phase, startedAt: state.startedAt, deadlineAt: state.deadlineAt });
+
+    syncSleepBlocker();
+    syncTaskbarProgress();
+    syncTrayTooltip();
+    notifyTransition(previous, state, getProjectName);
 };
 
 const createTray = ({ onQuit }) => {
@@ -185,4 +216,4 @@ const createTray = ({ onQuit }) => {
     tray.on("click", showWindow);
 };
 
-module.exports = { handleState, createTray, showWindow, notify, configure, shouldNotify, getTransitionNotice, shouldBlockSleep, refreshSleepBlocker, watchPower };
+module.exports = { handleState, createTray, showWindow, notify, configure, shouldNotify, getTransitionNotice, shouldBlockSleep, getAggregateProgress, getTrayTooltip, refreshSleepBlocker, watchPower };

@@ -8,11 +8,13 @@ const POWER_COMMAND_TIMEOUT_MS = 30000;
 const WINDOWS_SLEEP_SCRIPT = "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $false, $false) | Out-Null";
 
 // 앱이 시작한 실행이 스스로 끝났을 때만 PC를 절전·종료한다. 직접 종료 신호를 보냈거나 강제 종료했거나 연결한 엔진이면 사용자가 곁에 있으므로 하지 않는다.
-const shouldRunPostAction = ({ previousStatus, state, action, isOwned }) => {
+// 다른 프로젝트가 아직 실행 중이면(hasOtherActive) 마지막으로 끝나는 실행이 정한다.
+const shouldRunPostAction = ({ previousStatus, state, action, isOwned, hasOtherActive = false }) => {
     return (
         POST_RUN_ACTIONS.includes(action) &&
         action !== "none" &&
         isOwned === true &&
+        !hasOtherActive &&
         ACTIVE_STATUSES.includes(previousStatus) &&
         !ACTIVE_STATUSES.includes(state.status) &&
         state.reason !== KILLED_REASON &&

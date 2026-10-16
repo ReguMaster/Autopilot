@@ -455,13 +455,13 @@ const createAccountIpc = ({
         }
     };
 
-    // 예약이 한도를 판단할 때 쓴다. 지금 선택한 계정의 마지막으로 읽은 사용량과 다시 읽기.
-    const getActiveUsage = () => {
-        return getReader(getActiveId(readSettings())).getAccount();
+    // 예약이 한도를 판단할 때 쓴다. 프로젝트(생략하면 활성 프로젝트)가 고른 계정의 마지막으로 읽은 사용량과 다시 읽기.
+    const getActiveUsage = (projectDir) => {
+        return getReader(getActiveId(readSettings(), projectDir)).getAccount();
     };
 
-    const refreshActiveUsage = () => {
-        return getReader(getActiveId(readSettings())).refresh();
+    const refreshActiveUsage = (projectDir) => {
+        return getReader(getActiveId(readSettings(), projectDir)).refresh();
     };
 
     return {

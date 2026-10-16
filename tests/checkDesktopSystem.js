@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { buildDesktopEntry, HIDDEN_ARG } = require("../desktop/launchAtLogin.cjs");
-const { shouldNotify, getTransitionNotice, shouldBlockSleep } = require("../desktop/systemIntegration.cjs");
+const { shouldNotify, getTransitionNotice, shouldBlockSleep, getAggregateProgress, getTrayTooltip } = require("../desktop/systemIntegration.cjs");
 const { shouldRunPostAction, getPowerCommand, createPostAction, POST_RUN_ACTIONS } = require("../desktop/postAction.cjs");
 
 // Linux 자동 시작 항목: 공백·특수 문자가 든 경로도 Exec에서 한 인자로 읽혀야 하고 창 없이 켜는 인자가 붙는다.
@@ -79,6 +79,8 @@ const checkPostActionRules = () => {
     assert.equal(shouldRunPostAction({ ...base, isOwned: false }), false, "연결한 엔진이면 하지 않는다");
     assert.equal(shouldRunPostAction({ ...base, previousStatus: "idle" }), false, "끝난 전환이 아니면 하지 않는다");
     assert.equal(shouldRunPostAction({ ...base, state: { status: "running", reason: "" } }), false);
+    assert.equal(shouldRunPostAction({ ...base, hasOtherActive: true }), false, "다른 프로젝트가 아직 실행 중이면 마지막으로 끝나는 실행이 정한다");
+    assert.equal(shouldRunPostAction({ ...base, hasOtherActive: false }), true);
     assert.deepEqual(POST_RUN_ACTIONS, ["none", "sleep", "shutdown"]);
 
     for (const platform of ["win32", "darwin", "linux"]) {
@@ -137,8 +139,46 @@ const checkPostActionController = async () => {
     assert.equal(ran.length, 2, "기다리는 것이 없으면 아무것도 하지 않는다");
 };
 
+// 실행 중인 프로젝트가 여럿일 때: 작업표시줄 진행률은 종료 시각이 있는 것들의 평균이고, 트레이는 하나면 단계를 여럿이면 개수를 보인다.
+const checkAggregates = () => {
+    const now = Date.now();
+    const MINUTE = 60 * 1000;
+    const timed = (elapsedMinutes, totalMinutes, overrides = {}) => ({
+        status: "running",
+        phase: "",
+        startedAt: now - elapsedMinutes * MINUTE,
+        deadlineAt: now - elapsedMinutes * MINUTE + totalMinutes * MINUTE,
+        ...overrides
+    });
+    const open = { status: "running", phase: "", startedAt: now - MINUTE, deadlineAt: 0 };
+    const paused = { status: "running", phase: "사용량 한도 대기 - 03:10까지", startedAt: now, deadlineAt: 0 };
+
+    assert.deepEqual(getAggregateProgress([]), { mode: "none", fraction: -1 });
+    assert.deepEqual(getAggregateProgress([{ status: "idle", phase: "" }]), { mode: "none", fraction: -1 }, "실행 중이 아니면 보이지 않는다");
+
+    const single = getAggregateProgress([timed(30, 60)]);
+
+    assert.equal(single.mode, "normal");
+    assert(Math.abs(single.fraction - 0.5) < 0.01);
+
+    const mixed = getAggregateProgress([timed(15, 60), timed(45, 60)]);
+
+    assert.equal(mixed.mode, "normal");
+    assert(Math.abs(mixed.fraction - 0.5) < 0.01, "종료 시각이 있는 프로젝트들의 평균 경과");
+    assert.equal(getAggregateProgress([open, timed(30, 60)]).mode, "normal", "종료 시각이 없는 프로젝트는 평균에서 뺀다");
+    assert.equal(getAggregateProgress([open, open]).mode, "indeterminate");
+    assert.equal(getAggregateProgress([paused, paused]).mode, "paused", "모두 대기 중이면 대기로 본다");
+    assert.equal(getAggregateProgress([paused, open]).mode, "indeterminate", "하나라도 도는 중이면 대기로 보이지 않는다");
+    assert.equal(getAggregateProgress([timed(10, 60, { status: "stopping" })]).mode, "paused", "종료 신호 뒤 마무리 중이면 대기");
+
+    assert.equal(getTrayTooltip([]), "AutoPilot");
+    assert.equal(getTrayTooltip([{ status: "running", phase: "2회차 진행 중" }]), "AutoPilot - 2회차 진행 중");
+    assert.equal(getTrayTooltip([{ phase: "a" }, { phase: "b" }, { phase: "c" }]), "AutoPilot - 3개 프로젝트 실행 중");
+};
+
 checkDesktopEntry();
 checkNotifications();
+checkAggregates();
 checkSleepBlock();
 checkPostActionRules();
 await checkPostActionController();
