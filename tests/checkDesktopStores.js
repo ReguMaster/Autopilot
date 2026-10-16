@@ -18,6 +18,7 @@ const loadModules = async () => {
         export * as composerStore from "./stores/composerStore.js";
         export * as accountStore from "./stores/accountStore.js";
         export * as run from "./actions/run.js";
+        export * as events from "./actions/events.js";
         export * as runs from "./actions/runs.js";
         export * as runsStore from "./stores/runsStore.js";
         export * as accounts from "./actions/accounts.js";
@@ -655,6 +656,71 @@ const checkModal = async ({ modalStore }) => {
     assert.equal(useModalStore.getState().open, false, "이미 풀린 요청에 다시 답해도 오류 없이 닫힌 채다");
 };
 
+// 메인이 projectDir을 단 이벤트: 지금 보는 프로젝트의 것만 반영하고, 프로젝트를 고르면 응답의 상태·로그로 바꾼다.
+const checkProjectEvents = async ({ events, runStore, appStore, run }) => {
+    const view = (projectDir) => ({
+        settings: { projectDir: projectDir, tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high" },
+        overridden: [],
+        globals: {},
+        notice: ""
+    });
+    const readLogs = () => runStore.useRunStore.getState().logs.map((line) => line.text);
+
+    appStore.applySettingsView(view("/a"));
+    runStore.clearLogs();
+
+    events.handleStateEvent({ projectDir: "/a", state: createState({ status: "running", round: 1 }) });
+    events.handleStateEvent({ projectDir: "/b", state: createState({ status: "idle", round: 9 }) });
+
+    assert.equal(runStore.getRunState().round, 1, "다른 프로젝트의 상태는 반영하지 않는다");
+    assert.equal(events.isViewing("/a"), true);
+    assert.equal(events.isViewing("/b"), false);
+
+    events.handleLogEvent({ projectDir: "/a", entries: [{ stream: "out", text: "A 줄" }] });
+    events.handleLogEvent({ projectDir: "/b", entries: [{ stream: "out", text: "B 줄" }] });
+    await wait(90);
+
+    assert.deepEqual(readLogs(), ["A 줄"], "다른 프로젝트의 로그는 반영하지 않는다");
+
+    events.applySessionSnapshot({
+        state: createState({ status: "running", round: 4 }),
+        logs: [
+            { stream: "out", text: "스냅샷 1" },
+            { stream: "out", text: "스냅샷 2" }
+        ]
+    });
+
+    assert.equal(runStore.getRunState().round, 4);
+    assert.deepEqual(readLogs(), ["스냅샷 1", "스냅샷 2"], "이전 로그는 지우고 받은 로그로 바꾼다");
+    assert.deepEqual(
+        runStore.useRunStore.getState().logs.map((line) => line.id),
+        [1, 2],
+        "번호는 처음부터다"
+    );
+
+    window.autopilot = {
+        selectProject: async () => OK({ ...view("/b"), state: createState({ status: "idle", round: 0 }), logs: [{ stream: "out", text: "B 기록" }] }),
+        listRuns: async () => OK({ runs: [] })
+    };
+
+    await run.selectProject();
+
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/b");
+    assert.equal(runStore.getRunState().round, 0, "고른 프로젝트의 상태로 바뀐다");
+    assert.deepEqual(readLogs(), ["B 기록"]);
+
+    events.handleStateEvent({ projectDir: "/b", state: createState({ status: "running", round: 2 }) });
+
+    assert.equal(runStore.getRunState().round, 2, "프로젝트를 고른 뒤의 이벤트는 반영된다");
+
+    window.autopilot.selectProject = async () => OK(view("/c"));
+
+    await run.selectProject();
+
+    assert.equal(runStore.getRunState().round, 2, "상태가 없는 응답(파일 선택 취소 등)은 상태·로그를 건드리지 않는다");
+    assert.deepEqual(readLogs(), ["B 기록"]);
+};
+
 const checkStoryView = ({ storyModel }) => {
     const view = { key: "item:3", text: "문장", time: "10:00:03", pastItems: [{ key: "1:0:앞" }, { key: "2:1:뒤" }] };
     const copy = { ...view, pastItems: view.pastItems.map((item) => ({ ...item })) };
@@ -683,6 +749,7 @@ const checkStores = async () => {
     await checkSettingsScope(modules);
     await checkSettingsPorting(modules);
     await checkModal(modules);
+    await checkProjectEvents(modules);
     checkStoryView(modules);
 
     console.log("Desktop store checks passed.");

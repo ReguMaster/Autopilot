@@ -4,6 +4,7 @@ import { composer, useComposerStore } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { getRunState } from "../stores/runStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
+import { applySessionSnapshot } from "./events.js";
 import { loadRecentRuns } from "./runs.js";
 import { settings } from "./settings.js";
 
@@ -77,6 +78,11 @@ const selectProject = async () => {
 
     if (result.status === STATUS_OK) {
         settings.applyView(result.data, ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort"]);
+
+        if (result.data.state) {
+            applySessionSnapshot(result.data);
+        }
+
         ui.set({ finishDismissed: true, settingsScope: result.data.settings.projectDir ? useUiStore.getState().settingsScope : "global" });
         loadRecentRuns();
     }

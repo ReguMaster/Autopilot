@@ -113,6 +113,10 @@ const subscribe = (channel) => (callback) => {
     };
 };
 
+// projectDir을 단 이벤트(actions/events.js)가 없는 옛 화면은 상태·로그 묶음 그대로 받는다.
+const isTaggedEvents = fs.existsSync(`${init.root}/desktop/ui/actions/events.js`);
+const tag = (key, value) => (isTaggedEvents ? { projectDir: model.settings.projectDir, [key]: value } : value);
+
 const emit = (channel, payload) => {
     (listeners[channel] || []).forEach((callback) => callback(payload));
 };
@@ -263,13 +267,13 @@ window.__drive = {
     state: (patch) => {
         model.state = { ...model.state, ...patch };
         document.body.dataset.driveStatus = model.state.status;
-        emit("state", model.state);
+        emit("state", tag("state", model.state));
     },
     log: (lines) => {
         const entries = lines.map((text) => ({ stream: text.startsWith("[앱]") ? "app" : "out", text: text, at: Date.now() }));
 
         model.logs.push(...entries);
-        emit("log", entries);
+        emit("log", tag("entries", entries));
     },
     accounts: (patch) => {
         model.accounts = { ...model.accounts, ...patch };

@@ -17,6 +17,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 실행은 프로젝트마다 세션 하나(러너·시작 중·재연결 확인 중·직전 상태·앱 소유 여부)를 갖는다. sessionPool.cjs(Electron에 의존하지 않는 순수 모듈, tests/checkDesktopSessions.js가 검증)가 getProjectKey 기준으로 보관하므로 경로 표기(대소문자·슬래시·junction)가 달라도 같은 프로젝트는 세션 하나다. 세션을 만드는 곳은 autopilotIpc.cjs의 createSession이다.
 - 프로젝트를 다루는 IPC(start·stop·kill·set-options·reset-settings·update-settings·reset-progress·open-report·지난 실행 목록/읽기/열기/삭제·용량·정리·get-state)는 `projectDir`을 받는다(start·set-options·update-settings는 요청 객체 안, 나머지는 마지막 인자). 생략하면 활성 프로젝트(settings.json의 projectDir)다. 렌더러가 보낸 경로는 sessionPool.get이 이미 열린 프로젝트인지 확인하고, 아니면 INVALID_PROJECT로 거부한다(열린 적 없는 경로를 지우거나 읽는 일을 막는다).
 - 집계: 계정 변경 잠금(accounts의 isRunning)과 설정 변경·가져오기·되돌리기 거부는 어느 세션이든 실행 중이면 적용하고, 종료 확인·트레이 숨김(confirmClose·isOwnedEngineRunning)은 앱이 시작한 세션 전체를 본다. 예약(isEngineBusy)·알림·절전 방지·PC 동작은 아직 활성 프로젝트 하나 기준이다.
+- 이벤트: autopilot:state는 `{ projectDir, state }`, autopilot:log는 `{ projectDir, entries }`로 보낸다(projectDir은 세션이 가진 경로 표기). 화면(ui/actions/events.js의 handleStateEvent·handleLogEvent)은 지금 보는 프로젝트(appStore의 settings.projectDir)의 이벤트만 반영한다. 그래서 활성 프로젝트는 항상 세션의 projectDir 문자열로 저장한다(handleSelectProject. 이미 열린 프로젝트를 다른 표기로 고르면 세션의 표기를 쓴다). 프로젝트를 고르면 응답에 새 세션의 state·logs를 담고 화면이 applySessionSnapshot으로 바꾼다. 응답 전에 나간 이벤트는 버려지지만 스냅샷에 담기고, 응답 뒤의 이벤트는 반영된다(메인 프로세스가 스냅샷을 만든 직후 동기적으로 응답한다). tests/tools/ui의 가짜 preload는 events.js가 없는 옛 화면에는 옛 형식으로 이벤트를 준다.
 - 설정은 settingsStore.resolve(projectDir)로 프로젝트를 지정해 읽는다(생략하면 활성 프로젝트). 이때 settings.projectDir은 지정한 프로젝트이고 remember도 그 프로젝트의 뷰를 돌려준다.
 
 ## 보안과 경로

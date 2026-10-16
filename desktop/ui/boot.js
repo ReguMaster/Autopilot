@@ -1,5 +1,6 @@
 import { STATUS_OK } from "./lib/constants.js";
 import { applyLogin, applyPayload } from "./actions/accounts.js";
+import { handleLogEvent, handleStateEvent } from "./actions/events.js";
 import { settings as settingsActions } from "./actions/settings.js";
 import { loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
@@ -76,8 +77,8 @@ const boot = async () => {
         }
     });
 
-    window.autopilot.onState(applyRunState);
-    window.autopilot.onLog(appendEntries);
+    window.autopilot.onState(handleStateEvent);
+    window.autopilot.onLog(handleLogEvent);
     window.autopilot.onUpdate((update) => useAppStore.setState({ update: update }));
     window.autopilot.onAccounts(applyPayload);
     window.autopilot.onAccount(({ id, account }) => setAccountSnapshot(id, account));

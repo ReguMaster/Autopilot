@@ -152,9 +152,9 @@ const createSession = (projectDir) => {
     const session = { projectDir: projectDir, runner: null, isLaunching: false, isCheckingEngine: false, previousStatus: "idle", isRunOwned: false };
 
     session.runner = createRunner({
-        onLog: (entries) => broadcast("autopilot:log", entries),
+        onLog: (entries) => broadcast("autopilot:log", { projectDir: session.projectDir, entries: entries }),
         onState: (state) => {
-            broadcast("autopilot:state", state);
+            broadcast("autopilot:state", { projectDir: session.projectDir, state: state });
             handleState(state);
             watchPostAction(session, state);
         }
@@ -529,12 +529,15 @@ const handleSelectProject = async (event) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    updateSettings({ projectDir: selection.filePaths[0] });
-    sessionPool.open(selection.filePaths[0]);
+    // 이미 열려 있던 프로젝트면 그 세션의 경로 표기를 쓴다. 이벤트의 projectDir과 화면이 보는 projectDir이 같은 문자열이어야 반영된다.
+    const session = sessionPool.open(selection.filePaths[0]);
+
+    updateSettings({ projectDir: session.projectDir });
 
     await attachRunningEngine();
 
-    return { status: STATUS_OK, data: getSettingsView() };
+    // 연결하는 동안 나간 이벤트는 렌더러가 아직 이전 프로젝트를 보고 있어 버리므로, 응답에 새 프로젝트의 지금 상태와 로그를 담는다(응답 뒤의 이벤트는 반영된다).
+    return { status: STATUS_OK, data: { ...getSettingsView(), state: session.runner.getState(), logs: session.runner.getLogs() } };
 };
 
 const handleGetState = async (event, requestedDir) => {
