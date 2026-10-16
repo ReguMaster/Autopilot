@@ -8,7 +8,7 @@ const { POST_RUN_ACTIONS } = require("./postAction.cjs");
 const { isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS } = require("./engineArgs.cjs");
 
 // 저장 형식이 바뀔 때마다 올린다. 버전 키가 없는 옛 파일은 0으로 본다.
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 const PROJECT_SETTINGS_VERSION = 1;
 const SETTINGS_FILE_NAME = "settings.json";
 const PROJECT_SETTINGS_DIR_NAME = "project-settings";
@@ -29,10 +29,13 @@ const RECOVERY_NOTICES = {
 // 프로젝트가 따로 정하지 않으면 전역 값을 쓰는 키. 전역 파일에는 기본값으로, 프로젝트 파일에는 덮어쓴 값만 들어간다.
 const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "extendLimitMinutes", "commitPrefix", "workBranch", "logRetentionDays", "model", "modelVersions", "effort"];
 const SCHEDULES_KEY = "schedules";
+// 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
+const ACCOUNT_KEY = "accountId";
+const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
 const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
-const MACHINE_KEYS = ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"];
+const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin"];
 // PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
 const NON_PORTABLE_KEYS = [...MACHINE_KEYS, "postRunAction"];
 const EXPORT_APP = "AutoPilot";
@@ -42,6 +45,7 @@ const MAX_IMPORT_PROJECTS = 200;
 
 const DEFAULT_SETTINGS = {
     projectDir: "",
+    tabs: [],
     tasks: "",
     endTime: "",
     policy: "auto",
@@ -77,6 +81,7 @@ const isModelVersions = (value) => {
 // 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
 const SETTING_VALIDATORS = {
     projectDir: (value) => typeof value === "string",
+    tabs: (value) => Array.isArray(value) && value.every((dir) => typeof dir === "string"),
     tasks: (value) => typeof value === "string",
     endTime: (value) => value === "" || END_TIME_PATTERN.test(value),
     policy: (value) => POLICY_CHOICES.includes(value),
@@ -114,7 +119,9 @@ const MIGRATIONS = {
         }
 
         return { ...saved, tasks: "" };
-    }
+    },
+    // 열린 탭 목록이 생겼다. 마지막으로 고른 프로젝트 하나가 탭 하나로 이어진다.
+    2: (saved) => ({ tabs: saved.projectDir ? [saved.projectDir] : [], ...saved })
 };
 
 const migrateSettings = (saved, migrations = MIGRATIONS, targetVersion = SETTINGS_VERSION, context = {}) => {
@@ -127,10 +134,33 @@ const migrateSettings = (saved, migrations = MIGRATIONS, targetVersion = SETTING
     return migrated;
 };
 
+// 같은 프로젝트는 한 탭이다(경로 표기가 달라도 getProjectKey가 같으면 앞의 것만 남긴다). 활성 프로젝트는 항상 탭 목록에 있고, 그 표기는 탭의 것을 따른다.
+const normalizeTabs = (tabs, activeDir) => {
+    const seen = new Set();
+    const unique = tabs
+        .filter((dir) => {
+            const key = dir ? getProjectKey(dir) : "";
+            const isNew = Boolean(key) && !seen.has(key);
+
+            seen.add(key);
+
+            return isNew;
+        })
+        .slice(0, MAX_TABS);
+
+    if (!activeDir) {
+        return { tabs: unique, projectDir: "" };
+    }
+
+    const active = unique.find((dir) => getProjectKey(dir) === getProjectKey(activeDir));
+
+    return active ? { tabs: unique, projectDir: active } : { tabs: [...unique.slice(0, MAX_TABS - 1), activeDir], projectDir: activeDir };
+};
+
 const normalizeSettings = (saved) => {
     const settings = Object.fromEntries(Object.entries(SETTING_VALIDATORS).map(([key, isValid]) => [key, isValid(saved[key]) ? saved[key] : structuredClone(DEFAULT_SETTINGS[key])]));
 
-    return { ...settings, schedules: normalizeSchedules(settings.schedules) };
+    return { ...settings, ...normalizeTabs(settings.tabs, settings.projectDir), schedules: normalizeSchedules(settings.schedules) };
 };
 
 // 프로젝트 파일에는 덮어쓴 키만 둔다. 허용 범위를 벗어난 값은 버려 전역 값으로 되돌린다.
@@ -148,7 +178,22 @@ const normalizeOverrides = (saved) => {
         overrides[SCHEDULES_KEY] = normalizeSchedules(source[SCHEDULES_KEY]);
     }
 
+    if (typeof source[ACCOUNT_KEY] === "string" && source[ACCOUNT_KEY]) {
+        overrides[ACCOUNT_KEY] = source[ACCOUNT_KEY];
+    }
+
     return overrides;
+};
+
+// 이 PC에서만 뜻이 있는 프로젝트 값(계정)은 파일로 오가지 않으므로, 내보낼 때 빼고 가져오거나 되돌릴 때 이 PC의 값을 남긴다.
+const omitLocalKeys = (overrides) => {
+    const { [ACCOUNT_KEY]: omitted, ...portable } = overrides;
+
+    return portable;
+};
+
+const keepLocalKeys = (overrides, current) => {
+    return current[ACCOUNT_KEY] ? { ...omitLocalKeys(overrides), [ACCOUNT_KEY]: current[ACCOUNT_KEY] } : omitLocalKeys(overrides);
 };
 
 // 프로젝트 폴더를 가리키는 파일 이름. 진행 기록과 같은 규칙(폴더 이름 + 실제 경로의 해시)이다.
@@ -263,9 +308,32 @@ const createSettingsStore = ({ dir }) => {
         const target = typeof projectDir === "string" ? projectDir : globals.projectDir;
         const overrides = readProject(target);
         const overridden = OVERRIDABLE_KEYS.filter((key) => Object.hasOwn(overrides, key));
-        const settings = { ...globals, ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])), projectDir: target };
+        const settings = { ...globals, ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])), projectDir: target, accountId: overrides[ACCOUNT_KEY] ?? globals.accountId };
 
         return { settings: settings, overridden: overridden, globals: Object.fromEntries(OVERRIDABLE_KEYS.map((key) => [key, globals[key]])) };
+    };
+
+    // 탭을 열고 활성으로 한다. 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭을 활성으로 하며(existing), replaceDir이 열린 탭이면 그 자리에 연다. 탭 수가 상한이면 error를 돌려준다.
+    const openTab = (projectDir, { replaceDir = "" } = {}) => {
+        const { tabs } = read();
+        const keyOf = (dir) => getProjectKey(dir);
+        const existing = tabs.find((dir) => keyOf(dir) === keyOf(projectDir));
+
+        if (existing) {
+            update({ projectDir: existing });
+
+            return { projectDir: existing, existing: true };
+        }
+
+        const replaceIndex = replaceDir ? tabs.findIndex((dir) => keyOf(dir) === keyOf(replaceDir)) : -1;
+
+        if (replaceIndex < 0 && tabs.length >= MAX_TABS) {
+            return { error: `탭은 ${MAX_TABS}개까지 열 수 있어요.` };
+        }
+
+        update({ tabs: replaceIndex < 0 ? [...tabs, projectDir] : tabs.map((dir, index) => (index === replaceIndex ? projectDir : dir)), projectDir: projectDir });
+
+        return { projectDir: projectDir, existing: false };
     };
 
     // 프로젝트 파일 목록(내보내기와 예약 상태 정리에 쓴다). 읽을 수 없는 파일은 건너뛴다.
@@ -295,7 +363,7 @@ const createSettingsStore = ({ dir }) => {
             version: EXPORT_VERSION,
             exportedAt: new Date().toISOString(),
             global: Object.fromEntries(Object.entries(globals).filter(([key]) => !NON_PORTABLE_KEYS.includes(key))),
-            projects: listProjects().map((project) => ({ projectDir: project.projectDir, settings: project.overrides }))
+            projects: listProjects().map((project) => ({ projectDir: project.projectDir, settings: omitLocalKeys(project.overrides) }))
         };
     };
 
@@ -318,7 +386,7 @@ const createSettingsStore = ({ dir }) => {
         update(Object.fromEntries(keys.map((key) => [key, normalized[key]])));
 
         for (const entry of usable) {
-            writeProject(entry.projectDir, entry.settings);
+            writeProject(entry.projectDir, keepLocalKeys(normalizeOverrides(entry.settings), readProject(entry.projectDir)));
         }
 
         return { keyCount: keys.length, projectCount: usable.length, skippedCount: entries.length - usable.length };
@@ -332,7 +400,7 @@ const createSettingsStore = ({ dir }) => {
         write({ ...structuredClone(DEFAULT_SETTINGS), ...kept, keepInTray: current.launchAtLogin || DEFAULT_SETTINGS.keepInTray });
 
         for (const project of listProjects()) {
-            writeProject(project.projectDir, project.overrides.schedules ? { schedules: project.overrides.schedules } : {});
+            writeProject(project.projectDir, keepLocalKeys(project.overrides.schedules ? { schedules: project.overrides.schedules } : {}, project.overrides));
         }
     };
 
@@ -376,6 +444,7 @@ const createSettingsStore = ({ dir }) => {
         clearProject: clearProject,
         remember: remember,
         resolve: resolve,
+        openTab: openTab,
         listProjects: listProjects,
         exportData: exportData,
         importData: importData,
@@ -396,6 +465,8 @@ module.exports = {
     SETTING_VALIDATORS,
     OVERRIDABLE_KEYS,
     SCHEDULES_KEY,
+    ACCOUNT_KEY,
+    MAX_TABS,
     PREFERENCE_KEYS,
     MACHINE_KEYS,
     NON_PORTABLE_KEYS,

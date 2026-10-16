@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { readJsonFile, writeJsonFile, recoverJsonFile } = require("../desktop/jsonFile.cjs");
-const { createSettingsStore, normalizeSettings, normalizeOverrides, migrateSettings, getProjectKey, DEFAULT_SETTINGS, SETTINGS_VERSION } = require("../desktop/settingsStore.cjs");
+const { createSettingsStore, normalizeSettings, normalizeOverrides, migrateSettings, getProjectKey, DEFAULT_SETTINGS, SETTINGS_VERSION, MAX_TABS } = require("../desktop/settingsStore.cjs");
 const { getDefaultSchedule } = require("../desktop/scheduleRules.cjs");
 
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-settings-"));
@@ -294,6 +294,7 @@ const checkUpgrade = () => {
         const upgraded = JSON.parse(readText(store.file));
 
         assert.equal(upgraded.version, SETTINGS_VERSION);
+        assert.deepEqual(upgraded.tabs, [project], "마지막으로 고른 프로젝트가 탭 하나로 이어진다");
         assert.equal(upgraded.tasks, "");
         assert.equal(upgraded.model, "sonnet", "나머지는 전역 기본값으로 남는다");
         assert.deepEqual(store.readProject(project), { tasks: "옛 작업" });
@@ -461,6 +462,140 @@ const checkResolveByProject = () => {
     }
 };
 
+// 열린 탭: 같은 프로젝트는 표기가 달라도 한 탭이고, 활성 프로젝트는 항상 탭 목록에 있다.
+const checkTabs = () => {
+    const dir = createTempDir();
+    const projectA = createTempDir();
+    const projectB = createTempDir();
+    const link = `${projectA}-link`;
+
+    try {
+        fs.symlinkSync(projectA, link, "junction");
+
+        assert.deepEqual(normalizeSettings({}).tabs, [], "프로젝트가 없으면 탭도 없다");
+        assert.deepEqual(normalizeSettings({ tabs: [projectA, 3, "", projectB] }).tabs, [], "문자열이 아닌 항목이 있는 목록은 통째로 버린다");
+
+        const settings = normalizeSettings({ tabs: [projectA, link, projectA.toUpperCase(), projectB], projectDir: projectB });
+
+        assert.deepEqual(settings.tabs, [projectA, projectB], "표기가 달라도 같은 프로젝트는 앞의 탭 하나만 남는다");
+        assert.equal(settings.projectDir, projectB);
+        assert.equal(normalizeSettings({ tabs: [projectA], projectDir: link }).projectDir, projectA, "활성 프로젝트의 표기는 탭에 저장된 것을 따른다");
+        assert.deepEqual(normalizeSettings({ projectDir: projectA }).tabs, [projectA], "탭이 없어도 활성 프로젝트는 탭에 들어간다(탭이 없는 옛 파일·낮은 버전 앱이 쓴 파일)");
+        assert.deepEqual(normalizeSettings({ tabs: [projectA], projectDir: projectB }).tabs, [projectA, projectB]);
+        assert.deepEqual(normalizeSettings({ tabs: [projectA, projectB], projectDir: "" }).tabs, [projectA, projectB], "활성 프로젝트가 없어도 열린 탭은 남는다");
+
+        const many = Array.from({ length: MAX_TABS + 3 }, (_, index) => path.join(dir, `p${index}`));
+
+        assert.equal(normalizeSettings({ tabs: many }).tabs.length, MAX_TABS, "탭은 상한까지만 둔다");
+        assert.equal(normalizeSettings({ tabs: many, projectDir: many.at(-1) }).tabs.at(-1), many.at(-1), "상한을 넘겨도 활성 프로젝트는 탭에 남는다");
+
+        assert.deepEqual(migrateSettings({ version: 2, projectDir: projectA }).tabs, [projectA]);
+        assert.deepEqual(migrateSettings({ version: 2, projectDir: "" }).tabs, []);
+
+        const store = createSettingsStore({ dir: dir });
+
+        assert.deepEqual(store.openTab(projectA), { projectDir: projectA, existing: false });
+        assert.deepEqual(store.read().tabs, [projectA]);
+        assert.equal(store.read().projectDir, projectA);
+
+        assert.deepEqual(store.openTab(projectB), { projectDir: projectB, existing: false });
+        assert.deepEqual(store.read().tabs, [projectA, projectB], "새 프로젝트는 새 탭이다");
+        assert.equal(store.read().projectDir, projectB, "연 탭이 활성이 된다");
+
+        assert.deepEqual(store.openTab(link), { projectDir: projectA, existing: true }, "이미 열린 프로젝트는 새 탭 없이 원래 탭을 돌려준다");
+        assert.deepEqual(store.read().tabs, [projectA, projectB]);
+        assert.equal(store.read().projectDir, projectA, "원래 탭이 활성이 된다");
+
+        const replacement = createTempDir();
+
+        try {
+            assert.deepEqual(store.openTab(replacement, { replaceDir: link }), { projectDir: replacement, existing: false });
+            assert.deepEqual(store.read().tabs, [replacement, projectB], "지정한 탭 자리에서 프로젝트를 바꾼다(표기가 달라도)");
+            assert.equal(store.read().projectDir, replacement);
+
+            const filler = Array.from({ length: MAX_TABS - 2 }, (_, index) => path.join(dir, `f${index}`));
+
+            store.update({ tabs: [replacement, projectB, ...filler] });
+
+            assert.equal(store.read().tabs.length, MAX_TABS);
+            assert.match(store.openTab(path.join(dir, "extra")).error, /탭은 \d+개까지/, "탭이 상한이면 새 탭을 열지 않는다");
+            assert.equal(store.read().tabs.length, MAX_TABS);
+            assert.equal(store.openTab(path.join(dir, "swap"), { replaceDir: projectB }).error, undefined, "상한이어도 열린 탭의 프로젝트를 바꾸는 것은 된다");
+            assert.equal(store.read().tabs.length, MAX_TABS);
+        } finally {
+            fs.rmSync(replacement, { recursive: true, force: true });
+        }
+
+        const exported = store.exportData();
+
+        assert.equal(Object.hasOwn(exported.global, "tabs"), false, "탭 목록은 이 PC에서만 뜻이 있어 내보내지 않는다");
+
+        const before = store.read().tabs;
+
+        store.importData({ app: "AutoPilot", kind: "settings", version: 1, global: { tabs: ["/elsewhere"], model: "haiku" }, projects: [] });
+
+        assert.deepEqual(store.read().tabs, before, "가져오지도 않는다");
+
+        store.resetPreferences();
+
+        assert.deepEqual(store.read().tabs, before, "기본값으로 되돌려도 지우지 않는다");
+    } finally {
+        fs.rmSync(link, { recursive: true, force: true });
+
+        for (const target of [dir, projectA, projectB]) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
+// 계정은 프로젝트(탭)마다 고른다: 고르지 않으면 전역 계정을 따르고, 이 PC에서만 뜻이 있어 파일로 오가지 않는다.
+const checkProjectAccount = () => {
+    const dir = createTempDir();
+    const projectA = createTempDir();
+    const projectB = createTempDir();
+
+    try {
+        const store = createSettingsStore({ dir: dir });
+
+        store.update({ projectDir: projectA, accountId: "acct-global" });
+        store.updateProject(projectB, { accountId: "acct-b", tasks: "B 작업" });
+
+        assert.equal(store.resolve().settings.accountId, "acct-global", "고르지 않은 프로젝트는 전역 계정을 따른다");
+        assert.equal(store.resolve(projectB).settings.accountId, "acct-b", "프로젝트가 고른 계정이 우선한다");
+        assert.equal(store.resolve(projectA).settings.accountId, "acct-global");
+        assert.deepEqual(store.resolve(projectB).overridden, ["tasks"], "계정은 설정 범위(덮어쓴 키)에 들지 않는다");
+        assert.deepEqual(normalizeOverrides({ accountId: "" }), {}, "빈 값은 고른 것이 아니다");
+        assert.deepEqual(normalizeOverrides({ accountId: 5 }), {});
+
+        store.remember(projectB, { tasks: "다음" });
+
+        assert.equal(store.readProject(projectB).accountId, "acct-b", "작업을 기억해도 고른 계정은 남는다");
+
+        store.clearProject(projectB, ["tasks"]);
+
+        assert.equal(store.readProject(projectB).accountId, "acct-b");
+
+        const exported = store.exportData();
+        const exportedB = exported.projects.find((project) => project.projectDir === projectB);
+
+        assert.equal(Object.hasOwn(exportedB.settings, "accountId"), false, "내보내기에 계정이 없다");
+        assert.equal(exported.global.accountId, undefined);
+
+        store.importData({ app: "AutoPilot", kind: "settings", version: 1, global: {}, projects: [{ projectDir: projectB, settings: { accountId: "acct-evil", effort: "low" } }] });
+
+        assert.equal(store.readProject(projectB).accountId, "acct-b", "가져와도 이 PC의 계정이 남고 파일의 계정은 받지 않는다");
+        assert.equal(store.readProject(projectB).effort, "low");
+
+        store.resetPreferences();
+
+        assert.deepEqual(store.readProject(projectB), { accountId: "acct-b" }, "기본값으로 되돌려도 고른 계정은 남는다");
+    } finally {
+        for (const target of [dir, projectA, projectB]) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
 checkJsonFile();
 checkRecover();
 checkMigrate();
@@ -468,6 +603,8 @@ checkNormalize();
 checkStore();
 checkProjectSettings();
 checkResolveByProject();
+checkTabs();
+checkProjectAccount();
 checkUpgrade();
 checkPorting();
 

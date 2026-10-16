@@ -9,11 +9,12 @@ const { createSessionPool } = require("../desktop/sessionPool.cjs");
 const { getProjectKey } = require("../desktop/settingsStore.cjs");
 
 const createPool = (initialDir) => {
-    const context = { activeDir: initialDir, created: [] };
+    const context = { activeDir: initialDir, openDirs: [], created: [] };
 
     context.pool = createSessionPool({
         getKey: (projectDir) => (projectDir ? getProjectKey(projectDir) : ""),
         getActiveDir: () => context.activeDir,
+        getOpenDirs: () => context.openDirs,
         createSession: (projectDir) => {
             context.created.push(projectDir);
 
@@ -98,7 +99,44 @@ const checkOpenedSessions = () => {
     }
 };
 
+// 열린 탭의 프로젝트는 활성이 아니어도 요청할 수 있고, 세션은 처음 요청될 때 탭에 저장된 경로 표기로 만든다.
+const checkOpenTabs = () => {
+    const projectA = createProject();
+    const projectB = createProject();
+    const projectC = createProject();
+    const link = `${projectB}-link`;
+
+    try {
+        fs.symlinkSync(projectB, link, "junction");
+
+        const context = createPool(projectA);
+        const { pool } = context;
+
+        context.openDirs = [projectA, projectB];
+
+        assert.equal(context.created.length, 0, "탭이 열려 있다고 세션을 미리 만들지는 않는다");
+
+        const sessionB = pool.get(link);
+
+        assert.equal(sessionB.projectDir, projectB, "다른 표기로 요청해도 탭에 저장된 표기로 만든다");
+        assert.equal(pool.get(projectB), sessionB);
+        assert.equal(context.created.length, 1);
+        assert.equal(pool.get(projectC), null, "열린 탭이 아닌 프로젝트는 받지 않는다");
+
+        context.openDirs = [projectA];
+
+        assert.equal(pool.get(projectB), sessionB, "이미 만든 세션은 탭 목록과 무관하게 남는다");
+        assert.equal(pool.get(projectA).projectDir, projectA);
+    } finally {
+        fs.rmSync(link, { recursive: true, force: true });
+        fs.rmSync(projectA, { recursive: true, force: true });
+        fs.rmSync(projectB, { recursive: true, force: true });
+        fs.rmSync(projectC, { recursive: true, force: true });
+    }
+};
+
 checkActiveSession();
 checkOpenedSessions();
+checkOpenTabs();
 
 console.log("Desktop session checks passed.");

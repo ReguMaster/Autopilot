@@ -15,7 +15,7 @@ const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
 const { getCliArgs } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, getProjectKey, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
+const { createSettingsStore, getProjectKey, ACCOUNT_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
@@ -165,15 +165,35 @@ const createSession = (projectDir) => {
 
 const getActiveDir = () => readSettings().projectDir;
 
-const sessionPool = createSessionPool({ getKey: (projectDir) => (projectDir ? getProjectKey(projectDir) : ""), getActiveDir: getActiveDir, createSession: createSession });
+const sessionPool = createSessionPool({
+    getKey: (projectDir) => (projectDir ? getProjectKey(projectDir) : ""),
+    getActiveDir: getActiveDir,
+    getOpenDirs: () => readSettings().tabs,
+    createSession: createSession
+});
 const isAnyRunning = () => sessionPool.getAll().some((session) => session.runner.isRunning());
+const isProjectRunning = (projectDir) => Boolean(sessionPool.get(projectDir)?.runner.isRunning());
+
+// 프로젝트(탭)가 고른 계정. 고르지 않았으면 전역 계정을 따른다. 프로젝트가 없으면 전역에 저장한다.
+const getAccountId = (projectDir) => readEffective(projectDir).accountId;
+const setAccountId = (projectDir, accountId) => {
+    if (projectDir) {
+        settingsStore.updateProject(projectDir, { [ACCOUNT_KEY]: accountId });
+    } else {
+        updateSettings({ accountId: accountId });
+    }
+};
 
 // --debug-login-expiry는 만료 화면을 보는 개발용이라 패키지 앱에서는 읽지 않는다.
 const accounts = createAccountIpc({
     readSettings: readSettings,
     writeSettings: writeSettings,
+    getAccountId: getAccountId,
+    setAccountId: setAccountId,
+    resolveProjectDir: (requestedDir) => sessionPool.get(requestedDir)?.projectDir ?? null,
     broadcast: broadcast,
     isRunning: isAnyRunning,
+    isProjectRunning: isProjectRunning,
     loginExpiresAtOverride: app.isPackaged ? 0 : parseLoginExpiryFlag(process.argv)
 });
 
@@ -252,7 +272,7 @@ const launchRun = async (session, settings, startOptions, { remember }) => {
     session.isLaunching = true;
 
     try {
-        const runAccount = await accounts.getRunAccount();
+        const runAccount = await accounts.getRunAccount(session.projectDir);
 
         if (runAccount.status !== STATUS_OK) {
             return runAccount;
@@ -529,15 +549,22 @@ const handleSelectProject = async (event) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    // 이미 열려 있던 프로젝트면 그 세션의 경로 표기를 쓴다. 이벤트의 projectDir과 화면이 보는 projectDir이 같은 문자열이어야 반영된다.
-    const session = sessionPool.open(selection.filePaths[0]);
+    // 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 가고, 아니면 지금 탭의 프로젝트를 바꾼다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
+    const opened = settingsStore.openTab(selection.filePaths[0], { replaceDir: settings.projectDir });
 
-    updateSettings({ projectDir: session.projectDir });
+    if (opened.error) {
+        return createFailure("TOO_MANY_TABS", opened.error);
+    }
+
+    const session = sessionPool.open(opened.projectDir);
+
+    // 계정은 프로젝트마다 달라 프로젝트를 바꾸면 선택한 계정도 바뀔 수 있다.
+    accounts.broadcastPayload();
 
     await attachRunningEngine();
 
     // 연결하는 동안 나간 이벤트는 렌더러가 아직 이전 프로젝트를 보고 있어 버리므로, 응답에 새 프로젝트의 지금 상태와 로그를 담는다(응답 뒤의 이벤트는 반영된다).
-    return { status: STATUS_OK, data: { ...getSettingsView(), state: session.runner.getState(), logs: session.runner.getLogs() } };
+    return { status: STATUS_OK, data: { ...getSettingsView(), existing: opened.existing, state: session.runner.getState(), logs: session.runner.getLogs() } };
 };
 
 const handleGetState = async (event, requestedDir) => {
