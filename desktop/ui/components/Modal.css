@@ -11,6 +11,8 @@
     color: var(--ink);
     box-shadow: var(--shadow);
     overflow: hidden;
+    /* 닫히는 전환 동안은 [open]이 빠져도 display만 flex로 남는다. 방향이 [open]에만 있으면 그동안 row로 풀려 제목·본문·버튼이 가로로 놓이고 상자가 늘어난다 */
+    flex-direction: column;
     opacity: 0;
     scale: 0.9;
     transition:
@@ -20,10 +22,14 @@
         display 0.1s allow-discrete;
 }
 
+/* 닫히는 동안 남은 상자와 배경이 클릭을 가로채지 않게 한다. 이미 닫힌 모달이라 뒤 화면이 그동안 눌리지 않을 이유가 없다 */
+.modal:not([open]) {
+    pointer-events: none;
+}
+
 /* 닫힌 dialog는 UA가 display: none으로 두므로 열렸을 때만 flex로 바꾼다 */
 .modal[open] {
     display: flex;
-    flex-direction: column;
     opacity: 1;
     scale: 1;
     transition:

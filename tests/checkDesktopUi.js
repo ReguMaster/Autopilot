@@ -118,12 +118,21 @@ const checkModalMarkup = ({ renderModal }) => {
     assert.ok(!plain.includes("modal-foot"), "footer가 없으면 버튼 줄도 없다");
 };
 
+// 닫히는 전환 동안은 [open]이 빠져도 display만 flex로 남는다. 방향이 [open] 규칙에만 있으면 그동안 row로 풀려 제목·본문·버튼이 가로로 놓이고 상자가 늘어난다.
+const checkModalClosingLayout = () => {
+    const css = fs.readFileSync(path.join(UI_DIR, "components/Modal.css"), "utf8");
+    const base = css.match(/(?:^|\n)\.modal \{([^}]*)\}/)[1];
+
+    assert.match(base, /flex-direction:\s*column/, "모달의 세로 쌓기는 .modal 기본 규칙에 있어야 닫히는 동안에도 유지된다");
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
     checkKeys(ui);
     checkSelectMarkup(ui);
     checkModalMarkup(ui);
+    checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");
 };

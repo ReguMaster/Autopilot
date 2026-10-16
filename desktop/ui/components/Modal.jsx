@@ -15,7 +15,7 @@ const Modal = ({ open, title, onClose, footer = null, role = "dialog", children 
 
         if (open && !dialog.open) {
             dialog.showModal();
-            dialog.querySelector("[data-autofocus]")?.focus();
+            dialog.querySelector("[data-autofocus]")?.focus({ preventScroll: true });
         } else if (!open && dialog.open) {
             isClosingRef.current = true;
             dialog.close();
