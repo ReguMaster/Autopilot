@@ -9,6 +9,8 @@ const { readJsonFile, writeJsonFile, recoverJsonFile } = require("../desktop/jso
 const { createSettingsStore, normalizeSettings, normalizeOverrides, migrateSettings, getProjectKey, DEFAULT_SETTINGS, SETTINGS_VERSION, MAX_TABS } = require("../desktop/settingsStore.cjs");
 const { getDefaultSchedule } = require("../desktop/scheduleRules.cjs");
 
+const IS_CASE_INSENSITIVE_FS = process.platform === "win32" || process.platform === "darwin";
+
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-settings-"));
 
 const readText = (file) => fs.readFileSync(file, "utf8");
@@ -475,7 +477,7 @@ const checkTabs = () => {
         assert.deepEqual(normalizeSettings({}).tabs, [], "프로젝트가 없으면 탭도 없다");
         assert.deepEqual(normalizeSettings({ tabs: [projectA, 3, "", projectB] }).tabs, [], "문자열이 아닌 항목이 있는 목록은 통째로 버린다");
 
-        const settings = normalizeSettings({ tabs: [projectA, link, projectA.toUpperCase(), projectB], projectDir: projectB });
+        const settings = normalizeSettings({ tabs: [projectA, link, ...(IS_CASE_INSENSITIVE_FS ? [projectA.toUpperCase()] : []), projectB], projectDir: projectB });
 
         assert.deepEqual(settings.tabs, [projectA, projectB], "표기가 달라도 같은 프로젝트는 앞의 탭 하나만 남는다");
         assert.equal(settings.projectDir, projectB);

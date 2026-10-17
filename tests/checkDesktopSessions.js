@@ -81,7 +81,11 @@ const checkOpenedSessions = () => {
         fs.symlinkSync(projectA, link, "junction");
 
         assert.equal(pool.get(link), sessionA, "junction으로 가리킨 같은 프로젝트는 같은 세션");
-        assert.equal(pool.open(projectA.toUpperCase()), sessionA, "대소문자가 달라도 같은 세션");
+
+        if (process.platform === "win32" || process.platform === "darwin") {
+            assert.equal(pool.open(projectA.toUpperCase()), sessionA, "대소문자가 달라도 같은 세션");
+        }
+
         assert.equal(pool.open(projectA + path.sep), sessionA, "끝 구분자가 있어도 같은 세션");
         assert.equal(context.created.length, 2);
 
