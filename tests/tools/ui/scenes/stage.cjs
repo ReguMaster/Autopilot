@@ -13,6 +13,12 @@ const SCHEDULES = {
     ]
 };
 
+// 연속 실행 장면용 날짜 목록. 가짜 시계(2026-09-01)의 어제까지 이어진 12일과 그 앞의 20일 기록.
+const dayKeys = (start, count) =>
+    Array.from({ length: count }, (value, index) => new Date(2026, 6, 1 + start + index)).map(
+        (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+    );
+
 const SCENES = [
     {
         name: "stage-ready-empty",
@@ -34,6 +40,27 @@ const SCENES = [
     {
         name: "stage-ready-todo",
         init: { settings: { projectDir: PROJECT, policy: "todo", endTime: "22:00" }, runs: RUNS.slice(0, 1), schedules: SCHEDULES },
+        run: async (t) => {
+            await t.shot("greet", ".greet");
+        }
+    },
+    {
+        name: "stage-ready-streak",
+        init: { ...withProject, runs: RUNS, streakDays: [...dayKeys(0, 20), ...dayKeys(50, 12)] },
+        run: async (t) => {
+            await t.shot("greet", ".greet");
+        }
+    },
+    {
+        name: "stage-ready-streak-record",
+        init: { ...withProject, runs: RUNS.slice(0, 1), streakDays: [...dayKeys(0, 9), ...dayKeys(50, 12)] },
+        run: async (t) => {
+            await t.shot("greet", ".greet");
+        }
+    },
+    {
+        name: "stage-ready-streak-broken",
+        init: { ...withProject, runs: RUNS.slice(0, 1), streakDays: dayKeys(56, 5) },
         run: async (t) => {
             await t.shot("greet", ".greet");
         }

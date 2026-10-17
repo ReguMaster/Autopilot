@@ -519,6 +519,55 @@ const checkSchedules = (viewFormat) => {
     assert.deepEqual(describeScheduleLast({ at: at(20, 30), ok: false, message: "로그인이 필요해요" }, now), { text: "오늘 20:30에 시작하지 못했어요. 로그인이 필요해요", tone: "warn" });
 };
 
+const checkStreak = ({ getStreakSummary, describeStreak, formatDayKey, getGreeting }) => {
+    const range = (year, month, from, to) => Array.from({ length: to - from + 1 }, (value, index) => `${year}-${String(month).padStart(2, "0")}-${String(from + index).padStart(2, "0")}`);
+    const describe = (days, today = "2026-10-14") => describeStreak(getStreakSummary(days, today));
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+    const lastFall = [...range(2026, 8, 31, 31), ...range(2026, 9, 1, 30)];
+
+    assert.equal(formatDayKey(new Date(2026, 9, 4, 23, 59).getTime()), "2026-10-04");
+    assert.deepEqual(plain(getStreakSummary([], "2026-10-14")), { current: 0, endedToday: false, best: 0, bestBefore: 0, brokenLength: 0 });
+    assert.equal(describe([]), "");
+
+    // 어제까지 이어진 12일과 그 앞의 31일 기록
+    const running = [...lastFall, ...range(2026, 10, 2, 13)];
+
+    assert.deepEqual(plain(getStreakSummary(running, "2026-10-14")), { current: 12, endedToday: false, best: 31, bestBefore: 31, brokenLength: 0 });
+    assert.equal(describe(running), "어젯밤까지 12일째 돌았어요.");
+    assert.equal(describe([...running, "2026-10-14"]), "오늘까지 13일째 돌았어요.");
+    // 같은 날짜가 여러 번 들어와도 한 번으로 센다. 월을 넘겨도 이어진다.
+    assert.equal(describe([...running, "2026-10-13", "2026-10-13"]), "어젯밤까지 12일째 돌았어요.");
+    assert.equal(describe(["2026-09-29", "2026-09-30", "2026-10-01"], "2026-10-02"), "어젯밤까지 3일째 돌았어요.");
+    assert.equal(describe(["2025-12-30", "2025-12-31", "2026-01-01"], "2026-01-02"), "어젯밤까지 3일째 돌았어요.");
+
+    // 이전 최장 기록을 넘으면 알린다. 이전 기록이 하루뿐이면 넘었다고 하지 않는다.
+    assert.equal(describe([...range(2026, 9, 1, 9), ...range(2026, 10, 2, 13)]), "어젯밤까지 12일째예요. 지금까지 가장 길었던 9일을 넘었어요.");
+    assert.equal(describe([...range(2026, 9, 1, 1), ...range(2026, 10, 2, 13)]), "어젯밤까지 12일째 돌았어요.");
+    assert.equal(describe([...range(2026, 9, 1, 9), ...range(2026, 10, 2, 14)]), "오늘까지 13일째예요. 지금까지 가장 길었던 9일을 넘었어요.");
+    assert.equal(describe([...range(2026, 9, 1, 12), ...range(2026, 10, 2, 13)]), "어젯밤까지 12일째 돌았어요.");
+
+    // 하루만 이어졌을 때는 어제 돌았다는 말만 하고, 오늘 이미 돌았으면 말하지 않는다.
+    assert.equal(describe(["2026-10-13"]), "어젯밤에도 돌았어요. 오늘 밤에도 돌리면 2일째예요.");
+    assert.equal(describe(["2026-10-14"]), "");
+
+    // 어제 쉬어서 끊긴 다음 날에만 알리고, 하루짜리 기록과 오래전에 끊긴 기록은 말하지 않는다.
+    assert.deepEqual(plain(getStreakSummary(range(2026, 10, 8, 12), "2026-10-14")), { current: 0, endedToday: false, best: 5, bestBefore: 5, brokenLength: 5 });
+    assert.equal(describe(range(2026, 10, 8, 12)), "어제는 쉬어서 5일 기록은 거기까지예요. 오늘 밤부터 다시 세어 볼게요.");
+    assert.equal(describe(["2026-10-12"]), "");
+    assert.equal(describe(range(2026, 10, 1, 5)), "");
+    assert.equal(describe(range(2026, 10, 8, 12), "2026-10-15"), "");
+
+    // 시계가 거꾸로 가도(마지막 날이 오늘보다 뒤) 깨지지 않는다.
+    assert.equal(describe(range(2026, 10, 10, 16), "2026-10-14"), "오늘까지 7일째 돌았어요.");
+    assert.equal(describe(["not-a-day", "2026-1-1"]), "");
+
+    const greeting = getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: "mireu-api", streakText: "어젯밤까지 12일째 돌았어요." });
+
+    assert.match(greeting.lead, /^어젯밤까지 12일째 돌았어요\. 적어 주신 일을 07:00까지/);
+    assert.match(getGreeting({ hour: 23, policy: "todo", endTime: "", projectName: "mireu-api", streakText: "" }).lead, /^적어 주신 일만/);
+    assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: "", streakText: "어젯밤까지 12일째 돌았어요." }).lead, /^Git 저장소/);
+};
+
 const checkViewFormat = () => {
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
@@ -534,6 +583,7 @@ const checkViewFormat = () => {
     checkUsageFormat(viewFormat);
     checkLoginExpiry(viewFormat);
     checkSchedules(viewFormat);
+    checkStreak(viewFormat);
 
     console.log("Desktop view checks passed.");
 };

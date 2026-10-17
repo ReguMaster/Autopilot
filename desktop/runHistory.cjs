@@ -187,6 +187,42 @@ const listRuns = async (projectDir, { limit = MAX_RUN_COUNT, activeLogFile = "" 
     return runs;
 };
 
+// 첫 회차를 시작한 실행이 있는 날짜(날짜 폴더 이름)를 오름차순으로 돌려준다. skipDays에 있는 날은 로그를 읽지 않는다.
+// 시작 단계에서 실패해 회차가 없는 실행과 읽을 수 없는 로그는 그날로 세지 않는다.
+const listRunDays = async (projectDir, { skipDays = new Set() } = {}) => {
+    const progressDir = getProgressDir(projectDir);
+    const found = [];
+    let days = [];
+
+    try {
+        days = (await fs.promises.readdir(progressDir, { withFileTypes: true })).filter((entry) => entry.isDirectory() && DAY_DIR_PATTERN.test(entry.name)).map((entry) => entry.name);
+    } catch {
+        return found;
+    }
+
+    for (const day of days.sort().filter((entry) => !skipDays.has(entry))) {
+        let names = [];
+
+        try {
+            names = (await fs.promises.readdir(path.join(progressDir, day), { withFileTypes: true })).filter((entry) => entry.isFile() && LOG_FILE_PATTERN.test(entry.name)).map((entry) => entry.name);
+        } catch {
+            continue;
+        }
+
+        for (const name of names) {
+            const run = await summarizeFile(projectDir, getRunFiles(projectDir, `${day}/${name}`));
+
+            if (!run.isUnreadable && run.roundCount > 0) {
+                found.push(day);
+
+                break;
+            }
+        }
+    }
+
+    return found;
+};
+
 // 렌더러가 보낸 id는 형식을 검사해 진행 기록 폴더 안의 로그와 리포트 경로로만 바꾼다.
 const getRunFiles = (projectDir, id) => {
     const match = typeof id === "string" ? id.match(RUN_ID_PATTERN) : null;
@@ -341,4 +377,4 @@ const pruneRuns = async (projectDir, retentionDays, { activeLogFile = "", now = 
     return { deletedCount: deletedCount, freedBytes: freedBytes };
 };
 
-module.exports = { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT, MAX_DETAIL_LINES };
+module.exports = { listRuns, listRunDays, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT, MAX_DETAIL_LINES };

@@ -280,7 +280,8 @@ const getGreetingEmoji = (hour) => {
     return hour < 12 ? "☀️" : "☕";
 };
 
-const getGreeting = ({ hour, policy, endTime, projectName }) => {
+// streakText는 연속 실행 문장(describeStreak)이고 있으면 안내 문구 앞에 붙는다.
+const getGreeting = ({ hour, policy, endTime, projectName, streakText = "" }) => {
     if (!projectName) {
         return { title: "먼저 작업할 프로젝트를 골라 주세요. 📂", lead: "Git 저장소의 루트 폴더를 고르면 바로 시작할 수 있어요." };
     }
@@ -288,12 +289,84 @@ const getGreeting = ({ hour, policy, endTime, projectName }) => {
     const end = endTime || DEFAULT_END_TIME;
     const when = isNightHour(hour) ? "오늘 밤에는" : "지금부터";
     const title = `${when} ${projectName}에 무엇을 해 둘까요? ${getGreetingEmoji(hour)}`;
+    const lead = policy === "todo" ? `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` : `적어 주신 일을 ${end}까지 하나씩 해 두고, 남는 시간에는 스스로 고칠 곳을 찾아볼게요.`;
 
-    if (policy === "todo") {
-        return { title: title, lead: `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` };
+    return { title: title, lead: streakText ? `${streakText} ${lead}` : lead };
+};
+
+/* 연속 실행: 실행한 날짜(YYYY-MM-DD, 밤샘 실행은 시작한 날)가 이어진 일수를 세고 안내 문장으로 바꾼다 */
+
+const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const formatDayKey = (ms) => {
+    const date = new Date(ms);
+
+    return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
+};
+
+// 날짜를 시간대와 무관한 정수 일 번호로 바꿔 연속 여부를 뺄셈으로 본다.
+const getDayNumber = (dayKey) => {
+    const [year, month, day] = dayKey.split("-").map(Number);
+
+    return Math.round(Date.UTC(year, month - 1, day) / DAY_MS);
+};
+
+// current는 오늘이나 어제까지 이어진 일수(하루를 건너뛰면 0), brokenLength는 그저께까지 이어지다 어제 끊긴 일수다.
+// bestBefore는 지금 이어지는 연속을 뺀 이전 최장 기록이다.
+const getStreakSummary = (days, todayKey) => {
+    const numbers = [...new Set(days.filter((day) => DAY_KEY_PATTERN.test(day)).map(getDayNumber))].sort((left, right) => left - right);
+    const streaks = [];
+
+    for (const number of numbers) {
+        const last = streaks.at(-1);
+
+        if (last && number - last.end === 1) {
+            last.end = number;
+            last.length += 1;
+        } else {
+            streaks.push({ end: number, length: 1 });
+        }
     }
 
-    return { title: title, lead: `적어 주신 일을 ${end}까지 하나씩 해 두고, 남는 시간에는 스스로 고칠 곳을 찾아볼게요.` };
+    if (!streaks.length) {
+        return { current: 0, endedToday: false, best: 0, bestBefore: 0, brokenLength: 0 };
+    }
+
+    const last = streaks.at(-1);
+    const gap = Math.max(0, getDayNumber(todayKey) - last.end);
+    const isCurrent = gap <= 1;
+    const longest = (list) => Math.max(0, ...list.map((streak) => streak.length));
+
+    return {
+        current: isCurrent ? last.length : 0,
+        endedToday: gap === 0,
+        best: longest(streaks),
+        bestBefore: longest(isCurrent ? streaks.slice(0, -1) : streaks),
+        brokenLength: gap === 2 ? last.length : 0
+    };
+};
+
+// 시작 화면 안내 문구 앞에 붙는 한두 문장. 하루만 이어졌거나 오래 쉬었으면 말하지 않는다(재촉하지 않는다).
+const describeStreak = ({ current, endedToday, bestBefore, brokenLength }) => {
+    const until = endedToday ? "오늘" : "어젯밤";
+
+    if (current >= 2 && bestBefore >= 2 && current > bestBefore) {
+        return `${until}까지 ${current}일째예요. 지금까지 가장 길었던 ${bestBefore}일을 넘었어요.`;
+    }
+
+    if (current >= 2) {
+        return `${until}까지 ${current}일째 돌았어요.`;
+    }
+
+    if (current === 1 && !endedToday) {
+        return "어젯밤에도 돌았어요. 오늘 밤에도 돌리면 2일째예요.";
+    }
+
+    if (brokenLength >= 2) {
+        return `어제는 쉬어서 ${brokenLength}일 기록은 거기까지예요. 오늘 밤부터 다시 세어 볼게요.`;
+    }
+
+    return "";
 };
 
 const getWorkSummary = (state) => {
@@ -981,6 +1054,9 @@ export {
     isNightHour,
     getGreetingEmoji,
     getGreeting,
+    formatDayKey,
+    getStreakSummary,
+    describeStreak,
     getWorkSummary,
     FINISH_REASONS,
     getReasonText,

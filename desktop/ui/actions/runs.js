@@ -8,12 +8,25 @@ const MAX_ARCHIVE_RUNS = 200;
 
 let recentToken = 0;
 let archiveToken = 0;
+let streakToken = 0;
 
 const setNote = (message, tone = "") => useRunsStore.setState({ note: { message: message, tone: tone } });
+
+// 실행한 날짜 목록. 시작 화면 인사의 연속 실행 문구에 쓰이므로 읽지 못해도 조용히 비운다.
+const loadStreakDays = async () => {
+    const token = ++streakToken;
+    const result = await window.autopilot.getStreakDays();
+
+    if (token === streakToken) {
+        useRunsStore.setState({ streakDays: result.status === STATUS_OK ? result.data.days : [] });
+    }
+};
 
 // 목록을 읽지 못해도 시작 화면은 그대로 쓸 수 있어야 하므로 실패하면 조용히 비운다.
 const loadRecentRuns = async () => {
     const token = ++recentToken;
+
+    loadStreakDays();
     const result = await window.autopilot.listRuns(RECENT_RUN_COUNT);
 
     if (token === recentToken) {
@@ -101,4 +114,4 @@ const deleteArchiveRun = async () => {
     setNote("기록을 지웠어요.");
 };
 
-export { loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };
+export { loadStreakDays, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };

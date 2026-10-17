@@ -248,7 +248,8 @@ const checkRunActions = async ({ runStore, uiStore, composerStore, modalStore, r
 
             return OK();
         },
-        listRuns: async () => OK({ runs: [] })
+        listRuns: async () => OK({ runs: [] }),
+        getStreakDays: async () => OK({ days: [] })
     };
     composerStore.composer.setTasks("한 가지 일");
     runStore.applyRunState(createState({ status: "idle" }));
@@ -327,7 +328,8 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         resetProgress: record("resetProgress", OK({ isReset: true })),
         deleteRun: record("deleteRun"),
         removeAccount: record("removeAccount", OK({ accounts: [{ id: "default", label: "기본 계정" }], activeId: "default", claudeDir: null, snapshots: {} })),
-        listRuns: async () => OK({ runs: [] })
+        listRuns: async () => OK({ runs: [] }),
+        getStreakDays: async () => OK({ days: [] })
     };
 
     const answer = async (action, isConfirmed) => {
@@ -349,6 +351,30 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.deepEqual(calls, [], "삭제를 취소하면 보내지 않는다");
     await answer(runs.deleteArchiveRun, true);
     assert.deepEqual(calls, [["deleteRun", "2026-10-10/autopilot_090000_aaaa0001.log"]]);
+
+    // 실행한 날짜 목록: 읽으면 스토어에 담기고, 실패하면 조용히 비며, 늦게 도착한 앞선 응답은 버린다.
+    const readDays = () => runsStore.useRunsStore.getState().streakDays;
+
+    window.autopilot.getStreakDays = async () => OK({ days: ["2026-10-12", "2026-10-13"] });
+    await runs.loadStreakDays();
+    assert.deepEqual(readDays(), ["2026-10-12", "2026-10-13"]);
+
+    window.autopilot.getStreakDays = async () => ({ status: "FAILED", error: { code: "STREAK_FAILED", msg: "읽지 못했어요" } });
+    await runs.loadStreakDays();
+    assert.deepEqual(readDays(), []);
+
+    let releaseSlow = () => {};
+    const slow = new Promise((resolve) => (releaseSlow = () => resolve(OK({ days: ["2026-01-01"] }))));
+
+    window.autopilot.getStreakDays = () => slow;
+
+    const stale = runs.loadStreakDays();
+
+    window.autopilot.getStreakDays = async () => OK({ days: ["2026-10-14"] });
+    await runs.loadStreakDays();
+    releaseSlow();
+    await stale;
+    assert.deepEqual(readDays(), ["2026-10-14"]);
 
     calls.length = 0;
     accountStore.useAccountStore.setState({
@@ -462,7 +488,8 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
             return OK(getView({}));
         },
         selectProject: async () => OK(getView({ projectDir: "/other", tasks: "다른 작업", effort: "low" }, [], "설정을 복구했어요.")),
-        listRuns: async () => OK({ runs: [] })
+        listRuns: async () => OK({ runs: [] }),
+        getStreakDays: async () => OK({ days: [] })
     };
 
     assert.equal(settings.getScope(), "global", "기본은 전역");
@@ -616,6 +643,7 @@ const checkSettingsPorting = async ({ appStore, settingsActions, composerStore, 
         return OK({ deletedCount: 3, freedBytes: 2048 });
     };
     window.autopilot.listRuns = async () => OK({ runs: [] });
+    window.autopilot.getStreakDays = async () => OK({ days: [] });
     calls.length = 0;
 
     await answer(settings.pruneStaleRuns, false);
@@ -702,7 +730,8 @@ const checkProjectEvents = async ({ events, runStore, appStore, run }) => {
 
     window.autopilot = {
         selectProject: async () => OK({ ...view("/b"), state: createState({ status: "idle", round: 0 }), logs: [{ stream: "out", text: "B 기록" }] }),
-        listRuns: async () => OK({ runs: [] })
+        listRuns: async () => OK({ runs: [] }),
+        getStreakDays: async () => OK({ days: [] })
     };
 
     await run.selectProject();
@@ -757,7 +786,8 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
             return OK({ ...view(dir === "/b" ? "/a" : "/a"), tabs: list("/a", ["/a"]), state: createState({ round: 1 }), logs: [{ stream: "out", text: "/a 기록" }] });
         },
         openTab: async () => OK({ ...view("/c"), canceled: false, existing: false, tabs: list("/c", ["/a", "/b", "/c"]), state: createState({ round: 0 }), logs: [] }),
-        listRuns: async () => OK({ runs: [] })
+        listRuns: async () => OK({ runs: [] }),
+        getStreakDays: async () => OK({ days: [] })
     };
 
     appStore.applySettingsView(view("/a"));

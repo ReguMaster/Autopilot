@@ -1,5 +1,5 @@
 import { useShallow } from "zustand/react/shallow";
-import { describeScheduleSummary, getGreeting } from "../../../viewFormat.js";
+import { describeScheduleSummary, describeStreak, formatDayKey, getGreeting, getStreakSummary } from "../../../viewFormat.js";
 import { openArchiveDetail, openArchiveList } from "../../actions/runs.js";
 import { schedules } from "../../actions/schedules.js";
 import { Icon } from "../../components/Icon.jsx";
@@ -19,7 +19,10 @@ const Greeting = () => {
     const projectName = useAppStore((store) => getProjectName(store.settings.projectDir));
     const { policy, endTime } = useComposerStore(useShallow((store) => ({ policy: store.policy, endTime: store.endTime })));
     const hour = useClock((now) => new Date(now).getHours());
-    const greeting = getGreeting({ hour: hour, policy: policy, endTime: endTime, projectName: projectName });
+    const today = useClock(formatDayKey);
+    const streakDays = useRunsStore((store) => store.streakDays);
+    const streakText = describeStreak(getStreakSummary(streakDays, today));
+    const greeting = getGreeting({ hour: hour, policy: policy, endTime: endTime, projectName: projectName, streakText: streakText });
     const [before, after] = projectName ? greeting.title.split(projectName) : [greeting.title, ""];
 
     return (

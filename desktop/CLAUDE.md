@@ -87,6 +87,14 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 설정 패널의 "로그 보관"(StorageGroup)은 보관 기간과 지금 차지하는 용량(runHistory.getRunUsage, autopilot:get-run-usage. 보관 기간이 지나 정리될 몫 포함)을 보여주고 "지금 지우기"(runHistory.pruneRuns, autopilot:prune-runs)로 그 몫을 바로 지운다. 정리 기준은 엔진 pruneRunFiles와 같다(오늘 0시에서 보관 기간만큼 거슬러 올라간 날짜보다 이른 폴더의 autopilot_*.log·report_*.html만, 링크는 따라가지 않음. 진행 중인 로그·완료 마커·보관한 진행 기록 원본·다른 파일은 건드리지 않고 비게 된 날짜 폴더만 지움). 되돌릴 수 없어 화면의 확인 모달을 먼저 거친다.
 - 삭제(autopilot:delete-run, runHistory.deleteRun)는 화면의 확인 모달(actions/runs.js의 deleteArchiveRun)을 거쳐 그 실행의 로그·리포트만 지운다. 진행 중인 실행(isActive)은 거부하고 날짜 폴더는 비었을 때만 지운다(완료 마커·보관 원본은 건드리지 않는다).
 
+## 연속 실행
+
+- 시작 화면 인사(ReadyView의 Greeting)의 안내 문구 앞에 연속 실행 문장 한두 개를 붙인다(viewFormat.describeStreak). 숫자 위젯·달력·막대는 두지 않고 문장만 쓴다(시안 words-only). 말하지 않아도 되는 때는 아무것도 붙이지 않는다.
+- 하루로 세는 기준은 그날(날짜 폴더 이름, 밤샘 실행은 시작한 날) 첫 회차를 시작한 실행 로그가 있는 것이다(runHistory.listRunDays). 시작 단계에서 실패해 회차가 없는 실행과 읽을 수 없는 로그는 세지 않고 커밋이 없는 실행은 센다. 프로젝트마다 센다.
+- 날짜 목록은 userData/streaks.json(`{version, projects: {<프로젝트 키>: {days}}}`, 최대 1000일)에 보관해 로그가 보관 기간이 지나 지워져도 긴 기록이 남는다(streakStore.refresh. 이미 적은 날은 다시 읽지 않아 지난 로그는 처음 한 번만 훑고, 겹친 요청은 하나씩 처리하며, 깨진 파일은 비운 것으로 보고 남은 로그에서 다시 만든다). IPC autopilot:get-streak-days(projectDir)는 `{ days }`(오름차순)만 돌려주고, 연속 일수는 화면이 오늘 날짜(useClock)로 센다(viewFormat.getStreakSummary. 자정이 지나면 다시 읽지 않아도 문구가 바뀐다). loadRecentRuns가 loadStreakDays를 함께 부른다(시작·탭 전환·실행 종료 뒤).
+- 문장 규칙: 어제나 오늘까지 이어진 연속이 2일 이상이면 "어젯밤까지 N일째 돌았어요."(오늘 돌았으면 "오늘까지")이고, 이전 최장 기록(2일 이상)을 넘었으면 그 기록을 함께 알린다. 하루만 이어졌으면 어제 돌았다는 말만 하고, 어제 쉬어서 끊긴 날(끊긴 연속이 2일 이상)에만 한 번 알리고 그 뒤로는 말하지 않는다. 쉬어도 이어 주는 날(휴식권)은 없다. 재촉하지 않는 말투를 지킨다.
+- 검증: tests/checkDesktopStreak.js(날짜 수집·보관), tests/checkDesktopView.js(일수 계산·문장), tests/tools/ui의 stage-ready-streak* 장면.
+
 ## 새 버전 알림
 
 - 설정의 새 버전 확인(checkUpdates, 기본 켬)을 끄면 확인하지 않고 알고 있던 안내를 거둔다(updateCheck의 isEnabled). 바꾸는 즉시 autopilot:set-preferences가 check()를 불러 켜면 바로 확인하고 끄면 칩을 숨긴다.

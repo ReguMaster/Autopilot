@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
+const { createStreakStore } = require("./streakStore.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState, notify, showWindow, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
 const { shouldRunPostAction, runPowerAction, createPostAction } = require("./postAction.cjs");
@@ -984,6 +985,29 @@ const handleGetRunUsage = async (event, requestedDir) => {
     }
 };
 
+const streakStore = createStreakStore({ file: path.join(app.getPath("userData"), "streaks.json"), getKey: getProjectKey });
+
+// 선택한 프로젝트에서 실행한 날짜 목록(오름차순). 연속 일수는 화면이 오늘 날짜로 센다.
+const handleGetStreakDays = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = readEffective(session.projectDir);
+
+    if (getProjectError(projectDir)) {
+        return { status: STATUS_OK, data: { days: [] } };
+    }
+
+    try {
+        return { status: STATUS_OK, data: { days: await streakStore.refresh(projectDir) } };
+    } catch (error) {
+        return createFailure("STREAK_FAILED", `실행한 날을 읽지 못했어요: ${error.message}`);
+    }
+};
+
 // 보관 기간이 지난 로그와 리포트를 지금 지운다. 되돌릴 수 없는 일이라 확인은 화면의 모달이 먼저 받는다.
 const handlePruneRuns = async (event, requestedDir) => {
     const session = sessionPool.get(requestedDir);
@@ -1058,6 +1082,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
     ipcMain.handle("autopilot:delete-run", handleDeleteRun);
     ipcMain.handle("autopilot:get-run-usage", handleGetRunUsage);
+    ipcMain.handle("autopilot:get-streak-days", handleGetStreakDays);
     ipcMain.handle("autopilot:prune-runs", handlePruneRuns);
     ipcMain.handle("autopilot:open-update", handleOpenUpdate);
     ipcMain.handle("autopilot:set-system", handleSetSystem);

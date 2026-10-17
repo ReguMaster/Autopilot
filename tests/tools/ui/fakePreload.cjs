@@ -94,6 +94,7 @@ const model = {
     accounts: { ...DEFAULT_ACCOUNTS, ...init.accounts },
     schedules: { ...DEFAULT_SCHEDULES, ...init.schedules },
     runs: init.runs || [],
+    streakDays: init.streakDays || [],
     runDetails: init.runDetails || {},
     models: init.models || [],
     isDev: Boolean(init.isDev),
@@ -220,6 +221,7 @@ const api = {
                 model.usage === undefined ? { runCount: 12, bytes: 4400000, staleCount: 8, staleBytes: 3900000, oldestDay: "2026-08-02", retentionDays: model.settings.logRetentionDays } : model.usage
         })
     ),
+    getStreakDays: respond("getStreakDays", async () => ok({ days: model.streakDays })),
     pruneRuns: respond("pruneRuns", async () => ok({ deletedCount: 8, freedBytes: 3900000 })),
     getModels: respond("getModels", async () => ok({ models: model.models })),
     kill: respond("kill", async () => ok({})),
