@@ -305,6 +305,20 @@ const checkLogRetention = async (runScenario) => {
     assert.match(fs.readFileSync(result.logFile, "utf8"), /^\[정리\] 보관 기간 30일이 지난 로그·리포트 2개를 삭제했습니다\.$/m);
 };
 
+// 보관 기간을 인자로 줄이면 그 기간이 지난 파일만 지운다. 같은 파일이 기본(30일)에서는 남는다.
+const checkLogRetentionOption = async (runScenario) => {
+    const tenDaysAgo = dateUtil.getDateString(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000));
+    const oldLog = `progress/${tenDaysAgo}/autopilot_000000_cccc3333.log`;
+    const keptRunData = await runScenario("idle", { staleFiles: [oldLog] });
+
+    assert(fs.existsSync(path.join(keptRunData.projectDir, ".autopilot", oldLog)));
+
+    const prunedRunData = await runScenario("idle", { staleFiles: [oldLog], logRetentionDays: 7 });
+
+    assert(!fs.existsSync(path.join(prunedRunData.projectDir, ".autopilot", oldLog)));
+    assert.match(fs.readFileSync(prunedRunData.logFile, "utf8"), /^\[정리\] 보관 기간 7일이 지난 로그·리포트 1개를 삭제했습니다\.$/m);
+};
+
 // 실행 중에 바꾼 model·effort는 다음 회차부터 적용하고, 이전 실행의 변경 파일은 시작할 때 지운다.
 const checkRoundOptions = async (runScenario, context) => {
     const readStartLines = (runData) => {
@@ -409,6 +423,24 @@ const checkProgressCleanupPrompt = async (runScenario) => {
     assert.equal(readCleanupLog(await runScenario("commit")), "000");
 };
 
+// 커밋 접두어와 작업 브랜치는 지침과 정책에 들어가고, 바꾸면 기본값은 프롬프트에서 사라진다.
+const checkGitNames = async (runScenario) => {
+    const readPrompt = (runData) => fs.readFileSync(path.join(runData.projectDir, "prompt.txt"), "utf8");
+    const defaultPrompt = readPrompt(await runScenario("idle"));
+
+    assert(defaultPrompt.includes("앞에 `[ap]`를 붙인다."));
+    assert(defaultPrompt.includes("[ap] fix: 상태 손실 방지"));
+    assert(defaultPrompt.includes("`ai/autopilot` 브랜치에서 작업한다"));
+
+    const customPrompt = readPrompt(await runScenario("idle", { commitPrefix: "chore(ai):", workBranch: "bot/work" }));
+
+    assert(customPrompt.includes("앞에 `chore(ai):`를 붙인다."));
+    assert(customPrompt.includes("chore(ai): fix: 상태 손실 방지"));
+    assert(customPrompt.includes("`bot/work` 브랜치에서 작업한다"));
+    assert(!customPrompt.includes("[ap]"));
+    assert(!customPrompt.includes("ai/autopilot"));
+};
+
 const checkRetriesAndRateLimit = async (runScenario) => {
     for (const mode of ["failure", "is-error"]) {
         const failedRunData = await runScenario(mode, { limits: FAILURE_LIMITS });
@@ -431,6 +463,19 @@ const checkRetriesAndRateLimit = async (runScenario) => {
     assert(extendedRunData.deadline.getSeconds() > 0);
     assert.equal(extendedRunData.deadline.getMilliseconds(), 0);
     assert.match(fs.readFileSync(extendedRunData.logFile, "utf8"), /^\[사용량 한도\] 종료 시각 연장 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(\+1분\)$/m);
+
+    // 연장 상한이 있으면 한 실행에서 늘리는 총량이 그만큼으로 묶인다. 첫 대기는 상한만큼만 늘리고, 상한을 다 쓴 뒤의 대기는 늘리지 않고 안내만 남긴다.
+    const cappedRunData = await runScenario("limit-long", {
+        extendOnLimit: true,
+        maxExtendMinutes: 1 / 60,
+        limits: { minMinutes: 0, maxRounds: 2, maxRoundMinutes: 1, retryWaitMinutes: [], resetGraceMs: 0 }
+    });
+    const cappedLog = fs.readFileSync(cappedRunData.logFile, "utf8");
+
+    assert.equal(cappedRunData.rounds.length, 2);
+    assert.equal(cappedLog.match(/^\[사용량 한도\] 종료 시각 연장 /gm).length, 1);
+    assert.equal(cappedLog.match(/^\[사용량 한도\] 연장 상한 [\d.]+분에 도달해 종료 시각을 더 늘리지 않습니다$/gm).length, 2);
+    assert.equal(cappedRunData.deadline.getSeconds(), 1, "상한(1초)만큼만 늘어난다");
 };
 
 const checkTimeout = async (runScenario) => {
@@ -599,12 +644,17 @@ const checkCliRun = (context, fakeCliFile, appExe) => {
     assert.match(noTasksResult.stderr, /작업이 필요/);
     assert.equal(runCli([...projectArgs, "--tasks-file", path.join(context.testDir, "missing.md"), "--no-open"]).status, 1);
 
-    const result = runCli([...projectArgs, "--end-time", getEndTime(), "--policy", "todo", "--tasks-file", tasksFile, "--no-open"]);
+    // 잘못된 커밋 접두어·보호 브랜치는 시작 전에 거부한다.
+    assert.equal(runCli([...projectArgs, "--tasks-file", tasksFile, "--branch", "main", "--no-open"]).status, 1);
+    assert.equal(runCli([...projectArgs, "--tasks-file", tasksFile, "--commit-prefix", "a`b", "--no-open"]).status, 1);
+
+    const result = runCli([...projectArgs, "--end-time", getEndTime(), "--policy", "todo", "--tasks-file", tasksFile, "--commit-prefix", "chore(ai):", "--branch", "bot/work", "--no-open"]);
 
     assert.equal(result.status, 0, result.stderr + result.stdout);
     assert.match(result.stdout, /예약 작업 완료/);
     assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<TASKS>\n첫째 작업\n둘째 작업\n<\/TASKS>/);
     assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /<AUTOPILOT_POLICY\.md>\s+# AutoPilot Policy/);
+    assert(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8").includes("`bot/work` 브랜치에서 작업한다"));
 
     // 진행 기록은 앱 데이터 폴더(APPDATA)에 만든다.
     const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
@@ -698,12 +748,14 @@ export {
     createScenarioRunner,
     checkRoundOutcomes,
     checkLogRetention,
+    checkLogRetentionOption,
     checkProgressResetFlow,
     checkProgressCreated,
     checkTasksRequired,
     checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,
+    checkGitNames,
     checkRetriesAndRateLimit,
     checkTimeout,
     checkInterrupt,

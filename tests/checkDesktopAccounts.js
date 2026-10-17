@@ -29,6 +29,10 @@ if (group === "auth" && action === "status") {
 } else if (group === "auth" && action === "login") {
     const url = process.env.AP_FAKE_URL;
 
+    if (process.env.AP_FAKE_ARGS_FILE) {
+        fs.writeFileSync(process.env.AP_FAKE_ARGS_FILE, JSON.stringify(process.argv.slice(2)));
+    }
+
     process.stdout.write("Opening browser to sign in…\nIf the browser didn't open, visit: " + url + "\nPaste code here if prompted > ");
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (text) => {
@@ -289,6 +293,38 @@ const checkClaudeCli = async (testDir) => {
 
     assert.equal(cancelled.events.result.ok, false);
     assert.equal(cancelled.events.result.cancelled, true);
+
+    // 아는 이메일은 로그인 페이지에 미리 채우도록 --email로 넘기고, 형식이 맞지 않으면(CMD가 해석하는 문자·옵션처럼 보이는 앞의 -) 넘기지 않는다.
+    const argsFile = path.join(testDir, "login-args.json");
+    const baseArgs = ["auth", "login", "--claudeai"];
+    const emailCases = [
+        ["dev@example.com", [...baseArgs, "--email", "dev@example.com"]],
+        ["first.last+tag@sub.example.co.kr", [...baseArgs, "--email", "first.last+tag@sub.example.co.kr"]],
+        ["a b@example.com", baseArgs],
+        ["x@example.com&calc", baseArgs],
+        ["x@example.com%PATH%", baseArgs],
+        ['x@"example.com', baseArgs],
+        ["-x@example.com", baseArgs],
+        ["", baseArgs],
+        [undefined, baseArgs]
+    ];
+
+    process.env.AP_FAKE_ARGS_FILE = argsFile;
+
+    for (const [email, expected] of emailCases) {
+        fs.rmSync(argsFile, { force: true });
+
+        const run = createLoginRun(cancelDir, { ...fake, email: email });
+
+        await waitFor(() => fs.existsSync(argsFile) && fs.readFileSync(argsFile, "utf8"), "로그인 인자를 기록해야 한다");
+
+        assert.deepEqual(JSON.parse(fs.readFileSync(argsFile, "utf8")), expected, String(email));
+
+        run.session.cancel();
+        await waitFor(() => run.events.result, "취소로 끝나야 한다");
+    }
+
+    delete process.env.AP_FAKE_ARGS_FILE;
 };
 
 const runChecks = async () => {

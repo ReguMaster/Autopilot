@@ -1,0 +1,120 @@
+/* 안내 문구: 컴포저 바로 위에 붙고, 없으면 자리를 차지하지 않는다 */
+.notices {
+    flex: none;
+    display: grid;
+    gap: 8px;
+    padding: 0 16px;
+}
+
+.notices:has(> :not([hidden])) {
+    padding-bottom: 10px;
+}
+
+.notices > :not([hidden]) {
+    animation: rise 0.4s var(--ease-out) backwards;
+}
+
+.notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+.notice[data-tone="warn"] {
+    background: #fff7ec;
+    color: #6f4100;
+    box-shadow: inset 0 0 0 1px #f3dcb8;
+}
+
+.notice[data-tone="ok"] {
+    background: #eef8f2;
+    color: #14603a;
+    box-shadow: inset 0 0 0 1px #cfe8da;
+}
+
+.notice .button {
+    flex: none;
+    margin-left: auto;
+}
+
+.notice-actions {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.notice-actions .button {
+    margin-left: 0;
+}
+
+/* 버튼 */
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    transition:
+        background-color 0.2s var(--ease-out),
+        box-shadow 0.2s var(--ease-out);
+}
+
+.button:hover:not(:disabled) {
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.button:active:not(:disabled) {
+    scale: 0.98;
+}
+
+.button:disabled {
+    color: var(--faint);
+    cursor: not-allowed;
+}
+
+.button.small {
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 8px;
+    font-size: var(--text-sm);
+}
+
+.button.primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: none;
+}
+
+.button.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: none;
+}
+
+.button.danger {
+    color: var(--del);
+}
+
+.button.danger:disabled {
+    color: var(--faint);
+}
+
+.button .icon {
+    width: 12px;
+    height: 12px;
+}

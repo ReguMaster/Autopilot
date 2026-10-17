@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createInitialState, parseLine } = require("./autopilotRunner.cjs");
-const { getProgressDir, isProjectLogFile, isProjectReportFile, LOG_FILE_PATTERN } = require("./projectFiles.cjs");
+const { getProgressDir, isProjectLogFile, isProjectReportFile, LOG_FILE_PATTERN, REPORT_FILE_PATTERN } = require("./projectFiles.cjs");
 
 const DAY_DIR_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const RUN_ID_PATTERN = /^(\d{4}-\d{2}-\d{2})\/(autopilot_[\w-]+\.log)$/i;
@@ -187,6 +187,42 @@ const listRuns = async (projectDir, { limit = MAX_RUN_COUNT, activeLogFile = "" 
     return runs;
 };
 
+// 첫 회차를 시작한 실행이 있는 날짜(날짜 폴더 이름)를 오름차순으로 돌려준다. skipDays에 있는 날은 로그를 읽지 않는다.
+// 시작 단계에서 실패해 회차가 없는 실행과 읽을 수 없는 로그는 그날로 세지 않는다.
+const listRunDays = async (projectDir, { skipDays = new Set() } = {}) => {
+    const progressDir = getProgressDir(projectDir);
+    const found = [];
+    let days = [];
+
+    try {
+        days = (await fs.promises.readdir(progressDir, { withFileTypes: true })).filter((entry) => entry.isDirectory() && DAY_DIR_PATTERN.test(entry.name)).map((entry) => entry.name);
+    } catch {
+        return found;
+    }
+
+    for (const day of days.sort().filter((entry) => !skipDays.has(entry))) {
+        let names = [];
+
+        try {
+            names = (await fs.promises.readdir(path.join(progressDir, day), { withFileTypes: true })).filter((entry) => entry.isFile() && LOG_FILE_PATTERN.test(entry.name)).map((entry) => entry.name);
+        } catch {
+            continue;
+        }
+
+        for (const name of names) {
+            const run = await summarizeFile(projectDir, getRunFiles(projectDir, `${day}/${name}`));
+
+            if (!run.isUnreadable && run.roundCount > 0) {
+                found.push(day);
+
+                break;
+            }
+        }
+    }
+
+    return found;
+};
+
 // 렌더러가 보낸 id는 형식을 검사해 진행 기록 폴더 안의 로그와 리포트 경로로만 바꾼다.
 const getRunFiles = (projectDir, id) => {
     const match = typeof id === "string" ? id.match(RUN_ID_PATTERN) : null;
@@ -244,4 +280,101 @@ const deleteRun = async (projectDir, id, { activeLogFile = "" } = {}) => {
     await fs.promises.rmdir(path.dirname(files.logFile)).catch(() => {});
 };
 
-module.exports = { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT, MAX_DETAIL_LINES };
+const formatDay = (date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+// 보관 기간이 지나 정리되는 첫 날짜. 이 날짜보다 이른 날짜 폴더의 로그·리포트가 정리 대상이다(엔진의 pruneRunFiles와 같은 기준).
+const getCutoffDay = (retentionDays, now) => {
+    const cutoff = new Date(now);
+
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - retentionDays);
+
+    return formatDay(cutoff);
+};
+
+// 엔진이 정리하는 것과 같은 파일(날짜 폴더의 autopilot_*.log·report_*.html)을 크기와 함께 모은다. 링크는 따라가지 않고 읽지 못하는 폴더는 건너뛴다.
+const scanRunFiles = async (projectDir) => {
+    const progressDir = getProgressDir(projectDir);
+    const found = [];
+    let days = [];
+
+    try {
+        days = (await fs.promises.readdir(progressDir, { withFileTypes: true })).filter((entry) => entry.isDirectory() && DAY_DIR_PATTERN.test(entry.name)).map((entry) => entry.name);
+    } catch {
+        return found;
+    }
+
+    for (const day of days) {
+        let entries = [];
+
+        try {
+            entries = await fs.promises.readdir(path.join(progressDir, day), { withFileTypes: true });
+        } catch {
+            continue;
+        }
+
+        for (const entry of entries.filter((item) => item.isFile())) {
+            const isLog = LOG_FILE_PATTERN.test(entry.name);
+
+            if (!isLog && !REPORT_FILE_PATTERN.test(entry.name)) {
+                continue;
+            }
+
+            try {
+                const file = path.join(progressDir, day, entry.name);
+
+                found.push({ day: day, file: file, size: (await fs.promises.stat(file)).size, isLog: isLog });
+            } catch {}
+        }
+    }
+
+    return found;
+};
+
+const sumBytes = (files) => files.reduce((sum, file) => sum + file.size, 0);
+
+// 지난 실행의 로그·리포트가 차지하는 용량. stale*은 보관 기간이 지나 정리 대상인 것이다.
+const getRunUsage = async (projectDir, retentionDays, { now = new Date() } = {}) => {
+    const files = await scanRunFiles(projectDir);
+    const stale = files.filter((file) => file.day < getCutoffDay(retentionDays, now));
+
+    return {
+        runCount: files.filter((file) => file.isLog).length,
+        bytes: sumBytes(files),
+        staleCount: stale.filter((file) => file.isLog).length,
+        staleBytes: sumBytes(stale),
+        oldestDay: files.map((file) => file.day).sort()[0] || ""
+    };
+};
+
+// 보관 기간이 지난 로그와 리포트를 지운다. 진행 중인 실행의 로그와 형식·위치가 맞지 않는 파일은 건드리지 않고, 날짜 폴더가 비면 함께 지운다.
+const pruneRuns = async (projectDir, retentionDays, { activeLogFile = "", now = new Date() } = {}) => {
+    const cutoffDay = getCutoffDay(retentionDays, now);
+    const stale = (await scanRunFiles(projectDir)).filter((file) => file.day < cutoffDay);
+    const days = new Set();
+    let deletedCount = 0;
+    let freedBytes = 0;
+
+    for (const { day, file, size, isLog } of stale) {
+        if (isActiveLog(file, activeLogFile) || !(isLog ? isProjectLogFile : isProjectReportFile)(projectDir, file)) {
+            continue;
+        }
+
+        await fs.promises.rm(file, { force: true });
+
+        summaryCache.delete(file);
+        days.add(day);
+        freedBytes += size;
+        deletedCount += isLog ? 1 : 0;
+    }
+
+    for (const day of days) {
+        await fs.promises.rmdir(path.join(getProgressDir(projectDir), day)).catch(() => {});
+    }
+
+    return { deletedCount: deletedCount, freedBytes: freedBytes };
+};
+
+module.exports = { listRuns, listRunDays, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT, MAX_DETAIL_LINES };

@@ -6,20 +6,33 @@ import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+    DEFAULT_EFFORT_LEVEL as UI_DEFAULT_EFFORT_LEVEL,
+    DEFAULT_MODEL as UI_DEFAULT_MODEL,
+    DEFAULT_POLICY as UI_DEFAULT_POLICY,
+    EFFORT_LEVELS as UI_EFFORT_LEVELS,
+    MODEL_FAMILIES as UI_MODEL_FAMILIES,
+    POLICIES as UI_POLICIES
+} from "../desktop/ui/lib/constants.js";
+import {
     MODEL_CHOICES as ENGINE_MODELS,
     MODEL_ID_PATTERN as ENGINE_MODEL_ID_PATTERN,
     EFFORT_LEVELS as ENGINE_EFFORTS,
     DEFAULT_MODEL,
     DEFAULT_EFFORT,
+    AUTOPILOT_DEFAULTS,
+    DEFAULT_COMMIT_PREFIX as ENGINE_COMMIT_PREFIX,
+    DEFAULT_WORK_BRANCH as ENGINE_WORK_BRANCH,
     POLICY_ALIASES,
     POLICY_SELF
 } from "../autopilot/src/utils/config.js";
+import engineUtil from "../autopilot/src/utils/util.js";
 
 const require = createRequire(import.meta.url);
 const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
-const { createAccountReader } = require("../desktop/claudeAccount.cjs");
+const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
+const { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS } = require("../desktop/engineArgs.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -562,7 +575,7 @@ const checkClaudeAccount = async (testDir) => {
     };
     const requests = [];
     const changes = [];
-    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials } = {}) => {
+    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials, loginExpiresAtOverride } = {}) => {
         const responses = { usage: usage, profile: profile, isDown: false };
         const fetchImpl = async (url, init) => {
             requests.push({ url: url, headers: init.headers });
@@ -578,6 +591,7 @@ const checkClaudeAccount = async (testDir) => {
             fetchImpl: fetchImpl,
             now: () => clock.now,
             renewCredentials: renewCredentials,
+            loginExpiresAtOverride: loginExpiresAtOverride,
             onChange: (account) => changes.push(account)
         });
 
@@ -588,7 +602,7 @@ const checkClaudeAccount = async (testDir) => {
 
     const reader = createReader();
 
-    assert.deepEqual(reader.getAccount(), { profile: null, limits: [], fetchedAt: 0, error: null });
+    assert.deepEqual(reader.getAccount(), { profile: null, limits: [], fetchedAt: 0, error: null, loginExpiresAt: 0 });
 
     const account = await reader.refresh();
 
@@ -684,6 +698,34 @@ const checkClaudeAccount = async (testDir) => {
         clock.now += 16000;
 
         assert.equal((await createReader(responses).refresh()).error.code, code);
+    }
+
+    // 로그인 만료 시각은 refreshTokenExpiresAt의 시각 값만 읽고(없거나 숫자가 아니면 0) 토큰은 담지 않는다. 조회가 실패해도 알 수 있고, 개발용 재정의가 있으면 그 값을 쓴다.
+    assert.equal(account.loginExpiresAt, 0);
+
+    const loginExpiresAt = clock.now + 29 * 86400000;
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now + 3600000, refreshToken: "secret-refresh", refreshTokenExpiresAt: loginExpiresAt });
+
+    const expiring = await createReader().refresh();
+
+    assert.equal(expiring.loginExpiresAt, loginExpiresAt);
+    assert(!JSON.stringify(expiring).includes("secret-refresh"));
+    assert.equal((await createReader({ usage: jsonResponse({}, 401) }).refresh()).loginExpiresAt, loginExpiresAt);
+    assert.equal((await createReader({ loginExpiresAtOverride: clock.now + 1000 }).refresh()).loginExpiresAt, clock.now + 1000);
+
+    writeCredentials({ accessToken: "secret-token", expiresAt: clock.now + 3600000, refreshTokenExpiresAt: "soon" });
+
+    assert.equal((await createReader().refresh()).loginExpiresAt, 0);
+
+    const flagNow = Date.parse("2026-10-13T00:00:00Z");
+
+    assert.equal(parseLoginExpiryFlag(["electron", ".", "--debug-login-expiry=2d"], flagNow), flagNow + 2 * 86400000);
+    assert.equal(parseLoginExpiryFlag(["--debug-login-expiry=5h"], flagNow), flagNow + 5 * 3600000);
+    assert.equal(parseLoginExpiryFlag(["--debug-login-expiry=-1m"], flagNow), flagNow - 60000);
+
+    for (const rejected of [[], ["--dev"], ["--debug-login-expiry="], ["--debug-login-expiry=2w"], ["--debug-login-expiry=abc"], ["--debug-login-expiry=99999d"], ["--debug-login-expiry=1.5d"]]) {
+        assert.equal(parseLoginExpiryFlag(rejected, flagNow), 0, rejected.join(" "));
     }
 
     // 만료된 토큰은 요청하지 않고, 로그인 정보가 없거나 깨져도 실패로 알린다.
@@ -785,45 +827,93 @@ const checkUpdateCheck = async () => {
     responses.body = { tag_name: "v1.2.0/../../evil" };
 
     assert.equal(await updateCheck.check(), null);
+
+    // 꺼 두면 네트워크를 쓰지 않고, 알고 있던 안내는 거둔다.
+    const toggled = { isEnabled: true };
+    const toggledChanges = [];
+    let toggledRequests = 0;
+    const toggledCheck = createUpdateCheck({
+        currentVersion: "1.0.0",
+        fetchImpl: async () => {
+            toggledRequests++;
+
+            return { ok: true, status: 200, json: async () => ({ tag_name: "v1.1.0" }) };
+        },
+        onChange: (update) => toggledChanges.push(update),
+        isEnabled: () => toggled.isEnabled
+    });
+
+    assert.equal((await toggledCheck.check()).version, "1.1.0");
+
+    toggled.isEnabled = false;
+
+    assert.equal(await toggledCheck.check(), null, "끄면 알고 있던 새 버전 안내를 거둔다");
+    assert.equal(await toggledCheck.check(), null);
+    assert.equal(toggledRequests, 1, "꺼져 있는 동안은 요청하지 않는다");
+    assert.deepEqual(
+        toggledChanges.map((update) => update?.version ?? null),
+        ["1.1.0", null],
+        "안내를 거둘 때 한 번만 알린다"
+    );
+
+    toggled.isEnabled = true;
+
+    assert.equal((await toggledCheck.check()).version, "1.1.0");
 };
 
-// 태그 목록에서 attribute 값을 순서대로 모으고, data-default가 붙은 태그의 값을 기본값으로 돌려준다.
-const readChoices = (tags, valueAttribute) => {
-    const choices = tags.map((tag) => ({ value: tag.match(new RegExp(`\\b${valueAttribute}="([^"]*)"`))[1], isDefault: /\bdata-default\b/.test(tag) }));
+// 엔진 시작 인자: 종료 시각·한도 연장·연장 상한·계정 폴더는 있을 때만 붙고, 연장 상한은 연장이 켜졌을 때만 붙는다.
+const checkCliArgs = () => {
+    const base = { projectDir: "/p", tasksFile: "/t.md", endTime: "", policy: "auto", extendOnLimit: false, extendLimitMinutes: 0, model: "opus", effort: "high", configDir: "" };
 
-    return { values: choices.map((choice) => choice.value), defaultValue: choices.find((choice) => choice.isDefault)?.value };
+    assert.deepEqual(getCliArgs(base), ["--project", "/p", "--no-open", "--tasks-file", "/t.md", "--policy", "auto", "--model", "opus", "--effort", "high"]);
+    assert.deepEqual(getCliArgs({ ...base, endTime: "07:30", configDir: "/c" }).slice(-4), ["--end-time", "07:30", "--config-dir", "/c"]);
+    assert(!getCliArgs({ ...base, extendLimitMinutes: 180 }).includes("--max-extend-minutes"), "연장이 꺼져 있으면 연장 상한도 보내지 않는다");
+    assert(getCliArgs({ ...base, extendOnLimit: true }).includes("--extend-on-limit"));
+    assert(!getCliArgs({ ...base, extendOnLimit: true }).includes("--max-extend-minutes"), "제한 없음(0)이면 연장 상한을 보내지 않는다");
+    assert.deepEqual(getCliArgs({ ...base, extendOnLimit: true, extendLimitMinutes: 180 }).slice(-3), ["--extend-on-limit", "--max-extend-minutes", "180"]);
+
+    const defaults = getCliArgs({ ...base, commitPrefix: DEFAULT_COMMIT_PREFIX, workBranch: DEFAULT_WORK_BRANCH });
+
+    assert(!defaults.includes("--commit-prefix") && !defaults.includes("--branch"), "기본값이면 인자를 생략한다");
+    assert.deepEqual(getCliArgs({ ...base, commitPrefix: "chore(ai):", workBranch: "bot/work" }).slice(-4), ["--commit-prefix", "chore(ai):", "--branch", "bot/work"]);
+    assert(!getCliArgs({ ...base, logRetentionDays: DEFAULT_LOG_RETENTION_DAYS }).includes("--log-retention-days"), "기본 보관 기간이면 인자를 생략한다");
+    assert.deepEqual(getCliArgs({ ...base, logRetentionDays: 7 }).slice(-2), ["--log-retention-days", "7"]);
 };
 
-// 모델은 name="model" 라디오, Effort는 effort-levels 목록의 option label이다.
-const readModelChoices = (html) => {
-    return readChoices(html.match(/<input\b[^>]*\bname="model"[^>]*>/g) ?? [], "value");
+// 커밋 접두어·작업 브랜치의 기본값과 검증 규칙은 엔진과 앱이 같아야 한다.
+const checkGitNameSync = () => {
+    assert.equal(DEFAULT_COMMIT_PREFIX, ENGINE_COMMIT_PREFIX);
+    assert.equal(DEFAULT_WORK_BRANCH, ENGINE_WORK_BRANCH);
+    assert.equal(DEFAULT_LOG_RETENTION_DAYS, AUTOPILOT_DEFAULTS.logRetentionDays);
+
+    const prefixes = ["[ap]", "chore(ai):", "", " x", "x ", "a`b", "x".repeat(20), "x".repeat(21), "--x", "a\nb", "한글 접두어", "🤖"];
+    const branches = ["ai/autopilot", "main", "MASTER", "head", "a..b", "/a", "a/", "a//b", "-a", "a b", "x.lock", "a/b.lock", "a.", ".a", "a".repeat(100), "a".repeat(101), "한글", "a_b", "A1/b2"];
+
+    for (const value of prefixes) {
+        assert.equal(isValidCommitPrefix(value), engineUtil.isValidCommitPrefix(value), `커밋 접두어 ${JSON.stringify(value)}`);
+    }
+
+    for (const value of branches) {
+        assert.equal(isValidWorkBranch(value), engineUtil.isValidWorkBranch(value), `작업 브랜치 ${JSON.stringify(value)}`);
+    }
+
+    assert.equal(isValidCommitPrefix(undefined), false);
+    assert.equal(isValidWorkBranch(null), false);
 };
 
-const readEffortChoices = (html) => {
-    const listHtml = html.match(/<datalist id="effort-levels">([\s\S]*?)<\/datalist>/)[1];
-
-    return readChoices(listHtml.match(/<option\b[^>]*>/g) ?? [], "label");
-};
-
-// 허용 값은 엔진(config.js)·러너·화면(index.html) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
+// 허용 값은 엔진(config.js)·러너·화면(desktop/ui/lib/constants.js) 세 곳에 있으므로 어긋나면 실패시킨다. 정책은 화면의 값이 엔진 별칭이고 기본값이 엔진 기본 정책이어야 한다.
 const checkChoiceSync = () => {
-    const html = fs.readFileSync(path.join(import.meta.dirname, "../desktop/index.html"), "utf8");
-    const model = readModelChoices(html);
-    const effort = readEffortChoices(html);
-
     assert.deepEqual(MODEL_CHOICES, ENGINE_MODELS);
     assert.equal(MODEL_ID_PATTERN.source, ENGINE_MODEL_ID_PATTERN.source);
     assert.deepEqual(EFFORT_CHOICES, ENGINE_EFFORTS);
-    assert.deepEqual(model.values, ENGINE_MODELS);
-    assert.deepEqual(effort.values, ENGINE_EFFORTS);
-    assert.equal(model.defaultValue, DEFAULT_MODEL);
-    assert.equal(effort.defaultValue, DEFAULT_EFFORT);
+    assert.deepEqual(UI_MODEL_FAMILIES, ENGINE_MODELS);
+    assert.deepEqual(UI_EFFORT_LEVELS, ENGINE_EFFORTS);
+    assert.equal(UI_DEFAULT_MODEL, DEFAULT_MODEL);
+    assert.equal(UI_EFFORT_LEVELS[UI_DEFAULT_EFFORT_LEVEL], DEFAULT_EFFORT);
 
-    const policy = readChoices(html.match(/<input\b[^>]*\bname="policy"[^>]*>/g) ?? [], "value");
-
-    assert.deepEqual(policy.values, ["auto", "todo"]);
-    assert(policy.values.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
-    assert.equal(POLICY_ALIASES[policy.defaultValue], POLICY_SELF);
+    assert.deepEqual(UI_POLICIES, ["auto", "todo"]);
+    assert(UI_POLICIES.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
+    assert.equal(POLICY_ALIASES[UI_DEFAULT_POLICY], POLICY_SELF);
 };
 
 // 공식 모델 목록: 새 모델은 목록에서 그대로 따라오고, 형식이 다른 항목은 걸러내며, 조회가 안 되면 이전 목록을 유지한다.
@@ -911,6 +1001,8 @@ const runChecks = async () => {
 
     try {
         checkChoiceSync();
+        checkCliArgs();
+        checkGitNameSync();
         checkProjectError(testDir);
         checkReportOpenGuard(testDir);
 

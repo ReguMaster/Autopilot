@@ -1,0 +1,495 @@
+/* 전체 기록: 아래에서 올라오는 흰 시트. 열 때 감속, 닫을 때 가속해 내려간다 */
+.history,
+.archive,
+.schedule {
+    position: fixed;
+    top: 64px;
+    right: 10px;
+    bottom: 0;
+    left: 10px;
+    z-index: 8;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 28px;
+    padding: 22px 20px 16px;
+    border-radius: 20px 20px 0 0;
+    background: var(--bg);
+    box-shadow: var(--shadow);
+    translate: 0 calc(100% + 48px);
+    visibility: hidden;
+    transition:
+        translate 0.38s var(--ease-in),
+        visibility 0s linear 0.38s;
+}
+
+body.history-open .history,
+body.archive-open .archive,
+body.schedule-open .schedule {
+    translate: 0;
+    visibility: visible;
+    transition:
+        translate 0.6s var(--ease-out),
+        visibility 0s;
+}
+
+.history::before,
+.archive::before,
+.schedule::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--hair-strong);
+    translate: -50% 0;
+}
+
+.history-log,
+.history-rounds {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.history-head {
+    display: flex;
+    align-items: center;
+    gap: 10px 14px;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.history-head .check {
+    margin-left: auto;
+}
+
+.history-head h2 {
+    color: var(--ink);
+    font-size: var(--text-md);
+}
+
+.log {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: var(--text-xs);
+    line-height: 1.75;
+}
+
+/* 화면 밖 줄(최대 3000줄)은 그리지 않는다 */
+.line {
+    display: flex;
+    gap: 12px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1.75em;
+}
+
+.line .ln {
+    flex: none;
+    min-width: 3.2em;
+    color: var(--faint);
+    text-align: right;
+    user-select: none;
+}
+
+.line .tx {
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.line.empty .tx,
+.log [data-kind="app"] .tx,
+.log [data-kind="tool"] .tx {
+    color: var(--muted);
+}
+
+.log [data-kind="round"] .tx {
+    font-weight: 600;
+}
+
+.log [data-kind="ok"] .tx {
+    color: var(--add);
+}
+
+.log [data-kind="warn"] .tx {
+    color: var(--warn);
+}
+
+.log [data-kind="err"] .tx {
+    color: var(--del);
+}
+
+.round-summary {
+    margin-bottom: 10px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.rounds {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.round {
+    display: grid;
+    grid-template-columns: 2.2em minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--hair);
+}
+
+.round-no {
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.round-body {
+    display: grid;
+    min-width: 0;
+}
+
+.round-body small {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.tag {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tag[data-tone="run"] {
+    color: var(--accent);
+}
+
+.tag[data-tone="ok"] {
+    color: var(--add);
+}
+
+.tag[data-tone="warn"] {
+    color: var(--warn);
+}
+
+.tag[data-tone="danger"] {
+    color: var(--del);
+}
+
+.tag[data-tone="muted"] {
+    color: var(--muted);
+}
+
+/* 시작 화면의 지난 실행: 인사 아래에 최근 몇 개를 보여준다 */
+.recent {
+    flex: none;
+    margin-top: 28px;
+    min-height: 0;
+}
+
+.recent-head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    color: var(--muted);
+}
+
+.recent-head h2 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.run-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 2px 12px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--ink);
+    text-align: left;
+}
+
+.run-item:hover {
+    background: var(--chip);
+}
+
+.run-when {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    font-size: var(--text-md);
+}
+
+.run-when b {
+    font-weight: 600;
+}
+
+.run-when .num {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.run-meta,
+.run-headline {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.run-headline {
+    color: var(--ink-2);
+}
+
+.run-meta:empty,
+.run-headline:empty {
+    display: none;
+}
+
+.recent .run-headline {
+    display: none;
+}
+
+/* 지난 실행 시트: 전체 기록과 같은 시트에 목록과 하루의 대화를 담는다 */
+.archive,
+.schedule {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.archive-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.archive-head h2 {
+    color: var(--ink);
+    font-size: var(--text-md);
+}
+
+.archive-head .num {
+    margin-right: auto;
+}
+
+.archive-head .icon.back {
+    width: 12px;
+    height: 12px;
+    rotate: 90deg;
+}
+
+.archive-note,
+.archive-notes {
+    flex: none;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.archive-note[data-tone="warn"] {
+    color: var(--warn);
+}
+
+.archive-pane {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+
+#archive-list-pane {
+    overflow: auto;
+}
+
+.archive-list .run-item {
+    padding: 11px 10px;
+    border-bottom: 1px solid var(--hair);
+    border-radius: 0;
+}
+
+.archive-list .run-item:hover {
+    border-radius: 10px;
+}
+
+.archive-summary {
+    flex: none;
+    max-height: 46%;
+    overflow: auto;
+}
+
+.archive-lead {
+    color: var(--ink-2);
+    font-size: var(--text-md);
+    line-height: 1.6;
+}
+
+.archive-summary .gains {
+    margin-top: 12px;
+}
+
+.archive-summary .finish-links {
+    margin-top: 12px;
+    padding-bottom: 12px;
+}
+
+.chat {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 10px;
+    overflow: auto;
+    padding: 14px 4px 24px 0;
+    border-top: 1px solid var(--hair);
+}
+
+.chat-item {
+    flex: none;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 44px;
+}
+
+.bubble {
+    max-width: 92%;
+    padding: 10px 14px;
+    border-radius: 4px 16px 16px 16px;
+    background: var(--surface);
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.bubble .tool,
+.chat-item.work .tool {
+    font-size: var(--text-xs);
+}
+
+.bubble .said {
+    display: block;
+}
+
+.bubble .tool ~ .said,
+.bubble .chat-more ~ .said {
+    margin-top: 6px;
+}
+
+.bubble time {
+    display: block;
+    margin-top: 4px;
+    color: var(--faint);
+    font-size: var(--text-xs);
+}
+
+.chat-more {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.chat-item.work {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 0;
+}
+
+.chat-item.round {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.chat-item.round b {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.chat-item.round::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--hair);
+}
+
+.chat-item.result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+}
+
+.chat-item.commit {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+}
+
+.chat-item.commit code {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.chat-item.commit .subject {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-item.commit ins,
+.chat-item.commit del {
+    font-size: var(--text-xs);
+    text-decoration: none;
+}
+
+.chat-item.commit ins {
+    color: var(--add);
+}
+
+.chat-item.commit del {
+    color: var(--del);
+}
+
+.chat-item.gain {
+    display: flex;
+    gap: 8px;
+    font-size: var(--text-sm);
+}
+
+.chat-item.gain b {
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.chat-item.note {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    text-align: center;
+}

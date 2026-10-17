@@ -2,85 +2,92 @@ const { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } = require("el
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createRunner, execEngine, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
-const { listRuns, readRun, deleteRun, getRunFiles, MAX_RUN_COUNT } = require("./runHistory.cjs");
-const { handleState, notify } = require("./systemIntegration.cjs");
+const { createStreakStore } = require("./streakStore.cjs");
+const { sanitizeCardContent, getCardFileName, renderCardPng } = require("./shareCard.cjs");
+const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
+const { handleState, notify, showWindow, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
+const { shouldRunPostAction, runPowerAction, createPostAction } = require("./postAction.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
+const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
-const { normalizeSchedules, parseSchedule } = require("./scheduleRules.cjs");
+const { parseSchedule } = require("./scheduleRules.cjs");
+const { getCliArgs } = require("./engineArgs.cjs");
+const { readJsonFile } = require("./jsonFile.cjs");
+const { createSettingsStore, getProjectKey, ACCOUNT_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
+const { createSessionPool } = require("./sessionPool.cjs");
 
-const POLICY_CHOICES = ["auto", "todo"];
-const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
 const SCHEDULE_RESUME_DELAY_MS = 5000;
 const TASKS_FILE_NAME = "tasks.md";
-const DEFAULT_SETTINGS = {
-    projectDir: "",
-    tasks: "",
-    endTime: "",
-    policy: "auto",
-    extendOnLimit: false,
-    model: "opus",
-    modelVersions: {},
-    effort: "high",
-    accounts: [],
-    accountId: "default",
-    claudeDir: "",
-    keepInTray: false,
-    launchAtLogin: false,
-    schedules: []
+const SETTINGS_FILE_FILTERS = [{ name: "AutoPilot 설정", extensions: ["json"] }];
+const MAX_SETTINGS_IMPORT_BYTES = 2 * 1024 * 1024;
+
+// 끝난 실행 뒤 PC를 절전·종료하기 전에 취소할 수 있게 기다리는 시간
+const POST_ACTION_DELAY_MS = 60 * 1000;
+const SETTINGS_SCOPES = ["global", "project"];
+// 값이 올바르지 않을 때 입력 줄이 보여줄 이유. 없는 키는 일반 문구를 쓴다.
+const SETTING_ERROR_MESSAGES = {
+    commitPrefix: "커밋 접두어는 앞뒤 공백·백틱·제어 문자가 없는 1~20자여야 해요.",
+    workBranch: "작업 브랜치는 영문·숫자·._-/로 된 git 브랜치 이름이어야 하고 main·master는 쓸 수 없어요."
 };
 
-// modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
-const isModelVersions = (value) => {
-    return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(([family, id]) => MODEL_CHOICES.includes(family) && MODEL_ID_PATTERN.test(id));
+const settingsStore = createSettingsStore({ dir: app.getPath("userData") });
+// 계정·시스템·선택한 프로젝트처럼 전역에만 있는 값과 전역 기본값. 프로젝트마다 달라지는 값은 readEffective로 읽는다.
+const readSettings = settingsStore.read;
+const writeSettings = settingsStore.write;
+const updateSettings = settingsStore.update;
+// 프로젝트(생략하면 활성 프로젝트)가 덮어쓴 값을 전역 값 위에 얹은 설정. 프로젝트가 없으면 전역 값이다.
+const readEffective = (projectDir) => settingsStore.resolve(projectDir).settings;
+
+// 화면이 설정을 그리는 데 필요한 것: 적용되는 값, 프로젝트가 덮어쓴 키, 전역 기본값, 한 번 알릴 안내.
+const getSettingsView = (projectDir) => {
+    return { ...settingsStore.resolve(projectDir), notice: settingsStore.takeNotice() };
 };
 
-// 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
-const SETTING_VALIDATORS = {
-    projectDir: (value) => typeof value === "string",
-    tasks: (value) => typeof value === "string",
-    endTime: (value) => value === "" || END_TIME_PATTERN.test(value),
-    policy: (value) => POLICY_CHOICES.includes(value),
-    extendOnLimit: (value) => typeof value === "boolean",
-    model: (value) => MODEL_CHOICES.includes(value),
-    modelVersions: isModelVersions,
-    effort: (value) => EFFORT_CHOICES.includes(value),
-    accounts: (value) => Array.isArray(value),
-    accountId: (value) => typeof value === "string",
-    claudeDir: (value) => typeof value === "string",
-    keepInTray: (value) => typeof value === "boolean",
-    launchAtLogin: (value) => typeof value === "boolean",
-    schedules: (value) => Array.isArray(value)
+// 예약은 전역 목록과 선택한 프로젝트의 목록을 합쳐 보여준다(덮어쓰기가 아니라 합침). 목록에서는 scope로 어느 쪽인지 구분하고, 저장할 때 다시 나눈다.
+const readAllSchedules = () => {
+    const { tabs, schedules } = readSettings();
+    const projectSchedules = tabs.flatMap((projectDir) => (settingsStore.readProject(projectDir).schedules ?? []).map((schedule) => ({ ...schedule, scope: "project", projectDir: projectDir })));
+
+    return [...schedules.map((schedule) => ({ ...schedule, scope: "global" })), ...projectSchedules];
 };
 
-const getSettingsFile = () => {
-    return path.join(app.getPath("userData"), "settings.json");
-};
+// 프로젝트 예약은 projectDir이 가리키는 열린 탭의 프로젝트 파일에 나눠 쓴다(projectDir이 없는 항목은 활성 탭의 것이다).
+const writeAllSchedules = (list) => {
+    const { tabs, projectDir: activeDir } = readSettings();
 
-const readSettings = () => {
-    try {
-        const saved = JSON.parse(fs.readFileSync(getSettingsFile(), "utf8"));
+    updateSettings({ schedules: list.filter((schedule) => schedule.scope !== "project") });
 
-        const settings = Object.fromEntries(Object.entries(SETTING_VALIDATORS).map(([key, isValid]) => [key, isValid(saved[key]) ? saved[key] : DEFAULT_SETTINGS[key]]));
+    for (const projectDir of tabs) {
+        const mine = list.filter((schedule) => schedule.scope === "project" && getSessionKey(schedule.projectDir || activeDir) === getSessionKey(projectDir));
 
-        return { ...settings, schedules: normalizeSchedules(settings.schedules) };
-    } catch {
-        return { ...DEFAULT_SETTINGS };
+        if (mine.length > 0 || (settingsStore.readProject(projectDir).schedules ?? []).length > 0) {
+            settingsStore.updateProject(projectDir, { schedules: mine });
+        }
     }
 };
 
-const writeSettings = (settings) => {
-    fs.mkdirSync(app.getPath("userData"), { recursive: true });
-    fs.writeFileSync(getSettingsFile(), JSON.stringify(settings, null, 4));
+// 프로젝트 예약은 그 프로젝트에서, 전역 예약은 그때 활성인 탭의 프로젝트에서 돈다.
+const getScheduleDir = (schedule) => {
+    return schedule.scope === "project" && schedule.projectDir ? schedule.projectDir : getActiveDir();
+};
+
+// 다른 프로젝트를 골라 목록에서 빠져 있는 예약도 판단 상태(마지막 시작 등)는 남겨 둔다.
+const getKnownScheduleIds = () => {
+    return [...readSettings().schedules, ...settingsStore.listProjects().flatMap((project) => project.overrides.schedules ?? [])].map((schedule) => schedule.id);
 };
 
 const createFailure = (code, msg) => {
     return { status: STATUS_FAILED, error: { code: code, msg: msg } };
+};
+
+const createNoSessionFailure = () => {
+    return createFailure("INVALID_PROJECT", "열려 있는 프로젝트가 아니에요.");
 };
 
 const getEngineScript = () => {
@@ -111,24 +118,6 @@ const resolveModel = (family, modelVersions) => {
     return modelVersions[family] || family;
 };
 
-const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, model, effort, configDir }) => {
-    const args = ["--project", projectDir, "--no-open", "--tasks-file", tasksFile, "--policy", policy, "--model", model, "--effort", effort];
-
-    if (endTime) {
-        args.push("--end-time", endTime);
-    }
-
-    if (extendOnLimit) {
-        args.push("--extend-on-limit");
-    }
-
-    if (configDir) {
-        args.push("--config-dir", configDir);
-    }
-
-    return args;
-};
-
 const broadcast = (channel, payload) => {
     for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
@@ -137,23 +126,132 @@ const broadcast = (channel, payload) => {
     }
 };
 
-const runner = createRunner({
-    onLog: (entries) => broadcast("autopilot:log", entries),
-    onState: (state) => {
-        broadcast("autopilot:state", state);
-        handleState(state);
-    }
+// 앱이 시작한 실행이 스스로 끝나면 설정에 따라 PC를 절전·종료한다. 곧바로 하지 않고 창을 띄워 알린 뒤 기다리며, 그 안에 취소할 수 있다.
+const postAction = createPostAction({
+    delayMs: POST_ACTION_DELAY_MS,
+    run: async (action) => {
+        const error = await runPowerAction(process.platform, action);
+
+        if (error) {
+            broadcast("autopilot:post-action", { pending: null, error: `PC를 ${action === "sleep" ? "절전" : "종료"}하지 못했어요: ${error}` });
+        }
+    },
+    onChange: (pending) => broadcast("autopilot:post-action", { pending: pending, error: "" })
 });
 
-const accounts = createAccountIpc({ readSettings: readSettings, writeSettings: writeSettings, broadcast: broadcast, isRunning: () => runner.isRunning() });
+const watchPostAction = (session, state) => {
+    const isActive = state.status === "running" || state.status === "stopping";
 
-const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update) });
+    if (isActive) {
+        session.isRunOwned = !state.attached;
+        postAction.cancel();
+    }
+
+    if (!isActive && (session.previousStatus === "running" || session.previousStatus === "stopping")) {
+        const action = readSettings().postRunAction;
+
+        const hasOtherActive = sessionPool.getAll().some((other) => other !== session && other.runner.isRunning());
+
+        if (shouldRunPostAction({ previousStatus: session.previousStatus, state: state, action: action, isOwned: session.isRunOwned, hasOtherActive: hasOtherActive })) {
+            showWindow();
+            postAction.start(action);
+        }
+    }
+
+    session.previousStatus = state.status;
+};
+
+// 프로젝트 하나의 실행 세션. 러너와 함께 시작·재연결 진행 여부, 직전 상태를 프로젝트마다 따로 갖는다.
+const createSession = (projectDir) => {
+    const session = { projectDir: projectDir, runner: null, isLaunching: false, isCheckingEngine: false, previousStatus: "idle", isRunOwned: false, tabStatus: "idle" };
+
+    session.runner = createRunner({
+        onLog: (entries) => broadcast("autopilot:log", { projectDir: session.projectDir, entries: entries }),
+        onState: (state) => {
+            broadcast("autopilot:state", { projectDir: session.projectDir, state: state });
+            handleState(session.projectDir, state, { getProjectName: () => (readSettings().tabs.length > 1 ? path.basename(session.projectDir) : "") });
+            watchPostAction(session, state);
+
+            if (state.status !== session.tabStatus) {
+                session.tabStatus = state.status;
+                broadcastTabs();
+            }
+        }
+    });
+
+    return session;
+};
+
+const getActiveDir = () => readSettings().projectDir;
+
+const getSessionKey = (projectDir) => (projectDir ? getProjectKey(projectDir) : "");
+const sessionPool = createSessionPool({
+    getKey: getSessionKey,
+    getActiveDir: getActiveDir,
+    getOpenDirs: () => readSettings().tabs,
+    createSession: createSession
+});
+const isAnyRunning = () => sessionPool.getAll().some((session) => session.runner.isRunning());
+const isProjectRunning = (projectDir) => Boolean(sessionPool.get(projectDir)?.runner.isRunning());
+
+// 프로젝트(탭)가 고른 계정. 고르지 않았으면 전역 계정을 따른다. 프로젝트가 없으면 전역에 저장한다.
+// 열린 탭과 각 탭의 실행 상태. 화면은 이 요약으로 탭 줄을 그린다(탭 이름은 폴더 이름).
+const getTabsPayload = () => {
+    const { tabs, projectDir } = readSettings();
+
+    return { active: projectDir, tabs: tabs.map((dir) => ({ projectDir: dir, name: path.basename(dir), status: sessionPool.get(dir)?.runner.getState().status ?? "idle" })) };
+};
+
+let lastTabsKey = "";
+
+const broadcastTabs = ({ force = false } = {}) => {
+    const payload = getTabsPayload();
+    const key = JSON.stringify(payload);
+
+    if (force || key !== lastTabsKey) {
+        lastTabsKey = key;
+        broadcast("autopilot:tabs", payload);
+    }
+
+    return payload;
+};
+
+const getAccountId = (projectDir) => readEffective(projectDir).accountId;
+const setAccountId = (projectDir, accountId) => {
+    if (projectDir) {
+        settingsStore.updateProject(projectDir, { [ACCOUNT_KEY]: accountId });
+    } else {
+        updateSettings({ accountId: accountId });
+    }
+};
+
+// --debug-login-expiry는 만료 화면을 보는 개발용이라 패키지 앱에서는 읽지 않는다.
+const accounts = createAccountIpc({
+    readSettings: readSettings,
+    writeSettings: writeSettings,
+    getAccountId: getAccountId,
+    setAccountId: setAccountId,
+    resolveProjectDir: (requestedDir) => sessionPool.get(requestedDir)?.projectDir ?? null,
+    broadcast: broadcast,
+    isRunning: isAnyRunning,
+    isProjectRunning: isProjectRunning,
+    loginExpiresAtOverride: app.isPackaged ? 0 : parseLoginExpiryFlag(process.argv)
+});
+
+const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update), isEnabled: () => readSettings().checkUpdates });
 
 // 예약이 조건을 만족하면 마지막으로 저장한 작업·정책·모델·Effort로 시작한다. 종료 시각은 예약이 정한 값이라 다음 시작의 기본값으로 저장하지 않는다.
 const startScheduledRun = async (schedule, plan) => {
     try {
-        const settings = readSettings();
+        const session = sessionPool.get(getScheduleDir(schedule));
+
+        if (!session) {
+            return { ok: false, message: "예약한 프로젝트가 열려 있지 않아요." };
+        }
+
+        const settings = readEffective(session.projectDir);
         const result = await launchRun(
+            session,
             settings,
             { tasks: settings.tasks, endTime: plan.endTime, policy: settings.policy, extendOnLimit: settings.extendOnLimit, model: settings.model, effort: settings.effort },
             { remember: false }
@@ -166,21 +264,27 @@ const startScheduledRun = async (schedule, plan) => {
 };
 
 // 앱을 닫았다 켠 사이에 계속 실행된 엔진이 있으면 먼저 연결해 둔다. 모르고 두 번째 엔진을 시작하지 않게 하기 위해서다.
-const isEngineBusy = async () => {
-    await attachRunningEngine();
+const isEngineBusy = async (schedule) => {
+    const projectDir = getScheduleDir(schedule);
 
-    return runner.isRunning() || isLaunching;
+    await attachRunningEngine(projectDir);
+
+    const session = sessionPool.get(projectDir);
+
+    return !session || session.runner.isRunning() || session.isLaunching;
 };
 
 const scheduler = createScheduler({
     stateFile: path.join(app.getPath("userData"), "schedule-state.json"),
-    readSchedules: () => readSettings().schedules,
-    writeSchedules: (schedules) => writeSettings({ ...readSettings(), schedules: schedules }),
-    getUsage: () => accounts.getActiveUsage(),
-    refreshUsage: () => accounts.refreshActiveUsage(),
+    readSchedules: readAllSchedules,
+    writeSchedules: writeAllSchedules,
+    getKnownIds: getKnownScheduleIds,
+    getUsage: (schedule) => accounts.getActiveUsage(getScheduleDir(schedule)),
+    refreshUsage: (schedule) => accounts.refreshActiveUsage(getScheduleDir(schedule)),
+    getTargetKey: (schedule) => getSessionKey(getScheduleDir(schedule)),
     isBusy: isEngineBusy,
     startRun: startScheduledRun,
-    notify: notify,
+    notify: (title, body) => notify(title, body, "schedule"),
     onChange: (payload) => broadcast("autopilot:schedules", payload)
 });
 
@@ -203,20 +307,22 @@ const getStartError = (settings, options) => {
     return null;
 };
 
-let isLaunching = false;
-
 // 수동 시작과 예약 시작이 함께 쓰는 시작 절차. remember가 참이면 쓴 값을 다음 시작의 기본값으로 저장한다.
-const launchRun = async (settings, startOptions, { remember }) => {
+const launchRun = async (session, settings, startOptions, { remember }) => {
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
     const startError = getStartError(settings, startOptions);
 
     if (startError) {
         return startError;
     }
 
-    isLaunching = true;
+    session.isLaunching = true;
 
     try {
-        const runAccount = await accounts.getRunAccount();
+        const runAccount = await accounts.getRunAccount(session.projectDir);
 
         if (runAccount.status !== STATUS_OK) {
             return runAccount;
@@ -229,25 +335,38 @@ const launchRun = async (settings, startOptions, { remember }) => {
         fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
 
         if (remember) {
-            writeSettings({ ...settings, ...startOptions });
+            settingsStore.remember(settings.projectDir, startOptions);
         }
 
         const model = resolveModel(startOptions.model, settings.modelVersions);
 
-        return await runner.start({
+        return await session.runner.start({
             ...getEngineLaunch(),
             projectDir: settings.projectDir,
-            args: getCliArgs({ ...startOptions, model: model, projectDir: settings.projectDir, tasksFile: tasksFile, configDir: runAccount.data.configDir }),
+            args: getCliArgs({
+                ...startOptions,
+                extendLimitMinutes: settings.extendLimitMinutes,
+                commitPrefix: settings.commitPrefix,
+                workBranch: settings.workBranch,
+                logRetentionDays: settings.logRetentionDays,
+                model: model,
+                projectDir: settings.projectDir,
+                tasksFile: tasksFile,
+                configDir: runAccount.data.configDir
+            }),
             roundOptions: { model: model, effort: startOptions.effort }
         });
     } finally {
-        isLaunching = false;
+        session.isLaunching = false;
     }
 };
 
 const handleStart = async (event, options = {}) => {
+    const session = sessionPool.get(options.projectDir);
+
     return launchRun(
-        readSettings(),
+        session,
+        readEffective(session?.projectDir),
         {
             tasks: typeof options.tasks === "string" ? options.tasks : "",
             endTime: String(options.endTime || ""),
@@ -266,59 +385,243 @@ const handleSetOptions = async (event, options = {}) => {
         return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
     }
 
-    const settings = readSettings();
-    const result = await runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort });
+    const session = sessionPool.get(options.projectDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const settings = readEffective(session.projectDir);
+    const result = await session.runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort });
 
     if (result.status === STATUS_OK) {
-        writeSettings({ ...settings, model: options.model, effort: options.effort });
+        settingsStore.remember(settings.projectDir, { model: options.model, effort: options.effort });
     }
 
     return result;
 };
 
-// 계열의 모델 버전을 고정하거나(모델 ID) 최신으로 되돌린다(빈 문자열). 실행 중에는 바꾸지 않는다.
-const handleSetModelVersion = (event, family, version) => {
-    if (runner.isRunning()) {
-        return createFailure("RUNNING", "실행 중에는 모델 버전을 바꿀 수 없어요.");
+// 설정 패널에서 바꾼 값을 전역 기본값(global)이나 선택한 프로젝트의 덮어쓰기(project)로 저장한다. 실행 중에는 바꾸지 않는다.
+const handleUpdateSettings = (event, request = {}) => {
+    const { scope, patch } = request;
+    const keys = patch && typeof patch === "object" ? Object.keys(patch) : [];
+    const session = sessionPool.get(request.projectDir);
+
+    if (!session) {
+        return createNoSessionFailure();
     }
 
-    if (!MODEL_CHOICES.includes(family) || (version !== "" && !MODEL_ID_PATTERN.test(version))) {
-        return createFailure("INVALID_OPTIONS", "모델 계열 또는 버전 값이 올바르지 않아요.");
+    if (session.runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 바꿀 수 없어요.");
     }
 
-    const settings = readSettings();
-    const modelVersions = { ...settings.modelVersions, [family]: version };
+    if (!SETTINGS_SCOPES.includes(scope) || keys.length === 0 || !keys.every((key) => OVERRIDABLE_KEYS.includes(key) && SETTING_VALIDATORS[key](patch[key]))) {
+        const invalidKey = keys.find((key) => !OVERRIDABLE_KEYS.includes(key) || !SETTING_VALIDATORS[key](patch[key]));
 
-    if (!version) {
-        delete modelVersions[family];
+        return createFailure("INVALID_OPTIONS", SETTING_ERROR_MESSAGES[invalidKey] || "설정 범위나 값이 올바르지 않아요.");
     }
 
-    writeSettings({ ...settings, modelVersions: modelVersions });
+    const { projectDir } = session;
 
-    return { status: STATUS_OK, data: { modelVersions: modelVersions } };
+    if (scope === "project" && !projectDir) {
+        return createFailure("INVALID_PROJECT", "프로젝트를 먼저 선택해 주세요.");
+    }
+
+    if (scope === "project") {
+        settingsStore.updateProject(projectDir, patch);
+    } else {
+        updateSettings(patch);
+    }
+
+    return { status: STATUS_OK, data: getSettingsView(projectDir) };
 };
 
-// 앱을 닫았다 켠 사이에 계속 실행된 엔진이 선택한 프로젝트에 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
-let isCheckingRunningEngine = false;
+const getExportFileName = () => {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
 
-const attachRunningEngine = async () => {
-    const { projectDir } = readSettings();
+    return `autopilot-settings-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.json`;
+};
 
-    if (isCheckingRunningEngine || runner.isRunning() || getProjectError(projectDir)) {
+// 설정을 파일로 내보낸다. 계정·Claude 데이터 폴더·선택한 프로젝트·자동 실행처럼 이 PC에서만 뜻이 있는 값은 담지 않는다.
+const handleExportSettings = async (event) => {
+    const selection = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: "설정 내보내기",
+        defaultPath: path.join(app.getPath("documents"), getExportFileName()),
+        filters: SETTINGS_FILE_FILTERS
+    });
+
+    if (selection.canceled || !selection.filePath) {
+        return { status: STATUS_OK, data: { canceled: true } };
+    }
+
+    try {
+        fs.writeFileSync(selection.filePath, JSON.stringify(settingsStore.exportData(), null, 4), "utf8");
+
+        return { status: STATUS_OK, data: { canceled: false } };
+    } catch (error) {
+        return createFailure("EXPORT_FAILED", `설정을 내보내지 못했어요: ${error.message}`);
+    }
+};
+
+// 마친 실행의 성과 카드를 PNG로 저장한다. 저장할 곳을 먼저 받고(취소하면 그리지 않는다) 숨긴 창에 그려 파일로 쓴다.
+const handleSaveCard = async (event, payload = {}) => {
+    const content = sanitizeCardContent(payload.content);
+
+    if (!content) {
+        return createFailure("INVALID_CARD", "카드에 담을 문장이 없어요.");
+    }
+
+    const selection = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: "성과 카드 저장",
+        defaultPath: path.join(app.getPath("pictures"), getCardFileName(payload.projectName, Date.now())),
+        filters: [{ name: "PNG 이미지", extensions: ["png"] }]
+    });
+
+    if (selection.canceled || !selection.filePath) {
+        return { status: STATUS_OK, data: { canceled: true } };
+    }
+
+    try {
+        const file = /\.png$/i.test(selection.filePath) ? selection.filePath : `${selection.filePath}.png`;
+
+        await fs.promises.writeFile(file, await renderCardPng(content));
+
+        return { status: STATUS_OK, data: { canceled: false, file: file } };
+    } catch (error) {
+        return createFailure("CARD_FAILED", `카드를 저장하지 못했어요: ${error.message}`);
+    }
+};
+
+// 내보낸 파일의 설정으로 덮어쓴다. 프로젝트별 설정은 이 PC에 있는 Git 저장소 루트만 적용한다. 덮어쓰는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handleImportSettings = async (event) => {
+    if (isAnyRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 가져올 수 없어요.");
+    }
+
+    const selection = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), { title: "설정 가져오기", properties: ["openFile"], filters: SETTINGS_FILE_FILTERS });
+
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: { canceled: true } };
+    }
+
+    const file = selection.filePaths[0];
+    const loaded = fs.statSync(file).size > MAX_SETTINGS_IMPORT_BYTES ? { state: "corrupt" } : readJsonFile(file);
+
+    if (loaded.state !== "ok") {
+        return createFailure("IMPORT_FAILED", "설정 파일을 읽지 못했어요. AutoPilot이 내보낸 JSON 파일인지 확인해 주세요.");
+    }
+
+    const result = settingsStore.importData(loaded.data, { canUseProject: (projectDir) => !getProjectError(projectDir) });
+
+    if (result.error) {
+        return createFailure("IMPORT_FAILED", result.error);
+    }
+
+    // 로그인 자동 실행은 트레이 상주가 켜져 있어야 하므로 가져온 값이 이를 깨지 않게 한다.
+    if (readSettings().launchAtLogin) {
+        updateSettings({ keepInTray: true });
+    }
+
+    applyPreferenceChanges();
+
+    return { status: STATUS_OK, data: { canceled: false, ...getSettingsView(), keyCount: result.keyCount, projectCount: result.projectCount, skippedCount: result.skippedCount } };
+};
+
+// 기본값으로 되돌린다. 계정·Claude 데이터 폴더·선택한 프로젝트·자동 실행·예약은 그대로 두고 프로젝트별 설정은 지운다. 확인은 화면의 모달이 먼저 받는다.
+const handleRestoreDefaults = () => {
+    if (isAnyRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 되돌릴 수 없어요.");
+    }
+
+    settingsStore.resetPreferences();
+    applyPreferenceChanges();
+
+    return { status: STATUS_OK, data: getSettingsView() };
+};
+
+// 환경설정이 바뀌면 바로 반영한다. 새 버전 확인은 켜면 지금 확인하고 끄면 알고 있던 안내를 거두고, 절전 방지는 실행 중이어도 다시 판단한다.
+const applyPreferenceChanges = () => {
+    updateCheck.check();
+    refreshSleepBlocker();
+};
+
+// 알림처럼 실행과 무관하게 언제든 바꾸는 전역 환경설정을 저장한다.
+const handleSetPreferences = (event, patch) => {
+    const keys = patch && typeof patch === "object" ? Object.keys(patch) : [];
+
+    if (keys.length === 0 || !keys.every((key) => PREFERENCE_KEYS.includes(key) && SETTING_VALIDATORS[key](patch[key]))) {
+        return createFailure("INVALID_OPTIONS", "환경설정 값이 올바르지 않아요.");
+    }
+
+    updateSettings(patch);
+
+    applyPreferenceChanges();
+
+    return { status: STATUS_OK, data: getSettingsView() };
+};
+
+// 선택한 프로젝트가 덮어쓴 값을 지워 전역 값을 따라가게 한다.
+const handleResetSettings = (event, keys, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = session;
+
+    if (session.runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 설정을 바꿀 수 없어요.");
+    }
+
+    if (!Array.isArray(keys) || keys.length === 0 || !keys.every((key) => OVERRIDABLE_KEYS.includes(key))) {
+        return createFailure("INVALID_OPTIONS", "되돌릴 설정이 올바르지 않아요.");
+    }
+
+    if (!projectDir) {
+        return createFailure("INVALID_PROJECT", "프로젝트를 먼저 선택해 주세요.");
+    }
+
+    settingsStore.clearProject(projectDir, keys);
+
+    return { status: STATUS_OK, data: getSettingsView(projectDir) };
+};
+
+// 앱을 닫았다 켠 사이에 계속 실행된 엔진이 프로젝트(생략하면 활성 프로젝트)에 있으면 연결한다. 연결 상태는 state 이벤트로 화면에 전달된다.
+const attachRunningEngine = async (requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session || session.isCheckingEngine || session.runner.isRunning() || getProjectError(session.projectDir)) {
         return;
     }
 
-    isCheckingRunningEngine = true;
+    session.isCheckingEngine = true;
 
     try {
-        await runner.attachIfRunning({ ...getEngineLaunch(), projectDir: projectDir });
+        await session.runner.attachIfRunning({ ...getEngineLaunch(), projectDir: session.projectDir });
     } finally {
-        isCheckingRunningEngine = false;
+        session.isCheckingEngine = false;
     }
 };
 
+// 열려 있는 모든 탭의 프로젝트에서 계속 실행 중인 엔진에 연결한다(창에 포커스가 올 때).
+const attachRunningEngines = async () => {
+    await Promise.all(readSettings().tabs.map((projectDir) => attachRunningEngine(projectDir)));
+};
+
+// 보는 프로젝트가 바뀐 뒤 화면이 받을 것. 계정은 프로젝트마다 달라 선택한 계정도 바뀔 수 있어 다시 보내고, 계속 실행 중인 엔진에는 연결한다.
+// 연결하는 동안 나간 이벤트는 렌더러가 아직 이전 프로젝트를 보고 있어 버리므로, 응답에 새 프로젝트의 지금 상태와 로그를 담는다(응답 뒤의 이벤트는 반영된다).
+const getSwitchResult = async (session, extra = {}) => {
+    accounts.broadcastPayload();
+
+    await attachRunningEngine(session.projectDir);
+
+    return { status: STATUS_OK, data: { ...getSettingsView(), ...extra, tabs: broadcastTabs({ force: true }), state: session.runner.getState(), logs: session.runner.getLogs() } };
+};
+
 const handleSelectProject = async (event) => {
-    if (runner.isRunning()) {
+    if (sessionPool.get().runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
     }
 
@@ -331,7 +634,7 @@ const handleSelectProject = async (event) => {
     });
 
     if (selection.canceled) {
-        return { status: STATUS_OK, data: { settings: settings } };
+        return { status: STATUS_OK, data: getSettingsView() };
     }
 
     const projectError = getProjectError(selection.filePaths[0]);
@@ -340,26 +643,98 @@ const handleSelectProject = async (event) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    const nextSettings = { ...settings, projectDir: selection.filePaths[0] };
+    // 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 가고, 아니면 지금 탭의 프로젝트를 바꾼다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
+    const opened = settingsStore.openTab(selection.filePaths[0], { replaceDir: settings.projectDir });
 
-    writeSettings(nextSettings);
+    if (opened.error) {
+        return createFailure("TOO_MANY_TABS", opened.error);
+    }
 
-    await attachRunningEngine();
+    // 바뀐 탭의 이전 프로젝트는 더 열려 있지 않으므로 세션을 버린다.
+    if (!opened.existing && settings.projectDir) {
+        sessionPool.close(settings.projectDir);
+    }
 
-    return { status: STATUS_OK, data: { settings: nextSettings } };
+    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
 };
 
-const handleGetState = async () => {
-    await attachRunningEngine();
+// 폴더를 골라 새 탭으로 연다. 이미 열린 프로젝트면 새 탭 없이 그 탭으로 간다.
+const handleOpenTab = async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const selection = await dialog.showOpenDialog(window, {
+        title: "프로젝트 탭으로 열 폴더 선택",
+        defaultPath: readSettings().projectDir || undefined,
+        properties: ["openDirectory"]
+    });
+
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: { ...getSettingsView(), canceled: true, tabs: getTabsPayload() } };
+    }
+
+    const projectError = getProjectError(selection.filePaths[0]);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    const opened = settingsStore.openTab(selection.filePaths[0]);
+
+    if (opened.error) {
+        return createFailure("TOO_MANY_TABS", opened.error);
+    }
+
+    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
+};
+
+const handleActivateTab = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session?.projectDir) {
+        return createNoSessionFailure();
+    }
+
+    settingsStore.openTab(session.projectDir);
+
+    return getSwitchResult(session);
+};
+
+// 탭을 닫는다. 실행 중인 탭은 닫지 않는다(종료한 뒤 닫는다). 활성 탭을 닫으면 이웃 탭이 활성이 된다.
+const handleCloseTab = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session?.projectDir) {
+        return createNoSessionFailure();
+    }
+
+    if (session.runner.isRunning() || session.isLaunching) {
+        return createFailure("RUNNING", "실행 중인 탭은 닫을 수 없어요. 먼저 종료해 주세요.");
+    }
+
+    settingsStore.closeTab(session.projectDir);
+    sessionPool.close(session.projectDir);
+
+    return getSwitchResult(sessionPool.get());
+};
+
+const handleGetState = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    await attachRunningEngine(session.projectDir);
 
     return {
         version: app.getVersion(),
         platform: process.platform,
         canLaunchAtLogin: loginItem.isSupported(),
         update: updateCheck.getUpdate(),
-        settings: readSettings(),
-        state: runner.getState(),
-        logs: runner.getLogs()
+        ...getSettingsView(session.projectDir),
+        tabs: getTabsPayload(),
+        postAction: postAction.getPending(),
+        state: session.runner.getState(),
+        logs: session.runner.getLogs()
     };
 };
 
@@ -389,11 +764,9 @@ const handleSetSystem = (event, options = {}) => {
         return createFailure("LOGIN_ITEM_FAILED", "시스템이 로그인 자동 실행 설정을 받아들이지 않았어요. 보안 정책이나 권한을 확인해 주세요.");
     }
 
-    const settings = { ...readSettings(), keepInTray: keepInTray, launchAtLogin: launchAtLogin };
+    updateSettings({ keepInTray: keepInTray, launchAtLogin: launchAtLogin });
 
-    writeSettings(settings);
-
-    return { status: STATUS_OK, data: { settings: settings } };
+    return { status: STATUS_OK, data: getSettingsView() };
 };
 
 // 앱을 켤 때 저장된 자동 실행 설정으로 로그인 항목의 경로를 다시 맞춘다(업데이트·재설치로 실행 파일 위치가 바뀌었을 수 있다).
@@ -440,9 +813,9 @@ const handleSaveSchedule = async (event, payload = {}) => {
         return createFailure("TASKS_REQUIRED", "지시개선은 처리할 작업을 입력해야 예약할 수 있어요.");
     }
 
-    writeSettings({ ...settings, ...options });
+    settingsStore.remember(settings.projectDir, options);
 
-    const result = await scheduler.save(payload.schedule);
+    const result = await scheduler.save({ ...payload.schedule, projectDir: settings.projectDir });
 
     return result.error ? createFailure("INVALID_SCHEDULE", result.error) : { status: STATUS_OK, data: scheduler.getPayload() };
 };
@@ -471,51 +844,23 @@ const handleOpenUpdate = async () => {
     return { status: STATUS_OK };
 };
 
-const handleKill = async (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const { response } = await dialog.showMessageBox(window, {
-        type: "warning",
-        title: "AutoPilot",
-        message: "강제 종료할까요?",
-        detail: "실행 중인 회차가 즉시 중단되고 commit 전 변경은 working tree에 남아요. 진행 중인 리포트도 마무리되지 않아요.",
-        buttons: ["취소", "강제 종료"],
-        defaultId: 0,
-        cancelId: 0
-    });
+// 진행 기록을 보관하고 초기화한다. 실행 중에는 막는다. 이어갈 내용이 사라지는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handleResetProgress = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
 
-    if (response === 0) {
-        return { status: STATUS_OK, data: { cancelled: true } };
+    if (!session) {
+        return createNoSessionFailure();
     }
 
-    return runner.kill();
-};
-
-// 진행 기록을 보관하고 초기화한다. 이어갈 내용이 사라지므로 확인을 받고, 실행 중에는 막는다.
-const handleResetProgress = async (event) => {
-    const { projectDir } = readSettings();
+    const { projectDir } = session;
     const projectError = getProjectError(projectDir);
 
     if (projectError) {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    if (runner.isRunning()) {
+    if (session.runner.isRunning()) {
         return createFailure("RUNNING", "실행 중에는 진행 기록을 초기화할 수 없어요.");
-    }
-
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const { response } = await dialog.showMessageBox(window, {
-        type: "question",
-        title: "AutoPilot",
-        message: "진행 기록을 초기화할까요?",
-        detail: "다음 실행이 이전 작업을 이어받지 않고 빈 기록에서 시작해요. 원본은 프로젝트의 .autopilot/progress 폴더에 보관돼요.",
-        buttons: ["취소", "초기화"],
-        defaultId: 0,
-        cancelId: 0
-    });
-
-    if (response === 0) {
-        return { status: STATUS_OK, data: { cancelled: true } };
     }
 
     return new Promise((resolve) => {
@@ -531,14 +876,20 @@ const handleResetProgress = async (event) => {
     });
 };
 
-const handleOpenReport = async () => {
-    const { reportFile } = runner.getState();
+const handleOpenReport = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { reportFile } = session.runner.getState();
 
     if (!reportFile || !fs.existsSync(reportFile)) {
         return createFailure("NO_REPORT", "열 수 있는 리포트가 아직 없어요.");
     }
 
-    if (!isProjectReportFile(runner.getProjectDir(), reportFile)) {
+    if (!isProjectReportFile(session.runner.getProjectDir(), reportFile)) {
         return createFailure("INVALID_REPORT", "프로젝트의 .autopilot/progress 안에 있는 리포트만 열 수 있어요.");
     }
 
@@ -547,20 +898,26 @@ const handleOpenReport = async () => {
     return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
 };
 
-const getActiveLogFile = () => {
-    return runner.isRunning() ? runner.getState().logFile : "";
+const getActiveLogFile = (session) => {
+    return session.runner.isRunning() ? session.runner.getState().logFile : "";
 };
 
 // 지난 실행 목록. 프로젝트를 고르지 않았거나 기록 폴더가 없으면 빈 목록이다. 읽지 못하는 로그는 목록에서 읽을 수 없음으로 표시한다.
-const handleListRuns = async (event, limit) => {
-    const { projectDir } = readSettings();
+const handleListRuns = async (event, limit, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = session;
 
     if (getProjectError(projectDir)) {
         return { status: STATUS_OK, data: { runs: [] } };
     }
 
     try {
-        const runs = await listRuns(projectDir, { limit: Number.isFinite(limit) ? limit : MAX_RUN_COUNT, activeLogFile: getActiveLogFile() });
+        const runs = await listRuns(projectDir, { limit: Number.isFinite(limit) ? limit : MAX_RUN_COUNT, activeLogFile: getActiveLogFile(session) });
 
         return { status: STATUS_OK, data: { runs: runs } };
     } catch (error) {
@@ -568,19 +925,29 @@ const handleListRuns = async (event, limit) => {
     }
 };
 
-const handleReadRun = async (event, id) => {
-    const { projectDir } = readSettings();
+const handleReadRun = async (event, id, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
 
     try {
-        return { status: STATUS_OK, data: await readRun(projectDir, id, { activeLogFile: getActiveLogFile() }) };
+        return { status: STATUS_OK, data: await readRun(session.projectDir, id, { activeLogFile: getActiveLogFile(session) }) };
     } catch (error) {
         return createFailure("READ_RUN_FAILED", `기록을 읽지 못했어요: ${error.message}`);
     }
 };
 
 // 지난 실행의 리포트나 원본 로그를 연다. 렌더러가 보낸 id는 형식을 검사하고 진행 기록 폴더 안의 파일만 연다.
-const handleOpenRunFile = async (event, id, kind) => {
-    const { projectDir } = readSettings();
+const handleOpenRunFile = async (event, id, kind, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = session;
     const files = getRunFiles(projectDir, id);
     const isReport = kind === "report";
     const file = isReport ? files?.reportFile : files?.logFile;
@@ -598,50 +965,145 @@ const handleOpenRunFile = async (event, id, kind) => {
     return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
 };
 
-// 지난 실행의 로그와 리포트를 지운다. 되돌릴 수 없으므로 확인을 받는다.
-const handleDeleteRun = async (event, id) => {
-    const { projectDir } = readSettings();
+// 지난 실행의 로그와 리포트를 지운다. 되돌릴 수 없는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handleDeleteRun = async (event, id, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = session;
     const files = getRunFiles(projectDir, id);
+    const activeLogFile = getActiveLogFile(session);
 
     if (!files) {
         return createFailure("INVALID_RUN", "지울 수 없는 기록이에요.");
     }
 
-    if (getActiveLogFile() && path.resolve(getActiveLogFile()).toLowerCase() === path.resolve(files.logFile).toLowerCase()) {
+    if (activeLogFile && path.resolve(activeLogFile).toLowerCase() === path.resolve(files.logFile).toLowerCase()) {
         return createFailure("RUN_ACTIVE", "진행 중인 실행은 지울 수 없어요.");
     }
 
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const { response } = await dialog.showMessageBox(window, {
-        type: "warning",
-        title: "AutoPilot",
-        message: "이 실행 기록을 지울까요?",
-        detail: "로그와 리포트가 지워지고 되돌릴 수 없어요. 커밋과 진행 기록(AUTOPILOT_PROGRESS.md)은 그대로예요.",
-        buttons: ["취소", "삭제"],
-        defaultId: 0,
-        cancelId: 0
-    });
-
-    if (response === 0) {
-        return { status: STATUS_OK, data: { cancelled: true } };
-    }
-
     try {
-        await deleteRun(projectDir, id, { activeLogFile: getActiveLogFile() });
+        await deleteRun(projectDir, id, { activeLogFile: activeLogFile });
 
-        return { status: STATUS_OK, data: { cancelled: false } };
+        return { status: STATUS_OK };
     } catch (error) {
         return createFailure("DELETE_RUN_FAILED", `기록을 지우지 못했어요: ${error.message}`);
     }
 };
 
+// 선택한 프로젝트의 지난 로그·리포트 용량과, 지금 보관 기간 설정으로 정리될 몫. 프로젝트를 고르지 않았으면 null이다.
+const handleGetRunUsage = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir, logRetentionDays } = readEffective(session.projectDir);
+
+    if (getProjectError(projectDir)) {
+        return { status: STATUS_OK, data: { usage: null } };
+    }
+
+    try {
+        return { status: STATUS_OK, data: { usage: { ...(await getRunUsage(projectDir, logRetentionDays)), retentionDays: logRetentionDays } } };
+    } catch (error) {
+        return createFailure("USAGE_FAILED", `기록 용량을 읽지 못했어요: ${error.message}`);
+    }
+};
+
+const streakStore = createStreakStore({ file: path.join(app.getPath("userData"), "streaks.json"), getKey: getProjectKey });
+
+// 선택한 프로젝트에서 실행한 날짜 목록(오름차순). 연속 일수는 화면이 오늘 날짜로 센다.
+const handleGetStreakDays = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = readEffective(session.projectDir);
+
+    if (getProjectError(projectDir)) {
+        return { status: STATUS_OK, data: { days: [] } };
+    }
+
+    try {
+        return { status: STATUS_OK, data: { days: await streakStore.refresh(projectDir) } };
+    } catch (error) {
+        return createFailure("STREAK_FAILED", `실행한 날을 읽지 못했어요: ${error.message}`);
+    }
+};
+
+// 보관 기간이 지난 로그와 리포트를 지금 지운다. 되돌릴 수 없는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handlePruneRuns = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir, logRetentionDays } = readEffective(session.projectDir);
+
+    if (getProjectError(projectDir)) {
+        return createFailure("INVALID_PROJECT", "프로젝트를 먼저 선택해 주세요.");
+    }
+
+    try {
+        return { status: STATUS_OK, data: await pruneRuns(projectDir, logRetentionDays, { activeLogFile: getActiveLogFile(session) }) };
+    } catch (error) {
+        return createFailure("PRUNE_FAILED", `오래된 기록을 지우지 못했어요: ${error.message}`);
+    }
+};
+
+const handleStop = (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    return session ? session.runner.stop() : createNoSessionFailure();
+};
+
+const handleKill = (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    return session ? session.runner.kill() : createNoSessionFailure();
+};
+
+const handleCancelPostAction = () => {
+    postAction.cancel();
+
+    return { status: STATUS_OK };
+};
+
+const handleRunPostActionNow = async () => {
+    await postAction.runNow();
+
+    return { status: STATUS_OK };
+};
+
 const registerIpc = () => {
+    settingsStore.recover();
+    settingsStore.upgrade();
+    configureSystem({ getPreferences: readSettings });
+
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
+    ipcMain.handle("autopilot:open-tab", handleOpenTab);
+    ipcMain.handle("autopilot:activate-tab", handleActivateTab);
+    ipcMain.handle("autopilot:close-tab", handleCloseTab);
     ipcMain.handle("autopilot:start", handleStart);
-    ipcMain.handle("autopilot:stop", () => runner.stop());
+    ipcMain.handle("autopilot:stop", handleStop);
     ipcMain.handle("autopilot:set-options", handleSetOptions);
-    ipcMain.handle("autopilot:set-model-version", handleSetModelVersion);
+    ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
+    ipcMain.handle("autopilot:reset-settings", handleResetSettings);
+    ipcMain.handle("autopilot:set-preferences", handleSetPreferences);
+    ipcMain.handle("autopilot:cancel-post-action", handleCancelPostAction);
+    ipcMain.handle("autopilot:run-post-action-now", handleRunPostActionNow);
+    ipcMain.handle("autopilot:export-settings", handleExportSettings);
+    ipcMain.handle("autopilot:import-settings", handleImportSettings);
+    ipcMain.handle("autopilot:restore-defaults", handleRestoreDefaults);
     ipcMain.handle("autopilot:kill", handleKill);
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
@@ -649,6 +1111,10 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:read-run", handleReadRun);
     ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
     ipcMain.handle("autopilot:delete-run", handleDeleteRun);
+    ipcMain.handle("autopilot:get-run-usage", handleGetRunUsage);
+    ipcMain.handle("autopilot:get-streak-days", handleGetStreakDays);
+    ipcMain.handle("autopilot:save-card", handleSaveCard);
+    ipcMain.handle("autopilot:prune-runs", handlePruneRuns);
     ipcMain.handle("autopilot:open-update", handleOpenUpdate);
     ipcMain.handle("autopilot:set-system", handleSetSystem);
     ipcMain.handle("autopilot:get-schedules", () => ({ status: STATUS_OK, data: scheduler.getPayload() }));
@@ -662,13 +1128,19 @@ const registerIpc = () => {
 };
 
 // 앱이 시작한 엔진이 실행 중인지. 이때 창을 닫으면 트레이로 숨겨 엔진을 계속 돌린다.
+const getOwnedRunningSessions = () => {
+    return sessionPool.getAll().filter((session) => session.runner.isRunning() && !session.runner.isAttached());
+};
+
 const isOwnedEngineRunning = () => {
-    return runner.isRunning() && !runner.isAttached();
+    return getOwnedRunningSessions().length > 0;
 };
 
 // 앱이 시작한 엔진은 트레이에서 종료할 때 출력이 끊기므로 확인을 받고 강제 종료한다. 연결한 엔진은 앱 소유가 아니라 그대로 두고 닫는다. 닫아도 되면 true를 반환한다.
 const confirmClose = (window) => {
-    if (!runner.isRunning() || runner.isAttached()) {
+    const ownedSessions = getOwnedRunningSessions();
+
+    if (ownedSessions.length === 0) {
         return true;
     }
 
@@ -686,7 +1158,7 @@ const confirmClose = (window) => {
         return false;
     }
 
-    runner.kill();
+    ownedSessions.forEach((session) => session.runner.kill());
 
     return true;
 };
@@ -707,4 +1179,16 @@ const startUpdateWatch = () => {
     updateCheck.start();
 };
 
-module.exports = { registerIpc, confirmClose, isOwnedEngineRunning, isTrayResident, syncLaunchAtLogin, attachRunningEngine, checkEngine, startAccountWatch, startUpdateWatch, startScheduleWatch };
+module.exports = {
+    registerIpc,
+    confirmClose,
+    isOwnedEngineRunning,
+    isTrayResident,
+    syncLaunchAtLogin,
+    attachRunningEngine,
+    attachRunningEngines,
+    checkEngine,
+    startAccountWatch,
+    startUpdateWatch,
+    startScheduleWatch
+};

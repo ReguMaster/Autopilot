@@ -1,8 +1,6 @@
 const MAX_SCHEDULES = 8;
 const KINDS = ["time", "reset"];
 const WINDOWS = ["session", "weekly"];
-const DURATION_CHOICES = [60, 120, 240, 300, 360, 480, 720];
-const MIN_REMAINING_CHOICES = [0, 30, 50, 70];
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ID_PATTERN = /^sch-[0-9a-f]{8}$/;
@@ -12,6 +10,9 @@ const DAY_MS = 24 * 60 * MINUTE_MS;
 const TIME_GRACE_MS = 2 * 60 * MINUTE_MS;
 // 허용 시간대가 곧 닫혀 이보다 짧게 돌아야 하면 시작하지 않는다. 엔진의 최소 남은 시간(20분)보다 넉넉히 둔다.
 const MIN_RUN_MS = 30 * MINUTE_MS;
+const MIN_DURATION = MIN_RUN_MS / MINUTE_MS;
+// 종료 시각은 HH:mm만 엔진에 넘기므로 하루 안(23시간 59분)까지만 받는다.
+const MAX_DURATION = 24 * 60 - 1;
 const SESSION_LABEL = "5시간 한도";
 const WEEKLY_LABEL = "주간 한도";
 const WINDOW_LABELS = { session: SESSION_LABEL, weekly: WEEKLY_LABEL };
@@ -26,6 +27,10 @@ const toMinutes = (time) => {
 
 const isTime = (value) => {
     return typeof value === "string" && TIME_PATTERN.test(value);
+};
+
+const isIntegerBetween = (value, min, max) => {
+    return Number.isInteger(value) && value >= min && value <= max;
 };
 
 const getDefaultSchedule = (kind = "time") => {
@@ -71,8 +76,12 @@ const parseSchedule = (raw) => {
         return { error: "허용 시간대의 시작과 끝이 올바르지 않아요." };
     }
 
-    if (!DURATION_CHOICES.includes(value.duration) || !MIN_REMAINING_CHOICES.includes(value.minRemaining)) {
-        return { error: "실행 시간이나 남은 한도 값이 올바르지 않아요." };
+    if (!isIntegerBetween(value.duration, MIN_DURATION, MAX_DURATION)) {
+        return { error: "실행 시간은 30분부터 23시간 59분까지 정할 수 있어요." };
+    }
+
+    if (!isIntegerBetween(value.minRemaining, 0, 100)) {
+        return { error: "남은 한도 조건은 0부터 100 사이의 정수(%)로 정해 주세요." };
     }
 
     const isTimeKind = value.kind === "time";
@@ -334,11 +343,11 @@ module.exports = {
     MAX_SCHEDULES,
     KINDS,
     WINDOWS,
-    DURATION_CHOICES,
-    MIN_REMAINING_CHOICES,
     WINDOW_LABELS,
     TIME_GRACE_MS,
     MIN_RUN_MS,
+    MIN_DURATION,
+    MAX_DURATION,
     DAY_MS,
     getDefaultSchedule,
     parseSchedule,

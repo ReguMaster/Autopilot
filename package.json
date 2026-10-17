@@ -8,27 +8,34 @@
     "desktopName": "autopilot.desktop",
     "main": "desktop/main.cjs",
     "scripts": {
-        "start": "electron .",
-        "dev": "electron . --dev",
-        "test": "electron . --smoke-test",
-        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js",
-        "build": "electron-builder --win --x64 --dir",
-        "build:mac": "electron-builder --mac --dir",
-        "build:linux": "electron-builder --linux --dir",
-        "dist": "electron-builder --win --x64",
-        "dist:mac": "electron-builder --mac",
-        "dist:linux": "electron-builder --linux",
-        "dist:signed": "electron-builder --win --x64 -c.win.signtoolOptions.certificateSubjectName=ReguMaster -c.win.signtoolOptions.publisherName=ReguMaster",
+        "build:ui": "node desktop/ui/build.mjs",
+        "dev:ui": "node desktop/ui/build.mjs --watch",
+        "ui:parity": "node tests/tools/ui/parity.mjs",
+        "start": "npm run build:ui && electron .",
+        "dev": "npm run build:ui && electron . --dev",
+        "test": "npm run build:ui && electron . --smoke-test",
+        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js && node tests/checkDesktopUi.js && node tests/checkDesktopStores.js && node tests/checkDesktopSettings.js && node tests/checkDesktopSessions.js && node tests/checkDesktopStreak.js && node tests/checkDesktopCard.js",
+        "build": "npm run build:ui && electron-builder --win --x64 --dir",
+        "build:mac": "npm run build:ui && electron-builder --mac --dir",
+        "build:linux": "npm run build:ui && electron-builder --linux --dir",
+        "dist": "npm run build:ui && electron-builder --win --x64",
+        "dist:mac": "npm run build:ui && electron-builder --mac",
+        "dist:linux": "npm run build:ui && electron-builder --linux",
+        "dist:signed": "npm run build:ui && electron-builder --win --x64 -c.win.signtoolOptions.certificateSubjectName=ReguMaster -c.win.signtoolOptions.publisherName=ReguMaster",
         "test:cli": "node tests/checkAutopilot.js",
         "format:cli": "prettier --write autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
         "format:check:cli": "prettier --check autopilot/core/autopilot_loop.js tests/checkAutopilot.js \"tests/lib/*.js\" \"autopilot/src/**/*.js\"",
-        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js",
-        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/viewFormat.js desktop/renderer.js desktop/index.html desktop/styles.css tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js"
+        "format:desktop": "prettier --write desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/engineArgs.cjs desktop/postAction.cjs desktop/jsonFile.cjs desktop/settingsStore.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/sessionPool.cjs desktop/streakStore.cjs desktop/shareCard.cjs desktop/viewFormat.js desktop/index.html tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js tests/checkDesktopUi.js tests/checkDesktopStores.js tests/checkDesktopSettings.js tests/checkDesktopSessions.js tests/checkDesktopStreak.js tests/checkDesktopCard.js \"desktop/ui/**/*.{js,jsx,mjs,css}\" \"tests/tools/ui/**/*.{cjs,mjs}\"",
+        "format:check:desktop": "prettier --check desktop/main.cjs desktop/preload.cjs desktop/autopilotRunner.cjs desktop/autopilotIpc.cjs desktop/projectFiles.cjs desktop/runHistory.cjs desktop/claudeAccount.cjs desktop/claudeCli.cjs desktop/updateCheck.cjs desktop/accountStore.cjs desktop/accountIpc.cjs desktop/engineArgs.cjs desktop/postAction.cjs desktop/jsonFile.cjs desktop/settingsStore.cjs desktop/launchAtLogin.cjs desktop/scheduleRules.cjs desktop/scheduler.cjs desktop/sessionPool.cjs desktop/streakStore.cjs desktop/shareCard.cjs desktop/viewFormat.js desktop/index.html tests/checkDesktopRunner.js tests/checkDesktopView.js tests/checkDesktopAccounts.js tests/checkDesktopHistory.js tests/checkDesktopSystem.js tests/checkDesktopSchedule.js tests/checkDesktopUi.js tests/checkDesktopStores.js tests/checkDesktopSettings.js tests/checkDesktopSessions.js tests/checkDesktopStreak.js tests/checkDesktopCard.js \"desktop/ui/**/*.{js,jsx,mjs,css}\" \"tests/tools/ui/**/*.{cjs,mjs}\""
     },
     "devDependencies": {
         "electron": "^44.6.0",
         "electron-builder": "26.15.3",
-        "prettier": "^3.9.6"
+        "esbuild": "0.28.2",
+        "prettier": "^3.9.6",
+        "react": "19.3.0",
+        "react-dom": "19.3.0",
+        "zustand": "5.0.15"
     },
     "build": {
         "appId": "com.autopilot.desktop",
@@ -38,6 +45,8 @@
         },
         "files": [
             "desktop/**/*",
+            "!desktop/ui/**",
+            "!desktop/viewFormat.js",
             "docs/logo.png",
             "docs/icon.png",
             "docs/icon.ico",
@@ -142,5 +151,9 @@
     "type": "module",
     "engines": {
         "node": ">=22.12.0"
+    },
+    "allowScripts": {
+        "electron-winstaller@5.4.0": true,
+        "esbuild@0.28.2": true
     }
 }

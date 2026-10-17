@@ -50,4 +50,4 @@ const getProgressDir = (projectDir) => {
     return path.join(projectDir, WORK_DIR_NAME, PROGRESS_DIR_NAME);
 };
 
-module.exports = { getProjectError, isProjectReportFile, isProjectLogFile, getProgressDir, LOG_FILE_PATTERN };
+module.exports = { getProjectError, isProjectReportFile, isProjectLogFile, getProgressDir, LOG_FILE_PATTERN, REPORT_FILE_PATTERN };

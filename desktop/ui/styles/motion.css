@@ -1,0 +1,68 @@
+/* 부드러움: 누르면 살짝 눌렸다가 스프링으로 돌아오고, 호버·포커스 전환은 모든 컨트롤이 같은 결로 번진다. 뒤에 두어 위의 개별 transition을 덮는다 */
+:root {
+    --ease-spring: linear(0, 0.28 6.7%, 0.72 12.9%, 1.08 20%, 1.15 26%, 1.05 38%, 0.98 52%, 1.005 72%, 1);
+}
+
+:is(.window-control, .link, .spin-button, .nav-row, .finish-back, .account-option, .run-item, .choice-option, .button, .main-action) {
+    transition:
+        background-color 0.25s var(--ease-out),
+        box-shadow 0.25s var(--ease-out),
+        color 0.25s var(--ease-out),
+        scale 0.5s var(--ease-spring);
+}
+
+:is(.window-control, .link, .spin-button, .button, .main-action):active:not(:disabled) {
+    scale: 0.95;
+    transition-duration: 0.12s;
+}
+
+:is(.run-item, .account-option, .choice-option, .nav-row, .finish-back):active:not(:disabled) {
+    scale: 0.985;
+    transition-duration: 0.12s;
+}
+
+.switch::after {
+    transition:
+        translate 0.45s var(--ease-spring),
+        width 0.25s var(--ease-out);
+}
+
+.switch:active:not(:disabled)::after {
+    width: 22px;
+}
+
+.switch:checked:active:not(:disabled)::after {
+    translate: 14px 0;
+}
+
+.tasks {
+    transition: background-color 0.25s var(--ease-out);
+}
+
+::-webkit-scrollbar-thumb {
+    transition: background-color 0.25s var(--ease-out);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--faint) padding-box;
+}
+
+.panel-scroll,
+#archive-list-pane,
+#archive-chat,
+.history-log,
+.history-rounds {
+    scroll-behavior: smooth;
+}
+
+/* 목록은 위에서부터 차례로 떠오른다. sibling-index()를 모르는 환경에서는 지연 없이 한 번에 뜬다 */
+:is(.recent-list, .archive-list, .finish-rounds, #finish-gains) > li {
+    animation: rise 0.5s var(--ease-out) backwards;
+    animation-delay: calc(min(sibling-index(), 8) * 45ms);
+}
+
+body:not(.ready) :is(.recent-list, .archive-list, .finish-rounds, #finish-gains) > li {
+    animation-play-state: paused;
+}
+
+/* 움직임을 줄이는 설정에서는 이동·확대 전환을 끈다. 위치가 바뀌지 않는 투명도 전환(캐럿 깜빡임, 상태 점, 문장 드러내기)은 일하는 중임을 알리는 표시라 남긴다 */

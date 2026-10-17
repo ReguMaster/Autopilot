@@ -6,14 +6,15 @@ const {
     isOwnedEngineRunning,
     isTrayResident,
     syncLaunchAtLogin,
-    attachRunningEngine,
+    attachRunningEngines,
     checkEngine,
     startAccountWatch,
     startUpdateWatch,
     startScheduleWatch
 } = require("./autopilotIpc.cjs");
 const { wasLaunchedHidden } = require("./launchAtLogin.cjs");
-const { createTray, showWindow } = require("./systemIntegration.cjs");
+const { createTray, showWindow, watchPower } = require("./systemIntegration.cjs");
+const { checkCardRender } = require("./shareCard.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
@@ -41,10 +42,43 @@ app.setAppUserModelId(app.isPackaged ? "com.autopilot.desktop" : "com.autopilot.
 
 const isSmokeTest = process.argv.includes("--smoke-test");
 
+// GPU가 없는 CI 러너에서는 숨긴 창의 화면 캡처가 UnknownVizError로 실패하므로 스모크 테스트는 소프트웨어로 그린다.
+if (isSmokeTest) {
+    app.disableHardwareAcceleration();
+}
+
 let isQuitting = false;
 
-const SMOKE_CHECK_SCRIPT =
-    "typeof window.autopilot?.start === 'function' && typeof window.autopilot?.loginAccount === 'function' && Boolean(document.querySelector('#login-banner')) && typeof window.appWindow?.close === 'function' && typeof window.autopilot?.getAccounts === 'function' && Boolean(document.querySelector('#log')) && Boolean(document.querySelector('#titlebar')) && Boolean(document.querySelector('#profile')) && Boolean(document.querySelector('#archive')) && typeof window.autopilot?.listRuns === 'function' && typeof window.autopilot?.openUpdate === 'function' && Boolean(document.querySelector('#update-chip')) && typeof window.autopilot?.getSchedules === 'function' && Boolean(document.querySelector('#schedule')) && typeof initialize === 'function'";
+// 화면은 메인이 보관한 첫 상태를 받은 뒤에 그려지므로 마운트를 잠깐 기다린 다음, preload 다리와 화면의 주요 자리가 모두 있는지 확인한다.
+const SMOKE_BRIDGE_APIS = ["start", "loginAccount", "getAccounts", "listRuns", "openUpdate", "getSchedules"];
+const SMOKE_SELECTORS = [
+    "#titlebar",
+    "#update-chip",
+    "#login-banner",
+    "#login-expiry-banner",
+    "#run-form",
+    "#profile",
+    "#settings",
+    "#history",
+    "#archive",
+    "#schedule",
+    "#schedule-peek",
+    "#model-versions .select-trigger"
+];
+const SMOKE_MOUNT_TIMEOUT_MS = 8000;
+const SMOKE_CHECK_SCRIPT = `(async () => {
+    const deadline = Date.now() + ${SMOKE_MOUNT_TIMEOUT_MS};
+
+    while (!document.querySelector("#run-form")) {
+        if (Date.now() > deadline) {
+            return false;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return ${JSON.stringify(SMOKE_BRIDGE_APIS)}.every((name) => typeof window.autopilot?.[name] === "function") && typeof window.appWindow?.close === "function" && ${JSON.stringify(SMOKE_SELECTORS)}.every((selector) => Boolean(document.querySelector(selector)));
+})()`;
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -107,9 +141,9 @@ const createWindow = () => {
         }
     });
 
-    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다. 로그인 자동 실행이면 트레이에만 둔다.
+    // 첫 화면이 그려진 뒤에 띄워 빈 창이 비치지 않게 한다. 등장 애니메이션은 화면이 맡는다. 로그인 자동 실행이면 트레이에만 두고, 스모크 테스트는 창을 띄우지 않는다.
     window.once("ready-to-show", () => {
-        if (!isSmokeTest && wasLaunchedHidden()) {
+        if (isSmokeTest || wasLaunchedHidden()) {
             return;
         }
 
@@ -143,7 +177,7 @@ const createWindow = () => {
             isQuitting = false;
         }
     });
-    window.on("focus", attachRunningEngine);
+    window.on("focus", () => attachRunningEngines());
     // macOS는 창이 모두 닫혀도 앱이 남으므로, 트레이 메뉴의 종료는 창이 닫힌 뒤 직접 끝낸다.
     window.on("closed", () => {
         if (isQuitting) {
@@ -158,6 +192,16 @@ const createWindow = () => {
 
     if (isSmokeTest) {
         const timeout = setTimeout(() => app.exit(1), SMOKE_TEST_TIMEOUT_MS);
+        const consoleErrors = [];
+
+        // 진짜 메인·preload로 부팅하는 동안 화면이 콘솔 오류를 하나라도 남기면 실패한다(IPC 응답 모양이 어긋난 경우 등).
+        window.webContents.on("console-message", (...args) => {
+            const detail = args[0]?.message === undefined ? { level: args[1], message: args[2] } : args[0];
+
+            if (detail.level === "error" || detail.level === 3) {
+                consoleErrors.push(detail.message);
+            }
+        });
 
         window.webContents.once("did-fail-load", () => app.exit(1));
         window.webContents.once("did-finish-load", async () => {
@@ -165,8 +209,15 @@ const createWindow = () => {
 
             const isBridgeReady = await window.webContents.executeJavaScript(SMOKE_CHECK_SCRIPT).catch(() => false);
             const isEngineReady = await checkEngine();
+            const isCardReady = await checkCardRender();
 
-            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady ? 0 : 1);
+            consoleErrors.forEach((message) => console.error(`화면 콘솔 오류: ${message}`));
+
+            if (window.isVisible()) {
+                console.error("스모크 테스트는 창을 화면에 띄우지 않아야 해요.");
+            }
+
+            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && isCardReady && consoleErrors.length === 0 && !window.isVisible() ? 0 : 1);
         });
     }
 
@@ -203,6 +254,7 @@ if (!hasInstanceLock) {
 
         if (!isSmokeTest) {
             syncLaunchAtLogin();
+            watchPower();
             startAccountWatch();
             startUpdateWatch();
             startScheduleWatch();

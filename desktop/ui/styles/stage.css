@@ -1,0 +1,522 @@
+/* 화면별 본문: 시작 전(ready)·실행 중(run)·마친 뒤(done) 중 하나만 보인다 */
+.stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.stage > section {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    padding: 0 32px;
+}
+
+body[data-view="ready"] .view-ready,
+body[data-view="run"] .view-run,
+body[data-view="done"] .view-done {
+    display: flex;
+    animation: rise 0.55s var(--ease-out) backwards;
+}
+
+.lead {
+    max-width: 30em;
+    margin-top: 14px;
+    color: var(--ink-2);
+    font-size: var(--text-lg);
+    line-height: 1.65;
+    text-wrap: pretty;
+}
+
+/* 시작 전: 인사 한 줄과 할 일 안내 */
+.greet {
+    padding-top: 68px !important;
+}
+
+.greet h1:has(.project-name) {
+    color: var(--muted);
+}
+
+.project-name {
+    color: var(--ink);
+    font-weight: 800;
+}
+
+.greet h1,
+.finish h1 {
+    max-width: 14em;
+    font-size: var(--title-xl);
+    font-weight: 600;
+    line-height: 1.32;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+}
+
+/* 실행 중: 지난 문장은 위로 올라가며 흐려지고 지금 문장이 크게 쓰인다 */
+.story {
+    padding-top: 18px !important;
+    padding-bottom: clamp(16px, 9vh, 80px) !important;
+}
+
+.past {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 20px;
+    overflow: hidden;
+    padding-bottom: 22px;
+    mask: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.3) 14%, #000 42%);
+}
+
+/* 문장이 줄어들지 않게 두어 넘치면 가장 오래된 위쪽 문장만 잘린다. 도구 칩은 문장 위 한 줄에 모은다 */
+.past p {
+    flex: none;
+    display: flex;
+    max-width: 31em;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--ink-2);
+    font-size: var(--text-lg);
+    line-height: 1.6;
+}
+
+.past .tools {
+    display: flex;
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.past .said {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    text-wrap: pretty;
+}
+
+.past .tool {
+    display: block;
+    height: 22px;
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 22px;
+    vertical-align: top;
+}
+
+.past .appear {
+    animation: appear 0.7s var(--ease-out);
+}
+
+@keyframes appear {
+    from {
+        opacity: 0;
+        translate: 0 14px;
+    }
+}
+
+.tool {
+    display: inline-block;
+    max-width: 22em;
+    margin-right: 0.35em;
+    overflow: hidden;
+    padding: 0 0.45em;
+    border-radius: 5px;
+    background: var(--chip);
+    color: var(--muted);
+    font: 400 0.72em/1.75 var(--mono);
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    vertical-align: 0.12em;
+    white-space: nowrap;
+}
+
+.tool b {
+    margin-right: 0.45em;
+    color: var(--ink);
+    font-weight: 500;
+}
+
+.outcome:not([hidden]) {
+    animation: rise 0.5s var(--ease-out) backwards;
+}
+
+.outcome {
+    flex: none;
+    padding: 16px 0 18px;
+    border-top: 1px solid var(--hair);
+    border-bottom: 1px solid var(--hair);
+}
+
+/* 지난 회차의 성과는 이야기 맨 위에 두어, 새 회차의 문장이 그 위로 올라오지 않게 한다 */
+.outcome[data-earlier="true"] {
+    order: -1;
+}
+
+.outcome-say {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    color: var(--ink-2);
+    font-size: var(--text-md);
+}
+
+.outcome-say .num {
+    flex: none;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 6px;
+    font-size: var(--display);
+    font-weight: 250;
+    line-height: 1;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+}
+
+.hero small {
+    margin-left: 0.06em;
+    font-size: 0.42em;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+.hero[data-size="xl"] {
+    font-size: var(--title-xl);
+}
+
+.hero[data-size="lg"] {
+    font-size: var(--title-lg);
+}
+
+.hero[data-size="md"] {
+    font-size: var(--title-md);
+}
+
+.hero[data-size="sm"] {
+    font-size: var(--title-sm);
+}
+
+.hero .was,
+.hero .is {
+    min-width: 0;
+    overflow: hidden;
+    padding-block: 0.1em;
+    margin-block: -0.1em;
+    text-overflow: ellipsis;
+}
+
+.hero .was {
+    color: var(--faint);
+}
+
+.hero .is {
+    color: var(--accent);
+}
+
+.hero .arrow {
+    flex: none;
+    width: 42px;
+    height: 14px;
+    fill: none;
+    stroke: var(--faint);
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 지금 문장. 길면 글자를 줄여 네 줄 안에 넣는다 */
+.now {
+    flex: none;
+    display: -webkit-box;
+    max-width: 17em;
+    margin-top: 22px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    font-size: var(--title-lg);
+    font-weight: 500;
+    line-height: 1.44;
+    letter-spacing: -0.012em;
+    text-wrap: pretty;
+}
+
+.now[data-length="mid"] {
+    max-width: 19em;
+    font-size: var(--title-md);
+}
+
+.now[data-length="long"] {
+    max-width: 22em;
+    font-size: var(--title-sm);
+    line-height: 1.5;
+}
+
+.caret {
+    display: inline-block;
+    width: 2px;
+    height: 0.95em;
+    margin-left: 4px;
+    vertical-align: -0.12em;
+    background: var(--accent);
+    animation: caret 1.3s ease-in-out infinite;
+}
+
+body:not([data-status="running"]) .caret {
+    display: none;
+}
+
+@keyframes caret {
+    50% {
+        opacity: 0.12;
+    }
+}
+
+.now-meta {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 28px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.apply-note {
+    overflow: hidden;
+    color: var(--warn);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.link {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    margin: 0 -8px 0 auto;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.link:hover {
+    background: var(--chip);
+    color: var(--ink);
+}
+
+.link .icon {
+    width: 12px;
+    height: 12px;
+}
+
+.work {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 18px 0 14px;
+}
+
+.work div {
+    min-width: 0;
+    padding-left: 14px;
+    border-left: 1px solid var(--hair);
+}
+
+.work div:first-child {
+    padding-left: 0;
+    border-left: 0;
+}
+
+.work dd {
+    font-size: var(--text-xl);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.work dd b {
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+.work dd small {
+    margin-left: 2px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.work ins,
+.work del {
+    text-decoration: none;
+    letter-spacing: -0.02em;
+}
+
+.work ins {
+    color: var(--add);
+}
+
+.work del {
+    margin-left: 6px;
+    color: var(--del);
+}
+
+.work dt {
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 마친 뒤: 인사, 한 일 요약, 성과와 회차별 커밋 */
+.finish {
+    padding-top: 36px !important;
+}
+
+.finish-back {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 14px -4px;
+    padding: 4px 8px 4px 4px;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    transition:
+        background-color 0.2s var(--ease-out),
+        color 0.2s var(--ease-out);
+}
+
+.finish-back:hover {
+    background: var(--chip);
+    color: var(--ink);
+}
+
+.gains {
+    margin-top: 24px;
+    border-top: 1px solid var(--hair);
+}
+
+.gains li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--hair);
+}
+
+.gains .what {
+    min-width: 0;
+    color: var(--ink-2);
+    font-size: var(--text-md);
+}
+
+.gains .what small {
+    display: block;
+    margin-top: 1px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.gains .figure {
+    font-size: var(--title-md);
+    font-weight: 300;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+}
+
+.gains .figure small {
+    margin-left: 1px;
+    font-size: var(--text-md);
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+.gains .was,
+.gains .to {
+    color: var(--faint);
+}
+
+.gains .to {
+    margin: 0 8px;
+    font-size: var(--text-xl);
+}
+
+.gains .is {
+    color: var(--accent);
+}
+
+.finish-rounds {
+    flex: 0 1 auto;
+    min-height: 0;
+    margin-top: 16px;
+    overflow: auto;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+}
+
+.finish-rounds li {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 5px 0;
+}
+
+.finish-rounds b {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.finish-rounds span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.finish-rounds code {
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.finish-rounds ins,
+.finish-rounds del {
+    font-size: var(--text-xs);
+    text-decoration: none;
+}
+
+.finish-rounds ins {
+    color: var(--add);
+}
+
+.finish-rounds del {
+    margin-left: 6px;
+    color: var(--del);
+}
+
+.finish-links {
+    display: flex;
+    gap: 6px;
+    margin-top: 18px;
+    padding-bottom: 18px;
+}

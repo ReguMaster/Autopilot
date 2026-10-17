@@ -1,0 +1,862 @@
+/* 패널·기록이 열리면 헤더 아래 화면을 옅게 덮는다. 누르면 닫힌다 */
+.scrim {
+    position: fixed;
+    inset: 48px 0 0;
+    z-index: 5;
+    background: rgb(26 31 54 / 0.14);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity 0.3s var(--ease-in-out),
+        visibility 0s linear 0.3s;
+}
+
+/* 스크림은 헤더 아래만 덮는다. 헤더에 덧씌우면 끌기 영역이 버튼 클릭을 가로채므로 배경색으로 맞춘다 */
+body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .titlebar {
+    background: rgb(26 31 54 / 0.14);
+}
+
+body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .scrim {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+/* 설정·프로필: 흰 카드가 버튼 아래에 떠서 열린다. 열 때 감속, 닫을 때 가속한다 */
+.panel {
+    position: fixed;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 18px;
+    background: var(--bg);
+    box-shadow: var(--shadow);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity 0.18s var(--ease-in),
+        translate 0.22s var(--ease-in),
+        visibility 0s linear 0.22s;
+}
+
+body.settings-open #settings,
+body.profile-open #profile {
+    opacity: 1;
+    translate: 0;
+    visibility: visible;
+    transition:
+        opacity 0.24s var(--ease-out),
+        translate 0.38s var(--ease-out),
+        visibility 0s;
+}
+
+.panel-scroll {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.panel-scroll::-webkit-scrollbar-track {
+    margin: 14px 0;
+}
+
+.settings-panel {
+    top: 54px;
+    right: 12px;
+    bottom: 12px;
+    width: min(420px, calc(100vw - 24px));
+    translate: 36px 0;
+}
+
+.settings-panel .panel-scroll {
+    padding: 18px 22px 14px;
+}
+
+.profile-panel {
+    top: 54px;
+    right: max(12px, min(174px, calc(100vw - 376px)));
+    width: min(364px, calc(100vw - 24px));
+    max-height: calc(100vh - 58px);
+    translate: 0 -8px;
+}
+
+.profile-panel .panel-scroll {
+    padding: 8px;
+}
+
+.panel-title {
+    margin-bottom: 4px;
+    font-size: var(--title-sm);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+}
+
+.settings-group {
+    margin-top: 22px;
+}
+
+.group-title {
+    margin: 0 0 8px 4px;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    font-weight: 650;
+}
+
+.group-card {
+    padding: 0 16px;
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+/* 제목 · 값 · 설명이 서로 다른 크기와 색으로 갈리는 입력 항목 */
+.field {
+    padding: 14px 0;
+}
+
+.field-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+}
+
+.field-title {
+    min-width: 0;
+    font-size: var(--text-md);
+    font-weight: 650;
+}
+
+.field-head > .button {
+    margin-left: auto;
+}
+
+.tag {
+    flex: none;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tag.warn {
+    background: #fdf1de;
+    color: var(--warn);
+}
+
+.field-desc {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+}
+
+/* AI 제공자: 지금은 Claude 하나뿐이라 고른 상태로만 보인다. 다른 제공자는 같은 버튼을 더하면 된다 */
+.provider {
+    display: grid;
+    gap: 6px;
+    padding: 14px 0;
+}
+
+.provider-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1.5px var(--ink);
+    text-align: left;
+}
+
+.provider-mark {
+    width: 26px;
+    height: 26px;
+    color: #d97757;
+    fill: currentColor;
+    stroke: none;
+}
+
+.provider-text {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+}
+
+.provider-text b {
+    font-size: var(--text-md);
+    font-weight: 650;
+}
+
+.provider-text small {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.provider-option .tick {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 46px;
+    padding: 8px 0;
+    border: 0;
+    border-bottom: 1px solid var(--hair);
+    background: none;
+    text-align: left;
+}
+
+.group-card > .row {
+    padding-block: 14px;
+    border-bottom: 0;
+}
+
+.group-card > :not(:first-child) {
+    border-top: 1px solid var(--hair);
+}
+
+.group-card > .nav-row {
+    padding-block: 0;
+}
+
+.row-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.row h3,
+.row b {
+    display: block;
+    font-size: var(--text-md);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.row small,
+.row-note {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+}
+
+/* 모델 버전: 계열 이름과 버전 선택을 한 줄에 둔다 */
+.versions > .row {
+    padding-block: 10px;
+    border-bottom: 0;
+}
+
+.version-note {
+    padding: 0 0 12px;
+}
+
+/* 로그 보관: 지금 차지하는 용량 한 줄 */
+.storage-usage {
+    margin: 0;
+    padding: 12px 0;
+}
+
+/* 입력 줄 아래에 보이는 저장하지 못한 이유 */
+.field-error {
+    margin-top: 6px;
+    color: var(--warn);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+}
+
+.git-field .scope-note {
+    margin-top: 6px;
+}
+
+/* 이 프로젝트 범위: 전역 값을 따라가는지, 프로젝트가 덮어썼는지 */
+.scope-note {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+}
+
+.scope-note[data-overridden] {
+    color: var(--ink-2);
+}
+
+.scope-reset {
+    margin-left: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink-2);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.scope-reset:disabled {
+    color: var(--faint);
+    cursor: not-allowed;
+}
+
+.path {
+    padding: 7px 10px;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font: 400 var(--text-xs) / 1.5 var(--mono);
+    overflow-wrap: anywhere;
+}
+
+.project[data-missing] .path,
+.claude-dir[data-missing] .path {
+    color: var(--warn);
+}
+
+.row-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+/* 켜고 끄는 줄: 체크박스를 스위치 모양으로 그린다 */
+.switch-row {
+    cursor: pointer;
+}
+
+.switch {
+    position: relative;
+    flex: none;
+    appearance: none;
+    width: 42px;
+    height: 24px;
+    margin: 0;
+    border-radius: 999px;
+    background: var(--hair-strong);
+    cursor: inherit;
+    transition: background-color 0.25s var(--ease-out);
+}
+
+.switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(26 31 54 / 0.2);
+    transition: translate 0.25s var(--ease-out);
+}
+
+.switch:checked {
+    background: var(--accent);
+}
+
+.switch:checked::after {
+    translate: 18px 0;
+}
+
+.switch:disabled {
+    opacity: 0.5;
+}
+
+.switch-row:has(.switch:disabled) {
+    cursor: not-allowed;
+}
+
+.nav-row {
+    min-height: 44px;
+    padding: 0;
+    font-size: var(--text-md);
+}
+
+.nav-row:hover:not(:disabled) {
+    color: var(--accent);
+}
+
+.nav-row:disabled {
+    color: var(--faint);
+    cursor: not-allowed;
+}
+
+.nav-row.danger:not(:disabled) {
+    color: var(--del);
+}
+
+.panel-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.settings-panel .panel-foot {
+    margin-top: 22px;
+}
+
+.profile-panel .panel-foot {
+    padding: 10px 8px 2px;
+}
+
+.panel-note {
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.panel-note[data-tone="warn"] {
+    color: var(--warn);
+}
+
+/* 프로필: 계정 고르기와 관리, 계정 카드, 사용량 */
+.account-list {
+    display: grid;
+}
+
+.account-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 46px;
+    padding: 0 12px 0 8px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    font-size: var(--text-md);
+    text-align: left;
+}
+
+.account-option:hover:not(:disabled) {
+    background: var(--surface);
+}
+
+.account-option[aria-checked="true"] {
+    background: var(--chip);
+}
+
+.account-option:disabled {
+    cursor: not-allowed;
+}
+
+.account-option:disabled[aria-checked="false"] {
+    color: var(--muted);
+}
+
+.account-option span:last-of-type {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-option .tick {
+    display: none;
+    width: 15px;
+    height: 15px;
+    margin-left: auto;
+    color: var(--accent);
+    stroke-width: 2;
+}
+
+.account-option[aria-checked="true"] .tick {
+    display: block;
+}
+
+.initial {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+    font-weight: 650;
+}
+
+.account-option[aria-checked="false"] .initial {
+    color: var(--muted);
+}
+
+.account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px 10px;
+}
+
+.account-actions .danger {
+    margin-left: auto;
+}
+
+#account-message {
+    padding: 0 8px 8px;
+}
+
+.account-form,
+.login-box {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    margin: 0 8px 10px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.account-form .account-actions {
+    padding: 0;
+}
+
+.login-box {
+    overflow: hidden;
+    animation: login-slide 0.5s var(--ease-out) backwards;
+}
+
+.login-box[data-phase="waiting"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 38%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: login-sweep 1.5s var(--ease-in-out) infinite;
+}
+
+.login-box[data-phase="waiting"] > .panel-note {
+    animation: login-nudge 1.5s var(--ease-in-out) infinite alternate;
+}
+
+@keyframes login-slide {
+    from {
+        max-height: 0;
+        padding-block: 0;
+        margin-bottom: 0;
+        opacity: 0;
+        translate: -28px 0;
+    }
+
+    to {
+        max-height: 320px;
+    }
+}
+
+@keyframes login-sweep {
+    from {
+        translate: -100% 0;
+    }
+
+    to {
+        translate: 263% 0;
+    }
+}
+
+@keyframes login-nudge {
+    from {
+        opacity: 0.55;
+    }
+}
+
+.account-input {
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+    outline: none;
+}
+
+.account-input:focus {
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.account-input::placeholder {
+    color: var(--muted);
+}
+
+.login-code {
+    display: flex;
+    gap: 6px;
+}
+
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.check input {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.profile-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 8px 4px;
+    border-top: 1px solid var(--hair);
+}
+
+.profile-avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: #fff;
+    font-size: var(--text-xl);
+    font-weight: 650;
+}
+
+.profile-id {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+}
+
+.profile-name {
+    overflow: hidden;
+    font-size: var(--text-lg);
+    font-weight: 650;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-email {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-plan {
+    align-self: flex-start;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--chip);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.profile-usage {
+    padding: 4px 8px 6px;
+}
+
+.profile-panel .login-expiry {
+    padding: 2px 8px 10px;
+}
+
+.usage-list {
+    display: grid;
+}
+
+.usage-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: 12px;
+    padding: 10px 0;
+}
+
+.usage-item h3 {
+    font-size: var(--text-md);
+    font-weight: 400;
+}
+
+.usage-percent {
+    font-size: var(--text-md);
+    font-weight: 500;
+}
+
+.usage-item[data-tone="warn"] .usage-percent {
+    color: var(--warn);
+}
+
+.usage-item[data-tone="danger"] .usage-percent {
+    color: var(--del);
+}
+
+.usage-meter {
+    grid-column: 1 / -1;
+    height: 6px;
+    margin: 8px 0 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: var(--chip);
+}
+
+.usage-meter i {
+    position: relative;
+    display: block;
+    width: calc(var(--value, 0) * 1%);
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    background: var(--ink);
+    transition:
+        width 0.6s var(--ease-out),
+        background-color 0.4s var(--ease-out);
+}
+
+/* 패널을 열 때마다 항목이 차례로 떠오르고 막대가 0에서 차오른다 */
+body.profile-open .usage-item {
+    animation: usage-in 0.5s var(--ease-out) backwards;
+}
+
+body.profile-open .usage-item:nth-child(2) {
+    animation-delay: 0.06s;
+}
+
+body.profile-open .usage-item:nth-child(n + 3) {
+    animation-delay: 0.12s;
+}
+
+body.profile-open .usage-meter i {
+    animation: meter-fill 0.9s var(--ease-out) 0.15s backwards;
+}
+
+@keyframes usage-in {
+    from {
+        opacity: 0;
+        translate: 0 8px;
+    }
+}
+
+@keyframes meter-fill {
+    from {
+        width: 0;
+    }
+}
+
+/* 작업 중에는 5시간 막대의 줄무늬가 빠르게 달리고 빛이 훑고 지나간다 */
+.usage-list[data-working] .usage-item[data-session]:not([data-tone="warn"], [data-tone="danger"]) .usage-meter i {
+    background: var(--accent);
+}
+
+.usage-list[data-working] .usage-item[data-session] .usage-meter i::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(115deg, transparent 0 8px, rgb(255 255 255 / 0.3) 8px 14px) 0 0 / 28px 100%;
+    animation: meter-rush 0.5s linear infinite;
+}
+
+.usage-list[data-working] .usage-item[data-session] .usage-meter i::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.85), transparent);
+    animation: meter-sweep 0.9s var(--ease-in-out) infinite;
+}
+
+@keyframes meter-rush {
+    to {
+        background-position-x: 28px;
+    }
+}
+
+@keyframes meter-sweep {
+    from {
+        translate: -100% 0;
+    }
+
+    to {
+        translate: 100% 0;
+    }
+}
+
+.usage-item[data-tone="warn"] .usage-meter i {
+    background: var(--warn-fill);
+}
+
+.usage-item[data-tone="danger"] .usage-meter i {
+    background: var(--del);
+}
+
+.usage-reset {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+/* 첫 조회가 끝나기 전: 글자 자리에 옅은 막대가 천천히 숨 쉰다 */
+.profile-card[aria-busy="true"] :is(.profile-avatar, .profile-name, .profile-email),
+.usage-list[data-loading] :is(h3, .usage-percent, .usage-reset) {
+    display: block;
+    border-radius: 4px;
+    background: var(--chip);
+    color: transparent;
+    animation: skeleton 1.4s ease-in-out infinite alternate;
+}
+
+.profile-card[aria-busy="true"] .profile-avatar {
+    border-radius: 50%;
+}
+
+.profile-card[aria-busy="true"] .profile-name {
+    width: 7em;
+    height: 1em;
+}
+
+.profile-card[aria-busy="true"] .profile-email {
+    width: 11em;
+    height: 0.9em;
+    margin-top: 6px;
+}
+
+.usage-list[data-loading] h3 {
+    width: 6em;
+    height: 0.9em;
+}
+
+.usage-list[data-loading] .usage-percent {
+    width: 2em;
+    height: 1em;
+}
+
+.usage-list[data-loading] .usage-reset {
+    width: 12em;
+    height: 0.9em;
+}
+
+@keyframes skeleton {
+    from {
+        opacity: 0.45;
+    }
+}

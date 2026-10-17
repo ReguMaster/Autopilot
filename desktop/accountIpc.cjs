@@ -14,11 +14,19 @@ const createFailure = (code, msg) => {
 };
 
 // 계정 목록·선택·로그인·제거와 계정별 사용량 조회를 맡는다. 설정 저장과 화면 전달은 호출한 쪽이 넘겨 준 함수를 쓴다.
+// 선택한 계정은 프로젝트(탭)마다 다르다. getAccountId·setAccountId는 프로젝트(생략하면 활성 프로젝트)의 계정 id를 읽고 쓰고,
+// resolveProjectDir은 요청한 프로젝트가 열려 있으면 그 경로(생략하면 활성 프로젝트), 아니면 null을 돌려준다.
+// isRunning은 어느 프로젝트든 실행 중인지, isProjectRunning은 그 프로젝트가 실행 중인지다.
 const createAccountIpc = ({
     readSettings,
     writeSettings,
+    getAccountId,
+    setAccountId,
+    resolveProjectDir,
     broadcast,
     isRunning,
+    isProjectRunning,
+    loginExpiresAtOverride = 0,
     store = createAccountStore({ accountsRoot: path.join(app.getPath("userData"), "accounts"), getBaseDir: () => resolveBaseDir(readSettings().claudeDir) })
 }) => {
     const readers = new Map();
@@ -32,14 +40,18 @@ const createAccountIpc = ({
         return [{ id: DEFAULT_ACCOUNT_ID, label: DEFAULT_ACCOUNT_LABEL, isDefault: true }, ...added];
     };
 
-    const getActiveId = (settings) => {
-        return listAccounts(settings).some((account) => account.id === settings.accountId) ? settings.accountId : DEFAULT_ACCOUNT_ID;
+    // 프로젝트가 고른 계정. 지워졌거나 알 수 없는 id는 기본 계정으로 본다.
+    const getActiveId = (settings, projectDir) => {
+        const accountId = getAccountId(projectDir);
+
+        return listAccounts(settings).some((account) => account.id === accountId) ? accountId : DEFAULT_ACCOUNT_ID;
     };
 
     const getReader = (accountId) => {
         if (!readers.has(accountId)) {
             const reader = createAccountReader({
                 credentialsFile: path.join(store.getConfigDir(accountId), CREDENTIALS_FILE_NAME),
+                loginExpiresAtOverride: loginExpiresAtOverride,
                 renewCredentials: async () => (isRunning() || login ? false : renewCredentials(store.getConfigDir(accountId))),
                 onChange: (account) => broadcast("autopilot:account", { id: accountId, account: account })
             });
@@ -81,13 +93,13 @@ const createAccountIpc = ({
         return { path: dir, isAuto: !settings.claudeDir, exists: fs.existsSync(dir) };
     };
 
-    const getPayload = () => {
+    const getPayload = (projectDir) => {
         const settings = readSettings();
         const accounts = listAccounts(settings);
 
         return {
             accounts: accounts,
-            activeId: getActiveId(settings),
+            activeId: getActiveId(settings, projectDir),
             claudeDir: getClaudeDirInfo(settings),
             snapshots: Object.fromEntries(accounts.map((account) => [account.id, getReader(account.id).getAccount()])),
             login: getLoginState()
@@ -110,7 +122,7 @@ const createAccountIpc = ({
         return login ? createFailure("LOGIN_IN_PROGRESS", "로그인이 진행 중이에요. 마치거나 취소한 뒤 다시 시도해 주세요.") : null;
     };
 
-    const finishLogin = async (accountId, isNew, result) => {
+    const finishLogin = async (accountId, isNew, projectDir, result) => {
         login = null;
 
         const settings = readSettings();
@@ -119,7 +131,12 @@ const createAccountIpc = ({
         if (result.ok) {
             const labeled = accounts.map((account) => (account.id === accountId && account.label === account.id ? { ...account, label: sanitizeLabel(result.email) || account.label } : account));
 
-            writeSettings({ ...settings, accounts: labeled, accountId: isNew ? accountId : settings.accountId });
+            writeSettings({ ...settings, accounts: labeled });
+
+            if (isNew) {
+                setAccountId(projectDir, accountId);
+            }
+
             await getReader(accountId).refresh(true);
 
             if (isWatching) {
@@ -135,26 +152,37 @@ const createAccountIpc = ({
         broadcast("autopilot:login", { accountId: accountId, phase: getLoginPhase(result), url: "", message: result.ok ? "로그인했어요." : result.message });
     };
 
-    const beginLogin = (accountId, isNew) => {
+    // 이미 로그인했던 계정은 알고 있는 이메일을 로그인 페이지에 미리 채워 인증 코드만 입력하면 되게 한다.
+    const beginLogin = (accountId, isNew, projectDir) => {
         login = { accountId: accountId, isNew: isNew, session: null, url: "" };
 
-        const session = startLogin(store.getConfigDir(accountId), {
-            onUrl: (url) => {
-                if (login?.accountId === accountId) {
-                    login.url = url;
-                    broadcast("autopilot:login", getLoginState());
-                }
+        const session = startLogin(
+            store.getConfigDir(accountId),
+            {
+                onUrl: (url) => {
+                    if (login?.accountId === accountId) {
+                        login.url = url;
+                        broadcast("autopilot:login", getLoginState());
+                    }
+                },
+                onFinish: (result) => finishLogin(accountId, isNew, projectDir, result)
             },
-            onFinish: (result) => finishLogin(accountId, isNew, result)
-        });
+            { email: isNew ? "" : getReader(accountId).getAccount().profile?.email }
+        );
 
         if (login?.accountId === accountId) {
             login.session = session;
         }
     };
 
-    const handleGetAccounts = () => {
-        return { status: STATUS_OK, data: getPayload() };
+    const createNoProjectFailure = () => {
+        return createFailure("INVALID_PROJECT", "열려 있는 프로젝트가 아니에요.");
+    };
+
+    const handleGetAccounts = (event, requestedDir) => {
+        const projectDir = resolveProjectDir(requestedDir);
+
+        return projectDir === null ? createNoProjectFailure() : { status: STATUS_OK, data: getPayload(projectDir) };
     };
 
     const handleRefresh = async (event, accountId) => {
@@ -166,33 +194,49 @@ const createAccountIpc = ({
     };
 
     // 선택한 계정으로 쓸 수 있는 모델 목록. 조회하지 못하면 빈 목록이고 화면은 "최신"만 보여준다.
-    const handleGetModels = async () => {
-        const models = await getReader(getActiveId(readSettings())).getModels();
+    const handleGetModels = async (event, requestedDir) => {
+        const projectDir = resolveProjectDir(requestedDir);
+
+        if (projectDir === null) {
+            return createNoProjectFailure();
+        }
+
+        const models = await getReader(getActiveId(readSettings(), projectDir)).getModels();
 
         return { status: STATUS_OK, data: { models: models } };
     };
 
-    const handleSelect = (event, accountId) => {
-        const settings = readSettings();
+    // 계정은 그 프로젝트가 실행 중이 아닐 때 바꾼다. 다른 프로젝트가 돌고 있어도 이 프로젝트의 계정은 바꿀 수 있다.
+    const handleSelect = (event, accountId, requestedDir) => {
+        const projectDir = resolveProjectDir(requestedDir);
 
-        if (isRunning()) {
+        if (projectDir === null) {
+            return createNoProjectFailure();
+        }
+
+        if (isProjectRunning(projectDir)) {
             return createFailure("RUNNING", "실행 중에는 계정을 바꿀 수 없어요.");
         }
 
-        if (!listAccounts(settings).some((account) => account.id === accountId)) {
+        if (!listAccounts(readSettings()).some((account) => account.id === accountId)) {
             return createFailure("INVALID_ACCOUNT", "알 수 없는 계정이에요.");
         }
 
-        writeSettings({ ...settings, accountId: accountId });
+        setAccountId(projectDir, accountId);
 
         return broadcastPayload();
     };
 
     const handleAdd = (event, options = {}) => {
         const busyFailure = getBusyFailure();
+        const projectDir = resolveProjectDir(options.projectDir);
 
         if (busyFailure) {
             return busyFailure;
+        }
+
+        if (projectDir === null) {
+            return createNoProjectFailure();
         }
 
         const settings = readSettings();
@@ -211,7 +255,7 @@ const createAccountIpc = ({
         }
 
         writeSettings({ ...settings, accounts: [...accounts, { id: created.id, label: created.label, shared: created.shared }] });
-        beginLogin(created.id, true);
+        beginLogin(created.id, true, projectDir);
         broadcastPayload();
 
         return { status: STATUS_OK, data: { accountId: created.id } };
@@ -228,7 +272,7 @@ const createAccountIpc = ({
             return createFailure("INVALID_ACCOUNT", "알 수 없는 계정이에요.");
         }
 
-        beginLogin(accountId, false);
+        beginLogin(accountId, false, resolveProjectDir());
         broadcast("autopilot:login", getLoginState());
 
         return { status: STATUS_OK };
@@ -272,20 +316,6 @@ const createAccountIpc = ({
             return createFailure("INVALID_ACCOUNT", "제거할 수 있는 계정이 아니에요.");
         }
 
-        const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender), {
-            type: "warning",
-            title: "AutoPilot",
-            message: `'${target.label}' 계정을 제거할까요?`,
-            detail: "앱에 저장된 이 계정의 로그인 정보와 설정 폴더를 지워요. Claude 계정 자체에는 영향이 없고, 다시 추가하면 새로 로그인해야 해요.",
-            buttons: ["취소", "제거"],
-            defaultId: 0,
-            cancelId: 0
-        });
-
-        if (response === 0) {
-            return { status: STATUS_OK, data: { cancelled: true } };
-        }
-
         dropReader(accountId);
 
         try {
@@ -316,9 +346,9 @@ const createAccountIpc = ({
 
     // 시작할 때 쓸 계정의 설정 폴더. 기본 계정은 엔진의 기본값(~/.claude)을 쓰도록 빈 문자열이다. 어느 계정이든 로그인돼 있어야 한다.
     // 로그인 정보가 저장되는 곳이 플랫폼마다 다르므로(macOS는 키체인) 파일 대신 `claude auth status`로 확인한다.
-    const getRunAccount = async () => {
+    const getRunAccount = async (projectDir) => {
         const settings = readSettings();
-        const activeId = getActiveId(settings);
+        const activeId = getActiveId(settings, projectDir);
 
         if (login) {
             return createFailure("LOGIN_IN_PROGRESS", "로그인이 진행 중이에요. 마치거나 취소한 뒤 시작해 주세요.");
@@ -425,16 +455,24 @@ const createAccountIpc = ({
         }
     };
 
-    // 예약이 한도를 판단할 때 쓴다. 지금 선택한 계정의 마지막으로 읽은 사용량과 다시 읽기.
-    const getActiveUsage = () => {
-        return getReader(getActiveId(readSettings())).getAccount();
+    // 예약이 한도를 판단할 때 쓴다. 프로젝트(생략하면 활성 프로젝트)가 고른 계정의 마지막으로 읽은 사용량과 다시 읽기.
+    const getActiveUsage = (projectDir) => {
+        return getReader(getActiveId(readSettings(), projectDir)).getAccount();
     };
 
-    const refreshActiveUsage = () => {
-        return getReader(getActiveId(readSettings())).refresh();
+    const refreshActiveUsage = (projectDir) => {
+        return getReader(getActiveId(readSettings(), projectDir)).refresh();
     };
 
-    return { register: register, startWatch: startWatch, getRunAccount: getRunAccount, cancelLogin: handleCancelLogin, getActiveUsage: getActiveUsage, refreshActiveUsage: refreshActiveUsage };
+    return {
+        register: register,
+        startWatch: startWatch,
+        getRunAccount: getRunAccount,
+        cancelLogin: handleCancelLogin,
+        getActiveUsage: getActiveUsage,
+        refreshActiveUsage: refreshActiveUsage,
+        broadcastPayload: broadcastPayload
+    };
 };
 
 module.exports = { createAccountIpc };

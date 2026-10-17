@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'" />
+        <title>AutoPilot 카드</title>
+        <link rel="stylesheet" href="fonts/pretendard.css" />
+        <link rel="stylesheet" href="shareCard.css" />
+        <script src="shareCard.js" defer></script>
+    </head>
+    <body>
+        <main class="card">
+            <p id="sentence" class="sentence"><span id="sentence-before"></span><b id="sentence-strong"></b></p>
+            <svg id="underline" class="underline" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true" hidden>
+                <defs>
+                    <filter id="hand" x="-2%" y="-80%" width="104%" height="260%">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.035 0.4" numOctaves="2" seed="7" result="noise" />
+                        <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.6" />
+                    </filter>
+                </defs>
+                <path d="M0.6 9.6 L99.2 5.4" stroke="#3656d6" stroke-width="5" stroke-linecap="round" fill="none" vector-effect="non-scaling-stroke" filter="url(#hand)" />
+            </svg>
+            <p id="facts" class="facts"></p>
+            <img class="mark" src="../docs/logo.png" alt="" />
+        </main>
+    </body>
+</html>

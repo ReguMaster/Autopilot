@@ -1,5 +1,6 @@
-import { DEFAULT_END_TIME, POLICY_ALIASES, POLICY_SELF } from "./config.js";
+import { DEFAULT_COMMIT_PREFIX, DEFAULT_END_TIME, DEFAULT_WORK_BRANCH, POLICY_ALIASES, POLICY_SELF } from "./config.js";
 import dateUtil from "./dateUtil.js";
+import util from "./util.js";
 
 const SOURCE_ARGUMENT = "실행 인자";
 const SOURCE_DEFAULT = "기본값";
@@ -37,4 +38,17 @@ const getRunSettings = (endTimeArgument = "", policyArgument = "", now = new Dat
     return { deadline: dateUtil.getDeadline(endTime, now), policy: policy, endSource: endSource, policySource: policySource };
 };
 
-export default { getRunSettings };
+// 커밋 접두어와 작업 브랜치. 우선순위: 실행 인자 > 기본값
+const getGitSettings = (commitPrefixArgument, workBranchArgument) => {
+    if (commitPrefixArgument !== undefined && !util.isValidCommitPrefix(commitPrefixArgument)) {
+        throw new Error("커밋 접두어는 앞뒤 공백·백틱·제어 문자가 없는 1~20자여야 합니다.");
+    }
+
+    if (workBranchArgument !== undefined && !util.isValidWorkBranch(workBranchArgument)) {
+        throw new Error("작업 브랜치는 영문·숫자·._-과 / 조합의 git 브랜치 이름이어야 하고 main·master는 쓸 수 없습니다.");
+    }
+
+    return { commitPrefix: commitPrefixArgument ?? DEFAULT_COMMIT_PREFIX, workBranch: workBranchArgument ?? DEFAULT_WORK_BRANCH };
+};
+
+export default { getRunSettings, getGitSettings };

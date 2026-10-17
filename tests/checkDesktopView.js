@@ -1,58 +1,14 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import vm from "node:vm";
+import * as viewFormat from "../desktop/viewFormat.js";
 
-const EXPORTED_NAMES = [
-    "MODEL_LABELS",
-    "formatDuration",
-    "formatClock",
-    "formatDeadline",
-    "formatOptions",
-    "getModelFamily",
-    "formatModelName",
-    "getLineKind",
-    "getRunPhase",
-    "getRoundTone",
-    "formatRoundTime",
-    "shiftEndTime",
-    "getEndTimeAfter",
-    "formatTimeUntil",
-    "formatUsageReset",
-    "getUsageTone",
-    "getView",
-    "getGreeting",
-    "getWorkSummary",
-    "describeFinish",
-    "getWaitSentence",
-    "getTrack",
-    "parseStoryLine",
-    "describeTool",
-    "createStory",
-    "applyStoryEntry",
-    "parseGain",
-    "splitFigure",
-    "describePastRun",
-    "buildTranscript",
-    "describeSchedule",
-    "describeScheduleStatus",
-    "describeScheduleLast",
-    "describeScheduleSummary"
-];
-
-// 브라우저의 클래식 스크립트처럼 DOM 없이 viewFormat.js만 불러와 순수 함수를 꺼낸다.
-const loadViewFormat = () => {
-    const source = fs.readFileSync(path.join(import.meta.dirname, "../desktop/viewFormat.js"), "utf8");
-
-    return vm.runInNewContext(`${source}\n({ ${EXPORTED_NAMES.join(", ")} })`);
-};
-
-const checkFormatting = ({ formatDuration, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
+const checkFormatting = ({ formatDuration, formatBytes, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
     assert.equal(formatDuration(0), "00:00:00");
     assert.equal(formatDuration(3661000), "01:01:01");
     assert.equal(formatDuration(59999), "00:00:59");
     assert.equal(formatDuration(100 * 3600000), "100:00:00");
     assert.equal(formatDuration(-5000), "00:00:00");
+
+    assert.deepEqual([0, 512, 1536, 12 * 1024 * 1024, 5 * 1024 ** 3, -1, "x"].map(formatBytes), ["0 B", "512 B", "1.5 KB", "12 MB", "5.0 GB", "0 B", "0 B"]);
 
     const morning = new Date(2026, 9, 10, 7, 5).getTime();
 
@@ -160,6 +116,33 @@ const checkEndTime = ({ shiftEndTime, getEndTimeAfter, formatTimeUntil }) => {
     assert.equal(formatTimeUntil("23:00", at2232), "28분 뒤");
     assert.equal(formatTimeUntil("09:00", at0700), "2시간 뒤");
     assert.equal(formatTimeUntil("07:00", at0700), "24시간 뒤");
+};
+
+const checkLoginExpiry = ({ describeLoginExpiry }) => {
+    const now = new Date(2026, 9, 13, 10, 0).getTime();
+    const minutes = (count) => count * 60000;
+    const day = minutes(1440);
+
+    assert.equal(describeLoginExpiry(0, now), null, "만료 시각을 모르면 아무것도 보이지 않는다");
+
+    assert.deepEqual(describeLoginExpiry(now + 29 * day + minutes(5 * 60), now), {
+        text: "로그인 만료 11월 11일 15:00 · 29일 5시간 후",
+        banner: "",
+        isExpiring: false
+    });
+
+    assert.deepEqual(describeLoginExpiry(now + 3 * day, now), {
+        text: "로그인 만료 10월 16일 10:00 · 3일 0시간 후",
+        banner: "Claude 로그인이 3일 0시간 뒤 만료돼요. 미리 다시 로그인하면 실행이 중간에 멈추지 않아요.",
+        isExpiring: true
+    });
+
+    assert.equal(describeLoginExpiry(now + 3 * day + minutes(1), now).isExpiring, false, "3일을 조금이라도 넘으면 아직 알리지 않는다");
+    assert.equal(describeLoginExpiry(now + minutes(90), now).banner, "Claude 로그인이 1시간 30분 뒤 만료돼요. 미리 다시 로그인하면 실행이 중간에 멈추지 않아요.");
+
+    for (const expiresAt of [now, now - minutes(1)]) {
+        assert.deepEqual(describeLoginExpiry(expiresAt, now), { text: "로그인이 만료됐어요", banner: "Claude 로그인이 만료됐어요. 다시 로그인해 주세요.", isExpiring: true });
+    }
 };
 
 const checkUsageFormat = ({ formatUsageReset, getUsageTone }) => {
@@ -480,7 +463,8 @@ const checkSchedules = (viewFormat) => {
     assert.equal(describeSchedule({ ...base, days: [1, 2, 3, 4, 5], minRemaining: 50, duration: 90 }).title, "평일 23:00에 시작");
     assert.equal(describeSchedule({ ...base, days: [5, 0, 3] }).title, "수·금·일 23:00에 시작");
     assert.equal(describeSchedule({ ...base, days: [0, 6] }).title, "주말 23:00에 시작");
-    assert.equal(describeSchedule({ ...base, minRemaining: 50, duration: 90 }).detail, "90분 실행, 남은 한도 50% 이상일 때만");
+    assert.equal(describeSchedule({ ...base, minRemaining: 50, duration: 90 }).detail, "1시간 30분 실행, 남은 한도 50% 이상일 때만");
+    assert.equal(describeSchedule({ ...base, duration: 45 }).detail, "45분 실행");
 
     const reset = { ...base, kind: "reset", time: "", window: "weekly", from: "22:00", to: "07:00", minRemaining: 30, duration: 300 };
 
@@ -535,9 +519,120 @@ const checkSchedules = (viewFormat) => {
     assert.deepEqual(describeScheduleLast({ at: at(20, 30), ok: false, message: "로그인이 필요해요" }, now), { text: "오늘 20:30에 시작하지 못했어요. 로그인이 필요해요", tone: "warn" });
 };
 
-const checkViewFormat = () => {
-    const viewFormat = loadViewFormat();
+const checkStreak = ({ getStreakSummary, describeStreak, formatDayKey, getGreeting }) => {
+    const range = (year, month, from, to) => Array.from({ length: to - from + 1 }, (value, index) => `${year}-${String(month).padStart(2, "0")}-${String(from + index).padStart(2, "0")}`);
+    const describe = (days, today = "2026-10-14") => describeStreak(getStreakSummary(days, today));
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+    const lastFall = [...range(2026, 8, 31, 31), ...range(2026, 9, 1, 30)];
 
+    assert.equal(formatDayKey(new Date(2026, 9, 4, 23, 59).getTime()), "2026-10-04");
+    assert.deepEqual(plain(getStreakSummary([], "2026-10-14")), { current: 0, endedToday: false, best: 0, bestBefore: 0, brokenLength: 0 });
+    assert.equal(describe([]), "");
+
+    // 어제까지 이어진 12일과 그 앞의 31일 기록
+    const running = [...lastFall, ...range(2026, 10, 2, 13)];
+
+    assert.deepEqual(plain(getStreakSummary(running, "2026-10-14")), { current: 12, endedToday: false, best: 31, bestBefore: 31, brokenLength: 0 });
+    assert.equal(describe(running), "어젯밤까지 12일째 돌았어요.");
+    assert.equal(describe([...running, "2026-10-14"]), "오늘까지 13일째 돌았어요.");
+    // 같은 날짜가 여러 번 들어와도 한 번으로 센다. 월을 넘겨도 이어진다.
+    assert.equal(describe([...running, "2026-10-13", "2026-10-13"]), "어젯밤까지 12일째 돌았어요.");
+    assert.equal(describe(["2026-09-29", "2026-09-30", "2026-10-01"], "2026-10-02"), "어젯밤까지 3일째 돌았어요.");
+    assert.equal(describe(["2025-12-30", "2025-12-31", "2026-01-01"], "2026-01-02"), "어젯밤까지 3일째 돌았어요.");
+
+    // 이전 최장 기록을 넘으면 알린다. 이전 기록이 하루뿐이면 넘었다고 하지 않는다.
+    assert.equal(describe([...range(2026, 9, 1, 9), ...range(2026, 10, 2, 13)]), "어젯밤까지 12일째예요. 지금까지 가장 길었던 9일을 넘었어요.");
+    assert.equal(describe([...range(2026, 9, 1, 1), ...range(2026, 10, 2, 13)]), "어젯밤까지 12일째 돌았어요.");
+    assert.equal(describe([...range(2026, 9, 1, 9), ...range(2026, 10, 2, 14)]), "오늘까지 13일째예요. 지금까지 가장 길었던 9일을 넘었어요.");
+    assert.equal(describe([...range(2026, 9, 1, 12), ...range(2026, 10, 2, 13)]), "어젯밤까지 12일째 돌았어요.");
+
+    // 하루만 이어졌을 때는 어제 돌았다는 말만 하고, 오늘 이미 돌았으면 말하지 않는다.
+    assert.equal(describe(["2026-10-13"]), "어젯밤에도 돌았어요. 오늘 밤에도 돌리면 2일째예요.");
+    assert.equal(describe(["2026-10-14"]), "");
+
+    // 어제 쉬어서 끊긴 다음 날에만 알리고, 하루짜리 기록과 오래전에 끊긴 기록은 말하지 않는다.
+    assert.deepEqual(plain(getStreakSummary(range(2026, 10, 8, 12), "2026-10-14")), { current: 0, endedToday: false, best: 5, bestBefore: 5, brokenLength: 5 });
+    assert.equal(describe(range(2026, 10, 8, 12)), "어제는 쉬어서 5일 기록은 거기까지예요. 오늘 밤부터 다시 세어 볼게요.");
+    assert.equal(describe(["2026-10-12"]), "");
+    assert.equal(describe(range(2026, 10, 1, 5)), "");
+    assert.equal(describe(range(2026, 10, 8, 12), "2026-10-15"), "");
+
+    // 시계가 거꾸로 가도(마지막 날이 오늘보다 뒤) 깨지지 않는다.
+    assert.equal(describe(range(2026, 10, 10, 16), "2026-10-14"), "오늘까지 7일째 돌았어요.");
+    assert.equal(describe(["not-a-day", "2026-1-1"]), "");
+
+    const greeting = getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: "mireu-api", streakText: "어젯밤까지 12일째 돌았어요." });
+
+    assert.match(greeting.lead, /^어젯밤까지 12일째 돌았어요\. 적어 주신 일을 07:00까지/);
+    assert.match(getGreeting({ hour: 23, policy: "todo", endTime: "", projectName: "mireu-api", streakText: "" }).lead, /^적어 주신 일만/);
+    assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: "", streakText: "어젯밤까지 12일째 돌았어요." }).lead, /^Git 저장소/);
+};
+
+const checkShareCard = ({ pickCardSentence, splitCardEmphasis, getCardWhen, buildShareCard }) => {
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+
+    // 마쳤다고 말하는 한국어 문장만 고르고, 진행 문장·영어·너무 짧은 문장은 건너뛴다. 한 줄에 문장이 여럿이면 마지막 것부터 본다.
+    const lines = [
+        "10:00:01 먼저 구조를 살펴볼게요.",
+        "10:00:02   > Read src/index.js",
+        "10:30:00 테스트를 모두 통과시켰어요. 결제 취소 경로 테스트를 채워 뒀어요.",
+        "10:40:00 Done fixing the cache bug.",
+        "10:50:00 고쳤어요.",
+        "11:00:00 이제 마무리할게요.",
+        "[3회차] 완료"
+    ];
+
+    assert.equal(pickCardSentence(lines), "결제 취소 경로 테스트를 채워 뒀어요.");
+    assert.equal(pickCardSentence(["10:00:01 먼저 구조를 살펴볼게요.", "10:50:00 고쳤어요."]), "");
+    assert.equal(pickCardSentence([]), "");
+
+    assert.deepEqual(plain(splitCardEmphasis("자는 동안 테스트가 비어 있던 결제 취소 경로를 채워 뒀어요.")), { sentence: "자는 동안 테스트가 비어 있던 결제 취소 경로를", strong: "채워 뒀어요." });
+    assert.deepEqual(plain(splitCardEmphasis("테스트를 고쳤어요.")), { sentence: "테스트를", strong: "고쳤어요." });
+    assert.deepEqual(plain(splitCardEmphasis("완료했어요.")), { sentence: "", strong: "완료했어요." });
+    assert.deepEqual(plain(splitCardEmphasis("테스트 커버리지 62.4% → 80.9%")), { sentence: "테스트 커버리지 62.4% →", strong: "80.9%" });
+
+    const at = (day, hour, minute = 0) => new Date(2026, 9, day, hour, minute).getTime();
+
+    assert.equal(getCardWhen(at(13, 23, 10), at(14, 7, 5)), "어젯밤");
+    assert.equal(getCardWhen(at(13, 9), at(14, 7, 5)), "어제");
+    assert.equal(getCardWhen(at(14, 8), at(14, 9)), "오늘");
+    assert.equal(getCardWhen(at(14, 23, 10), at(14, 23, 50)), "오늘 밤");
+    assert.equal(getCardWhen(at(10, 23), at(14, 9)), "10월 10일");
+
+    const commits = [
+        { hash: "a", insertions: 1000, deletions: 100 },
+        { hash: "b", insertions: 284, deletions: 212 }
+    ];
+    const finished = createState({
+        startedAt: at(13, 23, 10),
+        endedAt: at(14, 7),
+        exitCode: 0,
+        reason: "예정 시각 도달",
+        deadlineAt: at(14, 7),
+        rounds: [createRound(1, 1, 2, commits)],
+        gains: [{ round: 1, text: "린트 경고 47 → 0" }]
+    });
+    const now = at(14, 8);
+
+    assert.deepEqual(plain(buildShareCard({ state: finished, lines: lines, projectName: "mireu-api", nowMs: now })), {
+        sentence: "결제 취소 경로 테스트를",
+        strong: "채워 뒀어요.",
+        facts: ["어젯밤 23:10 ~ 07:00, mireu-api", "커밋 2개, +1,284줄 -312줄"]
+    });
+    // 문장이 없으면 마지막 성과 줄로, 그것도 없으면 마친 화면의 안내 문장으로 대신한다. 시작 시각이나 프로젝트 이름을 모르면 그 줄을 줄인다.
+    assert.deepEqual(plain(buildShareCard({ state: finished, lines: [], projectName: "", nowMs: now })), {
+        sentence: "린트 경고 47 →",
+        strong: "0",
+        facts: ["어젯밤 23:10 ~ 07:00", "커밋 2개, +1,284줄 -312줄"]
+    });
+
+    const noGain = buildShareCard({ state: { ...finished, gains: [], startedAt: 0, rounds: [createRound(1, 1, 2)] }, lines: [], projectName: "mireu-api", nowMs: now });
+
+    assert.match(`${noGain.sentence} ${noGain.strong}`, /커밋으로 남길 만한 변경은 없었어요/);
+    assert.deepEqual(plain(noGain.facts), ["mireu-api", "이번에는 커밋을 남기지 않았어요"]);
+};
+
+const checkViewFormat = () => {
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
     checkTrack(viewFormat);
@@ -550,7 +645,10 @@ const checkViewFormat = () => {
     checkPhases(viewFormat);
     checkRoundTime(viewFormat);
     checkUsageFormat(viewFormat);
+    checkLoginExpiry(viewFormat);
     checkSchedules(viewFormat);
+    checkStreak(viewFormat);
+    checkShareCard(viewFormat);
 
     console.log("Desktop view checks passed.");
 };

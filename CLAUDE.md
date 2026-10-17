@@ -9,7 +9,7 @@ AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPi
 ## 구조
 
 - 배포물은 Electron 앱이다. Windows exe(포터블과 NSIS 설치형), macOS dmg·zip(x64·arm64, ad-hoc 서명), Linux AppImage·deb(x64·arm64)를 만든다. 엔진(autopilot/)은 앱에 내장되고(electron-builder extraResources로 패키지의 resources/engine/에 복사), 앱이 자기 실행 파일을 ELECTRON_RUN_AS_NODE=1로 Node처럼 실행해 엔진 스크립트를 자식 프로세스로 돌린다. 사용자는 앱 화면에서 대상 프로젝트 폴더·작업·종료 시각·정책·model·effort를 모두 정하고 시작한다.
-- 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI), tests/(검증), docs/(README 스크린샷·앱 로고·아이콘), legacy/(보관), .github/, package.json, .prettierrc다.
+- 저장소 루트는 개발용이고, 엔진 소스는 autopilot/ 하나다. 개발용은 desktop/(Electron UI. 화면은 React 19이고 소스는 desktop/ui/, esbuild가 desktop/bundle/로 번들한다), tests/(검증), docs/(README 스크린샷·앱 로고·아이콘), legacy/(보관), .github/, package.json, .prettierrc다.
 - legacy/의 PowerShell 구현 압축본(autopilot_loop.ps1, check_progress_archive.ps1)은 새 실행 경로에서 사용하지 않으며 수정하지 않는다. 다른 레거시 소스도 legacy/에 압축해 보관한다.
 
 ## 개발 명령과 검증
@@ -17,7 +17,9 @@ AutoPilot 자체를 개발할 때 적용한다. 대상 프로젝트에서 AutoPi
 ```sh
 npm ci
 npm run test:cli              # 엔진 검증(tests/checkAutopilot.js)
-npm run test:desktop          # 데스크톱 러너·표시·계정·기록 검증
+npm run build:ui              # React 화면 번들(desktop/ui → desktop/bundle). npm run dev:ui는 저장할 때마다 다시 만든다
+npm run test:desktop          # 데스크톱 러너·표시·계정·기록·화면 컴포넌트·스토어 검증
+npm run ui:parity             # 옛 화면과 지금 화면을 같은 장면으로 비교(tests/tools/ui). --baseline <git ref> --full
 npm test                      # Electron 창·preload 스모크, 앱 번들의 엔진을 ELECTRON_RUN_AS_NODE로 --help 실행
 npm run format:cli            # 엔진과 엔진 검증 파일 전체 포맷
 npm run format:desktop        # desktop과 데스크톱 검증 파일 전체 포맷
@@ -31,11 +33,13 @@ npm run build:linux           # dist/linux-unpacked/autopilot
 npm run dist:linux            # AppImage·deb(x64·arm64)
 ```
 
+- 스모크 테스트(`npm test`, --smoke-test)는 창을 화면에 띄우지 않는다. 숨긴 창이 화면 로드·마운트·preload 다리·엔진 응답을 확인한 뒤 종료하고, 창이 보이면 실패로 처리한다(main.cjs). 개발 중 검증을 돌릴 때마다 창이 깜빡이지 않게 하는 정책이다. 화면 모양을 눈으로 확인할 때는 창을 띄우지 말고 tests/tools/ui의 offscreen 도구(runScenes)를 쓴다.
 - 검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다.
 - 검증 시간 단축은 runAutopilot()의 limits 옵션으로만 한다. 사용자 CLI에 테스트 설정을 노출하지 않는다.
 - 검증은 runAutopilot의 dataDir 옵션(CLI는 APPDATA 환경 변수)으로 진행 기록 위치를 격리한다.
 - 엔진 검증 파일은 tests/checkAutopilot.js(진입점)와 tests/lib/(fixtures 공용 가짜 CLI·헬퍼, unitChecks 단위 검증, scenarioChecks 시나리오·CLI 진입 검증)다. 데스크톱 검증 파일은 tests/checkDesktop*.js다.
 - 패키징한 앱의 엔진까지 확인하려면 npm run build 뒤 node tests/checkAutopilot.js dist/win-unpacked/AutoPilot.exe를 실행한다(번들된 resources/engine을 앱 exe로 실행해 CLI 계약을 검증한다).
+- 화면 번들(desktop/bundle/)은 커밋하지 않는다(.gitignore). start·dev·test·build·dist 스크립트가 먼저 build:ui를 실행하고, ci.yml은 npm ci 뒤에 직접 실행한다(Linux 스모크와 패키징은 npm 스크립트를 거치지 않는다). 패키지에는 번들만 들어가고 desktop/ui/ 소스는 package.json의 build.files가 뺀다. 화면 번들을 고친 뒤 Electron 없이 dev:ui만 켜 두었다면 `npx electron . --dev`로 직접 실행한다.
 - VS Code 등이 ELECTRON_RUN_AS_NODE=1을 설정한 셸에서는 해제하고 npm start·npm test로 electron을 실행한다(앱이 엔진을 띄울 때는 앱이 직접 지정한다).
 - npm run dist는 electron-builder로 Windows x64 포터블 exe(AutoPilot-Portable-*)와 NSIS 설치 파일(AutoPilot-Setup-*)을 함께 만든다(포터블은 실행마다 임시 폴더에 풀어 느리므로 설치형을 병행한다). 앱 asar에는 desktop/과 로고만 들어가고, 엔진은 extraResources로 resources/engine/에 복사된다. 지침 본문은 엔진 소스(guideText.js)에 있으므로 별도 파일이 필요 없다.
 - macOS 빌드는 서명하지 않고 ad-hoc 서명(mac.identity "-", hardenedRuntime 끔)만 한다. 인증서가 없어도 빌드되고 Apple Silicon에서 실행되며, 사용자는 처음 한 번 격리 속성을 풀어야 한다(README). 공증은 하지 않는다. Linux 실행 파일 이름은 `autopilot`(linux.executableName)이고, deb는 설치 때 chrome-sandbox에 SUID를 준다.
@@ -47,7 +51,7 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
@@ -70,7 +74,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 - 포맷은 루트 .prettierrc(4칸 들여쓰기·큰따옴표·세미콜론·trailing comma 없음)를 따르고 구조는 기존 서비스 코드를 기준으로 한다.
 - 포맷터는 수정한 JS 파일만 지정한다(`npx prettier --write <파일>`). 기존 Electron 파일은 별도 요청 없이 전체 포맷하지 않는다(format:desktop은 요청이 있을 때만 쓴다).
 - 변수·함수는 camelCase, 상수는 UPPER_SNAKE_CASE, 서비스·유틸 파일은 camelCaseService.js/camelCaseUtil.js를 사용한다. 함수는 get/run/parse/write/handle/kill 등 동작이 드러나게 이름 짓고 의미 없는 축약명을 피한다.
-- const 화살표 함수를 쓴다. 엔진과 tests는 ESM(import/export)이고, desktop 메인 프로세스(.cjs)는 CommonJS(require), viewFormat.js·renderer.js는 브라우저 클래식 스크립트이므로 각 파일의 기존 방식을 따른다.
+- const 화살표 함수를 쓴다. 엔진과 tests는 ESM(import/export)이고, desktop 메인 프로세스(.cjs)는 CommonJS(require), viewFormat.js는 ES 모듈, desktop/ui/는 ESM + JSX(esbuild 번들)이므로 각 파일의 기존 방식을 따른다.
 - 공개 서비스 함수는 try/catch, 오류 로그, STATUS_OK/STATUS_FAILED 반환을 갖춘다. 성공 데이터는 data, 오류는 error: { code, msg }에 담는다. CLI 오류에 HTTP 코드나 웹 서버 의존성을 추가하지 않는다.
 - 서비스 함수는 준비·실행·결과 처리 단계로 나누고 재사용할 로직은 utils의 export default 라이브러리로 분리한다. 유틸 내부 예외는 서비스 경계에서 처리하며 프로세스 종료와 finally 정리를 유지한다.
 - 함수 사이와 논리 블록(변수 선언군·검증·반환) 사이에는 빈 줄을 둔다. if는 한 줄이어도 중괄호를 쓰고 중첩 삼항 연산자는 쓰지 않는다. 오브젝트 필드는 key: value로 명시하고 shorthand를 쓰지 않는다.
@@ -92,7 +96,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - --project는 Git 저장소의 루트 폴더여야 한다(엔진이 확인).
 - 프로젝트 안의 .autopilot/은 progress/(로그·리포트·실행 신호)와 recycle_bin/을 두는 작업 폴더이며 엔진이 만들고 .gitignore(*)를 써서 프로젝트 git에서 제외한다(이미 있는 .gitignore는 건드리지 않는다). 중첩 .git은 두지 않는다.
-- 실행을 시작할 때 보관 기간(기본 30일, limits의 logRetentionDays로만 조정)이 지난 날짜 폴더의 autopilot_*.log·report_*.html만 지운다. 보관한 진행 기록 원본·완료 마커·날짜가 아닌 폴더는 건드리지 않고 링크는 따라가지 않으며, 실패해도 실행은 계속한다.
+- 실행을 시작할 때 보관 기간(기본 30일, --log-retention-days N(1~3650의 정수, 앱 설정의 "보관 기간") 또는 테스트용 limits의 logRetentionDays로 조정. limits가 우선)이 지난 날짜 폴더의 autopilot_*.log·report_*.html만 지운다. 보관한 진행 기록 원본·완료 마커·날짜가 아닌 폴더는 건드리지 않고 링크는 따라가지 않으며, 실패해도 실행은 계속한다.
 
 ### 예약 작업
 
@@ -115,7 +119,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 - 실제 세션은 claude -p로 실행한다.
 - 프롬프트는 UTF-8 stdin으로 전달한다. shell에는 사용자 프롬프트를 삽입하지 않는다. Windows .cmd 래퍼 실행 인자도 검증한다.
 - 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·예약 작업·진행 기록 경로·정책·남은 시간·작업 수 상한을 명시한다.
-- AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
+- AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고(커밋 접두어와 작업 브랜치를 받는 getAutopilotGuide·getAutopilotPolicy) 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.
 - guideText.js의 `진행 문장` 절은 세션이 작업 중 메시지를 1인칭 해요체로 짧게 쓰고, 검증으로 확인한 수치 변화가 있으면 `성과:` 한 줄을 남기게 한다.
 - Claude 세션과 그 하위 프로세스에 ELECTRON_RUN_AS_NODE를 넘기지 않는다(autopilotUtil.getRunEnv가 지운다). 넘기면 대상 프로젝트의 electron 실행이 깨진다.
 - stream-json을 줄 단위로 처리한다. stderr는 별도로 읽으며, CLI가 종료되면 손자 프로세스의 상속 파이프 EOF를 기다리지 않는다.
@@ -136,7 +140,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - 실패: exit code가 0이 아니거나 result.is_error가 true이면 실패다. 5·15·30분 후 재시도하고 연속 4회 실패 시 exit 1로 중단한다.
 - 사용량 한도: rate_limit_event의 allowed* 상태는 정상이다. 한도 도달과 회차 실패가 함께 있고 미래 resetsAt이 있을 때만 실패로 세지 않고 리셋 1분 뒤까지 대기한다. 대기 후 작업 시간이 부족하면 종료한다.
-- --extend-on-limit(앱 설정의 "사용량 한도")이면 대기하기 전에 대기 시간(초 단위 올림)만큼 종료 시각을 늦추고 `[사용량 한도] 종료 시각 연장` 줄을 남긴다. 이때는 대기 전 남은 시간이 최소 남은 시간 이상이면 계속한다.
+- --extend-on-limit(앱 설정의 "사용량 한도")이면 대기하기 전에 대기 시간(초 단위 올림)만큼 종료 시각을 늦추고 `[사용량 한도] 종료 시각 연장` 줄을 남긴다. 이때는 대기 전 남은 시간이 최소 남은 시간 이상이면 계속한다. --max-extend-minutes N(1~10080의 정수, 앱 설정의 "연장 상한")이 있으면 한 실행에서 늘리는 총량이 N분으로 묶인다. 남은 상한보다 더 필요하면 남은 만큼만 늘리고(`[사용량 한도] 종료 시각 연장` 줄은 그대로) `[사용량 한도] 연장 상한 N분에 도달해 종료 시각을 더 늘리지 않습니다` 줄을 남기며, 상한 때문에 시간이 모자라 끝나면 종료 이유는 `사용량 한도 연장 상한 도달`이다. 이 줄은 앱 파서의 `까지 대기` 형식과 겹치지 않게 쓴다.
 - 시한: 회차 시한은 min(전체 종료 시각, 회차 시작 + 120분)이다. 출력이 계속 와도 시한을 적용한다. 프로세스 종료는 Windows가 taskkill /T /F, macOS/Linux가 별도 프로세스 그룹 종료다. 독립 세션으로 이탈한 프로세스까지 추적하지 않는다.
 - idle: 정상 회차의 전후로 HEAD의 파일 내용이 바뀌지 않았으면(새 commit이 없음) idle이다. 진행 기록은 저장소 밖이라 따로 제외하지 않는다. 연속 2회면 종료한다.
 - 리포트: HTML 리포트는 실행 중 30초마다, 대기 진입과 종료 때 갱신한다. 실행 중에는 git status를 호출하지 않는다. 모든 외부 문자열을 HTML escape한다.
@@ -145,6 +149,6 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - 우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값).
 - 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이다. 값을 바꾸면 README·지침·검증을 함께 맞춘다.
-- model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어는 [ap], 작업 브랜치는 ai/autopilot이다.
+- model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어(기본 [ap], --commit-prefix)와 작업 브랜치(기본 ai/autopilot, --branch)는 실행 인자로 바꾸며 지침과 정책에 끼워 넣는다(엔진이 브랜치를 직접 다루지는 않고 세션이 지침대로 전환·생성한다). 접두어는 앞뒤 공백·백틱·제어 문자가 없고 `--`로 시작하지 않는 1~20자, 브랜치는 영문·숫자·._-와 /로 된 100자 이하 이름(`..`·`.lock`·끝 점 금지)이고, AI가 기본 브랜치에 직접 커밋하지 않도록 main·master·HEAD는 쓸 수 없다. 검증의 원본은 util.js(isValidCommitPrefix·isValidWorkBranch)이고 앱의 desktop/engineArgs.cjs가 같은 규칙을 갖는다(tests/checkDesktopRunner.js가 대조). 값이 있어도 기본값과 같으면 앱은 인자를 생략한다.
 - 종료 시각은 HH:mm만 받는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.
 - 정책 인자는 auto/self/todo/directed 별칭도 지원한다.

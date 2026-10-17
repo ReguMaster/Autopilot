@@ -1,0 +1,72 @@
+/* 성과 카드(1200x630). 앱 화면이 아니라 PNG로 저장하려고 메인 프로세스가 숨겨 둔 창에 그리는 페이지다. */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    width: 1200px;
+    height: 630px;
+    overflow: hidden;
+    background: #f2f3f2;
+    color: #1d1f23;
+    font-family: "Pretendard", sans-serif;
+}
+
+.card {
+    position: relative;
+    width: 1200px;
+    height: 630px;
+}
+
+.sentence {
+    position: absolute;
+    top: 120px;
+    left: 96px;
+    width: 1008px;
+    font-size: 70px;
+    font-weight: 300;
+    line-height: 1.42;
+    letter-spacing: -0.028em;
+    text-wrap: balance;
+    word-break: keep-all;
+}
+
+.sentence b {
+    font-weight: 800;
+    letter-spacing: -0.034em;
+}
+
+.underline {
+    position: absolute;
+    height: 14px;
+    overflow: visible;
+}
+
+.underline[hidden] {
+    display: none;
+}
+
+.facts {
+    position: absolute;
+    bottom: 62px;
+    left: 98px;
+    color: #5f646c;
+    font-size: 21px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    line-height: 1.7;
+    white-space: pre-line;
+}
+
+.mark {
+    position: absolute;
+    right: 72px;
+    bottom: 62px;
+    width: 132px;
+    mix-blend-mode: multiply;
+    opacity: 0.5;
+}

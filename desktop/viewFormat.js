@@ -1,4 +1,4 @@
-// 화면 표시용 순수 함수. renderer.js보다 먼저 불러오며 DOM·window에 의존하지 않는다(tests/checkDesktopView.js가 단독으로 불러 검증한다).
+// 화면 표시용 순수 함수. DOM·window에 의존하지 않는다(tests/checkDesktopView.js가 단독으로 불러 검증한다).
 const MODEL_LABELS = { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };
 
 const padNumber = (number) => {
@@ -9,6 +9,20 @@ const formatDuration = (ms) => {
     const totalSeconds = Math.max(0, Math.floor(ms / 1000));
 
     return `${padNumber(Math.floor(totalSeconds / 3600))}:${padNumber(Math.floor((totalSeconds % 3600) / 60))}:${padNumber(totalSeconds % 60)}`;
+};
+
+// 파일 크기를 1024 단위로 읽기 쉽게(1.5 KB, 12 MB).
+const formatBytes = (bytes) => {
+    const units = ["B", "KB", "MB", "GB"];
+    let value = Math.max(0, Number(bytes) || 0);
+    let index = 0;
+
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index++;
+    }
+
+    return `${index === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 };
 
 const formatClock = (ms) => {
@@ -122,6 +136,29 @@ const formatUsageReset = (resetsAt, now) => {
     const isSameDay = new Date(resetsAt).toDateString() === new Date(now).toDateString();
 
     return `${isSameDay ? formatClock(resetsAt) : formatDeadline(resetsAt)} 리셋 · ${formatRemaining(resetsAt - now)} 후`;
+};
+
+const LOGIN_EXPIRY_WARN_MS = 3 * 24 * 60 * 60 * 1000;
+
+// 저장된 로그인의 만료 안내. 만료 3일 전(Claude Code가 경고를 내는 시점)부터 isExpiring이고 banner에 안내 문장이 있다. 만료 시각을 모르면 null이다.
+const describeLoginExpiry = (loginExpiresAt, now) => {
+    if (!loginExpiresAt) {
+        return null;
+    }
+
+    const remaining = loginExpiresAt - now;
+
+    if (remaining <= 0) {
+        return { text: "로그인이 만료됐어요", banner: "Claude 로그인이 만료됐어요. 다시 로그인해 주세요.", isExpiring: true };
+    }
+
+    const isExpiring = remaining <= LOGIN_EXPIRY_WARN_MS;
+
+    return {
+        text: `로그인 만료 ${formatDeadline(loginExpiresAt)} · ${formatRemaining(remaining)} 후`,
+        banner: isExpiring ? `Claude 로그인이 ${formatRemaining(remaining)} 뒤 만료돼요. 미리 다시 로그인하면 실행이 중간에 멈추지 않아요.` : "",
+        isExpiring: isExpiring
+    };
 };
 
 const getUsageTone = (percent) => {
@@ -243,7 +280,8 @@ const getGreetingEmoji = (hour) => {
     return hour < 12 ? "☀️" : "☕";
 };
 
-const getGreeting = ({ hour, policy, endTime, projectName }) => {
+// streakText는 연속 실행 문장(describeStreak)이고 있으면 안내 문구 앞에 붙는다.
+const getGreeting = ({ hour, policy, endTime, projectName, streakText = "" }) => {
     if (!projectName) {
         return { title: "먼저 작업할 프로젝트를 골라 주세요. 📂", lead: "Git 저장소의 루트 폴더를 고르면 바로 시작할 수 있어요." };
     }
@@ -251,12 +289,84 @@ const getGreeting = ({ hour, policy, endTime, projectName }) => {
     const end = endTime || DEFAULT_END_TIME;
     const when = isNightHour(hour) ? "오늘 밤에는" : "지금부터";
     const title = `${when} ${projectName}에 무엇을 해 둘까요? ${getGreetingEmoji(hour)}`;
+    const lead = policy === "todo" ? `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` : `적어 주신 일을 ${end}까지 하나씩 해 두고, 남는 시간에는 스스로 고칠 곳을 찾아볼게요.`;
 
-    if (policy === "todo") {
-        return { title: title, lead: `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` };
+    return { title: title, lead: streakText ? `${streakText} ${lead}` : lead };
+};
+
+/* 연속 실행: 실행한 날짜(YYYY-MM-DD, 밤샘 실행은 시작한 날)가 이어진 일수를 세고 안내 문장으로 바꾼다 */
+
+const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const formatDayKey = (ms) => {
+    const date = new Date(ms);
+
+    return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
+};
+
+// 날짜를 시간대와 무관한 정수 일 번호로 바꿔 연속 여부를 뺄셈으로 본다.
+const getDayNumber = (dayKey) => {
+    const [year, month, day] = dayKey.split("-").map(Number);
+
+    return Math.round(Date.UTC(year, month - 1, day) / DAY_MS);
+};
+
+// current는 오늘이나 어제까지 이어진 일수(하루를 건너뛰면 0), brokenLength는 그저께까지 이어지다 어제 끊긴 일수다.
+// bestBefore는 지금 이어지는 연속을 뺀 이전 최장 기록이다.
+const getStreakSummary = (days, todayKey) => {
+    const numbers = [...new Set(days.filter((day) => DAY_KEY_PATTERN.test(day)).map(getDayNumber))].sort((left, right) => left - right);
+    const streaks = [];
+
+    for (const number of numbers) {
+        const last = streaks.at(-1);
+
+        if (last && number - last.end === 1) {
+            last.end = number;
+            last.length += 1;
+        } else {
+            streaks.push({ end: number, length: 1 });
+        }
     }
 
-    return { title: title, lead: `적어 주신 일을 ${end}까지 하나씩 해 두고, 남는 시간에는 스스로 고칠 곳을 찾아볼게요.` };
+    if (!streaks.length) {
+        return { current: 0, endedToday: false, best: 0, bestBefore: 0, brokenLength: 0 };
+    }
+
+    const last = streaks.at(-1);
+    const gap = Math.max(0, getDayNumber(todayKey) - last.end);
+    const isCurrent = gap <= 1;
+    const longest = (list) => Math.max(0, ...list.map((streak) => streak.length));
+
+    return {
+        current: isCurrent ? last.length : 0,
+        endedToday: gap === 0,
+        best: longest(streaks),
+        bestBefore: longest(isCurrent ? streaks.slice(0, -1) : streaks),
+        brokenLength: gap === 2 ? last.length : 0
+    };
+};
+
+// 시작 화면 안내 문구 앞에 붙는 한두 문장. 하루만 이어졌거나 오래 쉬었으면 말하지 않는다(재촉하지 않는다).
+const describeStreak = ({ current, endedToday, bestBefore, brokenLength }) => {
+    const until = endedToday ? "오늘" : "어젯밤";
+
+    if (current >= 2 && bestBefore >= 2 && current > bestBefore) {
+        return `${until}까지 ${current}일째예요. 지금까지 가장 길었던 ${bestBefore}일을 넘었어요.`;
+    }
+
+    if (current >= 2) {
+        return `${until}까지 ${current}일째 돌았어요.`;
+    }
+
+    if (current === 1 && !endedToday) {
+        return "어젯밤에도 돌았어요. 오늘 밤에도 돌리면 2일째예요.";
+    }
+
+    if (brokenLength >= 2) {
+        return `어제는 쉬어서 ${brokenLength}일 기록은 거기까지예요. 오늘 밤부터 다시 세어 볼게요.`;
+    }
+
+    return "";
 };
 
 const getWorkSummary = (state) => {
@@ -312,6 +422,77 @@ const describeFinish = (state) => {
     }
 
     return { title: title, lead: reasonText ? `${work} ${reasonText}` : work };
+};
+
+/* 성과 카드: 마친 실행에서 카드에 쓸 문장과 사실 줄을 고른다 */
+
+const CARD_SENTENCE_MIN_LENGTH = 8;
+const CARD_SENTENCE_MAX_LENGTH = 80;
+// 한 일을 이미 마쳤다고 말하는 문장만 쓴다("테스트를 돌려볼게요" 같은 진행 문장은 제외).
+const CARD_DONE_PATTERN = /(?:었|았|했|였|냈|뒀|됐|쳤|웠|렸|줬|봤|켰)어요[.!]?$/;
+const CARD_HANGUL_PATTERN = /[가-힣]/;
+const GAIN_ARROW = " → ";
+
+// Claude가 남긴 문장 중 마지막으로 한 일을 말한 것. 한 줄에 문장이 여럿이면 그중 마지막 것부터 본다.
+const pickCardSentence = (lines) => {
+    const says = lines.map(parseStoryLine).filter((line) => line?.type === "say" && line.text);
+
+    for (const say of says.reverse()) {
+        const found = say.text
+            .split(/(?<=[.!?])\s+/)
+            .reverse()
+            .find((sentence) => sentence.length >= CARD_SENTENCE_MIN_LENGTH && sentence.length <= CARD_SENTENCE_MAX_LENGTH && CARD_HANGUL_PATTERN.test(sentence) && CARD_DONE_PATTERN.test(sentence));
+
+        if (found) {
+            return found;
+        }
+    }
+
+    return "";
+};
+
+// 마지막 낱말들을 굵게 보인다. 성과 줄("이전 → 이후")은 이후 값을 굵게 한다.
+const splitCardEmphasis = (text) => {
+    const arrow = text.lastIndexOf(GAIN_ARROW);
+
+    if (arrow >= 0) {
+        return { sentence: text.slice(0, arrow + GAIN_ARROW.length - 1), strong: text.slice(arrow + GAIN_ARROW.length) };
+    }
+
+    const words = text.split(" ");
+    const count = words.length >= 4 ? 2 : 1;
+
+    return { sentence: words.slice(0, -count).join(" "), strong: words.slice(-count).join(" ") };
+};
+
+// 실행을 시작한 때를 지금 기준으로 말한다. 저녁에 시작해 다음 날 보면 "어젯밤"이다.
+const getCardWhen = (startedAt, nowMs) => {
+    const days = Math.round((getStartOfDay(nowMs) - getStartOfDay(startedAt)) / DAY_MS);
+    const isEvening = new Date(startedAt).getHours() >= 18;
+
+    if (days === 0) {
+        return isEvening ? "오늘 밤" : "오늘";
+    }
+
+    if (days === 1) {
+        return isEvening ? "어젯밤" : "어제";
+    }
+
+    const date = new Date(startedAt);
+
+    return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+};
+
+const formatCount = (value) => value.toLocaleString("en-US");
+
+// 카드에 그릴 내용: 큰 문장(굵게 보일 끝부분 포함)과 작은 사실 두 줄.
+const buildShareCard = ({ state, lines, projectName, nowMs }) => {
+    const text = pickCardSentence(lines) || state.gains.at(-1)?.text || describeFinish(state).lead;
+    const summary = getWorkSummary(state);
+    const span = state.startedAt ? `${getCardWhen(state.startedAt, nowMs)} ${formatClock(state.startedAt)} ~ ${formatClock(state.endedAt || nowMs)}` : "";
+    const work = summary.commits ? `커밋 ${summary.commits}개, +${formatCount(summary.insertions)}줄 -${formatCount(summary.deletions)}줄` : "이번에는 커밋을 남기지 않았어요";
+
+    return { ...splitCardEmphasis(text), facts: [[span, projectName].filter(Boolean).join(", "), work].filter(Boolean) };
 };
 
 // 회차 사이에 기다리는 동안에는 마지막 문장 대신 기다리는 이유를 들려준다.
@@ -789,7 +970,14 @@ const describeDays = (days) => {
 };
 
 const formatScheduleDuration = (minutes) => {
-    return minutes % 60 ? `${minutes}분` : `${minutes / 60}시간`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+
+    if (!hours) {
+        return `${rest}분`;
+    }
+
+    return rest ? `${hours}시간 ${rest}분` : `${hours}시간`;
 };
 
 // 예약 하나를 두 줄로 설명한다. 제목은 언제 시작하는지, 설명은 어떻게 돌고 어떤 조건이 붙는지다.
@@ -903,4 +1091,103 @@ const describeScheduleLast = (last, nowMs) => {
     const when = formatScheduleWhen(last.at, nowMs);
 
     return last.ok ? { text: `${when}에 시작했어요`, tone: "muted" } : { text: `${when}에 시작하지 못했어요. ${last.message}`, tone: "warn" };
+};
+
+export {
+    MODEL_LABELS,
+    padNumber,
+    formatDuration,
+    formatBytes,
+    formatClock,
+    formatDeadline,
+    DEFAULT_END_TIME,
+    MINUTES_PER_DAY,
+    PRESET_ROUND_MINUTES,
+    parseTimeMinutes,
+    formatTimeMinutes,
+    shiftEndTime,
+    getEndTimeAfter,
+    formatTimeUntil,
+    EFFORT_LABELS,
+    formatEffort,
+    getModelFamily,
+    formatModelName,
+    formatOptions,
+    formatRemaining,
+    formatUsageReset,
+    describeLoginExpiry,
+    getUsageTone,
+    getLineKind,
+    getRunPhase,
+    formatRoundTime,
+    getRoundTone,
+    getView,
+    isNightHour,
+    getGreetingEmoji,
+    getGreeting,
+    formatDayKey,
+    getStreakSummary,
+    describeStreak,
+    getWorkSummary,
+    FINISH_REASONS,
+    getReasonText,
+    getWorkSentence,
+    describeFinish,
+    pickCardSentence,
+    splitCardEmphasis,
+    getCardWhen,
+    buildShareCard,
+    getWaitSentence,
+    getTrack,
+    STORY_LIMIT,
+    STORY_TOOL_LIMIT,
+    STORY_DETAIL_LENGTH,
+    STORY_TOOL_PATTERN,
+    STORY_SAY_PATTERN,
+    STORY_MORE_PATTERN,
+    STORY_GAIN_PATTERN,
+    STORY_RUN_START_PATTERN,
+    PATH_TOOLS,
+    shortenText,
+    cleanStoryText,
+    parseStoryLine,
+    getFileName,
+    getToolDetail,
+    BASH_PHRASES,
+    describeTool,
+    createStory,
+    pushStoryItem,
+    applyStoryEntry,
+    GAIN_CHANGE_PATTERN,
+    FIGURE_PATTERN,
+    parseGain,
+    splitFigure,
+    WEEKDAY_LABELS,
+    DAY_MS,
+    PAST_STATUSES,
+    getStartOfDay,
+    formatPastDay,
+    getPastStatus,
+    getPastNotes,
+    formatPastMeta,
+    describePastRun,
+    TRANSCRIPT_LIMIT,
+    TRANSCRIPT_TEXT_LENGTH,
+    TRANSCRIPT_ROUND_PATTERN,
+    TRANSCRIPT_ROUND_START_PATTERN,
+    TRANSCRIPT_COMMIT_PATTERN,
+    TRANSCRIPT_LIMIT_PATTERN,
+    TRANSCRIPT_FINISH_PATTERN,
+    buildTranscript,
+    WEEKDAY_NAMES,
+    WEEKDAY_ORDER,
+    SCHEDULE_WINDOW_LABELS,
+    isSameDays,
+    describeDays,
+    formatScheduleDuration,
+    describeSchedule,
+    formatScheduleWhen,
+    describeScheduleStatus,
+    describeScheduleSummary,
+    describeScheduleLast
 };
