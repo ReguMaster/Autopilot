@@ -76,8 +76,14 @@ const checkCardRender = async () => {
         const png = await renderCardPng({ sentence: "자는 동안 테스트가 비어 있던 경로를", strong: "채워 뒀어요.", facts: ["어젯밤 23:10 ~ 07:00, mireu-api", "커밋 14개, +1,284줄 -312줄"] });
         const { width, height } = require("electron").nativeImage.createFromBuffer(png).getSize();
 
+        if (width !== CARD_WIDTH || height !== CARD_HEIGHT) {
+            console.error(`카드 크기가 어긋났어요: ${width}x${height}`);
+        }
+
         return width === CARD_WIDTH && height === CARD_HEIGHT;
-    } catch {
+    } catch (error) {
+        console.error(`카드 렌더 실패: ${error?.message}`);
+
         return false;
     }
 };
