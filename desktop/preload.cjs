@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     deleteRun: (id, projectDir) => ipcRenderer.invoke("autopilot:delete-run", id, projectDir),
     getRunUsage: (projectDir) => ipcRenderer.invoke("autopilot:get-run-usage", projectDir),
     getStreakDays: (projectDir) => ipcRenderer.invoke("autopilot:get-streak-days", projectDir),
+    saveCard: (payload) => ipcRenderer.invoke("autopilot:save-card", payload),
     pruneRuns: (projectDir) => ipcRenderer.invoke("autopilot:prune-runs", projectDir),
     openUpdate: () => ipcRenderer.invoke("autopilot:open-update"),
     getSchedules: () => ipcRenderer.invoke("autopilot:get-schedules"),

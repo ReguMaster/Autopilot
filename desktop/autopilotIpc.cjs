@@ -5,6 +5,7 @@ const path = require("node:path");
 const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { createStreakStore } = require("./streakStore.cjs");
+const { sanitizeCardContent, getCardFileName, renderCardPng } = require("./shareCard.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
 const { handleState, notify, showWindow, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
 const { shouldRunPostAction, runPowerAction, createPostAction } = require("./postAction.cjs");
@@ -460,6 +461,35 @@ const handleExportSettings = async (event) => {
         return { status: STATUS_OK, data: { canceled: false } };
     } catch (error) {
         return createFailure("EXPORT_FAILED", `설정을 내보내지 못했어요: ${error.message}`);
+    }
+};
+
+// 마친 실행의 성과 카드를 PNG로 저장한다. 저장할 곳을 먼저 받고(취소하면 그리지 않는다) 숨긴 창에 그려 파일로 쓴다.
+const handleSaveCard = async (event, payload = {}) => {
+    const content = sanitizeCardContent(payload.content);
+
+    if (!content) {
+        return createFailure("INVALID_CARD", "카드에 담을 문장이 없어요.");
+    }
+
+    const selection = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: "성과 카드 저장",
+        defaultPath: path.join(app.getPath("pictures"), getCardFileName(payload.projectName, Date.now())),
+        filters: [{ name: "PNG 이미지", extensions: ["png"] }]
+    });
+
+    if (selection.canceled || !selection.filePath) {
+        return { status: STATUS_OK, data: { canceled: true } };
+    }
+
+    try {
+        const file = /\.png$/i.test(selection.filePath) ? selection.filePath : `${selection.filePath}.png`;
+
+        await fs.promises.writeFile(file, await renderCardPng(content));
+
+        return { status: STATUS_OK, data: { canceled: false, file: file } };
+    } catch (error) {
+        return createFailure("CARD_FAILED", `카드를 저장하지 못했어요: ${error.message}`);
     }
 };
 
@@ -1083,6 +1113,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:delete-run", handleDeleteRun);
     ipcMain.handle("autopilot:get-run-usage", handleGetRunUsage);
     ipcMain.handle("autopilot:get-streak-days", handleGetStreakDays);
+    ipcMain.handle("autopilot:save-card", handleSaveCard);
     ipcMain.handle("autopilot:prune-runs", handlePruneRuns);
     ipcMain.handle("autopilot:open-update", handleOpenUpdate);
     ipcMain.handle("autopilot:set-system", handleSetSystem);

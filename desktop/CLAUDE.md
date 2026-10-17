@@ -95,6 +95,14 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 문장 규칙: 어제나 오늘까지 이어진 연속이 2일 이상이면 "어젯밤까지 N일째 돌았어요."(오늘 돌았으면 "오늘까지")이고, 이전 최장 기록(2일 이상)을 넘었으면 그 기록을 함께 알린다. 하루만 이어졌으면 어제 돌았다는 말만 하고, 어제 쉬어서 끊긴 날(끊긴 연속이 2일 이상)에만 한 번 알리고 그 뒤로는 말하지 않는다. 쉬어도 이어 주는 날(휴식권)은 없다. 재촉하지 않는 말투를 지킨다.
 - 검증: tests/checkDesktopStreak.js(날짜 수집·보관), tests/checkDesktopView.js(일수 계산·문장), tests/tools/ui의 stage-ready-streak* 장면.
 
+## 성과 카드
+
+- 마친 화면(FinishView)의 "카드 저장"(#done-card)이 마친 실행을 1200x630 PNG 한 장으로 저장한다(시안 sentence). Claude가 한 일을 말한 문장 하나를 크게(끝부분은 굵게, 마지막 줄 아래에 파란 밑줄), 아래에 사실 두 줄(언제 몇 시부터 몇 시까지와 프로젝트 이름, 커밋 수와 변경 줄 수)과 로고를 둔다. 장식을 더하지 않는 것이 이 카드의 핵심이다.
+- 내용은 화면이 고른다(viewFormat.buildShareCard). 문장은 로그의 Claude 문장 중 이미 마쳤다고 말하는 것(과거형 해요체, 한글, 8~80자. 한 줄에 여럿이면 마지막 문장부터)을 마지막부터 찾고, 없으면 마지막 성과 줄("이전 → 이후", 이후 값을 굵게), 그것도 없으면 마친 화면의 안내 문장(describeFinish.lead)으로 대신한다. 커밋이 없으면 "이번에는 커밋을 남기지 않았어요", 시작 시각을 모르면(재연결 등) 시각 줄을 뺀다.
+- 그리기와 저장은 메인이 한다(shareCard.cjs, IPC autopilot:save-card). 렌더러가 보낸 content는 sanitizeCardContent가 글자·길이·줄 수(문장 120자·사실 줄 80자 2개)만 받고(제어 문자는 공백), 저장 위치는 OS 저장 대화상자(기본 사진 폴더, getCardFileName)가 먼저 받는다(취소하면 그리지 않는다). 카드는 화면에 나타나지 않는 창(offscreen)에 desktop/shareCard.html·css·js를 로드해 그리고(window.renderCard가 글자를 채우고 글자 크기를 맞추며 마지막 줄을 재서 밑줄을 둔다. 줄바꿈은 text-wrap: balance) capturePage를 카드 크기로 잘라 PNG로 쓴다. 카드 페이지는 자체 CSP(스크립트·스타일·이미지·서체 모두 self)이고 데이터는 executeJavaScript로만 넘기며 textContent로만 넣는다.
+- 스모크 테스트가 숨긴 창으로 카드를 한 장 그려 1200x630인지 확인한다(checkCardRender). 이 창은 화면에 보이지 않는다. 검증: tests/checkDesktopCard.js(sanitize·파일 이름), tests/checkDesktopView.js(문장 고르기·강조·시점·내용), tests/tools/ui의 stage-done-card 장면(IPC로 보낸 content와 저장 안내).
+- 화면 배율 2(2400x1260)는 쓰지 않는다. 창을 화면보다 크게 만들 수 없는 환경이 있어 잘릴 수 있다.
+
 ## 새 버전 알림
 
 - 설정의 새 버전 확인(checkUpdates, 기본 켬)을 끄면 확인하지 않고 알고 있던 안내를 거둔다(updateCheck의 isEnabled). 바꾸는 즉시 autopilot:set-preferences가 check()를 불러 켜면 바로 확인하고 끄면 칩을 숨긴다.

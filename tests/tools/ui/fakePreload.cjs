@@ -221,6 +221,7 @@ const api = {
                 model.usage === undefined ? { runCount: 12, bytes: 4400000, staleCount: 8, staleBytes: 3900000, oldestDay: "2026-08-02", retentionDays: model.settings.logRetentionDays } : model.usage
         })
     ),
+    saveCard: respond("saveCard", async () => ok({ canceled: false, file: "C:/Users/me/Pictures/AutoPilot-card.png" })),
     getStreakDays: respond("getStreakDays", async () => ok({ days: model.streakDays })),
     pruneRuns: respond("pruneRuns", async () => ok({ deletedCount: 8, freedBytes: 3900000 })),
     getModels: respond("getModels", async () => ok({ models: model.models })),

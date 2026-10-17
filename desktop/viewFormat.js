@@ -424,6 +424,77 @@ const describeFinish = (state) => {
     return { title: title, lead: reasonText ? `${work} ${reasonText}` : work };
 };
 
+/* 성과 카드: 마친 실행에서 카드에 쓸 문장과 사실 줄을 고른다 */
+
+const CARD_SENTENCE_MIN_LENGTH = 8;
+const CARD_SENTENCE_MAX_LENGTH = 80;
+// 한 일을 이미 마쳤다고 말하는 문장만 쓴다("테스트를 돌려볼게요" 같은 진행 문장은 제외).
+const CARD_DONE_PATTERN = /(?:었|았|했|였|냈|뒀|됐|쳤|웠|렸|줬|봤|켰)어요[.!]?$/;
+const CARD_HANGUL_PATTERN = /[가-힣]/;
+const GAIN_ARROW = " → ";
+
+// Claude가 남긴 문장 중 마지막으로 한 일을 말한 것. 한 줄에 문장이 여럿이면 그중 마지막 것부터 본다.
+const pickCardSentence = (lines) => {
+    const says = lines.map(parseStoryLine).filter((line) => line?.type === "say" && line.text);
+
+    for (const say of says.reverse()) {
+        const found = say.text
+            .split(/(?<=[.!?])\s+/)
+            .reverse()
+            .find((sentence) => sentence.length >= CARD_SENTENCE_MIN_LENGTH && sentence.length <= CARD_SENTENCE_MAX_LENGTH && CARD_HANGUL_PATTERN.test(sentence) && CARD_DONE_PATTERN.test(sentence));
+
+        if (found) {
+            return found;
+        }
+    }
+
+    return "";
+};
+
+// 마지막 낱말들을 굵게 보인다. 성과 줄("이전 → 이후")은 이후 값을 굵게 한다.
+const splitCardEmphasis = (text) => {
+    const arrow = text.lastIndexOf(GAIN_ARROW);
+
+    if (arrow >= 0) {
+        return { sentence: text.slice(0, arrow + GAIN_ARROW.length - 1), strong: text.slice(arrow + GAIN_ARROW.length) };
+    }
+
+    const words = text.split(" ");
+    const count = words.length >= 4 ? 2 : 1;
+
+    return { sentence: words.slice(0, -count).join(" "), strong: words.slice(-count).join(" ") };
+};
+
+// 실행을 시작한 때를 지금 기준으로 말한다. 저녁에 시작해 다음 날 보면 "어젯밤"이다.
+const getCardWhen = (startedAt, nowMs) => {
+    const days = Math.round((getStartOfDay(nowMs) - getStartOfDay(startedAt)) / DAY_MS);
+    const isEvening = new Date(startedAt).getHours() >= 18;
+
+    if (days === 0) {
+        return isEvening ? "오늘 밤" : "오늘";
+    }
+
+    if (days === 1) {
+        return isEvening ? "어젯밤" : "어제";
+    }
+
+    const date = new Date(startedAt);
+
+    return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+};
+
+const formatCount = (value) => value.toLocaleString("en-US");
+
+// 카드에 그릴 내용: 큰 문장(굵게 보일 끝부분 포함)과 작은 사실 두 줄.
+const buildShareCard = ({ state, lines, projectName, nowMs }) => {
+    const text = pickCardSentence(lines) || state.gains.at(-1)?.text || describeFinish(state).lead;
+    const summary = getWorkSummary(state);
+    const span = state.startedAt ? `${getCardWhen(state.startedAt, nowMs)} ${formatClock(state.startedAt)} ~ ${formatClock(state.endedAt || nowMs)}` : "";
+    const work = summary.commits ? `커밋 ${summary.commits}개, +${formatCount(summary.insertions)}줄 -${formatCount(summary.deletions)}줄` : "이번에는 커밋을 남기지 않았어요";
+
+    return { ...splitCardEmphasis(text), facts: [[span, projectName].filter(Boolean).join(", "), work].filter(Boolean) };
+};
+
 // 회차 사이에 기다리는 동안에는 마지막 문장 대신 기다리는 이유를 들려준다.
 const getWaitSentence = (state) => {
     if (state.status === "stopping") {
@@ -1062,6 +1133,10 @@ export {
     getReasonText,
     getWorkSentence,
     describeFinish,
+    pickCardSentence,
+    splitCardEmphasis,
+    getCardWhen,
+    buildShareCard,
     getWaitSentence,
     getTrack,
     STORY_LIMIT,

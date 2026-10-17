@@ -144,6 +144,25 @@ const SCENES = [
         }
     },
     {
+        name: "stage-done-card",
+        init: {
+            ...withProject,
+            state: doneState(),
+            logs: ["10:00:03 먼저 프로젝트 구조를 살펴보고 있어요.", "10:40:11 검색 쿼리가 인덱스를 쓰도록 고쳐 뒀어요."].map((text) => ({ stream: "out", text: text, at: NOW }))
+        },
+        run: async (t) => {
+            await t.shot("finish", ".finish");
+
+            // 옛 화면에는 카드 저장 버튼이 없다.
+            if (await t.eval("Boolean(document.querySelector('#done-card'))")) {
+                await t.clearCalls();
+                await t.click("#done-card");
+                await t.note("calls", JSON.stringify(await t.calls()));
+                await t.shot("saved-notice", ".notices");
+            }
+        }
+    },
+    {
         name: "stage-done-actions",
         init: { ...withProject, state: doneState() },
         run: async (t) => {

@@ -568,6 +568,70 @@ const checkStreak = ({ getStreakSummary, describeStreak, formatDayKey, getGreeti
     assert.match(getGreeting({ hour: 23, policy: "auto", endTime: "", projectName: "", streakText: "어젯밤까지 12일째 돌았어요." }).lead, /^Git 저장소/);
 };
 
+const checkShareCard = ({ pickCardSentence, splitCardEmphasis, getCardWhen, buildShareCard }) => {
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+
+    // 마쳤다고 말하는 한국어 문장만 고르고, 진행 문장·영어·너무 짧은 문장은 건너뛴다. 한 줄에 문장이 여럿이면 마지막 것부터 본다.
+    const lines = [
+        "10:00:01 먼저 구조를 살펴볼게요.",
+        "10:00:02   > Read src/index.js",
+        "10:30:00 테스트를 모두 통과시켰어요. 결제 취소 경로 테스트를 채워 뒀어요.",
+        "10:40:00 Done fixing the cache bug.",
+        "10:50:00 고쳤어요.",
+        "11:00:00 이제 마무리할게요.",
+        "[3회차] 완료"
+    ];
+
+    assert.equal(pickCardSentence(lines), "결제 취소 경로 테스트를 채워 뒀어요.");
+    assert.equal(pickCardSentence(["10:00:01 먼저 구조를 살펴볼게요.", "10:50:00 고쳤어요."]), "");
+    assert.equal(pickCardSentence([]), "");
+
+    assert.deepEqual(plain(splitCardEmphasis("자는 동안 테스트가 비어 있던 결제 취소 경로를 채워 뒀어요.")), { sentence: "자는 동안 테스트가 비어 있던 결제 취소 경로를", strong: "채워 뒀어요." });
+    assert.deepEqual(plain(splitCardEmphasis("테스트를 고쳤어요.")), { sentence: "테스트를", strong: "고쳤어요." });
+    assert.deepEqual(plain(splitCardEmphasis("완료했어요.")), { sentence: "", strong: "완료했어요." });
+    assert.deepEqual(plain(splitCardEmphasis("테스트 커버리지 62.4% → 80.9%")), { sentence: "테스트 커버리지 62.4% →", strong: "80.9%" });
+
+    const at = (day, hour, minute = 0) => new Date(2026, 9, day, hour, minute).getTime();
+
+    assert.equal(getCardWhen(at(13, 23, 10), at(14, 7, 5)), "어젯밤");
+    assert.equal(getCardWhen(at(13, 9), at(14, 7, 5)), "어제");
+    assert.equal(getCardWhen(at(14, 8), at(14, 9)), "오늘");
+    assert.equal(getCardWhen(at(14, 23, 10), at(14, 23, 50)), "오늘 밤");
+    assert.equal(getCardWhen(at(10, 23), at(14, 9)), "10월 10일");
+
+    const commits = [
+        { hash: "a", insertions: 1000, deletions: 100 },
+        { hash: "b", insertions: 284, deletions: 212 }
+    ];
+    const finished = createState({
+        startedAt: at(13, 23, 10),
+        endedAt: at(14, 7),
+        exitCode: 0,
+        reason: "예정 시각 도달",
+        deadlineAt: at(14, 7),
+        rounds: [createRound(1, 1, 2, commits)],
+        gains: [{ round: 1, text: "린트 경고 47 → 0" }]
+    });
+    const now = at(14, 8);
+
+    assert.deepEqual(plain(buildShareCard({ state: finished, lines: lines, projectName: "mireu-api", nowMs: now })), {
+        sentence: "결제 취소 경로 테스트를",
+        strong: "채워 뒀어요.",
+        facts: ["어젯밤 23:10 ~ 07:00, mireu-api", "커밋 2개, +1,284줄 -312줄"]
+    });
+    // 문장이 없으면 마지막 성과 줄로, 그것도 없으면 마친 화면의 안내 문장으로 대신한다. 시작 시각이나 프로젝트 이름을 모르면 그 줄을 줄인다.
+    assert.deepEqual(plain(buildShareCard({ state: finished, lines: [], projectName: "", nowMs: now })), {
+        sentence: "린트 경고 47 →",
+        strong: "0",
+        facts: ["어젯밤 23:10 ~ 07:00", "커밋 2개, +1,284줄 -312줄"]
+    });
+
+    const noGain = buildShareCard({ state: { ...finished, gains: [], startedAt: 0, rounds: [createRound(1, 1, 2)] }, lines: [], projectName: "mireu-api", nowMs: now });
+
+    assert.match(`${noGain.sentence} ${noGain.strong}`, /커밋으로 남길 만한 변경은 없었어요/);
+    assert.deepEqual(plain(noGain.facts), ["mireu-api", "이번에는 커밋을 남기지 않았어요"]);
+};
+
 const checkViewFormat = () => {
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
@@ -584,6 +648,7 @@ const checkViewFormat = () => {
     checkLoginExpiry(viewFormat);
     checkSchedules(viewFormat);
     checkStreak(viewFormat);
+    checkShareCard(viewFormat);
 
     console.log("Desktop view checks passed.");
 };

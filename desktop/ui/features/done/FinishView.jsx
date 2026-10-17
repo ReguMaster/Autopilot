@@ -1,6 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 import { describeFinish } from "../../../viewFormat.js";
-import { openReport } from "../../actions/run.js";
+import { openReport, saveShareCard } from "../../actions/run.js";
 import { Button } from "../../components/Button.jsx";
 import { Gains } from "../../components/Gains.jsx";
 import { Icon } from "../../components/Icon.jsx";
@@ -66,6 +66,9 @@ const FinishBody = () => {
                 <Button id="done-report" onClick={openReport}>
                     <Icon symbol="icon-out" />
                     리포트 열기
+                </Button>
+                <Button id="done-card" onClick={saveShareCard}>
+                    카드 저장
                 </Button>
                 <Button id="done-history" onClick={() => ui.setHistory(!isHistoryOpen)}>
                     <Icon symbol="icon-lines" />

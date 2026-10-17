@@ -14,6 +14,7 @@ const {
 } = require("./autopilotIpc.cjs");
 const { wasLaunchedHidden } = require("./launchAtLogin.cjs");
 const { createTray, showWindow, watchPower } = require("./systemIntegration.cjs");
+const { checkCardRender } = require("./shareCard.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
@@ -203,6 +204,7 @@ const createWindow = () => {
 
             const isBridgeReady = await window.webContents.executeJavaScript(SMOKE_CHECK_SCRIPT).catch(() => false);
             const isEngineReady = await checkEngine();
+            const isCardReady = await checkCardRender();
 
             consoleErrors.forEach((message) => console.error(`화면 콘솔 오류: ${message}`));
 
@@ -210,7 +212,7 @@ const createWindow = () => {
                 console.error("스모크 테스트는 창을 화면에 띄우지 않아야 해요.");
             }
 
-            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && consoleErrors.length === 0 && !window.isVisible() ? 0 : 1);
+            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && isCardReady && consoleErrors.length === 0 && !window.isVisible() ? 0 : 1);
         });
     }
 

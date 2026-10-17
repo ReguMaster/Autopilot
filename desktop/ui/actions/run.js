@@ -1,8 +1,10 @@
+import { buildShareCard } from "../../viewFormat.js";
 import { STATUS_OK } from "../lib/constants.js";
+import { getProjectName } from "../lib/projectName.js";
 import { getSettings } from "../stores/appStore.js";
 import { composer, useComposerStore } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
-import { getRunState } from "../stores/runStore.js";
+import { getRunState, useRunStore } from "../stores/runStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { settings } from "./settings.js";
 import { applyProjectSwitch } from "./tabs.js";
@@ -70,6 +72,24 @@ const openReport = async () => {
     ui.showFailure(await window.autopilot.openReport());
 };
 
+// 마친 실행의 성과 카드를 PNG로 저장한다. 문장과 사실 줄은 화면이 고르고 그리기와 저장은 메인이 한다.
+const saveShareCard = async () => {
+    const { state, logs } = useRunStore.getState();
+    const projectName = getProjectName(getSettings().projectDir);
+    const content = buildShareCard({ state: state, lines: logs.map((log) => log.text), projectName: projectName, nowMs: Date.now() });
+    const result = await window.autopilot.saveCard({ content: content, projectName: projectName });
+
+    if (result.status !== STATUS_OK) {
+        ui.showFailure(result);
+
+        return;
+    }
+
+    if (!result.data.canceled) {
+        ui.showNotice("성과 카드를 저장했어요.", "ok");
+    }
+};
+
 const selectProject = async () => {
     const result = await window.autopilot.selectProject();
 
@@ -119,4 +139,4 @@ const openUpdate = async () => {
     ui.showFailure(await window.autopilot.openUpdate());
 };
 
-export { STOP_CONFIRM_MS, startRun, setStopArmed, handleMainAction, openReport, selectProject, resetProgress, changeSystemSettings, openUpdate };
+export { STOP_CONFIRM_MS, startRun, setStopArmed, handleMainAction, openReport, saveShareCard, selectProject, resetProgress, changeSystemSettings, openUpdate };
