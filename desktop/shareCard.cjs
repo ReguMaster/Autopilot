@@ -53,13 +53,20 @@ const renderCardPng = async (content) => {
         const draw = async () => {
             await window.loadFile(path.join(__dirname, "shareCard.html"));
 
+            // 창은 작업 영역보다 커지지 않아 폭이 좁은 화면에서는 capturePage가 카드보다 작게 찍힌다. 보이는 영역을 카드 크기로 고정하고 DevTools로 그 영역을 찍는다.
+            const { debugger: devtools } = window.webContents;
+
+            devtools.attach("1.3");
+
+            await devtools.sendCommand("Emulation.setDeviceMetricsOverride", { width: CARD_WIDTH, height: CARD_HEIGHT, deviceScaleFactor: 1, mobile: false });
             await window.webContents.executeJavaScript(`window.renderCard(${JSON.stringify(content)})`);
 
             // 그린 결과가 화면에 반영될 시간을 준다.
             await new Promise((resolve) => setTimeout(resolve, 200));
 
-            // 창 가장자리 때문에 몇 픽셀 더 크게 찍히는 환경이 있어 카드 크기로 자른다.
-            return (await window.webContents.capturePage()).crop({ x: 0, y: 0, width: CARD_WIDTH, height: CARD_HEIGHT }).toPNG();
+            const { data } = await devtools.sendCommand("Page.captureScreenshot", { format: "png", clip: { x: 0, y: 0, width: CARD_WIDTH, height: CARD_HEIGHT, scale: 1 } });
+
+            return Buffer.from(data, "base64");
         };
 
         return await Promise.race([draw(), timeout]);

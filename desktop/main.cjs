@@ -42,6 +42,11 @@ app.setAppUserModelId(app.isPackaged ? "com.autopilot.desktop" : "com.autopilot.
 
 const isSmokeTest = process.argv.includes("--smoke-test");
 
+// GPU가 없는 CI 러너에서는 숨긴 창의 화면 캡처가 UnknownVizError로 실패하므로 스모크 테스트는 소프트웨어로 그린다.
+if (isSmokeTest) {
+    app.disableHardwareAcceleration();
+}
+
 let isQuitting = false;
 
 // 화면은 메인이 보관한 첫 상태를 받은 뒤에 그려지므로 마운트를 잠깐 기다린 다음, preload 다리와 화면의 주요 자리가 모두 있는지 확인한다.
