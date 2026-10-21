@@ -52,7 +52,7 @@ const PastItem = ({ item }) => {
             {item.tools.length ? (
                 <span className="tools">
                     {item.tools.map((tool, index) => (
-                        <span key={index} className="tool">
+                        <span key={index} className="tool" title={`${tool.name} ${tool.detail}`}>
                             <b>{tool.name}</b>
                             {tool.detail}
                         </span>
