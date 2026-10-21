@@ -80,7 +80,7 @@ const DEFAULT_SCHEDULES = {
 };
 
 const model = {
-    version: "1.2.1",
+    version: "1.3.0",
     platform: "win32",
     canLaunchAtLogin: false,
     update: null,
