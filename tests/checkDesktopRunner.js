@@ -575,7 +575,7 @@ const checkClaudeAccount = async (testDir) => {
     };
     const requests = [];
     const changes = [];
-    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials, loginExpiresAtOverride } = {}) => {
+    const createReader = ({ usage = jsonResponse(usageBody), profile = jsonResponse(profileBody), renewCredentials, loginExpiresAtOverride, readKeychain = null } = {}) => {
         const responses = { usage: usage, profile: profile, isDown: false };
         const fetchImpl = async (url, init) => {
             requests.push({ url: url, headers: init.headers });
@@ -592,6 +592,7 @@ const checkClaudeAccount = async (testDir) => {
             now: () => clock.now,
             renewCredentials: renewCredentials,
             loginExpiresAtOverride: loginExpiresAtOverride,
+            readKeychain: readKeychain,
             onChange: (account) => changes.push(account)
         });
 
@@ -759,16 +760,57 @@ const checkClaudeAccount = async (testDir) => {
     assert.equal((await failingRenew.refresh(true)).error.code, "TOKEN_EXPIRED");
     assert.equal(renewCount, 2);
 
-    // macOS는 로그인 정보가 키체인에 있어 파일이 없거나 깨져도 조회할 수 없다는 안내로 답한다.
-    const missingCredentialsCode = process.platform === "darwin" ? "UNSUPPORTED_PLATFORM" : "NO_CREDENTIALS";
-
     fs.writeFileSync(credentialsFile, "{ broken");
 
-    assert.equal((await createReader().refresh()).error.code, missingCredentialsCode);
+    assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
 
     fs.rmSync(credentialsFile);
 
-    assert.equal((await createReader().refresh()).error.code, missingCredentialsCode);
+    assert.equal((await createReader().refresh()).error.code, "NO_CREDENTIALS");
+
+    // macOS는 로그인 정보가 키체인에 있다. 파일이 없어도 키체인에서 읽어 조회하고, 둘 다 있으면 만료가 더 늦은 쪽을 쓴다.
+    const keychainState = { oauth: { accessToken: "keychain-token", expiresAt: clock.now + 7200000, refreshTokenExpiresAt: clock.now + 86400000 }, isBlocked: false, calls: [] };
+    const readKeychain = async (configDir) => {
+        keychainState.calls.push(configDir);
+
+        return { oauth: keychainState.oauth, isBlocked: keychainState.isBlocked };
+    };
+    const keychainReader = createReader({ readKeychain: readKeychain });
+    const keychainAccount = await keychainReader.refresh();
+
+    assert.equal(keychainAccount.error, null);
+    assert.equal(keychainAccount.limits.length, 3);
+    assert.equal(keychainAccount.loginExpiresAt, clock.now + 86400000);
+    assert.deepEqual(keychainState.calls, [testDir]);
+    assert.equal(requests.at(-1).headers.Authorization, "Bearer keychain-token");
+    assert(!JSON.stringify(keychainAccount).includes("keychain-token"));
+
+    writeCredentials({ accessToken: "newer-file-token", expiresAt: clock.now + 9000000 });
+    await createReader({ readKeychain: readKeychain }).refresh();
+
+    assert.equal(requests.at(-1).headers.Authorization, "Bearer newer-file-token");
+
+    // 키체인을 읽지 못하면(접근 거부) 안내하고, 한 시간 안에는 다시 묻지 않는다.
+    fs.rmSync(credentialsFile);
+    keychainState.oauth = null;
+    keychainState.isBlocked = true;
+    keychainState.calls = [];
+
+    const blockedReader = createReader({ readKeychain: readKeychain });
+
+    assert.equal((await blockedReader.refresh()).error.code, "KEYCHAIN_BLOCKED");
+
+    clock.now += 20 * 60 * 1000;
+
+    assert.equal((await blockedReader.refresh()).error.code, "KEYCHAIN_BLOCKED");
+    assert.equal(keychainState.calls.length, 1);
+
+    clock.now += 61 * 60 * 1000;
+    keychainState.oauth = { accessToken: "keychain-token", expiresAt: clock.now + 3600000 };
+    keychainState.isBlocked = false;
+
+    assert.equal((await blockedReader.refresh()).error, null);
+    assert.equal(keychainState.calls.length, 2);
 };
 
 const checkUpdateCheck = async () => {

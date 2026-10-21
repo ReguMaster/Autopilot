@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { MODEL_CHOICES, MODEL_ID_PATTERN } = require("./autopilotRunner.cjs");
+const { readKeychainOAuth } = require("./keychainCredentials.cjs");
 
 const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
@@ -13,9 +14,11 @@ const REQUEST_TIMEOUT_MS = 10000;
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_REFRESH_GAP_MS = 15000;
 const MIN_RENEW_GAP_MS = 30 * 60 * 1000;
+const KEYCHAIN_RETRY_MS = 60 * 60 * 1000;
 const SESSION_LABEL = "5시간 한도";
 const WEEKLY_LABEL = "주간 한도";
 const SCOPED_FALLBACK_NAME = "모델별";
+const KEYCHAIN_BLOCKED_MESSAGE = "키체인에서 Claude 로그인 정보를 읽지 못했어요. 키체인 접근을 허용하거나 터미널에서 이 계정으로 Claude Code를 한 번 실행해 주세요.";
 const EXPIRED_MESSAGE = "Claude 로그인 정보가 만료됐어요. '다시 로그인'을 누르거나 이 계정으로 Claude Code를 한 번 실행해 주세요.";
 const LEGACY_LIMITS = [
     { key: "five_hour", label: SESSION_LABEL },
@@ -149,6 +152,7 @@ const createAccountReader = (options = {}) => {
     const fetchImpl = options.fetchImpl || fetch;
     const now = options.now || Date.now;
     const onChange = options.onChange || (() => {});
+    const readKeychain = options.readKeychain === undefined ? (process.platform === "darwin" ? readKeychainOAuth : null) : options.readKeychain;
     let account = createEmptyAccount();
     let lastAttemptAt = 0;
     let lastRenewAt = 0;
@@ -156,6 +160,28 @@ const createAccountReader = (options = {}) => {
     let timer = null;
     let models = [];
     let modelsFetchedAt = 0;
+    let keychainRetryAt = 0;
+    let lastOAuth = null;
+
+    // 파일과 키체인(macOS) 중 만료가 더 늦은 로그인을 쓴다. 키체인을 읽지 못하면 한 시간 동안 다시 묻지 않아 접근 허용 창이 5분마다 뜨지 않게 한다.
+    const readStoredOAuth = async () => {
+        const credentialsFile = options.credentialsFile || getCredentialsFile();
+        const fileOAuth = readOAuth(credentialsFile);
+
+        if (!readKeychain || now() < keychainRetryAt) {
+            lastOAuth = fileOAuth;
+
+            return { oauth: fileOAuth, isBlocked: now() < keychainRetryAt };
+        }
+
+        const keychain = await readKeychain(path.dirname(credentialsFile));
+        const isKeychainNewer = Boolean(keychain.oauth) && (!fileOAuth || Number(keychain.oauth.expiresAt) > Number(fileOAuth.expiresAt));
+
+        keychainRetryAt = keychain.isBlocked ? now() + KEYCHAIN_RETRY_MS : 0;
+        lastOAuth = isKeychainNewer ? keychain.oauth : fileOAuth;
+
+        return { oauth: lastOAuth, isBlocked: keychain.isBlocked };
+    };
 
     const fetchJson = async (url, token, extraHeaders = {}) => {
         const response = await fetchImpl(url, {
@@ -175,10 +201,10 @@ const createAccountReader = (options = {}) => {
     };
 
     const fetchOnce = async () => {
-        const oauth = readOAuth(options.credentialsFile || getCredentialsFile());
+        const { oauth, isBlocked } = await readStoredOAuth();
 
-        if (!oauth?.accessToken && process.platform === "darwin") {
-            return { failure: createFailure("UNSUPPORTED_PLATFORM", "macOS는 로그인 정보를 키체인에 저장해서 이 앱이 사용량을 조회하지 못해요.") };
+        if (!oauth?.accessToken && isBlocked) {
+            return { failure: createFailure("KEYCHAIN_BLOCKED", KEYCHAIN_BLOCKED_MESSAGE) };
         }
 
         if (!oauth?.accessToken) {
@@ -214,9 +240,9 @@ const createAccountReader = (options = {}) => {
         return (await options.renewCredentials()) ? fetchOnce() : result;
     };
 
-    // 조회가 실패해도 로그인 만료 시각은 파일에서 읽을 수 있다. 갱신이 파일을 고쳤을 수 있어 조회 뒤에 읽는다.
+    // 조회가 실패해도 로그인 만료 시각은 저장된 로그인에서 읽을 수 있다. 갱신 뒤의 값이 되도록 조회에서 마지막으로 읽은 것을 쓴다(키체인을 또 읽지 않는다).
     const getLoginExpiresAt = () => {
-        return options.loginExpiresAtOverride || parseLoginExpiresAt(readOAuth(options.credentialsFile || getCredentialsFile()));
+        return options.loginExpiresAtOverride || parseLoginExpiresAt(lastOAuth);
     };
 
     const run = async () => {
@@ -265,7 +291,7 @@ const createAccountReader = (options = {}) => {
             return models;
         }
 
-        const oauth = readOAuth(options.credentialsFile || getCredentialsFile());
+        const { oauth } = await readStoredOAuth();
 
         if (!oauth?.accessToken || Number(oauth.expiresAt) <= now()) {
             return models;

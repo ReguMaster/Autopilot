@@ -48,7 +48,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ### 프로필과 사용량 조회
 
-- 조회는 메인 프로세스의 claudeAccount.cjs가 계정마다 하나씩(accountIpc.cjs가 관리) 한다. 그 계정 설정 폴더의 .credentials.json 토큰으로 비공식 엔드포인트 api.anthropic.com/api/oauth/usage·/api/oauth/profile 두 곳만 부른다.
+- 조회는 메인 프로세스의 claudeAccount.cjs가 계정마다 하나씩(accountIpc.cjs가 관리) 한다. 그 계정 설정 폴더의 .credentials.json(macOS는 키체인도) 토큰으로 비공식 엔드포인트 api.anthropic.com/api/oauth/usage·/api/oauth/profile 두 곳만 부른다.
 - 앱을 켤 때(startAccountWatch, 스모크 테스트 제외) 모든 계정을 한 번 읽어 메인에 보관하고 5분마다 다시 읽어 autopilot:account({id, account})로 화면에 보낸다. 새로 고침(autopilot:refresh-account)은 15초 안의 재요청을 막는다. 일부만 실패하면 성공한 쪽만 갱신하고 이전 값은 유지한다.
 - 토큰은 이 모듈 밖으로 내보내거나 로그에 쓰지 않고 읽기만 한다. 앱이 refresh하지 않는다(refresh token은 회전해서 같은 토큰으로 두 번 갱신하면 저장된 로그인이 폐기되고, CLI는 프로세스끼리 갱신 잠금을 나눠 쓰지만 앱은 그 잠금에 끼지 못한다). 갱신은 CLI에 맡긴다.
 - Anthropic 정책(Claude Code 문서의 Legal and compliance)은 개발자가 Claude.ai 자격 증명·세션 토큰을 수집·보관·중개하는 것을 막고 로그인은 Anthropic의 흐름으로 끝내라고 한다. 그래서 refresh token은 물론 `claude setup-token`의 장기 토큰도 앱이 저장하지 않는다. 장기 토큰은 사용자가 OS 환경 변수 CLAUDE_CODE_OAUTH_TOKEN으로 직접 쓰는 방법만 안내하고, 이 토큰은 사용량·프로필 조회에 필요한 user:profile 권한이 없어 그 조회(/api/oauth/usage·profile)가 403이다(/v1/models는 된다).
@@ -75,7 +75,9 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 배포는 Windows exe(포터블·설치형), macOS dmg·zip, Linux AppImage·deb이고 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
 - 로그인 여부는 저장 위치가 플랫폼마다 달라 파일이 아니라 `claude auth status --json`으로 확인한다.
 - 창 아이콘은 Windows가 .ico, 그 밖은 .png다. 트레이 아이콘은 2배 크기(TRAY_ICON_SCALE)로 만들어 고해상도에서 흐려지지 않게 한다. 서체 목록(--sans·--mono)에는 macOS·Linux 시스템 서체를 대체로 둔다. Cmd+Q·시스템 종료(before-quit)는 트레이 숨기기가 아니라 종료 확인을 거친다. Linux는 트레이를 지원하지 않는 데스크톱이면 트레이로 숨긴 창을 다시 열 수 없으므로(두 번째 실행으로 열 수는 있다) README에 알린다.
-- Windows·Linux는 로그인 정보가 설정 폴더의 .credentials.json이라 사용량·프로필 조회가 된다. macOS는 키체인이라 조회하지 못하고(UNSUPPORTED_PLATFORM 안내) 계정 전환·로그인·실행은 CLI로 된다. Linux는 WSL로 tests/checkDesktopAccounts.js·checkDesktopRunner.js·checkDesktopView.js를 확인했고 macOS는 확인하지 못했다.
+- Windows·Linux는 로그인 정보가 설정 폴더의 .credentials.json이고, macOS는 키체인(서비스 `Claude Code-credentials-<설정 폴더 경로 SHA-256 앞 8자>`, 기본 폴더는 접미사 없는 옛 이름도)이다. claudeAccount는 두 곳을 모두 읽어 만료가 더 늦은 로그인을 쓴다(keychainCredentials.cjs가 `/usr/bin/security find-generic-password -s <서비스> -w`로 읽기만 한다. 다른 계정의 폴더는 옛 이름을 읽지 않는다). 키체인을 읽지 못하면(접근 거부·시간 초과, 항목이 없는 종료 코드 44는 제외) KEYCHAIN_BLOCKED 안내를 내고 접근 허용 창이 5분마다 뜨지 않도록 한 시간 동안 다시 묻지 않는다. 서비스 이름 규칙은 Claude Code의 비공식 동작이라 바뀔 수 있다.
+- Finder·Dock·데스크톱 아이콘으로 연 macOS·Linux 앱은 터미널의 PATH를 받지 못한다. main.cjs가 앱을 켤 때(스모크 테스트 제외) loginShellPath.applyLoginShellPath로 로그인 셸(`$SHELL -ilc`, 5초 제한)의 PATH와 흔한 설치 위치(~/.local/bin·~/.claude/local·npm 전역·Homebrew 등)를 현재 PATH 뒤에 합쳐 process.env.PATH에 쓰고, 엔진과 claude를 띄우는 자식 프로세스가 이어받는다(findClaude·엔진의 getExecutablePath는 PATH만 본다). Windows는 건드리지 않는다.
+- Linux는 WSL로 tests/checkDesktopAccounts.js·checkDesktopRunner.js·checkDesktopView.js를 확인했다. macOS는 키체인 읽기를 가짜 security로 검증하고, CI의 macOS 러너(CI 환경 변수가 있을 때)는 임시 키체인으로 진짜 security의 출력·종료 코드를 확인한다. 실제 macOS 앱에서 사용량 조회까지는 사람이 직접 확인한 적이 없다.
 
 ## 지난 실행(기록 보기)
 
@@ -121,7 +123,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 이미 실행 중이거나 시작을 진행 중이면 기다린다(isEngineBusy가 먼저 그 프로젝트의 살아 있는 엔진에 연결한다). 시작에 실패해도(로그인 필요 등) 같은 시작 시각을 다시 시도하지 않고 알림으로 이유를 알린다. 절전에서 깨어나면 5초 뒤 바로 판단하고, 평소에는 30초마다 판단한다.
 - 예약은 덮어쓰기가 아니라 합집합이다. 전역 예약과 열린 모든 탭의 프로젝트 예약(scope가 project, projectDir이 붙는다)을 함께 보여주고(readAllSchedules), 저장할 때 scope와 projectDir로 전역 설정과 각 프로젝트 파일에 다시 나눠 쓴다(writeAllSchedules. 합쳐 최대 8개). 새 예약은 프로젝트를 골랐으면 그 프로젝트(활성 탭)의 예약이 기본이고, 수정으로 범위나 대상 프로젝트를 바꾸지는 않는다. 탭을 닫아 목록에서 빠진 예약의 판단 상태는 getKnownScheduleIds로 남겨 둔다.
 - 예약 실행은 대상 프로젝트에 적용되는 작업·정책·모델·Effort·사용량 한도 연장 설정으로 돈다(handleSaveSchedule이 컴포저 값을 프로젝트에 먼저 기억한다). 종료 시각은 예약이 정한 값이라 다음 시작의 기본값으로 기억하지 않는다(launchRun의 remember). 예약 상태 문장은 viewFormat.js(describeSchedule·describeScheduleStatus·describeScheduleLast·describeScheduleSummary)가 만든다.
-- 사용량은 대상 프로젝트가 고른 계정의 claudeAccount 조회값을 쓴다. 조회가 안 되는 환경(macOS 등)에서는 한도 리셋 예약이 판단하지 못한다는 안내를 보이고, 정해진 시각 예약은 그대로 동작한다.
+- 사용량은 대상 프로젝트가 고른 계정의 claudeAccount 조회값을 쓴다. 조회가 안 되는 환경(로그인 정보를 읽지 못하는 경우)에서는 한도 리셋 예약이 판단하지 못한다는 안내를 보이고, 정해진 시각 예약은 그대로 동작한다.
 - tests/checkDesktopSchedule.js가 규칙·스케줄러를, tests/checkDesktopView.js가 상태 문장을 검증한다.
 
 ## React 화면(desktop/ui)

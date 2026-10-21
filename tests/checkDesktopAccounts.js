@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +9,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createAccountStore, normalizeAccounts, sanitizeLabel, resolveBaseDir, getHomeConfigDir, DEFAULT_ACCOUNT_ID, MAX_ACCOUNTS } = require("../desktop/accountStore.cjs");
 const { getAuthStatus, startLogin, isLoginUrl } = require("../desktop/claudeCli.cjs");
+const { applyLoginShellPath, parseShellPath, mergePath, runLoginShell } = require("../desktop/loginShellPath.cjs");
+const { readKeychainOAuth, getServiceNames, decodeSecret } = require("../desktop/keychainCredentials.cjs");
 
 const LOGIN_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=test&state=abc";
 
@@ -327,6 +331,131 @@ const checkClaudeCli = async (testDir) => {
     delete process.env.AP_FAKE_ARGS_FILE;
 };
 
+// Finder·Dock으로 연 앱은 터미널의 PATH를 받지 못하므로 로그인 셸의 PATH를 합쳐 claude를 찾게 한다.
+const checkLoginShellPath = async (testDir) => {
+    const home = path.join(testDir, "home");
+    const noisy = "Last login: today\n__AUTOPILOT_PATH_START__/opt/nvm/bin:/usr/bin\n__AUTOPILOT_PATH_END__\nbye";
+    const merge = async (env, runShell) => (await applyLoginShellPath({ processEnv: env, platform: "darwin", homeDir: home, runShell: runShell })).split(path.delimiter);
+
+    assert.equal(parseShellPath(noisy), "/opt/nvm/bin:/usr/bin");
+    assert.equal(parseShellPath("배너만 있고 표식이 없음"), "");
+    assert.equal(mergePath(["/usr/bin", "/bin"].join(path.delimiter), ["/opt/nvm/bin", "/usr/bin"].join(path.delimiter), "", undefined), ["/usr/bin", "/bin", "/opt/nvm/bin"].join(path.delimiter));
+
+    const fromShell = await merge({ SHELL: "/bin/zsh", PATH: ["/usr/bin", "/bin"].join(path.delimiter) }, async (shell) => (shell === "/bin/zsh" ? noisy.replace(/:/g, path.delimiter) : ""));
+
+    assert.deepEqual(fromShell.slice(0, 3), ["/usr/bin", "/bin", "/opt/nvm/bin"]);
+    assert(fromShell.includes(path.join(home, ".local", "bin")) && fromShell.includes("/opt/homebrew/bin"));
+    assert.equal(new Set(fromShell).size, fromShell.length);
+
+    const failed = await merge({ SHELL: "/bin/zsh", PATH: "/usr/bin" }, async () => "");
+
+    assert.equal(failed[0], "/usr/bin");
+    assert(failed.includes(path.join(home, ".claude", "local")), "셸을 읽지 못해도 흔한 설치 위치는 남는다");
+
+    const windowsPath = await applyLoginShellPath({ processEnv: { PATH: "C:\\Windows" }, platform: "win32", runShell: async () => assert.fail("Windows에서는 셸을 띄우지 않는다") });
+
+    assert.equal(windowsPath, "C:\\Windows");
+
+    if (process.platform === "win32") {
+        return;
+    }
+
+    const shellFile = path.join(testDir, "fake-shell");
+
+    fs.writeFileSync(shellFile, '#!/bin/sh\necho 배너가 찍혀도 괜찮다\nPATH="/fake/login/bin:$PATH"\nexport PATH\nexec /bin/sh -c "$2"\n', { mode: 0o755 });
+
+    assert(parseShellPath(await runLoginShell(shellFile, { PATH: "/usr/bin:/bin" }, 5000)).startsWith("/fake/login/bin"));
+
+    fs.writeFileSync(shellFile, "#!/bin/sh\nexec sleep 10\n", { mode: 0o755 });
+
+    const startedAt = Date.now();
+
+    assert.equal(await runLoginShell(shellFile, process.env, 300), "");
+    assert(Date.now() - startedAt < 3000, "셸이 멈추면 시간 제한에서 끊어야 한다");
+};
+
+// macOS는 로그인 정보를 키체인에 두므로 security로 읽는다. 서비스 이름에는 설정 폴더 경로의 해시가 붙고, 접미사 없는 옛 이름은 기본 폴더만 쓴다.
+const checkKeychainCredentials = async (testDir) => {
+    const home = path.join(testDir, "home");
+    const defaultDir = path.join(home, ".claude");
+    const accountDir = path.join(testDir, "accounts", "acct-12345678");
+    const plainName = "Claude Code-credentials";
+    const hashName = (dir) => `${plainName}-${crypto.createHash("sha256").update(dir).digest("hex").slice(0, 8)}`;
+    const oauth = (token, expiresAt) => ({ claudeAiOauth: { accessToken: token, expiresAt: expiresAt } });
+    const toHex = (value) => Buffer.from(JSON.stringify(value), "utf8").toString("hex");
+
+    assert(getServiceNames(defaultDir, home).includes(hashName(defaultDir)));
+    assert(getServiceNames(defaultDir, home).includes(plainName));
+    assert(getServiceNames(accountDir, home).includes(hashName(accountDir)));
+    assert(!getServiceNames(accountDir, home).includes(plainName));
+    assert.equal(decodeSecret(toHex({ a: "한" })), '{"a":"한"}');
+    assert.equal(decodeSecret(' {"a":1}\n'), '{"a":1}');
+
+    const createSecurity = (items, failureCode) => {
+        const calls = [];
+        const execFileImpl = (command, args, options, callback) => {
+            const service = args[args.indexOf("-s") + 1];
+
+            calls.push({ command: command, args: args, service: service });
+
+            if (failureCode) {
+                callback(Object.assign(new Error("failed"), { code: failureCode }), "");
+            } else if (service in items) {
+                callback(null, `${items[service]}\n`);
+            } else {
+                callback(Object.assign(new Error("not found"), { code: 44 }), "");
+            }
+        };
+
+        return { calls: calls, execFileImpl: execFileImpl };
+    };
+
+    // 해시 이름과 옛 이름이 모두 있으면 만료가 더 늦은 쪽을 쓰고, 16진수로 돌아온 값도 읽는다.
+    const both = createSecurity({ [hashName(defaultDir)]: toHex(oauth("new", 2000)), [plainName]: JSON.stringify(oauth("old", 1000)) });
+    const found = await readKeychainOAuth(defaultDir, { homeDir: home, execFileImpl: both.execFileImpl });
+
+    assert.equal(found.oauth.accessToken, "new");
+    assert.equal(found.isBlocked, false);
+    assert(both.calls.every((call) => call.command === "/usr/bin/security" && call.args[0] === "find-generic-password" && call.args.includes("-w")));
+
+    // 다른 계정의 폴더는 옛 이름을 읽지 않는다(기본 계정의 로그인이 섞이면 안 된다).
+    const other = createSecurity({ [plainName]: JSON.stringify(oauth("default-account", 5000)) });
+
+    assert.deepEqual(await readKeychainOAuth(accountDir, { homeDir: home, execFileImpl: other.execFileImpl }), { oauth: null, isBlocked: false });
+    assert(other.calls.every((call) => call.service !== plainName));
+
+    // 항목이 없는 것(44)과 읽지 못한 것(접근 거부·시간 초과)을 구분한다. 깨진 값은 없는 것으로 본다.
+    assert.equal((await readKeychainOAuth(defaultDir, { homeDir: home, execFileImpl: createSecurity({}, 36).execFileImpl })).isBlocked, true);
+    assert.deepEqual(await readKeychainOAuth(defaultDir, { homeDir: home, execFileImpl: createSecurity({ [hashName(defaultDir)]: "{ broken" }).execFileImpl }), { oauth: null, isBlocked: false });
+
+    // CI의 macOS에서는 임시 키체인으로 진짜 security의 출력과 종료 코드를 확인한다. 사용자 키체인은 건드리지 않는다.
+    if (process.platform !== "darwin" || !process.env.CI) {
+        return;
+    }
+
+    const keychain = path.join(testDir, "check.keychain-db");
+    const security = (...args) => execFileSync("/usr/bin/security", args, { encoding: "utf8" });
+    const originalList = security("list-keychains", "-d", "user")
+        .split("\n")
+        .map((line) => line.trim().replace(/^"|"$/g, ""))
+        .filter(Boolean);
+
+    try {
+        security("create-keychain", "-p", "check", keychain);
+        security("unlock-keychain", "-p", "check", keychain);
+        security("add-generic-password", "-a", "check", "-s", hashName(accountDir), "-w", JSON.stringify(oauth("real-token", 3000)), keychain);
+
+        assert.equal((await readKeychainOAuth(accountDir, { keychain: keychain })).oauth.accessToken, "real-token");
+        assert.deepEqual(await readKeychainOAuth(path.join(testDir, "no-such-account"), { keychain: keychain }), { oauth: null, isBlocked: false });
+    } finally {
+        try {
+            security("delete-keychain", keychain);
+        } catch {}
+
+        security("list-keychains", "-d", "user", "-s", ...originalList);
+    }
+};
+
 const runChecks = async () => {
     const testDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-accounts-"));
 
@@ -336,6 +465,8 @@ const runChecks = async () => {
         checkAccountStore(testDir);
 
         await checkClaudeCli(testDir);
+        await checkLoginShellPath(testDir);
+        await checkKeychainCredentials(testDir);
 
         console.log("Desktop account checks passed.");
     } finally {

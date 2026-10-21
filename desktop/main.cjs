@@ -15,6 +15,7 @@ const {
 const { wasLaunchedHidden } = require("./launchAtLogin.cjs");
 const { createTray, showWindow, watchPower } = require("./systemIntegration.cjs");
 const { checkCardRender } = require("./shareCard.cjs");
+const { applyLoginShellPath } = require("./loginShellPath.cjs");
 
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
@@ -242,7 +243,12 @@ if (!hasInstanceLock) {
         contents.on("will-attach-webview", (attachEvent) => attachEvent.preventDefault());
     });
 
-    app.whenReady().then(() => {
+    app.whenReady().then(async () => {
+        // 엔진과 claude를 띄우는 모든 프로세스가 같은 PATH를 이어받도록 어떤 창·IPC보다 먼저 맞춘다. 스모크 테스트는 셸을 띄우지 않는다.
+        if (!isSmokeTest) {
+            await applyLoginShellPath();
+        }
+
         // 이 앱은 카메라·위치 등 웹 권한을 쓰지 않으므로 모두 거부한다.
         session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(false));
         session.defaultSession.setPermissionCheckHandler(() => false);

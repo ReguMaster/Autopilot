@@ -59,7 +59,7 @@
 | 운영체제 | 받을 파일 | 참고 |
 | --- | --- | --- |
 | **Windows** 10 이상 (x64) | `AutoPilot-Setup-*.exe`(설치형), `AutoPilot-Portable-*.exe`(무설치형) | 포터블은 실행할 때마다 임시 폴더에 풀려 설치형보다 느립니다. |
-| **macOS** 12 이상 (Apple Silicon·Intel) | `AutoPilot-*-mac-arm64.dmg`·`-x64.dmg` (`.zip`도 제공) | 개발자 인증서로 서명하지 않은 앱이라 처음 한 번 **우클릭 → 열기**로 실행하거나 `xattr -dr com.apple.quarantine /Applications/AutoPilot.app`을 실행해야 합니다. 로그인 정보가 키체인에 있어 앱 안의 사용량 표시와 **한도 리셋 예약**은 쓸 수 없고, 정해진 시각 예약은 그대로 쓸 수 있습니다. |
+| **macOS** 12 이상 (Apple Silicon·Intel) | `AutoPilot-*-mac-arm64.dmg`·`-x64.dmg` (`.zip`도 제공) | 개발자 인증서로 서명하지 않은 앱이라 처음 한 번 **우클릭 → 열기**로 실행하거나 `xattr -dr com.apple.quarantine /Applications/AutoPilot.app`을 실행해야 합니다. 로그인 정보는 키체인에서 읽어 사용량 표시와 **한도 리셋 예약**도 씁니다. 처음 사용량을 읽을 때 키체인 접근을 묻는 창이 뜨면 허용해 주세요. 앱을 Finder·Dock으로 열어도 터미널의 `PATH`(`claude` 설치 위치)를 찾아 씁니다. |
 | **Linux** (x64·arm64, 데스크톱 환경) | `AutoPilot-*-linux-*.AppImage`, `AutoPilot-*-linux-*.deb` | AppImage는 `chmod +x`로 실행 권한을 준 뒤 실행합니다. 트레이 아이콘과 알림은 데스크톱 환경이 지원해야 하며(GNOME은 AppIndicator 확장 필요), Ubuntu 24.04처럼 사용자 네임스페이스를 막은 환경에서 AppImage가 시작되지 않으면 `--no-sandbox`를 붙여 실행하거나 `.deb`로 설치하세요. |
 
 ## 원하는 방식으로 작업하세요
