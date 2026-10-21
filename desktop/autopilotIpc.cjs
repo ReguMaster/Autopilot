@@ -15,9 +15,9 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
-const { getCliArgs } = require("./engineArgs.cjs");
+const { getCliArgs, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, getProjectKey, ACCOUNT_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
+const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
@@ -263,6 +263,82 @@ const startScheduledRun = async (schedule, plan) => {
     }
 };
 
+// 엔진은 저장소를 폴더 이름으로 구분하므로 작업 프로젝트·이미 연결한 저장소와 같은 폴더이거나 폴더 이름이 겹치면 연결할 수 없다.
+const getLinkedRepoError = (repoDir, usedDirs) => {
+    const projectError = getProjectError(repoDir);
+
+    if (projectError) {
+        return projectError;
+    }
+
+    if (usedDirs.some((usedDir) => getProjectKey(usedDir) === getProjectKey(repoDir))) {
+        return "작업 프로젝트나 이미 연결한 저장소예요.";
+    }
+
+    return usedDirs.some((usedDir) => path.basename(usedDir).toLowerCase() === path.basename(repoDir).toLowerCase())
+        ? "폴더 이름이 작업 프로젝트나 다른 연결 저장소와 같아요. 이름이 다른 폴더만 연결할 수 있어요."
+        : "";
+};
+
+// 이 프로젝트에 연결할 저장소 폴더를 골라 더한다. 작업 프로젝트를 빼고 MAX_LINKED_REPOS개까지다.
+const handleAddLinkedRepo = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session?.projectDir) {
+        return createNoSessionFailure();
+    }
+
+    if (session.runner.isRunning() || session.isLaunching) {
+        return createFailure("RUNNING", "실행 중에는 연결 저장소를 바꿀 수 없어요.");
+    }
+
+    const { projectDir } = session;
+    const linkedRepos = readEffective(projectDir).linkedRepos;
+
+    if (linkedRepos.length >= MAX_LINKED_REPOS) {
+        return createFailure("TOO_MANY_REPOS", `연결 저장소는 작업 프로젝트를 빼고 ${MAX_LINKED_REPOS}개까지, 모두 합쳐 ${MAX_LINKED_REPOS + 1}개까지 쓸 수 있어요.`);
+    }
+
+    const selection = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: "연결할 저장소 폴더 선택",
+        defaultPath: path.dirname(projectDir),
+        properties: ["openDirectory"]
+    });
+
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: getSettingsView(projectDir) };
+    }
+
+    const repoError = getLinkedRepoError(selection.filePaths[0], [projectDir, ...linkedRepos]);
+
+    if (repoError) {
+        return createFailure("INVALID_PROJECT", repoError);
+    }
+
+    settingsStore.updateProject(projectDir, { [LINKED_REPOS_KEY]: [...linkedRepos, selection.filePaths[0]] });
+
+    return { status: STATUS_OK, data: getSettingsView(projectDir) };
+};
+
+const handleRemoveLinkedRepo = (event, repoDir, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session?.projectDir) {
+        return createNoSessionFailure();
+    }
+
+    if (session.runner.isRunning() || session.isLaunching) {
+        return createFailure("RUNNING", "실행 중에는 연결 저장소를 바꿀 수 없어요.");
+    }
+
+    const { projectDir } = session;
+    const linkedRepos = readEffective(projectDir).linkedRepos;
+
+    settingsStore.updateProject(projectDir, { [LINKED_REPOS_KEY]: linkedRepos.filter((linkedRepo) => linkedRepo !== repoDir) });
+
+    return { status: STATUS_OK, data: getSettingsView(projectDir) };
+};
+
 // 앱을 닫았다 켠 사이에 계속 실행된 엔진이 있으면 먼저 연결해 둔다. 모르고 두 번째 엔진을 시작하지 않게 하기 위해서다.
 const isEngineBusy = async (schedule) => {
     const projectDir = getScheduleDir(schedule);
@@ -328,6 +404,12 @@ const launchRun = async (session, settings, startOptions, { remember }) => {
             return runAccount;
         }
 
+        const brokenRepo = settings.linkedRepos.find((repoDir) => getProjectError(repoDir));
+
+        if (brokenRepo) {
+            return createFailure("INVALID_PROJECT", `연결 저장소를 쓸 수 없어요 (${brokenRepo}): ${getProjectError(brokenRepo)}`);
+        }
+
         // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
         const tasksFile = path.join(app.getPath("userData"), TASKS_FILE_NAME);
 
@@ -349,6 +431,7 @@ const launchRun = async (session, settings, startOptions, { remember }) => {
                 commitPrefix: settings.commitPrefix,
                 workBranch: settings.workBranch,
                 logRetentionDays: settings.logRetentionDays,
+                linkedRepos: settings.linkedRepos,
                 model: model,
                 projectDir: settings.projectDir,
                 tasksFile: tasksFile,
@@ -1098,6 +1181,8 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:set-options", handleSetOptions);
     ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
     ipcMain.handle("autopilot:reset-settings", handleResetSettings);
+    ipcMain.handle("autopilot:add-linked-repo", handleAddLinkedRepo);
+    ipcMain.handle("autopilot:remove-linked-repo", handleRemoveLinkedRepo);
     ipcMain.handle("autopilot:set-preferences", handleSetPreferences);
     ipcMain.handle("autopilot:cancel-post-action", handleCancelPostAction);
     ipcMain.handle("autopilot:run-post-action-now", handleRunPostActionNow);

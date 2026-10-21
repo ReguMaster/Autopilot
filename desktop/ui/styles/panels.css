@@ -329,6 +329,24 @@ body.profile-open #profile {
     color: var(--warn);
 }
 
+.repo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.repo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.repo-item .path {
+    min-width: 0;
+    flex: 1;
+}
+
 .row-actions {
     display: flex;
     gap: 6px;

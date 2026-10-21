@@ -7,7 +7,7 @@ const useAppStore = create(() => ({
     platform: "",
     canLaunchAtLogin: false,
     update: null,
-    settings: { projectDir: "", modelVersions: {}, keepInTray: true, launchAtLogin: false },
+    settings: { projectDir: "", linkedRepos: [], modelVersions: {}, keepInTray: true, launchAtLogin: false },
     overridden: [],
     globals: {},
     isDev: false,

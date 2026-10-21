@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { buildDesktopEntry, HIDDEN_ARG } = require("../desktop/launchAtLogin.cjs");
-const { shouldNotify, getTransitionNotice, shouldBlockSleep, getAggregateProgress, getTrayTooltip } = require("../desktop/systemIntegration.cjs");
+const { shouldNotify, getTransitionNotice, shouldBlockSleep, getAggregateProgress, getTrayTooltip, drawOverlayBitmap, OVERLAY_FRAME_COUNT } = require("../desktop/systemIntegration.cjs");
 const { shouldRunPostAction, getPowerCommand, createPostAction, POST_RUN_ACTIONS } = require("../desktop/postAction.cjs");
 
 // Linux 자동 시작 항목: 공백·특수 문자가 든 경로도 Exec에서 한 인자로 읽혀야 하고 창 없이 켜는 인자가 붙는다.
@@ -176,8 +176,23 @@ const checkAggregates = () => {
     assert.equal(getTrayTooltip([{ phase: "a" }, { phase: "b" }, { phase: "c" }]), "AutoPilot - 3개 프로젝트 실행 중");
 };
 
+// 작업표시줄 도는 표시: 32x32 BGRA 한 장이고 모서리는 투명, 중심은 흰색이며 프레임마다 호가 돌아 그림이 달라진다.
+const checkOverlayFrames = () => {
+    const first = drawOverlayBitmap(0);
+    const centerOffset = (16 * 32 + 16) * 4;
+
+    assert.equal(first.length, 32 * 32 * 4);
+    assert.equal(first[3], 0, "모서리는 투명하다");
+    assert.deepEqual([...first.subarray(centerOffset, centerOffset + 4)], [255, 255, 255, 255], "중심은 불투명한 흰색이다");
+
+    const frames = new Set(Array.from({ length: OVERLAY_FRAME_COUNT }, (_, index) => drawOverlayBitmap(index).toString("base64")));
+
+    assert.equal(frames.size, OVERLAY_FRAME_COUNT, "프레임이 모두 다르다");
+};
+
 checkDesktopEntry();
 checkNotifications();
+checkOverlayFrames();
 checkAggregates();
 checkSleepBlock();
 checkPostActionRules();

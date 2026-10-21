@@ -2,6 +2,8 @@
 const DEFAULT_COMMIT_PREFIX = "[ap]";
 const DEFAULT_WORK_BRANCH = "ai/autopilot";
 const DEFAULT_LOG_RETENTION_DAYS = 30;
+// 작업 프로젝트에 더할 수 있는 연결 저장소 수(엔진 config.js의 MAX_LINKED_REPOS와 같다). 작업 프로젝트를 합쳐 3개다.
+const MAX_LINKED_REPOS = 2;
 // 아래 두 검증은 엔진의 util.js(isValidCommitPrefix·isValidWorkBranch)와 같은 규칙이다(tests/checkDesktopRunner.js가 값을 대조한다).
 const COMMIT_PREFIX_PATTERN = /^[^`\p{Cc}]{1,20}$/u;
 const WORK_BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
@@ -23,8 +25,8 @@ const isValidWorkBranch = (value) => {
     );
 };
 
-// 종료 시각·한도 연장·연장 상한·커밋 접두어·작업 브랜치·보관 기간·계정 폴더는 있을 때만(기본값과 다를 때만) 붙인다.
-const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, extendLimitMinutes, commitPrefix, workBranch, logRetentionDays, model, effort, configDir }) => {
+// 종료 시각·한도 연장·연장 상한·커밋 접두어·작업 브랜치·보관 기간·연결 저장소·계정 폴더는 있을 때만(기본값과 다를 때만) 붙인다.
+const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, extendLimitMinutes, commitPrefix, workBranch, logRetentionDays, linkedRepos = [], model, effort, configDir }) => {
     const args = ["--project", projectDir, "--no-open", "--tasks-file", tasksFile, "--policy", policy, "--model", model, "--effort", effort];
 
     if (endTime) {
@@ -51,6 +53,10 @@ const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, ext
         args.push("--log-retention-days", String(logRetentionDays));
     }
 
+    for (const linkedRepo of linkedRepos) {
+        args.push("--link-project", linkedRepo);
+    }
+
     if (configDir) {
         args.push("--config-dir", configDir);
     }
@@ -58,4 +64,4 @@ const getCliArgs = ({ projectDir, tasksFile, endTime, policy, extendOnLimit, ext
     return args;
 };
 
-module.exports = { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS };
+module.exports = { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS, MAX_LINKED_REPOS };

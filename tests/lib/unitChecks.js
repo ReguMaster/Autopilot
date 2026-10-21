@@ -104,6 +104,11 @@ const checkCommandArgs = () => {
     assert.throws(() => parseRunArgs([...project, "--branch"]));
     assert.equal(parseRunArgs([...project, "--extend-on-limit", "--max-extend-minutes", "90"]).maxExtendMinutes, 90);
 
+    // --link-project는 여러 번 쓸 수 있지만 연결 저장소는 2개(작업 프로젝트를 합쳐 3개)까지다.
+    assert.deepEqual(parseRunArgs([...project, "--link-project", "C:\work\api", "--link-project", "C:\work\web"]).linkedProjectDirs, ["C:\work\api", "C:\work\web"]);
+    assert.throws(() => parseRunArgs([...project, "--link-project", "a", "--link-project", "b", "--link-project", "c"]), /2개까지/);
+    assert.throws(() => parseRunArgs([...project, "--link-project"]));
+
     for (const invalidMinutes of ["0", "-5", "abc", "1.5", "90분", "10081", "1e3"]) {
         assert.throws(() => parseRunArgs([...project, "--max-extend-minutes", invalidMinutes]), /max-extend-minutes/, invalidMinutes);
     }
@@ -144,6 +149,13 @@ const checkClaudeArgs = async () => {
     assert.equal(getValue(getClaudeArgs(), "--effort"), "high");
     assert.equal(getValue(getClaudeArgs(), "--fallback-model"), "sonnet");
     assert.equal(getValue(getClaudeArgs({ model: "haiku", effort: "max" }), "--effort"), "max");
+
+    // 연결 저장소는 --add-dir로 세션에 붙이고, 없으면 인자를 더하지 않는다.
+    assert(!getClaudeArgs().includes("--add-dir"));
+    assert.deepEqual(
+        getClaudeArgs({ addDirs: ["/a", "/b"] }).filter((arg, index, args) => arg === "--add-dir" || args[index - 1] === "--add-dir"),
+        ["--add-dir", "/a", "--add-dir", "/b"]
+    );
 
     // 특정 버전의 모델 ID도 그대로 넘기고 fallback은 별칭으로 둔다.
     assert.equal(getValue(getClaudeArgs({ model: "claude-opus-4-8" }), "--model"), "claude-opus-4-8");

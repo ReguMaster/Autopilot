@@ -11,6 +11,7 @@ import {
     EXIT_CODE_SUCCESS,
     FALLBACK_MODEL,
     LOCK_FILE_NAME,
+    MAX_LINKED_REPOS,
     PROGRESS_DIR_NAME,
     PROGRESS_FILE_NAME,
     ROUND_OPTIONS_FILE_NAME,
@@ -38,6 +39,31 @@ const getProjectDir = (projectDirOption) => {
     }
 
     return projectDir;
+};
+
+// 작업 프로젝트와 함께 다룰 연결 저장소. 이름(폴더 이름)이 커밋 로그와 프롬프트에서 저장소를 가리키므로 작업 프로젝트를 포함해 겹치지 않아야 한다.
+const getLinkedRepos = (linkedProjectDirs = [], projectDir) => {
+    if (linkedProjectDirs.length > MAX_LINKED_REPOS) {
+        throw new Error(`연결 저장소는 ${MAX_LINKED_REPOS}개까지 쓸 수 있습니다.`);
+    }
+
+    const usedNames = new Set([path.basename(projectDir)]);
+    const usedDirs = new Set([fs.realpathSync.native(projectDir)]);
+
+    return linkedProjectDirs.map((linkedProjectDir) => {
+        const dir = getProjectDir(linkedProjectDir);
+        const realDir = fs.realpathSync.native(dir);
+        const name = path.basename(dir);
+
+        if (usedDirs.has(realDir) || usedNames.has(name)) {
+            throw new Error(`연결 저장소가 작업 프로젝트나 다른 연결 저장소와 같거나 폴더 이름이 겹칩니다: ${dir}`);
+        }
+
+        usedDirs.add(realDir);
+        usedNames.add(name);
+
+        return { name: name, dir: dir };
+    });
 };
 
 // 로그·리포트·실행 신호·recycle_bin이 놓이는 프로젝트 안의 폴더
@@ -187,7 +213,7 @@ const getRoundOptions = (startOptions, savedOptions) => {
 };
 
 // 선택 인자는 오래된 Claude Code가 모르는 옵션이면 CLI가 시작하자마자 실패하므로 unsupportedFlags에 든 것은 뺀다.
-const getClaudeArgs = ({ model = DEFAULT_MODEL, effort = DEFAULT_EFFORT, unsupportedFlags = [] } = {}) => {
+const getClaudeArgs = ({ model = DEFAULT_MODEL, effort = DEFAULT_EFFORT, unsupportedFlags = [], addDirs = [] } = {}) => {
     const optionalArgs = [
         ["--effort", effort],
         ["--fallback-model", model === FALLBACK_MODEL ? "" : FALLBACK_MODEL],
@@ -196,7 +222,8 @@ const getClaudeArgs = ({ model = DEFAULT_MODEL, effort = DEFAULT_EFFORT, unsuppo
         .filter(([flag, value]) => value && !unsupportedFlags.includes(flag))
         .flat();
 
-    return ["--model", model, ...optionalArgs, "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"];
+    // --add-dir은 값을 여러 개 받으므로 뒤에 다른 인자가 와야 프롬프트를 삼키지 않는다.
+    return ["--model", model, ...optionalArgs, ...addDirs.flatMap((dir) => ["--add-dir", dir]), "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"];
 };
 
 const getRoundOutcome = ({ isInterrupted, isRateLimited, timedOut, isFailed, exitCode, isError, idleCount }) => {
@@ -229,6 +256,7 @@ const getExitCode = (isAborted, isInterrupted) => {
 
 export default {
     getProjectDir,
+    getLinkedRepos,
     getWorkDir,
     ensureWorkDir,
     getProgressFile,

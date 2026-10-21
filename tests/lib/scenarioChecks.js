@@ -496,6 +496,37 @@ const checkGitNames = async (runScenario) => {
     assert(!customPrompt.includes("ai/autopilot"));
 };
 
+// 연결 저장소: 검증, 프롬프트의 push·브랜치 규칙, 연결 저장소만 바뀐 회차도 작업으로 세는지, 로그의 저장소 이름
+const checkLinkedRepos = async (runScenario, context) => {
+    const linkedDir = path.join(context.testDir, "linked repo");
+
+    fs.mkdirSync(linkedDir, { recursive: true });
+    fs.writeFileSync(path.join(linkedDir, "work.txt"), "initial\n");
+    commitInitialProject(context, linkedDir);
+
+    const linkedRunData = await runScenario("linked-only", { linkedProjectDirs: [linkedDir] });
+    const prompt = fs.readFileSync(path.join(linkedRunData.projectDir, "prompt.txt"), "utf8");
+    const logText = fs.readFileSync(linkedRunData.logFile, "utf8");
+
+    assert(prompt.includes(`연결 저장소: linked repo (${linkedDir}).`));
+    assert(prompt.includes("`git push origin ai/autopilot`"));
+    assert(prompt.includes("force push하지 않는다"));
+    assert.equal(linkedRunData.rounds.length, 3);
+    assert(linkedRunData.rounds.every((round) => round.outcome === "완료" && round.commits.length === 1));
+    assert.match(logText, /^\[커밋\] [0-9a-f]+ \+1 -0 linked repo: \[ap\] linked fake$/m);
+    assert.match(logText, /^Linked : linked repo \(/m);
+
+    // 연결 저장소가 없으면 프롬프트에 그 안내가 없다.
+    assert(!fs.readFileSync(path.join((await runScenario("idle")).projectDir, "prompt.txt"), "utf8").includes("연결 저장소"));
+
+    // Git 저장소가 아니면 시작하지 않는다.
+    const plainDir = path.join(context.testDir, "plain");
+
+    fs.mkdirSync(plainDir, { recursive: true });
+
+    await assert.rejects(runScenario("idle", { linkedProjectDirs: [plainDir] }));
+};
+
 const checkRetriesAndRateLimit = async (runScenario) => {
     for (const mode of ["failure", "is-error"]) {
         const failedRunData = await runScenario(mode, { limits: FAILURE_LIMITS });
@@ -812,6 +843,7 @@ export {
     checkRoundOptions,
     checkProgressCleanupPrompt,
     checkGitNames,
+    checkLinkedRepos,
     checkRetriesAndRateLimit,
     checkTimeout,
     checkInterrupt,

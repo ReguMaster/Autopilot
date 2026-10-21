@@ -32,6 +32,7 @@ window.Date = FakeDate;
 
 const DEFAULT_SETTINGS = {
     projectDir: "",
+    linkedRepos: [],
     tasks: "",
     endTime: "",
     policy: "auto",
@@ -191,6 +192,16 @@ const api = {
             model.globals = { ...model.globals, ...patch };
             model.settings = { ...model.settings, ...Object.fromEntries(Object.entries(patch).filter(([key]) => !model.overridden.includes(key))) };
         }
+
+        return ok(getSettingsView());
+    }),
+    addLinkedRepo: respond("addLinkedRepo", async () => {
+        model.settings = { ...model.settings, linkedRepos: [...model.settings.linkedRepos, `C:/work/repo-${model.settings.linkedRepos.length + 1}`] };
+
+        return ok(getSettingsView());
+    }),
+    removeLinkedRepo: respond("removeLinkedRepo", async (repoDir) => {
+        model.settings = { ...model.settings, linkedRepos: model.settings.linkedRepos.filter((linkedRepo) => linkedRepo !== repoDir) };
 
         return ok(getSettingsView());
     }),

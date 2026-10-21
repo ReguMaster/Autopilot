@@ -178,6 +178,27 @@ const settings = {
         }
     },
 
+    // 이 프로젝트에 연결할 저장소를 더하거나 뺀다. 폴더는 메인이 고르게 한다.
+    addLinkedRepo: async () => {
+        const result = await window.autopilot.addLinkedRepo();
+
+        ui.showFailure(result);
+
+        if (result.status === STATUS_OK) {
+            applyView(result.data);
+        }
+    },
+
+    removeLinkedRepo: async (repoDir) => {
+        const result = await window.autopilot.removeLinkedRepo(repoDir);
+
+        ui.showFailure(result);
+
+        if (result.status === STATUS_OK) {
+            applyView(result.data);
+        }
+    },
+
     // 이 프로젝트가 덮어쓴 값을 지워 전역 값을 따라가게 한다.
     reset: async (keys) => {
         const result = await window.autopilot.resetSettings(keys);

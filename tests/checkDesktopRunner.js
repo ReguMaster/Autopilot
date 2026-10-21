@@ -22,6 +22,7 @@ import {
     AUTOPILOT_DEFAULTS,
     DEFAULT_COMMIT_PREFIX as ENGINE_COMMIT_PREFIX,
     DEFAULT_WORK_BRANCH as ENGINE_WORK_BRANCH,
+    MAX_LINKED_REPOS as ENGINE_MAX_LINKED_REPOS,
     POLICY_ALIASES,
     POLICY_SELF
 } from "../autopilot/src/utils/config.js";
@@ -32,7 +33,7 @@ const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK
 const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
-const { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS } = require("../desktop/engineArgs.cjs");
+const { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS, MAX_LINKED_REPOS } = require("../desktop/engineArgs.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -920,6 +921,8 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...base, commitPrefix: "chore(ai):", workBranch: "bot/work" }).slice(-4), ["--commit-prefix", "chore(ai):", "--branch", "bot/work"]);
     assert(!getCliArgs({ ...base, logRetentionDays: DEFAULT_LOG_RETENTION_DAYS }).includes("--log-retention-days"), "기본 보관 기간이면 인자를 생략한다");
     assert.deepEqual(getCliArgs({ ...base, logRetentionDays: 7 }).slice(-2), ["--log-retention-days", "7"]);
+    assert(!getCliArgs(base).includes("--link-project"), "연결 저장소가 없으면 인자를 생략한다");
+    assert.deepEqual(getCliArgs({ ...base, linkedRepos: ["/api", "/web"] }).slice(-4), ["--link-project", "/api", "--link-project", "/web"]);
 };
 
 // 커밋 접두어·작업 브랜치의 기본값과 검증 규칙은 엔진과 앱이 같아야 한다.
@@ -927,6 +930,7 @@ const checkGitNameSync = () => {
     assert.equal(DEFAULT_COMMIT_PREFIX, ENGINE_COMMIT_PREFIX);
     assert.equal(DEFAULT_WORK_BRANCH, ENGINE_WORK_BRANCH);
     assert.equal(DEFAULT_LOG_RETENTION_DAYS, AUTOPILOT_DEFAULTS.logRetentionDays);
+    assert.equal(MAX_LINKED_REPOS, ENGINE_MAX_LINKED_REPOS);
 
     const prefixes = ["[ap]", "chore(ai):", "", " x", "x ", "a`b", "x".repeat(20), "x".repeat(21), "--x", "a\nb", "한글 접두어", "🤖"];
     const branches = ["ai/autopilot", "main", "MASTER", "head", "a..b", "/a", "a/", "a//b", "-a", "a b", "x.lock", "a/b.lock", "a.", ".a", "a".repeat(100), "a".repeat(101), "한글", "a_b", "A1/b2"];

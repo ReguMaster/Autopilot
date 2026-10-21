@@ -42,6 +42,12 @@ process.stdin.on('end', () => {
     fs.appendFileSync('work.txt', 'work\n');
     execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
     execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] fake']);
+  } else if (mode === 'linked-only') {
+    // 연결 저장소(작업 프로젝트와 같은 상위 폴더의 'linked repo')에만 commit해, 연결 저장소의 변경도 idle로 보지 않는지 본다.
+    const linkedDir = path.join(process.cwd(), '..', 'linked repo');
+    fs.appendFileSync(path.join(linkedDir, 'work.txt'), 'work\n');
+    execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt'], { cwd: linkedDir });
+    execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] linked fake'], { cwd: linkedDir });
   } else if (mode === 'progress') {
     // 진행 기록은 저장소 밖에 있으므로 갱신만 하고 commit이 없어 idle이다.
     fs.appendFileSync(process.env.AP_PROGRESS_FILE, 'work\n');

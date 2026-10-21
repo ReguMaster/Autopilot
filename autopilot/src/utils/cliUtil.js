@@ -1,9 +1,9 @@
-import { EFFORT_LEVELS, MAX_EXTEND_MINUTES, MAX_LOG_RETENTION_DAYS, MODEL_CHOICES } from "./config.js";
+import { EFFORT_LEVELS, MAX_EXTEND_MINUTES, MAX_LINKED_REPOS, MAX_LOG_RETENTION_DAYS, MODEL_CHOICES } from "./config.js";
 import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>"
 ].join("\n");
@@ -21,6 +21,7 @@ const RUN_OPTION_KEYS = {
     "--branch": "workBranch",
     "--log-retention-days": "logRetentionDays"
 };
+const LINK_PROJECT_OPTION = "--link-project";
 const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
 
 const parseOptionValue = (args, index) => {
@@ -86,9 +87,31 @@ const parseLogRetentionDays = (text) => {
     return days;
 };
 
+// --link-project는 여러 번 쓸 수 있어 나머지 인자를 해석하기 전에 따로 뽑는다.
+const extractLinkedProjects = (args) => {
+    const linkedProjectDirs = [];
+    const restArgs = [];
+
+    for (let index = 0; index < args.length; index++) {
+        if (args[index] === LINK_PROJECT_OPTION) {
+            linkedProjectDirs.push(parseOptionValue(args, index));
+            index++;
+        } else {
+            restArgs.push(args[index]);
+        }
+    }
+
+    if (linkedProjectDirs.length > MAX_LINKED_REPOS) {
+        throw new Error(`${LINK_PROJECT_OPTION}은 ${MAX_LINKED_REPOS}개까지 쓸 수 있습니다.`);
+    }
+
+    return { linkedProjectDirs: linkedProjectDirs, restArgs: restArgs };
+};
+
 const parseRunArgs = (args) => {
+    const { linkedProjectDirs, restArgs } = extractLinkedProjects(args);
     const options = parseOptions(
-        args.filter((arg) => !RUN_FLAGS.includes(arg)),
+        restArgs.filter((arg) => !RUN_FLAGS.includes(arg)),
         RUN_OPTION_KEYS
     );
 
@@ -102,7 +125,12 @@ const parseRunArgs = (args) => {
 
     settingsUtil.getGitSettings(options.commitPrefix, options.workBranch);
 
-    return { ...options, ...(args.includes("--no-open") && { open: false }), ...(args.includes("--extend-on-limit") && { extendOnLimit: true }) };
+    return {
+        ...options,
+        ...(linkedProjectDirs.length && { linkedProjectDirs: linkedProjectDirs }),
+        ...(args.includes("--no-open") && { open: false }),
+        ...(args.includes("--extend-on-limit") && { extendOnLimit: true })
+    };
 };
 
 // stop · status · reset-progress는 대상 프로젝트만 받는다.

@@ -23,6 +23,19 @@ const SCENES = [
         }
     },
     {
+        name: "settings-linked-repos",
+        init: { ...withProject, accounts: ACCOUNTS, models: MODELS, settings: { projectDir: PROJECT, linkedRepos: ["C:/work/mireu-web", "C:/work/mireu-admin"] } },
+        run: async (t) => {
+            await openSettings(t);
+            await t.shot("linked-repos", "#settings");
+            await t.click("#linked-repos .repo-item .button");
+            await t.shot("linked-repos-removed", "#settings");
+            await t.click("#add-linked-repo");
+            await t.shot("linked-repos-added", "#settings");
+            await t.note("calls", await callNames(t));
+        }
+    },
+    {
         name: "settings-panel-states",
         init: {
             accounts: { ...ACCOUNTS, claudeDir: { path: "D:/claude-data", isAuto: false, exists: false } },

@@ -5,7 +5,7 @@ const { MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES } = require("./autopilot
 const { normalizeSchedules } = require("./scheduleRules.cjs");
 const { readJsonFile, writeJsonFile, recoverJsonFile, BACKUP_SUFFIX } = require("./jsonFile.cjs");
 const { POST_RUN_ACTIONS } = require("./postAction.cjs");
-const { isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS } = require("./engineArgs.cjs");
+const { isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
 
 // 저장 형식이 바뀔 때마다 올린다. 버전 키가 없는 옛 파일은 0으로 본다.
 const SETTINGS_VERSION = 3;
@@ -31,6 +31,9 @@ const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "extend
 const SCHEDULES_KEY = "schedules";
 // 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
 const ACCOUNT_KEY = "accountId";
+// 프로젝트(탭)마다 연결한 저장소 경로(작업 프로젝트를 빼고 MAX_LINKED_REPOS개까지). 경로는 이 PC에서만 뜻이 있어 계정처럼 내보내거나 가져오지 않는다.
+const LINKED_REPOS_KEY = "linkedRepos";
+const LOCAL_PROJECT_KEYS = [ACCOUNT_KEY, LINKED_REPOS_KEY];
 const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
 const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction"];
@@ -182,18 +185,24 @@ const normalizeOverrides = (saved) => {
         overrides[ACCOUNT_KEY] = source[ACCOUNT_KEY];
     }
 
+    if (Array.isArray(source[LINKED_REPOS_KEY])) {
+        const repos = [...new Set(source[LINKED_REPOS_KEY].filter((dir) => typeof dir === "string" && dir))].slice(0, MAX_LINKED_REPOS);
+
+        if (repos.length) {
+            overrides[LINKED_REPOS_KEY] = repos;
+        }
+    }
+
     return overrides;
 };
 
-// 이 PC에서만 뜻이 있는 프로젝트 값(계정)은 파일로 오가지 않으므로, 내보낼 때 빼고 가져오거나 되돌릴 때 이 PC의 값을 남긴다.
+// 이 PC에서만 뜻이 있는 프로젝트 값(계정·연결 저장소)은 파일로 오가지 않으므로, 내보낼 때 빼고 가져오거나 되돌릴 때 이 PC의 값을 남긴다.
 const omitLocalKeys = (overrides) => {
-    const { [ACCOUNT_KEY]: omitted, ...portable } = overrides;
-
-    return portable;
+    return Object.fromEntries(Object.entries(overrides).filter(([key]) => !LOCAL_PROJECT_KEYS.includes(key)));
 };
 
 const keepLocalKeys = (overrides, current) => {
-    return current[ACCOUNT_KEY] ? { ...omitLocalKeys(overrides), [ACCOUNT_KEY]: current[ACCOUNT_KEY] } : omitLocalKeys(overrides);
+    return { ...omitLocalKeys(overrides), ...Object.fromEntries(LOCAL_PROJECT_KEYS.filter((key) => current[key]).map((key) => [key, current[key]])) };
 };
 
 // 프로젝트 폴더를 가리키는 파일 이름. 진행 기록과 같은 규칙(폴더 이름 + 실제 경로의 해시)이다.
@@ -308,7 +317,13 @@ const createSettingsStore = ({ dir }) => {
         const target = typeof projectDir === "string" ? projectDir : globals.projectDir;
         const overrides = readProject(target);
         const overridden = OVERRIDABLE_KEYS.filter((key) => Object.hasOwn(overrides, key));
-        const settings = { ...globals, ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])), projectDir: target, accountId: overrides[ACCOUNT_KEY] ?? globals.accountId };
+        const settings = {
+            ...globals,
+            ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])),
+            projectDir: target,
+            accountId: overrides[ACCOUNT_KEY] ?? globals.accountId,
+            linkedRepos: overrides[LINKED_REPOS_KEY] ?? []
+        };
 
         return { settings: settings, overridden: overridden, globals: Object.fromEntries(OVERRIDABLE_KEYS.map((key) => [key, globals[key]])) };
     };
@@ -486,6 +501,7 @@ module.exports = {
     OVERRIDABLE_KEYS,
     SCHEDULES_KEY,
     ACCOUNT_KEY,
+    LINKED_REPOS_KEY,
     MAX_TABS,
     PREFERENCE_KEYS,
     MACHINE_KEYS,

@@ -46,7 +46,8 @@ const writeRunHeader = (context) => {
         `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
         `Policy : ${runState.policy} (${runState.policySource})`,
         `Log : ${runState.logFile}`,
-        `Report : ${runState.reportFile}`
+        `Report : ${runState.reportFile}`,
+        ...runState.repos.filter((repo) => repo.isLinked).map((repo) => `Linked : ${repo.name} (${repo.dir})`)
     ];
 
     for (const headerLine of headerLines) {
@@ -65,10 +66,16 @@ const prepareRun = (options) => {
     const runConfig = { ...AUTOPILOT_DEFAULTS, ...(options.logRetentionDays && { logRetentionDays: options.logRetentionDays }), ...options.limits };
     const { projectDir, workDir } = getProjectPaths(options);
     const env = autopilotUtil.getRunEnv(options);
-    const runGitCommand = gitUtil.createGitRunner(processUtil.getExecutablePath("git", env), projectDir, env);
+    const gitExecutable = processUtil.getExecutablePath("git", env);
+    const linkedRepos = autopilotUtil.getLinkedRepos(options.linkedProjectDirs, projectDir);
+    const repos = [{ name: path.basename(projectDir), dir: projectDir, isLinked: false }, ...linkedRepos.map((repo) => ({ ...repo, isLinked: true }))].map((repo) => {
+        const runGitCommand = gitUtil.createGitRunner(gitExecutable, repo.dir, env);
 
-    gitUtil.assertGitProject(runGitCommand, projectDir);
+        gitUtil.assertGitProject(runGitCommand, repo.dir);
 
+        return { ...repo, runGitCommand: runGitCommand };
+    });
+    const runGitCommand = repos[0].runGitCommand;
     const command = options.command || processUtil.getExecutablePath("claude", env);
     const runStart = new Date();
     const runDate = dateUtil.getDateString(runStart);
@@ -96,6 +103,7 @@ const prepareRun = (options) => {
         runDate: runDate,
         progressDir: progressDir,
         runGitCommand: runGitCommand,
+        repos: repos,
         rounds: [],
         stopFile: autopilotUtil.getStopFile(workDir),
         roundOptionsFile: autopilotUtil.getRoundOptionsFile(workDir),
@@ -128,7 +136,7 @@ const prepareRun = (options) => {
         progressCleanupPrompt: "",
         isCleanupRequested: false,
         isCleanupSkipped: false,
-        recordedCommitHashes: new Set(gitUtil.getCommitHashesSince(runGitCommand, runStart))
+        recordedCommitHashes: new Map(repos.map((repo) => [repo.dir, new Set(gitUtil.getCommitHashesSince(repo.runGitCommand, runStart))]))
     };
 
     writeRunHeader(context);
@@ -189,16 +197,22 @@ const executeSession = async (context, loopState, { round, prompt, roundDeadline
     const reportTimer = setInterval(updateLiveReport, REPORT_REFRESH_MS);
 
     try {
-        return await processUtil.runClaudeSession(command, options.commandArgs || autopilotUtil.getClaudeArgs({ ...roundOptions, unsupportedFlags: context.unsupportedFlags }), prompt, {
-            projectDir: runState.projectDir,
-            processEnv: env,
-            roundDeadline: roundDeadline,
-            writeLog: writeLog,
-            sessionStats: sessionStats,
-            onProcessChange: (childProcess) => {
-                loopState.activeProcess = childProcess;
+        return await processUtil.runClaudeSession(
+            command,
+            options.commandArgs ||
+                autopilotUtil.getClaudeArgs({ ...roundOptions, unsupportedFlags: context.unsupportedFlags, addDirs: runState.repos.filter((repo) => repo.isLinked).map((repo) => repo.dir) }),
+            prompt,
+            {
+                projectDir: runState.projectDir,
+                processEnv: env,
+                roundDeadline: roundDeadline,
+                writeLog: writeLog,
+                sessionStats: sessionStats,
+                onProcessChange: (childProcess) => {
+                    loopState.activeProcess = childProcess;
+                }
             }
-        });
+        );
     } finally {
         clearInterval(reportTimer);
     }
@@ -218,7 +232,7 @@ const getRoundOptions = (context) => {
 };
 
 // 사용량 한도 대기는 실패로 세지 않는다.
-const updateRoundCounters = (context, loopState, { isFailed, isRateLimited, previousHead }) => {
+const updateRoundCounters = (context, loopState, { isFailed, isRateLimited, previousHeads }) => {
     if (isFailed) {
         if (!isRateLimited) {
             loopState.failureCount++;
@@ -228,7 +242,7 @@ const updateRoundCounters = (context, loopState, { isFailed, isRateLimited, prev
     }
 
     loopState.failureCount = 0;
-    loopState.idleCount = gitUtil.hasWorkChanges(context.runState.runGitCommand, previousHead) ? 0 : loopState.idleCount + 1;
+    loopState.idleCount = context.runState.repos.some((repo, index) => gitUtil.hasWorkChanges(repo.runGitCommand, previousHeads[index])) ? 0 : loopState.idleCount + 1;
 };
 
 // 매 회차를 시작할 때 진행 기록 줄 수를 확인해 상한을 넘었으면 원본을 보관하고 정리를 지시한다. 하루 동안 문서가 계속 커지는 것을 막는다.
@@ -261,12 +275,21 @@ const getProgressCleanupPrompt = (context) => {
     return context.progressCleanupPrompt;
 };
 
+// 연결 저장소의 commit은 제목 앞에 저장소 이름을 붙여 어느 저장소의 것인지 로그와 리포트에서 알아보게 한다.
+const collectRoundCommits = (runState, roundStart, recordedCommitHashes) => {
+    return runState.repos.flatMap((repo) => {
+        const commits = gitUtil.collectNewCommits(repo.runGitCommand, roundStart, recordedCommitHashes.get(repo.dir));
+
+        return repo.isLinked ? commits.map((commit) => ({ ...commit, subject: `${repo.name}: ${commit.subject}` })) : commits;
+    });
+};
+
 const runRound = async (context, loopState, remainingMinutes) => {
     const { runConfig, runState, writeLog, recordedCommitHashes } = context;
     const progressCleanupPrompt = getProgressCleanupPrompt(context);
     const round = runState.rounds.length + 1;
     const roundStart = new Date();
-    const previousHead = gitUtil.getHeadHash(runState.runGitCommand);
+    const previousHeads = runState.repos.map((repo) => gitUtil.getHeadHash(repo.runGitCommand));
     const roundDeadline = Math.min(+runState.deadline, Date.now() + runConfig.maxRoundMinutes * MINUTE_MS);
     const sessionStats = { limitHit: false, isError: false };
     const prompt = promptUtil.getRoundPrompt(runState, round, Math.floor(remainingMinutes), progressCleanupPrompt, runConfig.maxTasks);
@@ -278,14 +301,14 @@ const runRound = async (context, loopState, remainingMinutes) => {
     const isFailed = sessionResult.exitCode !== EXIT_CODE_SUCCESS || sessionStats.isError;
     const isRateLimited = !loopState.isInterrupted && !sessionResult.timedOut && sessionStats.limitHit && isFailed && sessionStats.resetAt > Date.now();
 
-    updateRoundCounters(context, loopState, { isFailed: isFailed, isRateLimited: isRateLimited, previousHead: previousHead });
+    updateRoundCounters(context, loopState, { isFailed: isFailed, isRateLimited: isRateLimited, previousHeads: previousHeads });
 
     // 정리 지시는 성공한 회차에서 끝난다. 다음 회차는 줄 수를 다시 확인해 필요할 때만 지시한다.
     if (!isFailed) {
         context.progressCleanupPrompt = "";
     }
 
-    const commits = gitUtil.collectNewCommits(runState.runGitCommand, roundStart, recordedCommitHashes);
+    const commits = collectRoundCommits(runState, roundStart, recordedCommitHashes);
     const outcome = autopilotUtil.getRoundOutcome({
         isInterrupted: loopState.isInterrupted,
         isRateLimited: isRateLimited,
@@ -461,8 +484,14 @@ const finishRun = (context, loopState) => {
     resetProgressIfComplete(context, loopState);
 
     writeLog(`AutoPilot 종료 - ${reason} (${runState.rounds.length}회차)`);
-    writeLog(gitUtil.getRecentLog(runState.runGitCommand));
-    writeLog(gitUtil.getStatus(runState.runGitCommand));
+    for (const repo of runState.repos) {
+        if (repo.isLinked) {
+            writeLog(`연결 저장소 ${repo.name}`);
+        }
+
+        writeLog(gitUtil.getRecentLog(repo.runGitCommand));
+        writeLog(gitUtil.getStatus(repo.runGitCommand));
+    }
 
     reportUtil.writeRunReport(runState, reason, false, isAborted);
 

@@ -640,6 +640,44 @@ const checkProjectAccount = () => {
     }
 };
 
+// 연결 저장소는 프로젝트마다 고르고, 경로는 이 PC에서만 뜻이 있어 계정처럼 오가지 않는다. 최대 2개이고 중복·빈 값은 버린다.
+const checkLinkedRepos = () => {
+    const dir = createTempDir();
+    const projectA = createTempDir();
+
+    try {
+        const store = createSettingsStore({ dir: dir });
+
+        assert.deepEqual(store.resolve(projectA).settings.linkedRepos, [], "연결이 없으면 빈 목록이다");
+        assert.deepEqual(normalizeOverrides({ linkedRepos: ["/a", "/a", "", 5, "/b", "/c"] }), { linkedRepos: ["/a", "/b"] });
+        assert.deepEqual(normalizeOverrides({ linkedRepos: [] }), {});
+        assert.deepEqual(normalizeOverrides({ linkedRepos: "/a" }), {});
+
+        store.updateProject(projectA, { linkedRepos: ["/a", "/b"], tasks: "A" });
+
+        assert.deepEqual(store.resolve(projectA).settings.linkedRepos, ["/a", "/b"]);
+        assert.deepEqual(store.resolve(projectA).overridden, ["tasks"], "연결 저장소는 설정 범위(덮어쓴 키)에 들지 않는다");
+
+        store.remember(projectA, { tasks: "다음" });
+        store.clearProject(projectA, ["tasks"]);
+
+        assert.deepEqual(store.readProject(projectA).linkedRepos, ["/a", "/b"], "작업을 기억하거나 되돌려도 연결 저장소는 남는다");
+        assert.equal(Object.hasOwn(store.exportData().projects.find((project) => project.projectDir === projectA).settings, "linkedRepos"), false, "내보내기에 경로가 없다");
+
+        store.importData({ app: "AutoPilot", kind: "settings", version: 1, global: {}, projects: [{ projectDir: projectA, settings: { linkedRepos: ["/evil"], effort: "low" } }] });
+
+        assert.deepEqual(store.readProject(projectA).linkedRepos, ["/a", "/b"], "가져와도 이 PC의 연결이 남고 파일의 경로는 받지 않는다");
+
+        store.resetPreferences();
+
+        assert.deepEqual(store.readProject(projectA), { linkedRepos: ["/a", "/b"] });
+    } finally {
+        for (const target of [dir, projectA]) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+    }
+};
+
 checkJsonFile();
 checkRecover();
 checkMigrate();
@@ -648,6 +686,7 @@ checkStore();
 checkProjectSettings();
 checkResolveByProject();
 checkTabs();
+checkLinkedRepos();
 checkCloseTab();
 checkProjectAccount();
 checkUpgrade();

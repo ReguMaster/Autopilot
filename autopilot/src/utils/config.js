@@ -34,6 +34,8 @@ const MODEL_ID_PATTERN = /^claude-[a-z0-9][a-z0-9.-]{0,62}$/;
 const DEFAULT_EFFORT = "high";
 const DEFAULT_COMMIT_PREFIX = "[ap]";
 const DEFAULT_WORK_BRANCH = "ai/autopilot";
+// 작업 프로젝트에 더할 수 있는 연결 저장소 수(작업 프로젝트를 합쳐 3개).
+const MAX_LINKED_REPOS = 2;
 const MAX_EXTEND_MINUTES = 7 * 24 * 60;
 const MAX_LOG_RETENTION_DAYS = 3650;
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
@@ -96,6 +98,7 @@ export {
     DEFAULT_EFFORT,
     DEFAULT_COMMIT_PREFIX,
     DEFAULT_WORK_BRANCH,
+    MAX_LINKED_REPOS,
     MAX_EXTEND_MINUTES,
     MAX_LOG_RETENTION_DAYS,
     EFFORT_LEVELS,

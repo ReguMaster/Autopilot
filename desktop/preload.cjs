@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     setOptions: (options) => ipcRenderer.invoke("autopilot:set-options", options),
     updateSettings: (request) => ipcRenderer.invoke("autopilot:update-settings", request),
     resetSettings: (keys, projectDir) => ipcRenderer.invoke("autopilot:reset-settings", keys, projectDir),
+    addLinkedRepo: (projectDir) => ipcRenderer.invoke("autopilot:add-linked-repo", projectDir),
+    removeLinkedRepo: (repoDir, projectDir) => ipcRenderer.invoke("autopilot:remove-linked-repo", repoDir, projectDir),
     setPreferences: (patch) => ipcRenderer.invoke("autopilot:set-preferences", patch),
     cancelPostAction: () => ipcRenderer.invoke("autopilot:cancel-post-action"),
     runPostActionNow: () => ipcRenderer.invoke("autopilot:run-post-action-now"),
