@@ -136,7 +136,7 @@ const checkCommandArgs = () => {
     }
 };
 
-const checkClaudeArgs = () => {
+const checkClaudeArgs = async () => {
     const { getClaudeArgs } = autopilotUtil;
     const getValue = (args, flag) => args[args.indexOf(flag) + 1];
 
@@ -151,6 +151,17 @@ const checkClaudeArgs = () => {
 
     // 같은 모델로는 fallback을 지정하지 않는다.
     assert(!getClaudeArgs({ model: "sonnet", effort: "low" }).includes("--fallback-model"));
+    assert.equal(getValue(getClaudeArgs(), "--autocompact"), "150000");
+
+    // 설치된 Claude Code가 모르는 선택 옵션은 값까지 함께 빼고, 필수 옵션은 그대로 둔다.
+    const trimmed = getClaudeArgs({ unsupportedFlags: ["--autocompact", "--effort"] });
+
+    assert(!trimmed.includes("--autocompact") && !trimmed.includes("150000") && !trimmed.includes("--effort") && !trimmed.includes("high"));
+    assert.deepEqual(trimmed, ["--model", "opus", "--fallback-model", "sonnet", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"]);
+
+    // --help에 나오지 않는 옵션만 골라낸다. 도움말을 읽지 못하면(없는 명령) 아무것도 빼지 않는다.
+    assert.deepEqual(await processUtil.getUnsupportedFlags(process.execPath, ["--eval", "--no-such-flag-xyz"], process.env), ["--no-such-flag-xyz"]);
+    assert.deepEqual(await processUtil.getUnsupportedFlags(path.join(process.cwd(), "no-such-command-xyz"), ["--effort"], process.env), []);
 };
 
 // 엔진은 Electron을 Node로 실행하므로 그 표시가 Claude 세션과 그 하위 프로세스로 새면 안 된다.

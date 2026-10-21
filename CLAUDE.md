@@ -117,6 +117,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 ### 세션 실행과 프롬프트
 
 - 실제 세션은 claude -p로 실행한다.
+- 선택 옵션(config.js의 OPTIONAL_CLAUDE_FLAGS: --effort·--fallback-model·--autocompact)은 실행을 시작할 때 `claude --help`에 있는지 확인해(processUtil.getUnsupportedFlags) 없으면 빼고 `[설정]` 줄로 알린다. 오래된 Claude Code가 모르는 옵션을 받으면 CLI가 시작하자마자 실패해 모든 회차가 실패한다. 도움말을 읽지 못하면 아무것도 빼지 않고, 사용자 지정 명령(검증용 command·commandArgs)은 확인하지 않는다. 옵션을 더하면 이 목록에도 넣는다.
 - 프롬프트는 UTF-8 stdin으로 전달한다. shell에는 사용자 프롬프트를 삽입하지 않는다. Windows .cmd 래퍼 실행 인자도 검증한다.
 - 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·예약 작업·진행 기록 경로·정책·남은 시간·작업 수 상한을 명시한다.
 - AUTOPILOT.md·AUTOPILOT_POLICY.md 본문은 autopilot/src/utils/guideText.js에 문자열로 두고(커밋 접두어와 작업 브랜치를 받는 getAutopilotGuide·getAutopilotPolicy) 회차마다 프롬프트 끝에 넣는다. 별도 md 파일은 두지 않는다.

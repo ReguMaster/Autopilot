@@ -186,10 +186,17 @@ const getRoundOptions = (startOptions, savedOptions) => {
     return { model: savedOptions.model || startOptions.model || DEFAULT_MODEL, effort: savedOptions.effort || startOptions.effort || DEFAULT_EFFORT };
 };
 
-const getClaudeArgs = ({ model = DEFAULT_MODEL, effort = DEFAULT_EFFORT } = {}) => {
-    const fallbackArgs = model === FALLBACK_MODEL ? [] : ["--fallback-model", FALLBACK_MODEL];
+// 선택 인자는 오래된 Claude Code가 모르는 옵션이면 CLI가 시작하자마자 실패하므로 unsupportedFlags에 든 것은 뺀다.
+const getClaudeArgs = ({ model = DEFAULT_MODEL, effort = DEFAULT_EFFORT, unsupportedFlags = [] } = {}) => {
+    const optionalArgs = [
+        ["--effort", effort],
+        ["--fallback-model", model === FALLBACK_MODEL ? "" : FALLBACK_MODEL],
+        ["--autocompact", "150000"]
+    ]
+        .filter(([flag, value]) => value && !unsupportedFlags.includes(flag))
+        .flat();
 
-    return ["--model", model, "--effort", effort, ...fallbackArgs, "--autocompact", "150000", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"];
+    return ["--model", model, ...optionalArgs, "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-p"];
 };
 
 const getRoundOutcome = ({ isInterrupted, isRateLimited, timedOut, isFailed, exitCode, isError, idleCount }) => {

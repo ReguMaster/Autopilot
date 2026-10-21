@@ -25,6 +25,7 @@ import {
     checkLogRetentionOption,
     checkProgressResetFlow,
     checkProgressCreated,
+    checkUnsupportedFlags,
     checkTasksRequired,
     checkProgressResetCommand,
     checkRoundOptions,
@@ -54,7 +55,7 @@ const checkAutopilot = async () => {
         checkProcessIdentity();
         checkRunSettings();
         checkCommandArgs();
-        checkClaudeArgs();
+        await checkClaudeArgs();
         checkRunEnv();
         checkProjectPaths(context);
         checkProgressArchive(context);
@@ -75,6 +76,7 @@ const checkAutopilot = async () => {
         await checkLogRetentionOption(scenarioRunner.runScenario);
         await checkProgressResetFlow(scenarioRunner.runScenario);
         await checkProgressCreated(scenarioRunner, context, fakeCliFile);
+        await checkUnsupportedFlags(scenarioRunner, context);
         await checkTasksRequired(context, fakeCliFile);
         checkProgressResetCommand(context);
         await checkRoundOptions(scenarioRunner.runScenario, context);

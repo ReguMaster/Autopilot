@@ -18,6 +18,7 @@ import {
     STOP_REASON_REQUESTED,
     ROUND_OPTIONS_FILE_NAME,
     PROGRESS_MAX_LINES,
+    OPTIONAL_CLAUDE_FLAGS,
     AUTOPILOT_DEFAULTS
 } from "../utils/config.js";
 
@@ -123,6 +124,7 @@ const prepareRun = (options) => {
         runState: runState,
         todoDoneFile: todoDoneFile,
         writeLog: writeLog,
+        unsupportedFlags: [],
         progressCleanupPrompt: "",
         isCleanupRequested: false,
         isCleanupSkipped: false,
@@ -187,7 +189,7 @@ const executeSession = async (context, loopState, { round, prompt, roundDeadline
     const reportTimer = setInterval(updateLiveReport, REPORT_REFRESH_MS);
 
     try {
-        return await processUtil.runClaudeSession(command, options.commandArgs || autopilotUtil.getClaudeArgs(roundOptions), prompt, {
+        return await processUtil.runClaudeSession(command, options.commandArgs || autopilotUtil.getClaudeArgs({ ...roundOptions, unsupportedFlags: context.unsupportedFlags }), prompt, {
             projectDir: runState.projectDir,
             processEnv: env,
             roundDeadline: roundDeadline,
@@ -467,12 +469,29 @@ const finishRun = (context, loopState) => {
     return { ...runState, reason: reason, exitCode: autopilotUtil.getExitCode(isAborted, isInterrupted) };
 };
 
+// 설치된 Claude Code가 모르는 선택 옵션은 빼고 실행한다. 모르는 옵션이 있으면 CLI가 시작하자마자 실패한다. 사용자 지정 명령(검증용)은 확인하지 않는다.
+const detectUnsupportedFlags = async (context) => {
+    if (context.options.command || context.options.commandArgs) {
+        return [];
+    }
+
+    const unsupportedFlags = await processUtil.getUnsupportedFlags(context.command, OPTIONAL_CLAUDE_FLAGS, context.env);
+
+    if (unsupportedFlags.length > 0) {
+        context.writeLog(`[설정] 설치된 Claude Code가 ${unsupportedFlags.join(", ")} 옵션을 지원하지 않아 빼고 실행합니다. Claude Code를 업데이트하면 적용됩니다.`);
+    }
+
+    return unsupportedFlags;
+};
+
 const runLockedAutopilot = async (options) => {
     const context = prepareRun(options);
     const loopState = createLoopState();
     const unregisterInterruptHandlers = registerInterruptHandlers(context, loopState);
 
     try {
+        context.unsupportedFlags = await detectUnsupportedFlags(context);
+
         reportUtil.writeRunReport(context.runState, "시작 중", true);
 
         if (options.open !== false) {

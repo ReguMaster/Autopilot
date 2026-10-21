@@ -222,6 +222,61 @@ const checkProgressCreated = async (scenarioRunner, context, fakeCliFile) => {
 };
 
 // 지시개선은 처리할 작업이 있어야 시작한다. 잠금은 실패해도 남기지 않는다.
+// --autocompact를 모르는 옛 Claude Code가 PATH에 있어도 그 옵션만 빼고 세션이 돈다(모르는 옵션이면 CLI가 시작하자마자 실패한다).
+const checkUnsupportedFlags = async (scenarioRunner, context) => {
+    const projectDir = path.join(context.testDir, "old claude project 한글");
+    const binDir = path.join(context.testDir, "old-claude-bin");
+    const oldClaudeFile = path.join(binDir, "old-claude.mjs");
+    const argsFile = path.join(binDir, "args.json");
+    const wrapperFile = path.join(binDir, process.platform === "win32" ? "claude.cmd" : "claude");
+    const oldClaudeSource = `
+import fs from "node:fs";
+if (process.argv.includes("--help")) {
+    console.log("Usage: claude [options]\\n  --model <model>\\n  --effort <level>\\n  --fallback-model <model>");
+    process.exit(0);
+}
+if (process.argv.includes("--autocompact")) {
+    console.error("error: unknown option '--autocompact'");
+    process.exit(1);
+}
+fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));
+process.stdin.resume();
+process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", is_error: false, result: "ok" })));
+`;
+
+    fs.mkdirSync(binDir);
+    fs.writeFileSync(oldClaudeFile, oldClaudeSource);
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+
+    commitInitialProject(context, projectDir);
+
+    if (process.platform === "win32") {
+        writeCmdWrapper(wrapperFile, oldClaudeFile);
+    } else {
+        fs.writeFileSync(wrapperFile, `#!/bin/sh\nexec "${process.execPath}" "${oldClaudeFile}" "$@"\n`);
+        fs.chmodSync(wrapperFile, 0o755);
+    }
+
+    const pathKey = Object.keys(context.testEnv).find((key) => key.toUpperCase() === "PATH");
+    const result = await runAutopilot({
+        projectDir: projectDir,
+        dataDir: scenarioRunner.dataDir,
+        open: false,
+        endTime: getEndTime(),
+        env: { ...context.testEnv, [pathKey]: binDir + path.delimiter + context.testEnv[pathKey] },
+        limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] }
+    });
+
+    assert.equal(result.status, STATUS_OK, result.error?.msg);
+
+    const args = JSON.parse(fs.readFileSync(argsFile, "utf8"));
+
+    assert(!args.includes("--autocompact") && !args.includes("150000"));
+    assert(args.includes("--effort") && args.includes("--fallback-model"));
+    assert.match(fs.readFileSync(result.data.logFile, "utf8"), /^\[설정\] 설치된 Claude Code가 --autocompact 옵션을 지원하지 않아 빼고 실행합니다/m);
+};
+
 const checkTasksRequired = async (context, fakeCliFile) => {
     const projectDir = path.join(context.testDir, "tasks project");
 
@@ -751,6 +806,7 @@ export {
     checkLogRetentionOption,
     checkProgressResetFlow,
     checkProgressCreated,
+    checkUnsupportedFlags,
     checkTasksRequired,
     checkProgressResetCommand,
     checkRoundOptions,

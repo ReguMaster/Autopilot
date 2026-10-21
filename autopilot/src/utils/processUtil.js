@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { MAX_STDERR_LENGTH } from "./config.js";
 import streamUtil from "./streamUtil.js";
 
+const HELP_TIMEOUT_MS = 10000;
 const IS_WINDOWS = process.platform === "win32";
 const WINDOWS_SCRIPT_PATTERN = /\.(cmd|bat)$/i;
 const UNSAFE_CMD_PATH_PATTERN = /["\r\n%!]/;
@@ -266,4 +267,37 @@ const runClaudeSession = (command, args, prompt, { projectDir, processEnv, round
     });
 };
 
-export default { getExecutablePath, spawnCommand, killProcessTree, isProcessRunning, isSameProcess, openFile, runClaudeSession };
+// `<command> --help`에 나오지 않는 옵션을 돌려준다. 도움말을 읽지 못하면 판단할 수 없으므로 빈 목록이다(옵션을 그대로 쓴다).
+const getUnsupportedFlags = (command, flags, processEnv) => {
+    return new Promise((resolve) => {
+        let help = "";
+        let isSettled = false;
+
+        const settle = (unsupportedFlags) => {
+            if (!isSettled) {
+                isSettled = true;
+                clearTimeout(timer);
+                resolve(unsupportedFlags);
+            }
+        };
+
+        const childProcess = spawnCommand(command, ["--help"], { env: processEnv, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+        const timer = setTimeout(() => {
+            childProcess.kill();
+            settle([]);
+        }, HELP_TIMEOUT_MS);
+
+        childProcess.stdout.setEncoding("utf8");
+        childProcess.stdout.on("data", (text) => {
+            help += text;
+        });
+        childProcess.on("error", () => settle([]));
+        childProcess.on("close", () => {
+            const words = help.split(/[^\w-]+/);
+
+            settle(help ? flags.filter((flag) => !words.includes(flag)) : []);
+        });
+    });
+};
+
+export default { getExecutablePath, spawnCommand, killProcessTree, isProcessRunning, isSameProcess, openFile, runClaudeSession, getUnsupportedFlags };

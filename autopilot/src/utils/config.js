@@ -27,6 +27,8 @@ const POLICY_ALIASES = {
 const DEFAULT_END_TIME = "07:00";
 const DEFAULT_MODEL = "opus";
 const FALLBACK_MODEL = "sonnet";
+// 없어도 세션이 도는 claude 옵션. 설치된 Claude Code가 모르면 빼고 실행한다(autopilotUtil.getClaudeArgs).
+const OPTIONAL_CLAUDE_FLAGS = ["--effort", "--fallback-model", "--autocompact"];
 const MODEL_CHOICES = ["fable", "opus", "sonnet", "haiku"];
 const MODEL_ID_PATTERN = /^claude-[a-z0-9][a-z0-9.-]{0,62}$/;
 const DEFAULT_EFFORT = "high";
@@ -88,6 +90,7 @@ export {
     DEFAULT_END_TIME,
     DEFAULT_MODEL,
     FALLBACK_MODEL,
+    OPTIONAL_CLAUDE_FLAGS,
     MODEL_CHOICES,
     MODEL_ID_PATTERN,
     DEFAULT_EFFORT,
