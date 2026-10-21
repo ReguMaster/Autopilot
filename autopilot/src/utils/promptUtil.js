@@ -37,6 +37,7 @@ const getLinkedReposPrompt = (runState) => {
         `모든 저장소에서 \`${runState.workBranch}\` 브랜치로 작업하고, 변경한 저장소마다 따로 commit하되 한 commit에 여러 저장소를 섞지 않는다. 접두어 \`${runState.commitPrefix}\`는 모든 저장소에 똑같이 쓴다.`,
         `commit한 저장소는 \`git push origin ${runState.workBranch}\`로 작업 브랜치만 push한다(upstream이 없으면 \`-u\`를 쓴다). main·master와 다른 브랜치로 push하거나 force push하지 않는다.`,
         "원격이 없거나 push가 실패해도 우회하거나 작업을 멈추지 말고 진행 기록에 남겨 다음 회차가 다시 시도하게 한다.",
+        "작업 전에 각 연결 저장소 루트의 `CLAUDE.md`를 직접 읽고(자동으로 로드되지 않을 수 있다), 그 저장소의 파일을 고치거나 검증할 때는 그 저장소의 규칙·코드 스타일·보호할 데이터·테스트 명령을 따른다. 저장소마다 규칙이 다르면 섞어 쓰지 않고 검증도 저장소별로 따로 돌린다.",
         "백엔드·프론트처럼 저장소가 서로 맞물리는 변경(API 계약 등)은 한 작업으로 보고 같은 세션에서 양쪽을 함께 고쳐 어긋나지 않게 한다.",
         `\`.autopilot/\`은 작업 프로젝트에만 있다. 연결 저장소의 파일을 지울 때는 작업 프로젝트의 \`.autopilot/recycle_bin/<저장소 이름>/\` 아래로 원래 구조를 유지해 옮긴다.`
     ].join(" ");

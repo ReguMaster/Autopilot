@@ -511,6 +511,7 @@ const checkLinkedRepos = async (runScenario, context) => {
     assert(prompt.includes(`연결 저장소: linked repo (${linkedDir}).`));
     assert(prompt.includes("`git push origin ai/autopilot`"));
     assert(prompt.includes("force push하지 않는다"));
+    assert(prompt.includes("각 연결 저장소 루트의 `CLAUDE.md`를 직접 읽고"));
     assert.equal(linkedRunData.rounds.length, 3);
     assert(linkedRunData.rounds.every((round) => round.outcome === "완료" && round.commits.length === 1));
     assert.match(logText, /^\[커밋\] [0-9a-f]+ \+1 -0 linked repo: \[ap\] linked fake$/m);

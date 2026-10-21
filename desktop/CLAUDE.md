@@ -73,6 +73,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 ### 플랫폼 범위
 
 - 배포는 Windows exe(포터블·설치형), macOS dmg·zip, Linux AppImage·deb이고 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
+- 작업표시줄 도는 표시는 Windows만이다(systemIntegration의 syncTaskbarOverlay). 집계 진행 모드가 normal·indeterminate일 때만 setOverlayIcon으로 12프레임(drawOverlayBitmap이 코드로 그린 32x32 BGRA, TRAY_ICON_SCALE 2배)을 120ms마다 바꾸고, 그 밖에는 지운다. systemPreferences.getAnimationSettings().prefersReducedMotion이면 타이머 없이 한 장만 보인다. tests/checkDesktopSystem.js가 비트맵을 검증하고, 눈으로 볼 때는 프레임을 PNG로 펼쳐 확인한다.
 - 로그인 여부는 저장 위치가 플랫폼마다 달라 파일이 아니라 `claude auth status --json`으로 확인한다.
 - 창 아이콘은 Windows가 .ico, 그 밖은 .png다. 트레이 아이콘은 2배 크기(TRAY_ICON_SCALE)로 만들어 고해상도에서 흐려지지 않게 한다. 서체 목록(--sans·--mono)에는 macOS·Linux 시스템 서체를 대체로 둔다. Cmd+Q·시스템 종료(before-quit)는 트레이 숨기기가 아니라 종료 확인을 거친다. Linux는 트레이를 지원하지 않는 데스크톱이면 트레이로 숨긴 창을 다시 열 수 없으므로(두 번째 실행으로 열 수는 있다) README에 알린다.
 - Windows·Linux는 로그인 정보가 설정 폴더의 .credentials.json이고, macOS는 키체인(서비스 `Claude Code-credentials-<설정 폴더 경로 SHA-256 앞 8자>`, 기본 폴더는 접미사 없는 옛 이름도)이다. claudeAccount는 두 곳을 모두 읽어 만료가 더 늦은 로그인을 쓴다(keychainCredentials.cjs가 `/usr/bin/security find-generic-password -s <서비스> -w`로 읽기만 한다. 다른 계정의 폴더는 옛 이름을 읽지 않는다). 키체인을 읽지 못하면(접근 거부·시간 초과, 항목이 없는 종료 코드 44는 제외) KEYCHAIN_BLOCKED 안내를 내고 접근 허용 창이 5분마다 뜨지 않도록 한 시간 동안 다시 묻지 않는다. 서비스 이름 규칙은 Claude Code의 비공식 동작이라 바뀔 수 있다.

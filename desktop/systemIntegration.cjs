@@ -179,6 +179,15 @@ const showOverlayFrame = () => {
     overlayFrameIndex += 1;
 };
 
+// 호출 한 번이 메인 프로세스에서 약 2ms라 트레이로 숨어 작업표시줄에 보이지 않는 동안은 돌리지 않는다.
+const tickOverlayFrame = () => {
+    const window = getMainWindow();
+
+    if (window && (window.isVisible() || window.isMinimized())) {
+        showOverlayFrame();
+    }
+};
+
 // Windows 작업표시줄 아이콘 모서리에 도는 표시를 얹는다. 일하는 동안만 돌고, 대기·종료 신호 중에는 진행 막대의 색만 남긴다.
 // 시스템이 애니메이션을 줄이게 설정돼 있으면 멈춘 그림 한 장만 보인다.
 const syncTaskbarOverlay = (mode) => {
@@ -204,7 +213,7 @@ const syncTaskbarOverlay = (mode) => {
     showOverlayFrame();
 
     if (!systemPreferences.getAnimationSettings().prefersReducedMotion) {
-        overlayTimer = setInterval(showOverlayFrame, OVERLAY_FRAME_MS);
+        overlayTimer = setInterval(tickOverlayFrame, OVERLAY_FRAME_MS);
     }
 };
 
@@ -309,4 +318,19 @@ const createTray = ({ onQuit }) => {
     tray.on("click", showWindow);
 };
 
-module.exports = { handleState, createTray, showWindow, notify, configure, shouldNotify, getTransitionNotice, shouldBlockSleep, getAggregateProgress, getTrayTooltip, drawOverlayBitmap, OVERLAY_FRAME_COUNT, refreshSleepBlocker, watchPower };
+module.exports = {
+    handleState,
+    createTray,
+    showWindow,
+    notify,
+    configure,
+    shouldNotify,
+    getTransitionNotice,
+    shouldBlockSleep,
+    getAggregateProgress,
+    getTrayTooltip,
+    drawOverlayBitmap,
+    OVERLAY_FRAME_COUNT,
+    refreshSleepBlocker,
+    watchPower
+};
