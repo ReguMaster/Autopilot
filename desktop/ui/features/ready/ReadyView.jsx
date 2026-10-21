@@ -11,6 +11,7 @@ import { useComposerStore } from "../../stores/composerStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
 import { useScheduleStore } from "../../stores/scheduleStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
+import { LinkedRepoPeek } from "../shell/LinkedRepoPeek.jsx";
 
 const RECENT_RUN_COUNT = 3;
 
@@ -78,6 +79,7 @@ const ReadyView = () => {
         <section className="greet view-ready" aria-label="시작 전">
             <Greeting />
             <SchedulePeek />
+            <LinkedRepoPeek />
             <RecentRuns />
         </section>
     );

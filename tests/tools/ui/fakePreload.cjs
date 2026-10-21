@@ -81,7 +81,7 @@ const DEFAULT_SCHEDULES = {
 };
 
 const model = {
-    version: "1.4.0",
+    version: "1.4.1",
     platform: "win32",
     canLaunchAtLogin: false,
     update: null,

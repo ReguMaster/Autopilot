@@ -516,6 +516,7 @@ const checkLinkedRepos = async (runScenario, context) => {
     assert(linkedRunData.rounds.every((round) => round.outcome === "완료" && round.commits.length === 1));
     assert.match(logText, /^\[커밋\] [0-9a-f]+ \+1 -0 linked repo: \[ap\] linked fake$/m);
     assert.match(logText, /^Linked : linked repo \(/m);
+    assert.match(logText, /^\[설정\] 연결 저장소 1개: linked repo$/m);
 
     // 연결 저장소가 없으면 프롬프트에 그 안내가 없다.
     assert(!fs.readFileSync(path.join((await runScenario("idle")).projectDir, "prompt.txt"), "utf8").includes("연결 저장소"));

@@ -26,6 +26,7 @@ const SCENES = [
         name: "settings-linked-repos",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS, settings: { projectDir: PROJECT, linkedRepos: ["C:/work/mireu-web", "C:/work/mireu-admin"] } },
         run: async (t) => {
+            await t.shot("ready-peek", "", { skipDom: true });
             await openSettings(t);
             await t.shot("linked-repos", "#settings");
             await t.click("#linked-repos .repo-item .button");

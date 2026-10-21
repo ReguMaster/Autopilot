@@ -5,6 +5,7 @@ import { SwapText } from "../../components/SwapText.jsx";
 import { replayAnimation } from "../../hooks/useReplay.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 import { ApplyNote } from "./ApplyNote.jsx";
+import { LinkedRepoPeek } from "../shell/LinkedRepoPeek.jsx";
 import { Outcome } from "./Outcome.jsx";
 import { startReveal } from "./reveal.js";
 import { createStoryModel, isSameView } from "./storyModel.js";
@@ -167,6 +168,7 @@ const RunView = () => {
                 </button>
             </div>
 
+            <LinkedRepoPeek />
             <Work />
         </section>
     );

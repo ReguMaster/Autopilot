@@ -141,6 +141,10 @@ const prepareRun = (options) => {
 
     writeRunHeader(context);
 
+    if (linkedRepos.length) {
+        writeLog(`[설정] 연결 저장소 ${linkedRepos.length}개: ${linkedRepos.map((repo) => repo.name).join(", ")}`);
+    }
+
     progressUtil.pruneRunFiles(path.join(workDir, PROGRESS_DIR_NAME), runDate, runConfig.logRetentionDays, writeLog);
 
     return context;
