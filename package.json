@@ -1,6 +1,6 @@
 {
     "name": "Autopilot",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "private": true,
     "description": "무인 자율 개발 환경, Autopilot",
     "author": "ReguMaster",
