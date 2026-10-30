@@ -14,6 +14,7 @@ import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "../../autopilot/src/utils/guideText.js";
 import debateUtil from "../../autopilot/src/utils/debateUtil.js";
 import promptUtil from "../../autopilot/src/utils/promptUtil.js";
+import providerUtil from "../../autopilot/src/utils/providerUtil.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -208,16 +209,54 @@ const checkBrainstormRules = (context) => {
         crossReview: true
     });
 
+    // Codex의 model·effort는 브레인스토밍과 함께만 받고, 비우면 인자를 넘기지 않아 Codex 설정을 따른다.
+    assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan", "--codex-model", "gpt-6.1-sol", "--codex-effort", "xhigh"]), {
+        projectDir: "C:\\work\\demo project",
+        mode: "build",
+        brainstorm: ["plan"],
+        codexModel: "gpt-6.1-sol",
+        codexEffort: "xhigh"
+    });
+
     for (const invalidArgs of [
         [...project, "--brainstorm", "plan"],
         [...project, "--mode", "maintain", "--cross-review"],
         [...build, "--brainstorm", "build"],
         [...build, "--brainstorm-with", "codex"],
         [...build, "--cross-review"],
-        [...build, "--brainstorm", "plan", "--brainstorm-with", "gemini"]
+        [...build, "--brainstorm", "plan", "--brainstorm-with", "gemini"],
+        [...build, "--codex-model", "gpt-6.1-sol"],
+        [...build, "--codex-effort", "high"],
+        [...project, "--codex-effort", "high"],
+        [...build, "--brainstorm", "plan", "--codex-model", "6x"],
+        [...build, "--brainstorm", "plan", "--codex-model", "gpt 6"],
+        [...build, "--brainstorm", "plan", "--codex-model", "gpt;rm"],
+        [...build, "--brainstorm", "plan", "--codex-effort", "ultra"]
     ]) {
         assert.throws(() => parseRunArgs(invalidArgs), undefined, invalidArgs.join(" "));
     }
+
+    const { getSettingArgs, getAskArgs, getResumeArgs } = providerUtil.PROVIDERS.codex;
+    const sessionId = "01a18d02-d1e7-7b20-831e-d85c25a2b4f2";
+    const settingArgs = getSettingArgs({ model: "gpt-6.1-sol", effort: "high" });
+
+    assert.deepEqual(getSettingArgs({}), []);
+    assert.deepEqual(settingArgs, ["-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=high"]);
+    assert.deepEqual(getSettingArgs({ effort: "low" }), ["-c", "model_reasoning_effort=low"]);
+    assert.deepEqual(getAskArgs([]), ["exec", "-s", "read-only", "--color", "never", "-"]);
+    assert.deepEqual(getAskArgs(settingArgs), ["exec", "-s", "read-only", "--color", "never", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=high", "-"]);
+    assert.deepEqual(getResumeArgs(sessionId, []), ["exec", "resume", sessionId, "-c", "sandbox_mode=read-only", "-"]);
+    assert.deepEqual(getResumeArgs(sessionId, settingArgs).slice(-5), ["-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=high", "-"]);
+
+    // 진행 줄의 활동: 실행한 명령 수와 마지막으로 한 말. 읽을 것이 없으면 비운다.
+    const codexStderr =
+        "OpenAI Codex v0.164.0\n--------\nuser\n프롬프트\n\ncodex\n먼저 파일을 읽을게요.\n\nexec\npwsh -Command ls in C:\\work\n succeeded in 3ms:\n\nexec\nrg --files\n\ncodex\n" +
+        "길".repeat(100) +
+        "\n";
+
+    assert.equal(providerUtil.getActivity("codex", codexStderr), `명령 2번 실행 · ${"길".repeat(80)}`);
+    assert.equal(providerUtil.getActivity("codex", "exec\nls\n"), "명령 1번 실행");
+    assert.equal(providerUtil.getActivity("codex", "OpenAI Codex\n--------\n"), "");
 
     assert.deepEqual(parseApproveArgs([...project, "--pick", "codex"]), { projectDir: "C:\\work\\demo project", pick: "codex" });
     assert.deepEqual(parseApproveArgs(project), { projectDir: "C:\\work\\demo project" });
@@ -306,6 +345,16 @@ const checkDebateRules = (context) => {
     assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan:debate,design"]), { projectDir: "C:\\work\\demo project", mode: "build", brainstorm: ["plan", "design"], debate: ["plan"] });
     assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan:compare"]).debate, undefined);
     assert.equal(parseRunArgs([...build, "--brainstorm", "plan:debate,design:compare", "--cross-review"]).crossReview, true);
+    assert.equal(parseRunArgs([...build, "--brainstorm", "plan:debate", "--debate-turns", "12"]).debateTurns, 12);
+    assert.equal(parseRunArgs([...build, "--brainstorm", "plan:debate"]).debateTurns, undefined);
+
+    for (const turns of ["0", "21", "3.5", "x", "-1"]) {
+        assert.throws(() => parseRunArgs([...build, "--brainstorm", "plan:debate", "--debate-turns", turns]), /--debate-turns/, turns);
+    }
+
+    assert.throws(() => parseRunArgs([...build, "--brainstorm", "plan:compare", "--debate-turns", "5"]), /협의/);
+    assert.throws(() => parseRunArgs([...build, "--debate-turns", "5"]), /--brainstorm/);
+    assert.throws(() => parseRunArgs([...project, "--debate-turns", "5"]), /--mode build/);
 
     for (const brainstorm of ["plan:argue", "plan:debate:x", "plan,plan:debate", "plan:", ":debate"]) {
         assert.throws(() => parseRunArgs([...build, "--brainstorm", brainstorm]), /--brainstorm/, brainstorm);
@@ -325,7 +374,13 @@ const checkDebateRules = (context) => {
         `앞말\n{"message": "첫 줄\\n둘째 줄", "agree": ["a", 3], "disagree": [{"point": "결제", "reason": "범위"}, {"reason": "점 없음"}], "changes": [], "consensus": true}\n뒷말`
     );
 
-    assert.deepEqual(turn, { message: "첫 줄 둘째 줄", agree: ["a"], disagree: [{ point: "결제", reason: "범위" }], changes: [], consensus: false });
+    assert.deepEqual(turn, { message: "첫 줄 둘째 줄", agree: ["a"], disagree: [{ point: "결제", reason: "범위" }], improve: [], changes: [], consensus: false });
+
+    // 반대가 없어도 더 개선할 점이 남았으면 합의가 아니다.
+    const improving = debateUtil.parseTurn(JSON.stringify({ message: "더 있어요", improve: ["화면 흐름", 3], consensus: true }));
+
+    assert.deepEqual(improving.improve, ["화면 흐름"]);
+    assert.equal(improving.consensus, false);
     assert.equal(debateUtil.parseTurn(JSON.stringify({ message: "가".repeat(400), consensus: true })).message.length, 300);
     assert.equal(debateUtil.parseTurn(JSON.stringify({ message: "네", consensus: true })).consensus, true);
 
@@ -333,7 +388,6 @@ const checkDebateRules = (context) => {
         assert.equal(debateUtil.parseTurn(text), null, text);
     }
 
-    assert.equal(debateUtil.getLogText("가".repeat(200)), `${"가".repeat(159)}…`);
     assert.deepEqual(
         debateUtil.parseDisputes(
             `\uFEFF${JSON.stringify([
@@ -393,6 +447,7 @@ const checkDebateRules = (context) => {
         brainstormWith: ["codex"],
         crossReview: false,
         debate: ["plan"],
+        debateTurns: 3,
         debateStage: null,
         proposalReady: { codex: "docs/autopilot/proposals/plan-codex.md" },
         adoption: null
@@ -411,12 +466,14 @@ const checkDebateRules = (context) => {
     assert.match(claudeOpening, /<CLAUDE_안>\n# 내 안\n<\/CLAUDE_안>/);
     assert.match(claudeOpening, /…\(이하 생략\)\n<\/CODEX_안>/);
 
-    const lastTurn = { provider: "claude", message: "결제는 빼요", agree: [], disagree: [{ point: "결제", reason: "범위" }], changes: [], consensus: false };
+    const lastTurn = { provider: "claude", message: "결제는 빼요", agree: [], disagree: [{ point: "결제", reason: "범위" }], improve: [], changes: [], consensus: false };
     const codexOpening = promptUtil.getDebateOpeningPrompt(runState, "codex", { lastTurn: lastTurn, transcript: [{ ...lastTurn, provider: "codex", message: "넣어요" }] });
 
     assert.match(codexOpening, /읽기만 할 수 있다[\s\S]*지금까지 주고받은 말:\nCodex: \{"message":"넣어요"[\s\S]*Claude의 발언: \{"message":"결제는 빼요"/);
-    assert.match(promptUtil.getDebateReplyPrompt(lastTurn, 3), /^Claude의 답: [\s\S]*3\/3번째 주고받기다\. 이번이 마지막 주고받기다/);
-    assert.doesNotMatch(promptUtil.getDebateReplyPrompt(lastTurn, 2), /마지막/);
+    assert.match(promptUtil.getDebateReplyPrompt(runState, lastTurn, 3), /^Claude의 답: [\s\S]*3\/3번째 주고받기다\. 이번이 마지막 주고받기다/);
+    assert.doesNotMatch(promptUtil.getDebateReplyPrompt(runState, lastTurn, 2), /마지막/);
+    assert.match(promptUtil.getDebateReplyPrompt({ ...runState, debateTurns: 8 }, lastTurn, 5), /5\/8번째 주고받기다\./);
+    assert.match(claudeOpening, /최대 3번 주고받으며[\s\S]*"improve": \["더 개선할 점"\]/);
 
     // 승인한 협의 결과는 다음 실행의 첫 일로 확정한다. 쟁점이 없었으면 남은 파일만 commit한다.
     const adoption = { phase: "plan", choices: [{ title: "결제", side: "codex", position: "넣어요" }] };

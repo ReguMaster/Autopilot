@@ -420,9 +420,42 @@ const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
     ]);
     assert.equal(failedRun.data.rounds[0].outcome, "완료");
     assert(!fs.existsSync(path.join(otherDir, "docs/autopilot/proposals/plan-codex.md")));
+
+    // 답이 늦으면 경과 줄로 진행을 알린다. 빠른 답에는 경과 줄이 없다(위의 첫 실행).
+    const slowDir = createProject("brainstorm slow 한글");
+    const slowRun = await runBrainstorm(slowDir, {
+        env: { AP_CODEX_SLOW: "1200" },
+        limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0], providerHeartbeatMs: 200 }
+    });
+    const progressLines = readLog(slowRun).match(/^\[브레인스토밍\] Codex 기획 안 진행 .+$/gm);
+
+    assert.equal(slowRun.status, STATUS_OK, slowRun.error?.msg);
+    assert(progressLines?.length >= 2, "경과 줄이 반복해서 남아야 한다");
+    assert(
+        progressLines.every((line) => /^\[브레인스토밍\] Codex 기획 안 진행 0분째 \(최대 1분\)(: 명령 1번 실행 · 파일을 읽고 있어요)?$/.test(line)),
+        progressLines.join("\n")
+    );
+    assert(progressLines.at(-1).endsWith(": 명령 1번 실행 · 파일을 읽고 있어요"), "Codex가 한 일이 경과 줄에 실려야 한다");
+    assert.equal(getLines(firstRun).filter((line) => line.includes("진행")).length, 0);
+    checkDesktopLogContract(slowRun.data);
+
+    // 모델·Effort를 고르면 Codex 호출마다 넘기고 헤더에 남기고, 고르지 않았으면 인자도 헤더도 없다(위의 첫 실행).
+    const settingsDir = createProject("brainstorm settings 한글");
+    const settingsRun = await runBrainstorm(settingsDir, { codexModel: "gpt-6-luna", codexEffort: "high" });
+    const settingsCalls = fs.readFileSync(codexLog, "utf8").split("---\n").slice(-2);
+
+    assert.equal(settingsRun.status, STATUS_OK, settingsRun.error?.msg);
+    assert.match(readLog(settingsRun), /^Codex : model gpt-6-luna, effort high$/m);
+    assert.doesNotMatch(readLog(firstRun), /^Codex : /m);
+    assert.equal(settingsCalls.length, 2);
+    checkDesktopLogContract(settingsRun.data);
+
+    for (const call of settingsCalls) {
+        assert.match(call, /^exec -s read-only --color never -m gpt-6-luna -c model_reasoning_effort=high -\n/);
+    }
 };
 
-// 협의: Claude와 Codex가 같은 대화를 이어 가며 주고받고(최대 3번), 정리 회차가 합의안과 쟁점을 남기면 멈춘다.
+// 협의: Claude와 Codex가 같은 대화를 이어 가며 주고받고(기본 최대 8번, --debate-turns), 정리 회차가 합의안과 쟁점을 남기면 멈춘다.
 // 쟁점은 하나도 빠짐없이 골라야 승인하고, 다음 실행이 고른 입장을 확정한다. Codex가 중간에 실패하면 나란히 비교로 넘어간다.
 const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     const dataDir = scenarioRunner.dataDir;
@@ -484,7 +517,7 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(consensusRun.data.reason, "기획 확인 대기");
     assert.deepEqual(getLines(consensusRun), [
         "[단계] 기획 시작",
-        "[협의] 기획 시작 (최대 3번)",
+        "[협의] 기획 시작 (최대 8번)",
         "[협의] Claude: 좋아요, Codex 안의 화면 묶기를 받을게요.",
         "[협의] Codex: 저도 같은 생각이에요.",
         "[협의] 합의했어요",
@@ -507,9 +540,31 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.match(readPrompt(consensusDir), /사용자가 \[기획\] 협의의 합의안을 확인했다[\s\S]*지금 단계는 \[디자인\]/);
     assert.equal(phaseUtil.readPhase(getPhaseFile(consensusDir)).debate, null);
 
-    // 끝까지 맞추지 못하면 3번 주고받고, 둘 다 이어지는 대화로 묻는다. 쟁점은 정리 회차가 남긴 파일에서 형식이 맞는 것만 d1, d2로 옮긴다.
+    // 반대가 없어도 더 개선할 점이 남았으면(합의라고 해도) 이어 가고, 둘 다 더 고칠 것이 없다고 하면 상한 전에 끝낸다.
+    const improveDir = createProject("debate improve 한글");
+    const improveRun = await runDebate(improveDir, { env: { AP_DEBATE: "improve" } });
+
+    assert.equal(improveRun.status, STATUS_OK, improveRun.error?.msg);
+    assert.deepEqual(getLines(improveRun), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 8번)",
+        "[협의] Claude: 결제 흐름을 더 보강하면 좋겠어요.",
+        "[협의] Codex: 좋아요, 결제 흐름을 반영할게요.",
+        "[협의] Claude: 이제 더 고칠 것이 없어요.",
+        "[협의] Codex: 저도 더 고칠 것이 없어요.",
+        "[협의] 합의했어요",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기"
+    ]);
+    assert.match(
+        fs.readFileSync(path.join(improveDir, "docs/autopilot/proposals/plan-debate.md"), "utf8"),
+        /Claude와 Codex가 2번 주고받았어요\. 두 AI가 합의했어요\.[\s\S]*- 더 개선할 점: 결제 흐름 보강/
+    );
+    assert.match(fs.readFileSync(path.join(improveDir, "debate-claude.log"), "utf8"), /"improve": \["더 개선할 점"\]/);
+
+    // 끝까지 맞추지 못하면 --debate-turns(여기서는 3)번까지 주고받고, 둘 다 이어지는 대화로 묻는다. 쟁점은 정리 회차가 남긴 파일에서 형식이 맞는 것만 d1, d2로 옮긴다.
     const disputeDir = createProject("debate dispute 한글");
-    const disputeRun = await runDebate(disputeDir);
+    const disputeRun = await runDebate(disputeDir, { effort: "max", codexModel: "gpt-6-luna", codexEffort: "xhigh", debateTurns: 3 });
 
     assert.equal(disputeRun.status, STATUS_OK, disputeRun.error?.msg);
     assert.deepEqual(getLines(disputeRun), [
@@ -529,11 +584,13 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
 
     assert.equal(claudeCalls.length, 3);
     assert.doesNotMatch(claudeCalls[0], /--resume/);
+    // 협의의 Claude 발언도 사용자가 고른 effort를 따른다.
+    assert.match(claudeCalls[0], /--effort max /);
     assert.match(claudeCalls[0], /<CLAUDE_안>[\s\S]*<CODEX_안>\n# Codex 기획안/);
     assert.match(claudeCalls[2], /--resume 11111111-2222-3333-4444-555555555555[\s\S]*3\/3번째 주고받기다\. 이번이 마지막 주고받기다/);
     assert.equal(codexCalls.length, 3);
-    assert.match(codexCalls[0], /^exec -s read-only --color never -\n너는 \[기획\] 협의에 참여한 Codex다/);
-    assert.match(codexCalls[1], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 -c sandbox_mode=read-only -\nClaude의 답:/);
+    assert.match(codexCalls[0], /^exec -s read-only --color never -m gpt-6-luna -c model_reasoning_effort=xhigh -\n너는 \[기획\] 협의에 참여한 Codex다/);
+    assert.match(codexCalls[1], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 -c sandbox_mode=read-only -m gpt-6-luna -c model_reasoning_effort=xhigh -\nClaude의 답:/);
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(disputeDir)).debate, {
         phase: "plan",
         disputes: [
@@ -568,7 +625,7 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(failRun.status, STATUS_OK, failRun.error?.msg);
     assert.deepEqual(getLines(failRun), [
         "[단계] 기획 시작",
-        "[협의] 기획 시작 (최대 3번)",
+        "[협의] 기획 시작 (최대 8번)",
         "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",
         "[협의] Codex: 결제는 처음부터 넣는 게 좋아요.",
         "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",

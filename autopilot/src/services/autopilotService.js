@@ -25,7 +25,7 @@ import {
     PROVIDER_CLAUDE,
     PROVIDER_LABELS,
     PROVIDER_TIMEOUT_MINUTES,
-    DEBATE_MAX_TURNS,
+    DEBATE_DEFAULT_TURNS,
     DEBATE_TURN_MINUTES,
     WORK_DIR_NAME,
     PROGRESS_DIR_NAME,
@@ -56,7 +56,7 @@ import debateUtil from "../utils/debateUtil.js";
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
 const writeRunHeader = (context) => {
-    const { env, runState, writeLog } = context;
+    const { options, env, runState, writeLog } = context;
     const headerLines = [
         "Claude Code AutoPilot",
         `Project : ${runState.projectDir}`,
@@ -65,6 +65,7 @@ const writeRunHeader = (context) => {
         `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
         `Policy : ${runState.policy} (${runState.policySource})`,
         ...(runState.mode === MODE_BUILD ? [`Mode : 신규 개발 (${PHASE_LABELS[runState.phase]} 단계부터)`] : []),
+        ...(runState.brainstormWith?.length && (options.codexModel || options.codexEffort) ? [`Codex : model ${options.codexModel || "기본값"}, effort ${options.codexEffort || "기본값"}`] : []),
         `Log : ${runState.logFile}`,
         `Report : ${runState.reportFile}`,
         ...runState.repos.filter((repo) => repo.isLinked).map((repo) => `Linked : ${repo.name} (${repo.dir})`)
@@ -126,6 +127,7 @@ const getModeSettings = (options, progressFile, tasks) => {
         isBrainstormBlocked: brainstorm.length > 0 && !canSend,
         crossReview: Boolean(options.crossReview),
         debate: options.debate || [],
+        debateTurns: options.debateTurns ?? DEBATE_DEFAULT_TURNS,
         proposals: state.proposals,
         debateState: state.debate
     };
@@ -537,14 +539,25 @@ const waitForRetry = async (context, loopState, round) => {
     return false;
 };
 
+// 다른 AI를 쓸 수 있는지 한 번만 확인해 두고, 그 실행의 model·effort 설정을 함께 둔다. 지금 제공자는 Codex뿐이다.
+const getProviderCheck = async (context, provider) => {
+    const { options, env, runState } = context;
+
+    context.providerChecks[provider] ??= await providerUtil.checkProvider(provider, {
+        cwd: runState.projectDir,
+        processEnv: env,
+        override: options.providerCommands?.[provider],
+        settings: { model: options.codexModel, effort: options.codexEffort }
+    });
+
+    return context.providerChecks[provider];
+};
+
 // 다른 AI에게 묻고 답을 돌려준다. 못 쓰거나 실패하면 이유를 로그로 남기고 null이다(회차 실패로 세지 않는다).
 const askProvider = async (context, loopState, provider, prompt, subject) => {
-    const { options, env, runConfig, runState, writeLog } = context;
+    const { env, runConfig, runState, writeLog } = context;
     const label = PROVIDER_LABELS[provider];
-
-    context.providerChecks[provider] ??= await providerUtil.checkProvider(provider, { cwd: runState.projectDir, processEnv: env, override: options.providerCommands?.[provider] });
-
-    const ready = context.providerChecks[provider];
+    const ready = await getProviderCheck(context, provider);
 
     if (ready.error) {
         writeLog(`[브레인스토밍] ${label} ${subject} 건너뜀: ${ready.error}`);
@@ -554,15 +567,35 @@ const askProvider = async (context, loopState, provider, prompt, subject) => {
 
     writeLog(`[브레인스토밍] ${label} ${subject} 받는 중`);
 
-    const answer = await providerUtil.askProvider(provider, ready, prompt, {
-        cwd: runState.projectDir,
-        processEnv: env,
-        deadline: Math.min(+runState.deadline, Date.now() + Math.min(runConfig.maxRoundMinutes, PROVIDER_TIMEOUT_MINUTES) * MINUTE_MS),
-        shouldStop: () => isStopRequested(context, loopState),
-        onProcessChange: (childProcess) => {
-            loopState.activeProcess = childProcess;
-        }
-    });
+    const startedAt = Date.now();
+    const deadline = Math.min(+runState.deadline, startedAt + Math.min(runConfig.maxRoundMinutes, PROVIDER_TIMEOUT_MINUTES) * MINUTE_MS);
+    const limitMinutes = Math.ceil((deadline - startedAt) / MINUTE_MS);
+    let stderr = "";
+
+    // 답이 길어지면 화면에 아무 소식이 없어 멈춘 것처럼 보이므로, 경과 시간과 지금까지 한 일을 주기적으로 남긴다.
+    const heartbeatTimer = setInterval(() => {
+        const activity = providerUtil.getActivity(provider, stderr);
+
+        writeLog(`[브레인스토밍] ${label} ${subject} 진행 ${Math.floor((Date.now() - startedAt) / MINUTE_MS)}분째 (최대 ${limitMinutes}분)${activity ? `: ${activity}` : ""}`);
+    }, runConfig.providerHeartbeatMs);
+    let answer;
+
+    try {
+        answer = await providerUtil.askProvider(provider, ready, prompt, {
+            cwd: runState.projectDir,
+            processEnv: env,
+            deadline: deadline,
+            shouldStop: () => isStopRequested(context, loopState),
+            onProcessChange: (childProcess) => {
+                loopState.activeProcess = childProcess;
+            },
+            onStderr: (text) => {
+                stderr = text;
+            }
+        });
+    } finally {
+        clearInterval(heartbeatTimer);
+    }
 
     if (answer.error) {
         writeLog(`[브레인스토밍] ${label} ${subject} 건너뜀: ${answer.error}`);
@@ -619,8 +652,8 @@ const readPhaseArtefact = (projectDir, phase) => {
         .join("\n\n");
 };
 
-// 협의: Claude와 Codex가 각자 같은 대화를 이어 가며 최대 DEBATE_MAX_TURNS번 주고받는다. 한 번은 Claude가 말하고 Codex가 답하는 것이다.
-// 둘 다 같은 번에 합의라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
+// 협의: Claude와 Codex가 각자 같은 대화를 이어 가며 최대 runState.debateTurns번 주고받는다. 한 번은 Claude가 말하고 Codex가 답하는 것이다.
+// 둘 다 같은 번에 합의(반대도 남은 개선점도 없음)라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
 const runDebate = async (context, loopState) => {
     const { options, env, runState, writeLog } = context;
     const { phase, projectDir } = runState;
@@ -630,7 +663,7 @@ const runDebate = async (context, loopState) => {
         command: context.command,
         baseArgs: options.commandArgs || [],
         model: roundOptions.model,
-        extraArgs: context.unsupportedFlags.includes("--effort") ? [] : ["--effort", "medium"],
+        extraArgs: context.unsupportedFlags.includes("--effort") ? [] : ["--effort", roundOptions.effort],
         sessionId: null
     };
     const docs = { claudeDoc: readPhaseArtefact(projectDir, phase), codexDoc: fileUtil.readTextFile(path.join(projectDir, codexFile)) };
@@ -653,16 +686,16 @@ const runDebate = async (context, loopState) => {
         }
     });
 
-    context.providerChecks.codex ??= await providerUtil.checkProvider("codex", { cwd: projectDir, processEnv: env, override: options.providerCommands?.codex });
+    const codexReady = await getProviderCheck(context, "codex");
 
-    if (context.providerChecks.codex.error) {
-        return skip(context.providerChecks.codex.error);
+    if (codexReady.error) {
+        return skip(codexReady.error);
     }
 
-    writeLog(`[협의] ${PHASE_LABELS[phase]} 시작 (최대 ${DEBATE_MAX_TURNS}번)`);
+    writeLog(`[협의] ${PHASE_LABELS[phase]} 시작 (최대 ${runState.debateTurns}번)`);
 
-    for (let exchange = 1; exchange <= DEBATE_MAX_TURNS; exchange++) {
-        const claudePrompt = exchange === 1 ? promptUtil.getDebateOpeningPrompt(runState, PROVIDER_CLAUDE, docs) : promptUtil.getDebateReplyPrompt(turns.at(-1), exchange);
+    for (let exchange = 1; exchange <= runState.debateTurns; exchange++) {
+        const claudePrompt = exchange === 1 ? promptUtil.getDebateOpeningPrompt(runState, PROVIDER_CLAUDE, docs) : promptUtil.getDebateReplyPrompt(runState, turns.at(-1), exchange);
         const claudeAnswer = await providerUtil.askClaude(claude, claudePrompt, getCallOptions());
         const claudeTurn = claudeAnswer.text ? debateUtil.parseTurn(claudeAnswer.text) : null;
 
@@ -672,13 +705,13 @@ const runDebate = async (context, loopState) => {
 
         claude.sessionId = claudeAnswer.sessionId || claude.sessionId;
         turns.push({ provider: PROVIDER_CLAUDE, ...claudeTurn });
-        writeLog(`[협의] Claude: ${debateUtil.getLogText(claudeTurn.message)}`);
+        writeLog(`[협의] Claude: ${claudeTurn.message}`);
 
         // Codex의 세션 아이디를 못 찾으면 대화를 이을 수 없으므로 지금까지 주고받은 말을 다시 보낸다.
         const codexPrompt = codexSessionId
-            ? promptUtil.getDebateReplyPrompt(turns.at(-1), exchange)
+            ? promptUtil.getDebateReplyPrompt(runState, turns.at(-1), exchange)
             : promptUtil.getDebateOpeningPrompt(runState, "codex", { lastTurn: turns.at(-1), transcript: turns.slice(0, -1) });
-        const codexAnswer = await providerUtil.askProvider("codex", context.providerChecks.codex, codexPrompt, getCallOptions(), codexSessionId);
+        const codexAnswer = await providerUtil.askProvider("codex", codexReady, codexPrompt, getCallOptions(), codexSessionId);
         const codexTurn = codexAnswer.text ? debateUtil.parseTurn(codexAnswer.text) : null;
 
         if (!codexTurn) {
@@ -687,7 +720,7 @@ const runDebate = async (context, loopState) => {
 
         codexSessionId = codexAnswer.sessionId || codexSessionId;
         turns.push({ provider: "codex", ...codexTurn });
-        writeLog(`[협의] Codex: ${debateUtil.getLogText(codexTurn.message)}`);
+        writeLog(`[협의] Codex: ${codexTurn.message}`);
 
         if (claudeTurn.consensus && codexTurn.consensus) {
             return { turns: turns, isConsensus: true };

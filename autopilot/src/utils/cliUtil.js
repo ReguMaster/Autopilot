@@ -5,7 +5,10 @@ import {
     BRAINSTORM_COMPARE,
     BRAINSTORM_DEBATE,
     BRAINSTORM_MODES,
+    DEBATE_TURNS_LIMIT,
     PROVIDER_CLAUDE,
+    CODEX_MODEL_PATTERN,
+    CODEX_EFFORT_LEVELS,
     DESIGN_FORMATS,
     EFFORT_LEVELS,
     GATE_PHASES,
@@ -23,7 +26,7 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--cross-review] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
@@ -48,11 +51,14 @@ const RUN_OPTION_KEYS = {
     "--qa-on-fail": "qaOnFail",
     "--security-on-fail": "securityOnFail",
     "--brainstorm": "brainstorm",
-    "--brainstorm-with": "brainstormWith"
+    "--brainstorm-with": "brainstormWith",
+    "--codex-model": "codexModel",
+    "--codex-effort": "codexEffort",
+    "--debate-turns": "debateTurns"
 };
 const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
 // 신규 개발에서만 뜻이 있는 인자
-const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "crossReview"];
+const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "codexModel", "codexEffort", "debateTurns", "crossReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
 const ON_FAIL_OPTIONS = [
     ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
@@ -124,6 +130,17 @@ const parseLogRetentionDays = (text) => {
     return days;
 };
 
+// 협의에서 주고받는 최대 횟수는 1 이상의 정수다.
+const parseDebateTurns = (text) => {
+    const turns = Number(text);
+
+    if (!/^\d+$/.test(text) || turns < 1 || turns > DEBATE_TURNS_LIMIT) {
+        throw new Error(`--debate-turns 값은 1~${DEBATE_TURNS_LIMIT} 사이의 정수여야 합니다.`);
+    }
+
+    return turns;
+};
+
 // 쉼표로 고른 목록. 모르는 값과 중복은 거부한다.
 const parseListOption = (optionName, text, choices) => {
     const items = text.split(",");
@@ -161,7 +178,9 @@ const parseModeOptions = (options) => {
     }
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
-        throw new Error("--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --brainstorm · --brainstorm-with · --cross-review 는 --mode build 에서만 쓸 수 있습니다.");
+        throw new Error(
+            "--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --brainstorm · --brainstorm-with · --codex-model · --codex-effort · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다."
+        );
     }
 
     if (options.gates !== undefined) {
@@ -180,8 +199,24 @@ const parseModeOptions = (options) => {
         options.brainstormWith = parseListOption("--brainstorm-with", options.brainstormWith, BRAINSTORM_PROVIDERS);
     }
 
-    if (!options.brainstorm && (options.brainstormWith || options.crossReview)) {
-        throw new Error("--brainstorm-with · --cross-review 는 --brainstorm 과 함께 씁니다.");
+    if (options.codexModel !== undefined && !CODEX_MODEL_PATTERN.test(options.codexModel)) {
+        throw new Error("--codex-model 값은 영문으로 시작하는 Codex 모델 이름이어야 합니다 (예: gpt-6.1-sol).");
+    }
+
+    if (options.codexEffort !== undefined && !CODEX_EFFORT_LEVELS.includes(options.codexEffort)) {
+        throw new Error(`--codex-effort 값은 ${CODEX_EFFORT_LEVELS.join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    if (options.debateTurns !== undefined) {
+        options.debateTurns = parseDebateTurns(options.debateTurns);
+    }
+
+    if (!options.brainstorm && (options.brainstormWith || options.codexModel || options.codexEffort || options.debateTurns || options.crossReview)) {
+        throw new Error("--brainstorm-with · --codex-model · --codex-effort · --debate-turns · --cross-review 는 --brainstorm 과 함께 씁니다.");
+    }
+
+    if (options.debateTurns && !options.debate) {
+        throw new Error("--debate-turns 는 협의(:debate)하는 단계가 있을 때만 씁니다.");
     }
 
     // 협의는 이미 서로 검토하므로 교차검토는 나란히 비교하는 단계가 있을 때만 쓴다.

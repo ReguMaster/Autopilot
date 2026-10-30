@@ -47,14 +47,18 @@ const BRAINSTORM_PHASES = ["plan", "design"];
 const PROVIDER_CLAUDE = "claude";
 const BRAINSTORM_PROVIDERS = ["codex"];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
+// Codex에 넘기는 model(Codex가 쓰는 이름, 예: gpt-6.1-sol)과 reasoning effort. 비우면 Codex 설정(~/.codex/config.toml)을 따른다.
+const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
+const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 const PROPOSALS_DIR = "docs/autopilot/proposals";
 const PROVIDER_TIMEOUT_MINUTES = 30;
 // 브레인스토밍 방식. compare는 두 안을 나란히 보여 주고 사용자가 고르고, debate는 두 AI가 주고받아 합의안과 못 맞춘 쟁점을 남긴다.
 const BRAINSTORM_COMPARE = "compare";
 const BRAINSTORM_DEBATE = "debate";
 const BRAINSTORM_MODES = [BRAINSTORM_COMPARE, BRAINSTORM_DEBATE];
-// 협의에서 주고받는 최대 횟수. 한 번은 Claude가 말하고 Codex가 답하는 것이다.
-const DEBATE_MAX_TURNS = 3;
+// 협의에서 주고받는 최대 횟수(--debate-turns). 한 번은 Claude가 말하고 Codex가 답하는 것이다. 둘 다 반대·개선점이 없으면 상한 전에 끝낸다.
+const DEBATE_DEFAULT_TURNS = 8;
+const DEBATE_TURNS_LIMIT = 20;
 const DEBATE_TURN_MINUTES = 10;
 
 const DEFAULT_END_TIME = "07:00";
@@ -109,7 +113,8 @@ const AUTOPILOT_DEFAULTS = {
     maxIdleRounds: 2,
     maxTasks: 2,
     resetGraceMs: MINUTE_MS,
-    logRetentionDays: 30
+    logRetentionDays: 30,
+    providerHeartbeatMs: MINUTE_MS
 };
 
 export {
@@ -145,12 +150,15 @@ export {
     PROVIDER_CLAUDE,
     BRAINSTORM_PROVIDERS,
     PROVIDER_LABELS,
+    CODEX_MODEL_PATTERN,
+    CODEX_EFFORT_LEVELS,
     PROPOSALS_DIR,
     PROVIDER_TIMEOUT_MINUTES,
     BRAINSTORM_COMPARE,
     BRAINSTORM_DEBATE,
     BRAINSTORM_MODES,
-    DEBATE_MAX_TURNS,
+    DEBATE_DEFAULT_TURNS,
+    DEBATE_TURNS_LIMIT,
     DEBATE_TURN_MINUTES,
     DEFAULT_END_TIME,
     DEFAULT_MODEL,

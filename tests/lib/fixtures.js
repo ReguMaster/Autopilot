@@ -17,11 +17,17 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => prompt += chunk);
 process.stdin.on('end', () => {
   // 협의의 Claude 발언(도구 없는 짧은 호출)은 회차 세션과 따로 기록하고 JSON 한 줄로 답한다. AP_DEBATE=consensus면 바로 합의한다.
+  // AP_DEBATE=improve면 첫 발언은 반대 없이 더 개선할 점을 남기고(합의라고 해도 합의가 아니다) 둘째 발언에서 더 고칠 것이 없다고 한다.
   if (process.argv.includes('--tools=')) {
     fs.appendFileSync('debate-claude.log', '---\n' + process.argv.slice(2).join(' ') + '\n' + prompt + '\n');
+    const callCount = fs.readFileSync('debate-claude.log', 'utf8').split('---\n').length - 1;
     const turn = process.env.AP_DEBATE === 'consensus'
       ? { message: '좋아요, Codex 안의 화면 묶기를 받을게요.', agree: ['화면 묶기: 단계가 줄어요'], disagree: [], changes: ['화면을 4개로 줄여요'], consensus: true }
-      : { message: '저는 결제를 넣지 않는 쪽이 맞다고 봐요.\n줄바꿈도 한 줄로 펴져야 해요.', agree: [], disagree: [{ point: '결제 넣기', reason: '이번 범위가 아니에요' }], changes: [], consensus: false };
+      : process.env.AP_DEBATE === 'improve'
+        ? (callCount === 1
+          ? { message: '결제 흐름을 더 보강하면 좋겠어요.', agree: ['범위: 맞아요'], disagree: [], improve: ['결제 흐름 보강'], changes: [], consensus: true }
+          : { message: '이제 더 고칠 것이 없어요.', agree: ['보강: 반영됐어요'], disagree: [], improve: [], changes: [], consensus: true })
+        : { message: '저는 결제를 넣지 않는 쪽이 맞다고 봐요.\n줄바꿈도 한 줄로 펴져야 해요.', agree: [], disagree: [{ point: '결제 넣기', reason: '이번 범위가 아니에요' }], changes: [], consensus: false };
     console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: '11111111-2222-3333-4444-555555555555', result: '답이에요.\n' + JSON.stringify(turn) }));
     return;
   }
@@ -77,7 +83,7 @@ process.stdin.on('end', () => {
     execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] phase']);
     // 협의를 정리하는 회차는 쟁점 파일을 쓴다. 형식이 틀린 항목은 엔진이 걸러야 한다.
     if (prompt.includes('협의가 끝났다')) {
-      const disputes = process.env.AP_DEBATE === 'consensus' ? [] : [{ title: '결제', claude: '이번엔 빼요', codex: '카드 결제를 넣어요' }, { title: '화면 수', claude: '6개', codex: '4개' }, { title: '' }];
+      const disputes = ['consensus', 'improve'].includes(process.env.AP_DEBATE) ? [] : [{ title: '결제', claude: '이번엔 빼요', codex: '카드 결제를 넣어요' }, { title: '화면 수', claude: '6개', codex: '4개' }, { title: '' }];
       fs.writeFileSync('docs/autopilot/proposals/plan-disputes.json', JSON.stringify(disputes));
     }
     const marker = prompt.match(/파일 \x60(\.autopilot\/progress\/[^\x60]+\/PHASE_DONE)\x60/)[1];
@@ -124,10 +130,15 @@ process.stdin.on("end", () => {
     if (process.env.AP_CODEX_NO_SESSION !== "1") console.error("OpenAI Codex\nsession id: 01a18d02-d1e7-7b20-831e-d85c25a2b4f2\n--------");
     console.log(JSON.stringify(process.env.AP_DEBATE === "consensus"
       ? { message: "저도 같은 생각이에요.", agree: ["범위: 맞아요"], disagree: [], changes: [], consensus: true }
+      : process.env.AP_DEBATE === "improve"
+        ? { message: turn === 1 ? "좋아요, 결제 흐름을 반영할게요." : "저도 더 고칠 것이 없어요.", agree: ["결제 흐름: 필요해요"], disagree: [], improve: [], changes: turn === 1 ? ["결제 흐름 보강"] : [], consensus: true }
       : { message: "결제는 처음부터 넣는 게 좋아요.", agree: [], disagree: [{ point: "결제 빼기", reason: "노쇼를 막아요" }], changes: [], consensus: false }));
     return;
   }
-  console.log(prompt.includes("검토자") ? "- Codex 검토: 빈자리 하나" : "\x60\x60\x60markdown\n# Codex 기획안\n\n1) 한 줄 요약\n\x60\x60\x60");
+  // AP_CODEX_SLOW=ms이면 실제 Codex처럼 stderr에 한 일을 남기고 그만큼 늦게 답한다.
+  const delay = Number(process.env.AP_CODEX_SLOW || 0);
+  if (delay) console.error("exec\nls in .\ncodex\n파일을 읽고 있어요");
+  setTimeout(() => console.log(prompt.includes("검토자") ? "- Codex 검토: 빈자리 하나" : "\x60\x60\x60markdown\n# Codex 기획안\n\n1) 한 줄 요약\n\x60\x60\x60"), delay);
 });
 `;
 

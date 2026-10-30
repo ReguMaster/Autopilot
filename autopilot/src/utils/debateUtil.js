@@ -1,7 +1,6 @@
 import { BRAINSTORM_PHASES, BRAINSTORM_PROVIDERS, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
 
 const MAX_MESSAGE_LENGTH = 300;
-const MAX_LOG_MESSAGE_LENGTH = 160;
 const MAX_ITEMS = 10;
 const MAX_ITEM_LENGTH = 200;
 const MAX_DISPUTES = 10;
@@ -31,7 +30,7 @@ const cleanList = (list) => {
 };
 
 // 협의 한 번의 발언. 답에서 JSON 객체 하나를 꺼내 형식을 확인한다. 발언이 없거나 JSON이 아니면 null이다.
-// 반대할 점이 남았는데 합의라고 하면 합의로 보지 않는다.
+// 반대할 점이나 더 개선할 점이 남았는데 합의라고 하면 합의로 보지 않는다.
 const parseTurn = (text) => {
     const source = String(text || "");
     const start = source.indexOf("{");
@@ -60,12 +59,16 @@ const parseTurn = (text) => {
         .filter((item) => item.point)
         .slice(0, MAX_ITEMS);
 
-    return { message: message, agree: cleanList(value.agree), disagree: disagree, changes: cleanList(value.changes), consensus: value.consensus === true && disagree.length === 0 };
-};
+    const improve = cleanList(value.improve);
 
-// 로그에는 한 줄로 짧게 남긴다. 전문은 협의 기록 파일에 있다.
-const getLogText = (message) => {
-    return message.length > MAX_LOG_MESSAGE_LENGTH ? `${message.slice(0, MAX_LOG_MESSAGE_LENGTH - 1)}…` : message;
+    return {
+        message: message,
+        agree: cleanList(value.agree),
+        disagree: disagree,
+        improve: improve,
+        changes: cleanList(value.changes),
+        consensus: value.consensus === true && disagree.length === 0 && improve.length === 0
+    };
 };
 
 const formatTurn = (turn, index) => {
@@ -79,6 +82,10 @@ const formatTurn = (turn, index) => {
         lines.push(`- 반대: ${item.point}${item.reason ? ` (이유: ${item.reason})` : ""}`);
     }
 
+    if (turn.improve.length) {
+        lines.push(`- 더 개선할 점: ${turn.improve.join(" / ")}`);
+    }
+
     if (turn.changes.length) {
         lines.push(`- 바꾼 점: ${turn.changes.join(" / ")}`);
     }
@@ -86,7 +93,7 @@ const formatTurn = (turn, index) => {
     return lines.join("\n").trimEnd();
 };
 
-// 사람이 읽는 협의 기록(proposals/<단계>-debate.md). turns는 { provider, message, agree, disagree, changes }다.
+// 사람이 읽는 협의 기록(proposals/<단계>-debate.md). turns는 { provider, message, agree, disagree, improve, changes }다.
 const formatTranscript = (phaseLabel, turns, isConsensus) => {
     const ending = isConsensus ? "두 AI가 합의했어요." : "끝까지 맞추지 못한 쟁점이 남았어요.";
 
@@ -157,4 +164,4 @@ const parseResolutions = (text) => {
     return resolutions;
 };
 
-export default { parseTurn, getLogText, formatTranscript, parseDisputes, isDebateState, parseResolutions };
+export default { parseTurn, formatTranscript, parseDisputes, isDebateState, parseResolutions };

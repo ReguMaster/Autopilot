@@ -1,4 +1,4 @@
-import { BUILD_PHASES, DEBATE_MAX_TURNS, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
+import { BUILD_PHASES, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
 import dateUtil from "./dateUtil.js";
 import phaseUtil from "./phaseUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "./guideText.js";
@@ -205,14 +205,15 @@ const getDebateSynthesisPrompt = (runState) => {
 // 협의의 규칙과 답의 형식. 근거 없이 상대를 따라가지 않게 한다.
 const DEBATE_RULES = [
     "규칙: 동의하는 점에는 근거를, 반대하는 점에는 이유를 반드시 적는다. 근거 없이 상대 주장을 받아들이거나 양보하지 않는다. 같은 생각이면 억지로 반대하지 않는다.",
-    "반대할 점이 하나라도 남았으면 consensus는 false다. 협의가 끝나면 사용자는 합의안과 못 맞춘 쟁점만 본다.",
-    '답은 인사 · 설명 · 코드 블록 없이 이 JSON 하나만 쓴다: {"message": "1인칭 해요체로 300자 이내의 발언", "agree": ["동의하는 점과 근거"], "disagree": [{"point": "반대하는 점", "reason": "이유"}], "changes": ["네 안에서 바꾸기로 한 점"], "consensus": false}'
+    "안의 완성도에 영향을 주는 개선점이 남았으면 improve에 적는다. 표현 · 취향 차이 같은 사소한 것은 적지 않는다. 상대의 개선점은 받아들여 changes에 적거나 이유를 들어 반대한다.",
+    "반대할 점이나 개선점이 하나라도 남았으면 consensus는 false다. 둘 다 더 고칠 것이 없다고 할 때까지 이어지고, 협의가 끝나면 사용자는 합의안과 못 맞춘 쟁점만 본다.",
+    '답은 인사 · 설명 · 코드 블록 없이 이 JSON 하나만 쓴다: {"message": "1인칭 해요체로 300자 이내의 발언", "agree": ["동의하는 점과 근거"], "disagree": [{"point": "반대하는 점", "reason": "이유"}], "improve": ["더 개선할 점"], "changes": ["네 안에서 바꾸기로 한 점"], "consensus": false}'
 ].join("\n");
 
 const MAX_DEBATE_DOC_LENGTH = 60000;
 
 const getTurnBody = (turn) => {
-    return { message: turn.message, agree: turn.agree, disagree: turn.disagree, changes: turn.changes, consensus: turn.consensus };
+    return { message: turn.message, agree: turn.agree, disagree: turn.disagree, improve: turn.improve, changes: turn.changes, consensus: turn.consensus };
 };
 
 const getDebateDoc = (title, text) => {
@@ -226,7 +227,7 @@ const getDebateDoc = (title, text) => {
 const getDebateOpeningPrompt = (runState, provider, { claudeDoc = "", codexDoc = "", lastTurn = null, transcript = [] } = {}) => {
     const label = PHASE_LABELS[runState.phase];
     const codexFile = runState.proposalReady?.codex;
-    const intro = `너는 [${label}] 협의에 참여한 ${PROVIDER_LABELS[provider]}다. 같은 만들 것으로 Claude는 ${getArtefactText(runState.phase)}를, Codex는 \`${codexFile}\`를 따로 썼다. 두 AI가 최대 ${DEBATE_MAX_TURNS}번 주고받으며 더 나은 안을 찾는다.`;
+    const intro = `너는 [${label}] 협의에 참여한 ${PROVIDER_LABELS[provider]}다. 같은 만들 것으로 Claude는 ${getArtefactText(runState.phase)}를, Codex는 \`${codexFile}\`를 따로 썼다. 두 AI가 최대 ${runState.debateTurns}번 주고받으며 더 나은 안을 찾는다.`;
 
     if (provider === PROVIDER_CLAUDE) {
         return [
@@ -253,10 +254,12 @@ const getDebateOpeningPrompt = (runState, provider, { claudeDoc = "", codexDoc =
 };
 
 // 이어지는 발언. 상대의 마지막 발언을 전하고 몇 번째인지 알린다.
-const getDebateReplyPrompt = (otherTurn, exchange) => {
-    const lastPrompt = exchange === DEBATE_MAX_TURNS ? " 이번이 마지막 주고받기다. 남은 반대는 쟁점으로 사용자에게 넘어간다." : "";
+const getDebateReplyPrompt = (runState, otherTurn, exchange) => {
+    const lastPrompt = exchange === runState.debateTurns ? " 이번이 마지막 주고받기다. 남은 반대는 쟁점으로 사용자에게 넘어간다." : "";
 
-    return [`${PROVIDER_LABELS[otherTurn.provider]}의 답: ${JSON.stringify(getTurnBody(otherTurn))}`, `지금은 ${exchange}/${DEBATE_MAX_TURNS}번째 주고받기다.${lastPrompt}`, DEBATE_RULES].join("\n\n");
+    return [`${PROVIDER_LABELS[otherTurn.provider]}의 답: ${JSON.stringify(getTurnBody(otherTurn))}`, `지금은 ${exchange}/${runState.debateTurns}번째 주고받기다.${lastPrompt}`, DEBATE_RULES].join(
+        "\n\n"
+    );
 };
 
 // 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
