@@ -10,7 +10,7 @@ import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
 import dateUtil from "../../autopilot/src/utils/dateUtil.js";
-import { getEndTime, waitForProcessStop, commitInitialProject, writeCmdWrapper } from "./fixtures.js";
+import { FAKE_CODEX_SOURCE, getEndTime, waitForProcessStop, commitInitialProject, writeCmdWrapper } from "./fixtures.js";
 
 const require = createRequire(import.meta.url);
 const { createInitialState, parseLine } = require("../../desktop/autopilotRunner.cjs");
@@ -264,12 +264,15 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(getPhaseLines(firstRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
     assert.match(readLog(firstRun), /^\[설정\] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다\.$/m);
     assert.match(readLog(firstRun), /^Mode : 신규 개발 \(기획 단계부터\)$/m);
-    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0 });
+    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null });
     assert.match(readPrompt(), /지금 단계는 \[디자인\]/);
     assert.match(readPrompt(), /정적 HTML 와이어프레임/);
     assert.match(readPrompt(), /외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(readPrompt(), /개선 정책은/);
-    assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, { running: false, phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0 } });
+    assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, {
+        running: false,
+        phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null }
+    });
     checkDesktopLogContract(firstRun.data);
 
     // 승인 없이 다시 시작하면 돌려보낸 디자인을 수정 요청으로 다시 한다.
@@ -306,12 +309,117 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
         "[단계] 보안검토 완료"
     ]);
     assert.match(readPrompt(), /지금 단계는 \[보안검토\][\s\S]*<PHASE>\n단계: 보안검토 \(5\/5\)/);
-    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1 });
+    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null });
     assert.equal((await runBuild({})).status, STATUS_FAILED);
 
     // 진행 기록 초기화는 단계도 처음(기획)으로 돌린다.
     assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
     assert(!fs.existsSync(phaseFile));
+};
+
+// 여러 AI 브레인스토밍: Codex가 단계 시작 전에 따로 안을 내고 교차검토를 하면, 확인받기를 켜지 않아도 사용자가 고르도록 멈춘다.
+// 고른 안은 다음 실행의 첫 회차가 확정한다. Codex가 실패하거나 보내기를 허용하지 않았으면 건너뛰고 Claude 안으로 진행한다.
+const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
+    const dataDir = scenarioRunner.dataDir;
+    const fakeCodexFile = path.join(context.testDir, "fake-codex.mjs");
+    const codexLog = path.join(context.testDir, "codex-prompts.log");
+
+    fs.writeFileSync(fakeCodexFile, FAKE_CODEX_SOURCE);
+
+    const createProject = (name) => {
+        const projectDir = path.join(context.testDir, name);
+
+        fs.mkdirSync(projectDir, { recursive: true });
+        fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+        commitInitialProject(context, projectDir);
+
+        return projectDir;
+    };
+    const runBrainstorm = (projectDir, { env = {}, ...options } = {}) => {
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            providerCommands: { codex: { command: process.execPath, args: [fakeCodexFile] } },
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            gates: [],
+            allow: ["send"],
+            brainstorm: ["plan"],
+            crossReview: true,
+            tasks: "미용실 예약 웹앱",
+            env: {
+                ...context.testEnv,
+                AP_MODE: "build",
+                AP_EXPECTED_CWD: projectDir,
+                AP_GIT: context.gitExecutable,
+                AP_PROGRESS_FILE: autopilotUtil.getProgressFile(projectDir, dataDir),
+                AP_CODEX_LOG: codexLog,
+                ...env
+            },
+            limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+    };
+    const readLog = (result) => fs.readFileSync(result.data.logFile, "utf8");
+    const getLines = (result) => readLog(result).match(/^\[(단계|브레인스토밍)\] .+$/gm);
+    const projectDir = createProject("brainstorm project 한글");
+    const phaseFile = phaseUtil.getPhaseFile(autopilotUtil.getProgressFile(projectDir, dataDir));
+
+    const firstRun = await runBrainstorm(projectDir);
+
+    assert.equal(firstRun.status, STATUS_OK, firstRun.error?.msg);
+    assert.equal(firstRun.data.reason, "기획 확인 대기");
+    assert.deepEqual(getLines(firstRun), [
+        "[단계] 기획 시작",
+        "[브레인스토밍] Codex 기획 안 받는 중",
+        "[브레인스토밍] Codex 기획 안 받음",
+        "[단계] 기획 완료",
+        "[브레인스토밍] Codex 기획 검토 받는 중",
+        "[브레인스토밍] Codex 기획 검토 받음",
+        "[단계] 기획 확인 대기"
+    ]);
+    assert(readLog(firstRun).indexOf("Codex 기획 안 받음") < readLog(firstRun).indexOf("[1회차] 시작"));
+    assert.equal(fs.readFileSync(path.join(projectDir, "docs/autopilot/proposals/plan-codex.md"), "utf8"), "# Codex 기획안\n\n1) 한 줄 요약\n");
+    assert.equal(fs.readFileSync(path.join(projectDir, "docs/autopilot/proposals/plan-review-codex.md"), "utf8"), "- Codex 검토: 빈자리 하나\n");
+    assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /독립적으로 쓴다[\s\S]*plan-codex\.md`\(Codex 안\)를 읽고 `docs\/autopilot\/proposals\/plan-review-claude\.md`/);
+    assert.match(fs.readFileSync(codexLog, "utf8"), /^exec -s read-only --color never -\n너는 제품 기획자이자 테크 리드다[\s\S]*10\) 위험과 가정[\s\S]*검토자다/m);
+    assert.deepEqual(phaseUtil.readPhase(phaseFile).proposals, { phase: "plan", candidates: ["claude", "codex"], picked: null });
+    checkDesktopLogContract(firstRun.data);
+
+    // 후보가 둘이면 고른 안이 있어야 승인한다. Codex 안을 고르면 다음 실행의 첫 회차가 확정하고 상태에서 지운다.
+    assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_FAILED);
+    assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir, pick: "codex" }).status, STATUS_OK);
+    assert.equal(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data.phase.proposals.picked, "codex");
+
+    const adoptRun = await runBrainstorm(projectDir);
+
+    assert.equal(adoptRun.status, STATUS_OK, adoptRun.error?.msg);
+    assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /사용자가 \[기획\]에서 Codex 안을 골랐다[\s\S]*지금 단계는 \[디자인\]/);
+    assert.equal(phaseUtil.readPhase(phaseFile).proposals, null);
+
+    // 보내기를 허용하지 않으면 Codex를 부르지 않고, Codex가 실패하면 건너뛰어 확인받기 설정대로 진행한다.
+    const otherDir = createProject("brainstorm skip 한글");
+    const codexCalls = fs.readFileSync(codexLog, "utf8").split("---\n").length;
+    const blockedRun = await runBrainstorm(otherDir, { allow: [] });
+
+    assert.deepEqual(getLines(blockedRun), ["[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.", "[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작"]);
+    assert.equal(fs.readFileSync(codexLog, "utf8").split("---\n").length, codexCalls);
+    assert.equal(requestProgressReset({ projectDir: otherDir, dataDir: dataDir }).status, STATUS_OK);
+
+    const failedRun = await runBrainstorm(otherDir, { env: { AP_CODEX_FAIL: "1" } });
+
+    assert.deepEqual(getLines(failedRun), [
+        "[단계] 기획 시작",
+        "[브레인스토밍] Codex 기획 안 받는 중",
+        "[브레인스토밍] Codex 기획 안 건너뜀: usage limit reached",
+        "[단계] 기획 완료",
+        "[단계] 디자인 시작"
+    ]);
+    assert.equal(failedRun.data.rounds[0].outcome, "완료");
+    assert(!fs.existsSync(path.join(otherDir, "docs/autopilot/proposals/plan-codex.md")));
 };
 
 // 지시개선은 처리할 작업이 있어야 시작한다. 잠금은 실패해도 남기지 않는다.
@@ -945,5 +1053,6 @@ export {
     checkRunLock,
     checkCliRun,
     checkSessionRunner,
-    checkBuildMode
+    checkBuildMode,
+    checkBrainstorm
 };

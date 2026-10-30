@@ -66,13 +66,15 @@ const runCli = async (args = process.argv.slice(2)) => {
     }
 
     if (args[0] === "approve") {
-        const requestPhaseApprovalResult = requestPhaseApproval(cliUtil.parseProjectArgs(args.slice(1)));
+        const requestPhaseApprovalResult = requestPhaseApproval(cliUtil.parseApproveArgs(args.slice(1)));
 
         if (requestPhaseApprovalResult.status !== STATUS_OK) {
             return EXIT_CODE_FAILED;
         }
 
-        log.info(`Approved. The next run starts the ${requestPhaseApprovalResult.data.phase.phase} phase.`);
+        const { phase, proposals } = requestPhaseApprovalResult.data.phase;
+
+        log.info(`Approved${proposals?.picked ? ` (${proposals.picked} proposal)` : ""}. The next run starts the ${phase} phase.`);
 
         return EXIT_CODE_SUCCESS;
     }

@@ -193,10 +193,113 @@ const checkCommandArgs = () => {
     assert.deepEqual(parseProjectArgs(project), { projectDir: "C:\\work\\demo project" });
 };
 
+// 여러 AI 브레인스토밍: 인자, 후보가 둘 이상이면 확인받기와 상관없이 멈추는 전환, 독립 · 교차검토 · 확정 지시와 다른 AI에게 보내는 프롬프트.
+const checkBrainstormRules = (context) => {
+    const { parseRunArgs, parseApproveArgs } = cliUtil;
+    const project = ["--project", "C:\\work\\demo project"];
+    const build = [...project, "--mode", "build"];
+
+    assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan,design", "--brainstorm-with", "codex", "--cross-review"]), {
+        projectDir: "C:\\work\\demo project",
+        mode: "build",
+        brainstorm: ["plan", "design"],
+        brainstormWith: ["codex"],
+        crossReview: true
+    });
+
+    for (const invalidArgs of [
+        [...project, "--brainstorm", "plan"],
+        [...project, "--mode", "maintain", "--cross-review"],
+        [...build, "--brainstorm", "build"],
+        [...build, "--brainstorm-with", "codex"],
+        [...build, "--cross-review"],
+        [...build, "--brainstorm", "plan", "--brainstorm-with", "gemini"]
+    ]) {
+        assert.throws(() => parseRunArgs(invalidArgs), undefined, invalidArgs.join(" "));
+    }
+
+    assert.deepEqual(parseApproveArgs([...project, "--pick", "codex"]), { projectDir: "C:\\work\\demo project", pick: "codex" });
+    assert.deepEqual(parseApproveArgs(project), { projectDir: "C:\\work\\demo project" });
+    assert.throws(() => parseApproveArgs([...project, "--pick", "gpt"]), /--pick/);
+
+    const { getPhaseTransition, getStartPhase, isPhaseState } = phaseUtil;
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null };
+    const limits = { qa: 3, security: 3 };
+    const proposals = { phase: "plan", candidates: ["claude", "codex"], picked: null };
+
+    assert.deepEqual(getPhaseTransition(plan, "pass", [], limits, ["claude", "codex"]), { state: { ...plan, phase: "design", awaiting: "plan", proposals: proposals }, event: "await" });
+    assert.deepEqual(getPhaseTransition(plan, "pass", [], limits, []), { state: { ...plan, phase: "design" }, event: "next" });
+    assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan", proposals: proposals }), { state: plan, isRevision: true });
+    assert(isPhaseState({ ...plan, phase: "design", proposals: { ...proposals, picked: "codex" } }));
+    assert(!isPhaseState({ ...plan, proposals: { ...proposals, picked: "gemini" } }));
+    assert(!isPhaseState({ ...plan, proposals: { ...proposals, candidates: ["claude"] } }));
+    assert(!isPhaseState({ ...plan, proposals: { ...proposals, phase: "build" } }));
+
+    const runState = {
+        mode: "build",
+        phase: "plan",
+        qaRetries: 0,
+        securityRetries: 0,
+        isRevision: false,
+        designFormat: "html",
+        allow: ["send"],
+        tasks: "미용실 예약 웹앱",
+        projectDir: context.testDir,
+        repos: [],
+        progressFile: "progress.md",
+        deadline: new Date(2026, 10, 2, 7, 0),
+        commitPrefix: "[ap]",
+        workBranch: "ai/autopilot",
+        phaseDoneRelPath: ".autopilot/progress/2026-10-30/PHASE_DONE",
+        brainstorm: ["plan", "design"],
+        brainstormWith: ["codex"],
+        crossReview: true,
+        proposalReady: { codex: "docs/autopilot/proposals/plan-codex.md" },
+        adoption: null
+    };
+    const roundPrompt = promptUtil.getRoundPrompt(runState, 1, 60, "", 2);
+
+    assert.match(roundPrompt, /`docs\/autopilot\/proposals\/`를 열지 말고 독립적으로 쓴다/);
+    assert.match(roundPrompt, /`docs\/autopilot\/proposals\/plan-review-claude\.md`에 그 안의 빈자리/);
+    assert.match(roundPrompt, /`\[ap\] 기획: Codex 안 보관`/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...runState, crossReview: false }, 1, 60, "", 2), /plan-review-claude/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...runState, phase: "build" }, 1, 60, "", 2), /독립적으로 쓴다/);
+
+    // 고른 안은 다음 실행의 첫 일로 확정한다. Claude 안을 골랐으면 남은 파일만 commit한다.
+    const adoptionPrompt = promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", file: "docs/autopilot/proposals/plan-codex.md" } }, 1, 60, "", 2);
+
+    assert.match(
+        adoptionPrompt,
+        /사용자가 \[기획\]에서 Codex 안을 골랐다\. 지금 단계의 일을 하기 전에 먼저 지금 `docs\/autopilot\/plan\.md`\(Claude 안\)를 `docs\/autopilot\/proposals\/plan-claude\.md`로 옮기고/
+    );
+    assert.match(adoptionPrompt, /`\[ap\] 기획: Codex 안으로 확정`/);
+    assert.match(
+        promptUtil.getRoundPrompt({ ...runState, phase: "build", adoption: { phase: "design", picked: "codex", file: "docs/autopilot/proposals/design-codex.html" } }, 1, 60, "", 2),
+        /design\/index\.html`로 옮기고/
+    );
+    assert.match(
+        promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "claude", file: "" } }, 1, 60, "", 2),
+        /Claude 안을 골랐다\. 지금 단계의 일을 하기 전에 아직 commit하지 않은/
+    );
+
+    // 다른 AI에게는 같은 단계의 틀을 읽기 전용 · 최종 답변으로 받는다.
+    const proposalPrompt = promptUtil.getProposalPrompt(runState);
+
+    assert.match(proposalPrompt, /10\) 위험과 가정/);
+    assert.match(proposalPrompt, /파일을 만들거나 고치지 말고, 결과는 최종 답변으로만 낸다/);
+    assert.match(proposalPrompt, /<TASKS>\n미용실 예약 웹앱\n<\/TASKS>/);
+    assert.match(promptUtil.getProposalPrompt({ ...runState, phase: "design" }), /HTML 문서 하나/);
+    assert.match(
+        promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", file: "docs/autopilot/proposals/plan-codex.md" } }),
+        /plan\.md` 대신 사용자가 고른 `docs\/autopilot\/proposals\/plan-codex\.md`/
+    );
+    assert.match(promptUtil.getReviewPrompt(runState), /`docs\/autopilot\/plan\.md`\(다른 AI가 쓴 안\)를 읽고 빈자리/);
+};
+
 // 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA·보안검토 실패는 단계마다 정한 횟수까지 개발로 되돌린다.
 const checkPhaseRules = (context) => {
     const { getPhaseTransition, getStartPhase, readPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0 };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null };
     const limits = { qa: 3, security: 2 };
 
     assert.deepEqual(getPhaseTransition(plan, "pass", [], limits), { state: { ...plan, phase: "design" }, event: "next" });
@@ -230,7 +333,7 @@ const checkPhaseRules = (context) => {
 
     fs.mkdirSync(path.dirname(oldPhaseFile), { recursive: true });
     fs.writeFileSync(oldPhaseFile, JSON.stringify({ phase: "qa", awaiting: null, qaRetries: 2 }));
-    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0 });
+    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null });
     fs.writeFileSync(oldPhaseFile, "null");
     assert.deepEqual(readPhase(oldPhaseFile), plan);
 
@@ -599,5 +702,6 @@ export {
     checkProgressArchive,
     checkStreamEvent,
     checkCommitLineCounts,
-    checkPhaseRules
+    checkPhaseRules,
+    checkBrainstormRules
 };

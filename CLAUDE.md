@@ -51,15 +51,15 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan,design] [--brainstorm-with codex] [--cross-review] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
     - stop: 중단 요청
     - set --model <m> --effort <e>: 실행 중 model·effort 변경
     - reset-progress: 진행 기록 초기화(신규 개발의 단계 상태 PHASE.json도 지운다)
-    - status: 실행 상태 확인. 한 줄 JSON `{"running":true,"pid":N,"logFile":"..."}` 또는 `{"running":false}`. 신규 개발을 한 적 있는 프로젝트는 `"phase":{"phase":"plan|design|build|qa|security|done","awaiting":null|"plan"|"design","qaRetries":N,"securityRetries":N}`가 더해진다.
-    - approve: 확인을 기다리는 신규 개발 단계를 승인한다(awaiting을 지워 다음 실행이 다음 단계부터 한다). 실행 중이거나 기다리는 단계가 없으면 거부한다.
+    - status: 실행 상태 확인. 한 줄 JSON `{"running":true,"pid":N,"logFile":"..."}` 또는 `{"running":false}`. 신규 개발을 한 적 있는 프로젝트는 `"phase":{"phase":"plan|design|build|qa|security|done","awaiting":null|"plan"|"design","qaRetries":N,"securityRetries":N,"proposals":null|{"phase":"plan|design","candidates":["claude","codex"],"picked":null|"claude"|"codex"}}`가 더해진다.
+    - approve [--pick claude|codex]: 확인을 기다리는 신규 개발 단계를 승인한다(awaiting을 지워 다음 실행이 다음 단계부터 한다). 여러 AI가 안을 낸 단계(proposals.candidates가 둘 이상)는 --pick이 있어야 하고 고른 안을 proposals.picked에 남긴다. 실행 중이거나 기다리는 단계가 없거나, 고를 안이 없는데 --pick을 주면 거부한다.
 - 앱은 stdout 로그를 줄 맨 앞의 형식으로 해석한다. 엔진은 로그 기록 호출 한 번을 제어 줄 한 줄로만 쓰고(헤더도 줄마다 호출), 줄바꿈 뒤의 본문(Claude 출력·stderr·오류 메시지)은 logUtil이 4칸 들여써서 제어 줄을 흉내 내지 못하게 한다.
 - 앱이 해석하는 줄은 형식을 지킨다.
     - `[N회차] 시작 - 남은 시간 N분 (model X, effort Y)`: 회차 시작.
@@ -67,6 +67,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
     - `[N회차] <결과>`: 회차 결과.
     - `[사용량 한도] 종료 시각 연장 yyyy-MM-dd HH:mm:ss (+N분)`: 앱 파서가 이 줄로 종료 예정 시각을 갱신한다.
     - `[단계] <단계 이름> 시작|완료|확인 대기|실패`, `[단계] <테스트/QA|보안검토> 실패 - 개발로 되돌림 (N/M)`: 신규 개발의 단계 전환. 단계 이름은 config.js의 PHASE_LABELS(기획·디자인·개발·테스트/QA·보안검토)다. 헤더에는 `Mode : 신규 개발 (<단계> 단계부터)` 줄이 더해진다.
+    - `[브레인스토밍] <제공자> <단계> 안|검토 받는 중|받음|건너뜀: <이유>`, `[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.`: 여러 AI 브레인스토밍의 진행. 제공자 이름은 config.js의 PROVIDER_LABELS(Codex)다.
     - `성과: <무엇> <이전> → <이후>`: 시각 뒤나 4칸 들여 쓴 줄 맨 앞. 앱이 state.gains로 모은다. Claude 출력이므로 표시에만 쓰고 제어에 쓰지 않는다.
     - 도구 줄(`HH:MM:SS   > 이름 인자`): 앱이 세어 state.work(도구 호출 수, 같은 경로는 한 번만 센 Read·Edit 계열 파일 수)로 보여준다.
 - 연결 저장소(--link-project, 최대 config.js의 MAX_LINKED_REPOS=2개, 작업 프로젝트와 합쳐 3개): 작업 프로젝트(--project)에 더해 함께 다루는 Git 저장소 루트다. 엔진은 각각 Git 루트·폴더 이름 중복(작업 프로젝트 포함)을 확인하고(autopilotUtil.getLinkedRepos), 세션에 `--add-dir`로 붙이며, 프롬프트(promptUtil.getLinkedReposPrompt)에 작업 범위 확장·저장소별 commit·작업 브랜치로만 push(실패해도 회차 실패로 세지 않음)·저장소별 CLAUDE.md를 직접 읽고 그 규칙·검증을 따르기(--add-dir 폴더의 CLAUDE.md는 자동 로드가 보장되지 않는다)·접점 변경은 한 세션에서 함께 고치기·삭제 파일은 작업 프로젝트의 recycle_bin/<저장소 이름>/를 적는다. 접두어·브랜치는 공통이다. HEAD 비교(idle)와 커밋 수집은 저장소마다 하고, 연결 저장소의 `[커밋]` 줄은 형식을 그대로 두고 제목 앞에 `<저장소 이름>: `을 붙인다(앱 파서 변경 없음). `.autopilot/`·진행 기록은 작업 프로젝트에만 있고, 헤더에는 `Linked : <이름> (<경로>)` 줄이 더해진다. 단일 저장소 실행의 동작은 그대로다(push 지침도 연결 저장소가 있을 때만 들어간다).
@@ -148,6 +149,10 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 - 세션은 단계를 마치면 progress/<실행 시작 날짜>/PHASE_DONE을 만들고 첫 줄에 pass(테스트/QA는 실패가 남으면, 보안검토는 고치지 못한 심각·높음이 남으면 fail)를 쓴다. 엔진은 성공한 회차 뒤에만 읽고(중단 요청과 같은 회차여도 단계는 넘긴다) phaseUtil.getPhaseTransition으로 다음 상태를 정한다. --gate에 든 단계(plan·design)를 마치면 awaiting을 남기고 `<단계> 확인 대기`로 끝낸다(밤새 기다리지 않는다). approve가 awaiting을 지우면 다음 실행이 다음 단계부터, 승인 없이 시작하면 그 단계를 다시 하며 작업 칸 내용을 수정 요청으로 넣는다. 테스트/QA·보안검토가 fail이면 각각 --qa-on-fail·--security-on-fail(stop 또는 retry:1~5, 기본 retry:3)의 횟수까지 개발로 되돌리고(횟수는 PHASE.json의 qaRetries·securityRetries로 따로 센다. securityRetries가 없는 옛 파일은 0으로 읽는다), 넘으면 `<단계> 실패`로 끝낸다(종료 코드 0). 모든 단계를 마치면 `신규 개발: 모든 단계 완료`(작업 완료로 보아 진행 기록 초기화)이고 phase가 done이라 다시 build로 시작하면 거부한다.
 - 기획 단계는 만들 것(작업)이 있어야 시작한다. --allow(deps·large·external-api·send)는 정책 끝에 `신규 개발에서 이번 실행에 허용한 것` 절로 덧붙고(guideText.getAutopilotPolicy의 allow), send가 없으면 외부 도구(Codex·MCP 등)로 보내기를 금지한다. 비밀값·운영 환경·Git 보호·파일 삭제 정책은 풀리지 않는다. 유지 보수 실행의 정책 본문은 바뀌지 않는다.
 - --design-format(md·html·figma·image, 기본 html)이 figma·image인데 send를 허용하지 않았으면 html로 만들고 `[설정]` 줄로 알린다. image는 `codex exec`로 만들고 실패하면 그 이미지만 건너뛴다.
+
+- 여러 AI 브레인스토밍: --brainstorm(plan·design)에 든 단계는 Claude와 함께 --brainstorm-with의 제공자(BRAINSTORM_PROVIDERS, 지금은 codex, 기본값)도 따로 안을 낸다. 프로젝트 내용을 외부로 보내므로 --allow에 send가 있을 때만 쓰고, 없으면 `[브레인스토밍]` 줄로 알리고 Claude만 쓴다. providerUtil이 제공자(지금 Codex: `codex login status`로 확인, `codex exec -s read-only --color never -`에 프롬프트를 stdin으로 넣고 최종 답변을 stdout으로 받는다. 경로 인자가 없어 CMD 래퍼에서도 통과한다)를 부르고, 시한은 min(전체 종료 시각, 지금 + min(회차 시한, PROVIDER_TIMEOUT_MINUTES))이며 중단 요청·SIGINT면 프로세스 트리를 끝낸다. 없거나 로그인이 안 됐거나 실패하면 `건너뜀` 줄을 남기고 Claude 안으로 진행한다(회차 실패로 세지 않는다).
+    - 단계 시작(그 단계의 첫 회차 전, 돌려보낸 단계는 다시)에 엔진이 같은 단계의 틀로 만든 프롬프트(promptUtil.getProposalPrompt, 파일 대신 최종 답변으로 출력)로 안을 받아 대상 저장소의 docs/autopilot/proposals/<단계>-<제공자>.md(디자인을 HTML로 받으면 .html)에 쓴다. 이어서 하는 단계는 이미 있는 파일을 그대로 쓴다. Claude의 회차 프롬프트에는 그 단계가 끝날 때까지 proposals/를 열지 말고 독립적으로 쓰라는 지시와, 받은 안을 고치지 말고 commit하라는 지시(--cross-review면 그 안을 읽고 proposals/<단계>-review-claude.md에 검토를 쓰라는 지시)가 들어간다.
+    - 안을 받은 단계를 마치면 --gate와 상관없이 proposals {phase, candidates: [claude, 제공자…], picked: null}을 남기고 `<단계> 확인 대기`로 끝낸다. --cross-review면 그 전에 제공자가 Claude의 산출물을 검토해 proposals/<단계>-review-<제공자>.md에 쓴다(엔진이 쓴 이 파일과 안 파일은 다음 실행이 commit한다). approve --pick으로 고르면 다음 실행의 첫 회차 프롬프트 맨 앞에 확정 지시(promptUtil.getAdoptionPrompt: 다른 AI 안이면 Claude 안을 proposals/<단계>-claude.*로 옮기고 그 안을 plan.md 또는 design.md·design/index.html로 확정, Claude 안이면 남은 파일만 commit)가 들어가고, 그 회차가 성공하면 proposals를 지운다. 승인 없이 다시 시작하면 proposals를 지우고 그 단계와 다른 AI의 안을 다시 한다. 기획안을 다른 AI 것으로 골랐으면 확정 전이라도 디자인 안을 받는 프롬프트가 그 안을 따르게 한다.
 
 ### 회차 처리
 

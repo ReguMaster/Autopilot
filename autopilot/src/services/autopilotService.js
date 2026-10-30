@@ -21,6 +21,10 @@ import {
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PROVIDERS,
+    PROVIDER_CLAUDE,
+    PROVIDER_LABELS,
+    PROVIDER_TIMEOUT_MINUTES,
     WORK_DIR_NAME,
     PROGRESS_DIR_NAME,
     TODO_COMPLETE_FILE_NAME,
@@ -44,6 +48,7 @@ import progressUtil from "../utils/progressUtil.js";
 import reportUtil from "../utils/reportUtil.js";
 import autopilotUtil from "../utils/autopilotUtil.js";
 import phaseUtil from "../utils/phaseUtil.js";
+import providerUtil from "../utils/providerUtil.js";
 
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
@@ -93,6 +98,9 @@ const getModeSettings = (options, progressFile, tasks) => {
     }
 
     const allow = options.allow || [];
+    const brainstorm = options.brainstorm || [];
+    // 다른 AI에게 프로젝트 내용을 보내므로 외부 서비스로 보내기를 허용했을 때만 쓴다.
+    const canSend = allow.includes("send");
     const requestedDesignFormat = options.designFormat || DEFAULT_DESIGN_FORMAT;
     // 외부 도구가 필요한 산출물인데 보내기를 허용하지 않았으면 HTML 와이어프레임으로 만든다.
     const isBlockedDesign = ["figma", "image"].includes(requestedDesignFormat) && !allow.includes("send");
@@ -109,8 +117,48 @@ const getModeSettings = (options, progressFile, tasks) => {
         designFormat: isBlockedDesign ? "html" : requestedDesignFormat,
         requestedDesignFormat: requestedDesignFormat,
         maxQaRetries: options.maxQaRetries ?? phaseUtil.parseOnFail(DEFAULT_QA_ON_FAIL),
-        maxSecurityRetries: options.maxSecurityRetries ?? phaseUtil.parseOnFail(DEFAULT_SECURITY_ON_FAIL)
+        maxSecurityRetries: options.maxSecurityRetries ?? phaseUtil.parseOnFail(DEFAULT_SECURITY_ON_FAIL),
+        brainstorm: brainstorm,
+        brainstormWith: brainstorm.length && canSend ? options.brainstormWith || BRAINSTORM_PROVIDERS : [],
+        isBrainstormBlocked: brainstorm.length > 0 && !canSend,
+        crossReview: Boolean(options.crossReview),
+        proposals: state.proposals
     };
+};
+
+// PHASE.json에 쓸 지금 단계 상태. 확인 대기와 고른 안은 단계를 마치거나 확정할 때만 정한다.
+const getPhaseState = (runState) => {
+    return { phase: runState.phase, awaiting: null, qaRetries: runState.qaRetries, securityRetries: runState.securityRetries, proposals: null };
+};
+
+// 사용자가 고른 안이 있으면 이번 실행의 첫 회차가 정식 산출물로 확정한다. 디자인은 HTML로 받았을 수 있다.
+const getAdoption = (projectDir, proposals) => {
+    if (!proposals?.picked) {
+        return null;
+    }
+
+    const htmlFile = phaseUtil.getProposalPath(proposals.phase, proposals.picked, true);
+
+    return { phase: proposals.phase, picked: proposals.picked, file: fs.existsSync(path.join(projectDir, htmlFile)) ? htmlFile : phaseUtil.getProposalPath(proposals.phase, proposals.picked) };
+};
+
+// 이어서 하는 단계면 이미 받아 둔 다른 AI의 안을 그대로 쓴다. 돌려보낸 단계면 다시 받는다.
+const getReadyProposals = (projectDir, modeSettings) => {
+    const readyProposals = {};
+
+    if (modeSettings.isRevision || !modeSettings.brainstorm?.includes(modeSettings.phase)) {
+        return readyProposals;
+    }
+
+    for (const provider of modeSettings.brainstormWith) {
+        const file = [true, false].map((isHtml) => phaseUtil.getProposalPath(modeSettings.phase, provider, isHtml)).find((relPath) => fs.existsSync(path.join(projectDir, relPath)));
+
+        if (file) {
+            readyProposals[provider] = file;
+        }
+    }
+
+    return readyProposals;
 };
 
 // 실행 전 검증과 폴더·로그 준비를 마치고 회차 실행에 필요한 값을 모아 반환한다.
@@ -154,7 +202,7 @@ const prepareRun = (options) => {
 
     // 돌려보낸 단계를 다시 시작했으면 확인 대기를 바로 지워 다음 실행이 같은 상태를 보게 한다.
     if (modeSettings.isRevision) {
-        phaseUtil.writePhase(modeSettings.phaseFile, { phase: modeSettings.phase, awaiting: null, qaRetries: modeSettings.qaRetries, securityRetries: modeSettings.securityRetries });
+        phaseUtil.writePhase(modeSettings.phaseFile, getPhaseState(modeSettings));
     }
 
     const runState = {
@@ -177,6 +225,12 @@ const prepareRun = (options) => {
         todoDoneRelPath: `${WORK_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${TODO_COMPLETE_FILE_NAME}`,
         phaseDoneRelPath: `${WORK_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${PHASE_DONE_FILE_NAME}`
     };
+    const readyProposals = modeSettings.mode === MODE_BUILD ? getReadyProposals(projectDir, modeSettings) : {};
+
+    runState.adoption = modeSettings.mode === MODE_BUILD ? getAdoption(projectDir, modeSettings.proposals) : null;
+    runState.proposalReady = readyProposals;
+    runState.proposalPhase = Object.keys(readyProposals).length ? modeSettings.phase : null;
+
     const todoDoneFile = path.join(projectDir, runState.todoDoneRelPath);
     const phaseDoneFile = path.join(projectDir, runState.phaseDoneRelPath);
     const writeLog = log.createFileLogger(runState.logFile);
@@ -201,6 +255,7 @@ const prepareRun = (options) => {
         phaseDoneFile: phaseDoneFile,
         writeLog: writeLog,
         unsupportedFlags: [],
+        providerChecks: {},
         progressCleanupPrompt: "",
         isCleanupRequested: false,
         isCleanupSkipped: false,
@@ -468,15 +523,86 @@ const waitForRetry = async (context, loopState, round) => {
     return false;
 };
 
+// 다른 AI에게 묻고 답을 돌려준다. 못 쓰거나 실패하면 이유를 로그로 남기고 null이다(회차 실패로 세지 않는다).
+const askProvider = async (context, loopState, provider, prompt, subject) => {
+    const { options, env, runConfig, runState, writeLog } = context;
+    const label = PROVIDER_LABELS[provider];
+
+    context.providerChecks[provider] ??= await providerUtil.checkProvider(provider, { cwd: runState.projectDir, processEnv: env, override: options.providerCommands?.[provider] });
+
+    const ready = context.providerChecks[provider];
+
+    if (ready.error) {
+        writeLog(`[브레인스토밍] ${label} ${subject} 건너뜀: ${ready.error}`);
+
+        return null;
+    }
+
+    writeLog(`[브레인스토밍] ${label} ${subject} 받는 중`);
+
+    const answer = await providerUtil.askProvider(provider, ready, prompt, {
+        cwd: runState.projectDir,
+        processEnv: env,
+        deadline: Math.min(+runState.deadline, Date.now() + Math.min(runConfig.maxRoundMinutes, PROVIDER_TIMEOUT_MINUTES) * MINUTE_MS),
+        shouldStop: () => isStopRequested(context, loopState),
+        onProcessChange: (childProcess) => {
+            loopState.activeProcess = childProcess;
+        }
+    });
+
+    if (answer.error) {
+        writeLog(`[브레인스토밍] ${label} ${subject} 건너뜀: ${answer.error}`);
+
+        return null;
+    }
+
+    writeLog(`[브레인스토밍] ${label} ${subject} 받음`);
+
+    return answer.text;
+};
+
+const writeProposalFile = (projectDir, relPath, text) => {
+    const file = path.join(projectDir, relPath);
+
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${text}\n`, "utf8");
+};
+
+// 브레인스토밍 단계를 시작할 때 다른 AI의 독립된 안을 받아 docs/autopilot/proposals/에 둔다. 단계마다 한 번만 받는다.
+const requestProposals = async (context, loopState) => {
+    const { runState } = context;
+    const phase = runState.phase;
+
+    if (runState.mode !== MODE_BUILD || !runState.brainstorm.includes(phase) || runState.proposalPhase === phase) {
+        return;
+    }
+
+    runState.proposalPhase = phase;
+    runState.proposalReady = {};
+
+    for (const provider of runState.brainstormWith) {
+        const relPath = phaseUtil.getProposalPath(phase, provider, phase === "design" && runState.designFormat === "html");
+        const proposal = await askProvider(context, loopState, provider, promptUtil.getProposalPrompt(runState), `${PHASE_LABELS[phase]} 안`);
+
+        if (proposal) {
+            writeProposalFile(runState.projectDir, relPath, proposal);
+            runState.proposalReady[provider] = relPath;
+        }
+    }
+};
+
 // 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA·보안검토 실패로 실행을 끝내야 하면 true를 반환한다.
-const applyPhaseDone = (context, loopState) => {
+// 다른 AI의 안을 받은 단계는 교차검토를 받고, 사용자가 안을 고르도록 멈춘다. 다른 AI의 검토는 다음 실행이 commit한다.
+const applyPhaseDone = async (context, loopState) => {
     const { runState, phaseDoneFile, writeLog } = context;
     const result = fileUtil.readTextFile(phaseDoneFile).trim().split(/\r?\n/)[0].trim().toLowerCase();
     const phase = runState.phase;
     const label = PHASE_LABELS[phase];
     const maxRetries = { qa: runState.maxQaRetries, security: runState.maxSecurityRetries };
-    const currentState = { phase: phase, awaiting: null, qaRetries: runState.qaRetries, securityRetries: runState.securityRetries };
-    const { state, event } = phaseUtil.getPhaseTransition(currentState, result, runState.gates, maxRetries);
+    const readyProviders = runState.brainstorm?.includes(phase) ? Object.keys(runState.proposalReady) : [];
+    const candidates = readyProviders.length ? [PROVIDER_CLAUDE, ...readyProviders] : [];
+    const reviewState = { ...runState };
+    const { state, event } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates);
 
     fileUtil.removeFiles([phaseDoneFile]);
     phaseUtil.writePhase(runState.phaseFile, state);
@@ -512,6 +638,15 @@ const applyPhaseDone = (context, loopState) => {
     }
 
     if (event === "await") {
+        // 교차검토: 다른 AI가 Claude의 산출물을 읽고 고칠 점을 낸다. 실패해도 고르는 데는 지장이 없다.
+        for (const provider of runState.crossReview ? readyProviders : []) {
+            const review = await askProvider(context, loopState, provider, promptUtil.getReviewPrompt(reviewState), `${label} 검토`);
+
+            if (review) {
+                writeProposalFile(runState.projectDir, phaseUtil.getReviewPath(phase, provider), review);
+            }
+        }
+
         writeLog(`[단계] ${label} 확인 대기`);
         loopState.reason = `${label} 확인 대기`;
 
@@ -527,8 +662,14 @@ const applyPhaseDone = (context, loopState) => {
 const handleRoundResult = async (context, loopState, roundResult) => {
     const { runConfig, runState, todoDoneFile } = context;
 
+    // 고른 안을 확정하는 일은 첫 회차가 성공하면 다 한 것으로 본다.
+    if (!roundResult.isFailed && runState.adoption) {
+        runState.adoption = null;
+        phaseUtil.writePhase(runState.phaseFile, getPhaseState(runState));
+    }
+
     // 중단 요청과 같은 회차에 단계를 마쳤어도 단계는 넘긴다. 안 그러면 다음 실행이 끝낸 단계를 다시 한다.
-    if (!roundResult.isFailed && runState.mode === MODE_BUILD && fs.existsSync(context.phaseDoneFile) && applyPhaseDone(context, loopState)) {
+    if (!roundResult.isFailed && runState.mode === MODE_BUILD && fs.existsSync(context.phaseDoneFile) && (await applyPhaseDone(context, loopState))) {
         return true;
     }
 
@@ -574,6 +715,8 @@ const runRoundLoop = async (context, loopState) => {
     const { runConfig, runState } = context;
 
     while (runState.rounds.length < runConfig.maxRounds) {
+        await requestProposals(context, loopState);
+
         if (isStopRequested(context, loopState)) {
             loopState.reason = STOP_REASON_REQUESTED;
 
@@ -654,6 +797,10 @@ const writeBuildStart = (context) => {
 
     if (runState.designFormat !== runState.requestedDesignFormat) {
         writeLog("[설정] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다.");
+    }
+
+    if (runState.isBrainstormBlocked) {
+        writeLog("[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.");
     }
 
     writeLog(`[단계] ${PHASE_LABELS[runState.phase]} 시작`);
@@ -808,7 +955,7 @@ const requestProgressReset = (options = {}) => {
     }
 };
 
-// 확인을 기다리는 신규 개발 단계를 승인해 다음 실행이 다음 단계부터 하게 한다.
+// 확인을 기다리는 신규 개발 단계를 승인해 다음 실행이 다음 단계부터 하게 한다. 여러 AI가 안을 낸 단계면 고른 안(pick)이 필요하다.
 const requestPhaseApproval = (options = {}) => {
     try {
         const { projectDir, workDir } = getProjectPaths(options);
@@ -824,7 +971,17 @@ const requestPhaseApproval = (options = {}) => {
             throw new Error("확인을 기다리는 단계가 없습니다.");
         }
 
-        const approvedState = { ...state, awaiting: null };
+        const candidates = state.proposals?.candidates || [];
+
+        if (candidates.length > 1 && !candidates.includes(options.pick)) {
+            throw new Error(`안을 하나 골라야 합니다(--pick ${candidates.join(" | ")}).`);
+        }
+
+        if (candidates.length < 2 && options.pick) {
+            throw new Error("고를 안이 없는 단계입니다.");
+        }
+
+        const approvedState = { ...state, awaiting: null, proposals: candidates.length > 1 ? { ...state.proposals, picked: options.pick } : state.proposals };
 
         phaseUtil.writePhase(phaseFile, approvedState);
 

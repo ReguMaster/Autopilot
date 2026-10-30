@@ -1,5 +1,6 @@
-import { BUILD_PHASES, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
+import { BUILD_PHASES, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
 import dateUtil from "./dateUtil.js";
+import phaseUtil from "./phaseUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "./guideText.js";
 
 const getPolicyPrompt = (policy, todoDoneRelPath) => {
@@ -106,16 +107,101 @@ const getPhaseBrief = (runState) => {
     };
 };
 
+// 사용자가 여러 AI의 안 중 하나를 골랐으면 이번 실행의 첫 일로 그 안을 정식 산출물로 확정한다.
+const getAdoptionPrompt = (runState) => {
+    if (!runState.adoption) {
+        return "";
+    }
+
+    const { phase, picked, file } = runState.adoption;
+    const label = PHASE_LABELS[phase];
+    const providerLabel = PROVIDER_LABELS[picked];
+    const commitMessage = `\`${runState.commitPrefix} ${label}: ${providerLabel} 안으로 확정\``;
+
+    if (picked === PROVIDER_CLAUDE) {
+        return `사용자가 [${label}]에서 Claude 안을 골랐다. 지금 단계의 일을 하기 전에 아직 commit하지 않은 \`${PROPOSALS_DIR}/\` 파일이 있으면 commit한다(${commitMessage}).`;
+    }
+
+    const adoption =
+        phase === "plan"
+            ? `지금 \`docs/autopilot/plan.md\`(Claude 안)를 \`${phaseUtil.getProposalPath("plan", PROVIDER_CLAUDE)}\`로 옮기고 \`${file}\`의 내용을 \`docs/autopilot/plan.md\`로 확정한다`
+            : `지금 Claude의 디자인 산출물(\`docs/autopilot/design.md\`와 \`docs/autopilot/design/\`)을 \`${PROPOSALS_DIR}/design-claude/\`로 옮기고 \`${file}\`를 정식 디자인으로 확정한다(${
+                  file.endsWith(".html") ? "`docs/autopilot/design/index.html`로 옮기고 `docs/autopilot/design.md`는 그 화면에 맞게 다시 쓴다" : "`docs/autopilot/design.md`로 옮긴다"
+              })`;
+
+    return `사용자가 [${label}]에서 ${providerLabel} 안을 골랐다. 지금 단계의 일을 하기 전에 먼저 ${adoption}. 남은 제안 · 검토 파일과 함께 commit한다(${commitMessage}). 이후 단계는 확정한 안을 따른다.`;
+};
+
+// 이 단계에 다른 AI도 안을 내면 서로 독립된 안이 되게 하고, 받은 안의 보관 commit과 교차검토를 지시한다.
+const getBrainstormPrompt = (runState) => {
+    if (!runState.brainstorm?.includes(runState.phase) || !runState.brainstormWith?.length) {
+        return "";
+    }
+
+    const label = PHASE_LABELS[runState.phase];
+    const reviewPath = phaseUtil.getReviewPath(runState.phase, PROVIDER_CLAUDE);
+    const readyPrompts = Object.entries(runState.proposalReady || {}).map(([provider, file]) => {
+        const providerLabel = PROVIDER_LABELS[provider];
+        const reviewPrompt = runState.crossReview
+            ? `네 산출물을 마친 뒤 \`${file}\`(${providerLabel} 안)를 읽고 \`${reviewPath}\`에 그 안의 빈자리 · 위험 · 더 나은 점을 항목마다 한두 줄로 쓴다. `
+            : "";
+
+        return `${reviewPrompt}\`${file}\`는 고치지 말고 그대로${runState.crossReview ? " 검토와 함께" : ""} commit한다(\`${runState.commitPrefix} ${label}: ${providerLabel} 안 보관\`).`;
+    });
+
+    return [`이 단계는 다른 AI도 따로 안을 내고 사용자가 안들을 나란히 보고 고른다. 네 산출물을 다 쓰기 전에는 \`${PROPOSALS_DIR}/\`를 열지 말고 독립적으로 쓴다.`, ...readyPrompts].join(" ");
+};
+
 // 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
 const getPhasePrompt = (runState) => {
     const label = PHASE_LABELS[runState.phase];
 
     return [
+        getAdoptionPrompt(runState),
         `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 ${BUILD_PHASES.map((phase) => PHASE_LABELS[phase]).join(" → ")} 순서이며, 이 세션은 지금 단계의 일만 하고 아래 <PHASE>의 틀을 따른다.`,
-        runState.isRevision ? `이 단계는 사용자가 산출물을 확인하고 다시 하라고 돌려보낸 것이다. <TASKS>의 수정 요청을 반영해 ${label} 산출물을 고친다.` : ""
+        runState.isRevision ? `이 단계는 사용자가 산출물을 확인하고 다시 하라고 돌려보낸 것이다. <TASKS>의 수정 요청을 반영해 ${label} 산출물을 고친다.` : "",
+        getBrainstormPrompt(runState)
     ]
         .filter(Boolean)
         .join(" ");
+};
+
+// 다른 AI에게 같은 단계의 독립된 안을 받는다. 읽기 전용으로 돌리므로 파일 대신 최종 답변으로 받는다.
+const getProposalPrompt = (runState) => {
+    const brief = getPhaseBrief(runState);
+    const formatPrompt =
+        runState.phase === "design"
+            ? runState.designFormat === "html"
+                ? "디자인은 모든 화면을 담은 HTML 문서 하나(외부 리소스 없이 파일 하나로 열리는)로 낸다. design.md에 쓸 화면 설명도 그 HTML 안에 함께 넣는다."
+                : "디자인은 마크다운 문서 하나로 내고 화면마다 ASCII 와이어프레임을 넣는다."
+            : "";
+
+    return [
+        `너는 ${brief.role}`,
+        `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 말고, 결과는 최종 답변으로만 낸다.`,
+        `읽을 것: ${brief.read}`,
+        // 사용자가 다른 AI의 기획안을 골랐으면 plan.md로 옮기기 전이라도 그 안을 따른다.
+        runState.adoption?.phase === "plan" && runState.adoption.picked !== PROVIDER_CLAUDE ? `기획서는 \`docs/autopilot/plan.md\` 대신 사용자가 고른 \`${runState.adoption.file}\`를 따른다.` : "",
+        `산출물: ${brief.output} 단, 파일에 쓰지 말고 그 문서 전체를 최종 답변으로 출력한다.`,
+        formatPrompt,
+        "완료 기준:",
+        ...brief.criteria.map((criterion) => `- ${criterion}`),
+        "인사 · 설명 · 코드 블록 표시 없이 문서 내용만 출력한다.",
+        runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : ""
+    ]
+        .filter(Boolean)
+        .join("\n");
+};
+
+// 교차검토: 다른 AI가 Claude의 산출물을 읽고 고칠 점만 짧게 낸다.
+const getReviewPrompt = (runState) => {
+    const target = runState.phase === "plan" ? "`docs/autopilot/plan.md`" : "`docs/autopilot/design.md`와 `docs/autopilot/design/`";
+
+    return [
+        `너는 ${PHASE_LABELS[runState.phase]} 검토자다. 이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 마라.`,
+        `${target}(다른 AI가 쓴 안)를 읽고 빈자리 · 위험 · 더 나은 점을 항목마다 한두 줄로 쓴다. 칭찬은 빼고 고칠 것 위주로 10개 이내.`,
+        "인사 · 설명 없이 마크다운 목록만 최종 답변으로 출력한다."
+    ].join("\n");
 };
 
 const getPhaseBlock = (runState) => {
@@ -201,4 +287,4 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
     return `${roundPrompt}\n\n${tasksBlock}${phaseBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix, runState.mode)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch, runState.mode === MODE_BUILD ? runState.allow : null)}\n</AUTOPILOT_POLICY.md>`;
 };
 
-export default { getProgressCleanupPrompt, getRoundPrompt };
+export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt };

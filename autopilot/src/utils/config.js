@@ -42,6 +42,13 @@ const ON_FAIL_STOP = "stop";
 const MAX_FAIL_RETRIES = 5;
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
+// 여러 AI 브레인스토밍. 이 단계에서는 Claude와 함께 다른 제공자도 따로 안을 내고 사용자가 고른다. 제공자는 providerUtil에 더한다.
+const BRAINSTORM_PHASES = ["plan", "design"];
+const PROVIDER_CLAUDE = "claude";
+const BRAINSTORM_PROVIDERS = ["codex"];
+const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
+const PROPOSALS_DIR = "docs/autopilot/proposals";
+const PROVIDER_TIMEOUT_MINUTES = 30;
 
 const DEFAULT_END_TIME = "07:00";
 const DEFAULT_MODEL = "opus";
@@ -127,6 +134,12 @@ export {
     MAX_FAIL_RETRIES,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PHASES,
+    PROVIDER_CLAUDE,
+    BRAINSTORM_PROVIDERS,
+    PROVIDER_LABELS,
+    PROPOSALS_DIR,
+    PROVIDER_TIMEOUT_MINUTES,
     DEFAULT_END_TIME,
     DEFAULT_MODEL,
     FALLBACK_MODEL,

@@ -1,12 +1,28 @@
-import { ALLOW_KEYS, DESIGN_FORMATS, EFFORT_LEVELS, GATE_PHASES, MAX_EXTEND_MINUTES, MAX_LINKED_REPOS, MAX_LOG_RETENTION_DAYS, MAX_FAIL_RETRIES, MODE_BUILD, MODES, MODEL_CHOICES } from "./config.js";
+import {
+    ALLOW_KEYS,
+    BRAINSTORM_PHASES,
+    BRAINSTORM_PROVIDERS,
+    PROVIDER_CLAUDE,
+    DESIGN_FORMATS,
+    EFFORT_LEVELS,
+    GATE_PHASES,
+    MAX_EXTEND_MINUTES,
+    MAX_LINKED_REPOS,
+    MAX_LOG_RETENTION_DAYS,
+    MAX_FAIL_RETRIES,
+    MODE_BUILD,
+    MODES,
+    MODEL_CHOICES
+} from "./config.js";
 import phaseUtil from "./phaseUtil.js";
 import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan,design] [--brainstorm-with codex] [--cross-review] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
-    "AutoPilot stop|status|reset-progress|approve --project <dir>"
+    "AutoPilot stop|status|reset-progress --project <dir>",
+    "AutoPilot approve --project <dir> [--pick claude|codex]"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
@@ -26,17 +42,20 @@ const RUN_OPTION_KEYS = {
     "--allow": "allow",
     "--design-format": "designFormat",
     "--qa-on-fail": "qaOnFail",
-    "--security-on-fail": "securityOnFail"
+    "--security-on-fail": "securityOnFail",
+    "--brainstorm": "brainstorm",
+    "--brainstorm-with": "brainstormWith"
 };
+const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick" };
 // 신규 개발에서만 뜻이 있는 인자
-const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail"];
+const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "crossReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
 const ON_FAIL_OPTIONS = [
     ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
     ["--security-on-fail", "securityOnFail", "maxSecurityRetries"]
 ];
 const LINK_PROJECT_OPTION = "--link-project";
-const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
+const RUN_FLAGS = ["--no-open", "--extend-on-limit", "--cross-review"];
 
 const parseOptionValue = (args, index) => {
     const value = args[index + 1];
@@ -119,7 +138,7 @@ const parseModeOptions = (options) => {
     }
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
-        throw new Error("--gate · --allow · --design-format · --qa-on-fail · --security-on-fail 은 --mode build 에서만 쓸 수 있습니다.");
+        throw new Error("--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --brainstorm · --brainstorm-with · --cross-review 는 --mode build 에서만 쓸 수 있습니다.");
     }
 
     if (options.gates !== undefined) {
@@ -128,6 +147,18 @@ const parseModeOptions = (options) => {
 
     if (options.allow !== undefined) {
         options.allow = parseListOption("--allow", options.allow, ALLOW_KEYS);
+    }
+
+    if (options.brainstorm !== undefined) {
+        options.brainstorm = parseListOption("--brainstorm", options.brainstorm, BRAINSTORM_PHASES);
+    }
+
+    if (options.brainstormWith !== undefined) {
+        options.brainstormWith = parseListOption("--brainstorm-with", options.brainstormWith, BRAINSTORM_PROVIDERS);
+    }
+
+    if (!options.brainstorm && (options.brainstormWith || options.crossReview)) {
+        throw new Error("--brainstorm-with · --cross-review 는 --brainstorm 과 함께 씁니다.");
     }
 
     if (options.designFormat !== undefined && !DESIGN_FORMATS.includes(options.designFormat)) {
@@ -186,6 +217,10 @@ const parseRunArgs = (args) => {
         options.logRetentionDays = parseLogRetentionDays(options.logRetentionDays);
     }
 
+    if (args.includes("--cross-review")) {
+        options.crossReview = true;
+    }
+
     settingsUtil.getGitSettings(options.commitPrefix, options.workBranch);
     parseModeOptions(options);
 
@@ -197,9 +232,20 @@ const parseRunArgs = (args) => {
     };
 };
 
-// stop · status · reset-progress · approve는 대상 프로젝트만 받는다.
+// stop · status · reset-progress는 대상 프로젝트만 받는다.
 const parseProjectArgs = (args) => {
     return parseOptions(args, PROJECT_OPTION_KEYS);
+};
+
+// approve는 여러 AI가 안을 낸 단계면 고른 안(--pick)도 받는다. 후보에 있는지는 단계 상태를 읽어 서비스가 확인한다.
+const parseApproveArgs = (args) => {
+    const options = parseOptions(args, APPROVE_OPTION_KEYS);
+
+    if (options.pick !== undefined && ![PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].includes(options.pick)) {
+        throw new Error(`--pick 값은 ${[PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    return options;
 };
 
 // 실행 중인 AutoPilot에 전달할 값이므로 프로젝트와 model·effort만 받는다.
@@ -213,4 +259,4 @@ const parseSetArgs = (args) => {
     return options;
 };
 
-export default { HELP_TEXT, parseRunArgs, parseProjectArgs, parseSetArgs };
+export default { HELP_TEXT, parseRunArgs, parseProjectArgs, parseApproveArgs, parseSetArgs };

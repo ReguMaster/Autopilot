@@ -83,6 +83,25 @@ process.stdin.on('end', () => {
 });
 `;
 
+// 실제 Codex 대신 쓰는 가짜 codex. login status는 AP_CODEX_LOGIN=0이면 실패하고, exec는 받은 프롬프트를 AP_CODEX_LOG에 남긴 뒤
+// 검토 요청이면 목록을, 아니면 코드 블록으로 감싼 안을 stdout으로 낸다. AP_CODEX_FAIL=1이면 한도 오류로 끝난다.
+const FAKE_CODEX_SOURCE = String.raw`
+import fs from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] === "login") process.exit(process.env.AP_CODEX_LOGIN === "0" ? 1 : 0);
+let prompt = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => (prompt += chunk));
+process.stdin.on("end", () => {
+  fs.appendFileSync(process.env.AP_CODEX_LOG, "---\n" + args.join(" ") + "\n" + prompt + "\n");
+  if (process.env.AP_CODEX_FAIL === "1") {
+    console.error("progress\nusage limit reached");
+    process.exit(1);
+  }
+  console.log(prompt.includes("검토자") ? "- Codex 검토: 빈자리 하나" : "\x60\x60\x60markdown\n# Codex 기획안\n\n1) 한 줄 요약\n\x60\x60\x60");
+});
+`;
+
 const wait = (ms) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
 };
@@ -145,4 +164,4 @@ const writeCmdWrapper = (wrapperFile, fakeCliFile) => {
     fs.writeFileSync(wrapperFile, `@echo off\r\n"${process.execPath}" "${fakeCliFile}" %*\r\n`);
 };
 
-export { HOUR_MS, FAKE_CLI_SOURCE, wait, getEndTime, isProcessStopped, waitForProcessStop, createTestContext, commitInitialProject, writeCmdWrapper };
+export { HOUR_MS, FAKE_CLI_SOURCE, FAKE_CODEX_SOURCE, wait, getEndTime, isProcessStopped, waitForProcessStop, createTestContext, commitInitialProject, writeCmdWrapper };
