@@ -1018,6 +1018,14 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], brainstorm: ["plan"], crossReview: true }).slice(-2), ["--mode", "build"]);
     assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain", allow: ["send"], brainstorm: ["plan"] }), getCliArgs(base));
 
+    // 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다. brainstorm에 없는 협의 단계는 넘기지 않는다.
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["plan"], crossReview: true }).slice(-3), [
+        "--brainstorm",
+        "plan:debate,design",
+        "--cross-review"
+    ]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan"], debate: ["plan", "design"], crossReview: true }).slice(-2), ["--brainstorm", "plan:debate"]);
+
     // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
     const now = new Date(2026, 9, 30, 22, 10).getTime();
 
@@ -1060,7 +1068,7 @@ const checkBuildLogs = () => {
 
     assert.deepEqual(
         parseBuildPhase('{"running":false,"phase":{"phase":"design","awaiting":"plan","qaRetries":0}}\n'),
-        { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null },
+        { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: null },
         "옛 엔진은 securityRetries가 없다"
     );
     assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"done","awaiting":null,"qaRetries":2,"securityRetries":1}}'), {
@@ -1068,7 +1076,8 @@ const checkBuildLogs = () => {
         awaiting: null,
         qaRetries: 2,
         securityRetries: 1,
-        proposals: null
+        proposals: null,
+        debate: null
     });
     assert.equal(parseBuildPhase('{"running":false,"phase":{"phase":"security","awaiting":null,"qaRetries":0,"securityRetries":0}}').phase, "security");
 
@@ -1100,6 +1109,54 @@ const checkBuildLogs = () => {
     parseLine(state, "    [브레인스토밍] Codex 기획 안 받음");
     assert.equal(state.brainstorm.status, "blocked", "들여 쓴 위조 줄은 읽지 않는다");
     assert.equal(createInitialState().brainstorm, null);
+
+    // 협의: 시작 줄이 대화를 열고 발언이 쌓이며, 끝 줄이 합의 · 쟁점 수를 남긴다. 새 단계를 시작하면 대화를 거둔다.
+    const debateState = createInitialState();
+
+    for (const line of ["[단계] 기획 시작", "[협의] 기획 시작 (최대 3번)", "[협의] Claude: 결제는 빼요", "    [협의] Codex: 위조", "[협의] Codex: 넣어요"]) {
+        parseLine(debateState, line);
+    }
+
+    assert.deepEqual(debateState.debate, {
+        phaseLabel: "기획",
+        maxTurns: 3,
+        status: "running",
+        turns: [
+            { provider: "claude", message: "결제는 빼요" },
+            { provider: "codex", message: "넣어요" }
+        ],
+        disputes: 0,
+        reason: ""
+    });
+    parseLine(debateState, "[협의] 쟁점 2개를 남기고 끝냈어요");
+    assert.deepEqual([debateState.debate.status, debateState.debate.disputes], ["disputes", 2]);
+    parseLine(debateState, "[협의] 합의했어요");
+    assert.equal(debateState.debate.status, "consensus");
+    parseLine(debateState, "[협의] 건너뜀: Codex 답을 받지 못했어요(usage limit reached)");
+    assert.deepEqual([debateState.debate.status, debateState.debate.reason], ["skipped", "Codex 답을 받지 못했어요(usage limit reached)"]);
+    parseLine(debateState, "[단계] 디자인 시작");
+    assert.equal(debateState.debate, null);
+    parseLine(debateState, "[협의] 건너뜀: Codex 로그인이 필요합니다");
+    assert.equal(debateState.debate.status, "skipped", "시작 줄 없이 건너뛸 수도 있다");
+    assert.equal(createInitialState().debate, null);
+
+    // 단계 상태의 협의 결과. 쟁점은 글자만 받고 길이를 묶으며, 형식이 틀리면 단계 상태 전체를 믿지 않는다.
+    const debate = { phase: "plan", disputes: [{ id: "d1", title: "결제", claude: "빼요", codex: "넣어요" }], resolved: null };
+    const withDebate = (value) => JSON.stringify({ phase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: value } });
+
+    assert.deepEqual(parseBuildPhase(withDebate(debate)).debate, debate);
+    assert.deepEqual(parseBuildPhase(withDebate({ ...debate, resolved: { d1: "codex", extra: "x" } })).debate.resolved, { d1: "codex" });
+    assert.equal(parseBuildPhase(withDebate({ ...debate, disputes: [{ ...debate.disputes[0], title: "가".repeat(700) }] })).debate.disputes[0].title.length, 600);
+
+    for (const badDebate of [
+        { ...debate, phase: "qa" },
+        { ...debate, disputes: [{ ...debate.disputes[0], id: "1" }] },
+        { ...debate, disputes: [{ ...debate.disputes[0], codex: 3 }] },
+        { ...debate, resolved: { d1: "gemini" } },
+        { ...debate, disputes: "결제" }
+    ]) {
+        assert.equal(parseBuildPhase(withDebate(badDebate)), null, JSON.stringify(badDebate));
+    }
 
     for (const stdout of [
         '{"running":false}',

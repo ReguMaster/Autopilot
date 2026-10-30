@@ -205,7 +205,9 @@ const PHASE_DOCS = {
     ...Object.fromEntries(
         ["plan", "design"].flatMap((phase) => [
             [`${phase}-codex`, ["md", "html"].map((extension) => ({ path: `docs/autopilot/proposals/${phase}-codex.${extension}`, isDir: false }))],
-            ...["claude", "codex"].map((reviewer) => [`${phase}-review-${reviewer}`, [{ path: `docs/autopilot/proposals/${phase}-review-${reviewer}.md`, isDir: false }]])
+            ...["claude", "codex"].map((reviewer) => [`${phase}-review-${reviewer}`, [{ path: `docs/autopilot/proposals/${phase}-review-${reviewer}.md`, isDir: false }]]),
+            // 협의 기록(엔진 phaseUtil.getDebatePath). 쟁점은 엔진이 단계 상태로 옮겨 status로 받는다.
+            [`${phase}-debate`, [{ path: `docs/autopilot/proposals/${phase}-debate.md`, isDir: false }]]
         ])
     )
 };

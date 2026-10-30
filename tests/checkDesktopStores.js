@@ -430,23 +430,38 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         qaOnFail: "retry:3",
         securityOnFail: "stop",
         brainstorm: [],
-        crossReview: false
+        crossReview: false,
+        debate: []
     });
     composer.setSecurityOnFail("retry:3");
 
-    // 단계에 Codex를 켜면 보내기도 켜지고, 보내기를 끄면 브레인스토밍과 교차검토가 함께 꺼진다.
+    // 단계에 Codex를 켜면(나란히 비교 · 협의) 보내기도 켜지고, 보내기를 끄면 브레인스토밍 · 협의 · 교차검토가 함께 꺼진다.
+    const getBrainstormState = () => {
+        const { brainstorm, debate, crossReview, allow } = useComposerStore.getState();
+
+        return { brainstorm: brainstorm, debate: debate, crossReview: crossReview, allow: allow };
+    };
+
     composer.toggleAllow("send");
-    composer.toggleBrainstorm("design");
-    composer.toggleBrainstorm("plan");
+    composer.setBrainstormMode("design", "compare");
+    composer.setBrainstormMode("plan", "debate");
     composer.setCrossReview(true);
-    assert.deepEqual(useComposerStore.getState().brainstorm, ["plan", "design"]);
-    assert.deepEqual(useComposerStore.getState().allow, ["large", "send"]);
+    assert.deepEqual(getBrainstormState(), { brainstorm: ["plan", "design"], debate: ["plan"], crossReview: true, allow: ["large", "send"] });
+
+    // 나란히 비교하는 단계가 없어지면 교차검토도 끈다.
+    composer.setBrainstormMode("design", "debate");
+    assert.deepEqual(getBrainstormState(), { brainstorm: ["plan", "design"], debate: ["plan", "design"], crossReview: false, allow: ["large", "send"] });
+    composer.setBrainstormMode("plan", "compare");
+    assert.deepEqual(getBrainstormState().debate, ["design"]);
+    composer.setBrainstormMode("design", "claude");
+    assert.deepEqual(getBrainstormState(), { brainstorm: ["plan"], debate: [], crossReview: false, allow: ["large", "send"] });
+    composer.setBrainstormMode("plan", "debate");
     composer.toggleAllow("send");
-    assert.deepEqual([useComposerStore.getState().brainstorm, useComposerStore.getState().crossReview], [[], false]);
-    composer.toggleBrainstorm("plan");
+    assert.deepEqual(getBrainstormState(), { brainstorm: [], debate: [], crossReview: false, allow: ["large"] });
+    composer.setBrainstormMode("plan", "compare");
     composer.setCrossReview(true);
-    composer.toggleBrainstorm("plan");
-    assert.deepEqual([useComposerStore.getState().brainstorm, useComposerStore.getState().crossReview, useComposerStore.getState().allow], [[], false, ["large", "send"]]);
+    composer.setBrainstormMode("plan", "claude");
+    assert.deepEqual(getBrainstormState(), { brainstorm: [], debate: [], crossReview: false, allow: ["large", "send"] });
     composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"] }, ["mode", "gates", "allow"]);
 
     calls.length = 0;

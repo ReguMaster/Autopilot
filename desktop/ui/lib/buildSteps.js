@@ -16,11 +16,21 @@ const ON_FAIL_OPTIONS = [
     ...ON_FAIL_CHOICES.filter((value) => value !== "stop").map((value) => ({ value: value, label: `${value.split(":")[1]}번까지` })),
     { value: "stop", label: "되돌리지 않기", hint: "결과만 남기고 멈춰요" }
 ];
-// 기획 · 디자인 칸의 누가 쓸까요. Codex를 고르면 Claude와 따로 안을 내고, 그 단계가 끝나면 두 안을 골라요.
+// 기획 · 디자인 칸의 누가 쓸까요. Codex를 고르면 Claude와 따로 안을 내고, 나란히 비교면 두 안 중에서, 협의면 못 맞춘 쟁점만 골라요.
 const BRAINSTORM_OPTIONS = [
     { value: "claude", label: "Claude만", hint: "Claude 혼자 써요" },
-    { value: "codex", label: "Claude + Codex", hint: "둘이 따로 안을 내고, 끝나면 나란히 보고 골라요" }
+    { value: "compare", label: "나란히 비교", hint: "Claude와 Codex가 따로 안을 내고, 끝나면 나란히 보고 골라요" },
+    { value: "debate", label: "협의", hint: "Claude와 Codex가 최대 3번 주고받고, 못 맞춘 쟁점만 골라요" }
 ];
+
+// 그 단계를 누가 쓰는지. 협의는 나란히 비교의 한 갈래라 brainstorm과 debate에 함께 든다.
+const getBrainstormMode = ({ brainstorm, debate }, phase) => {
+    if (!brainstorm.includes(phase)) {
+        return "claude";
+    }
+
+    return debate.includes(phase) ? "debate" : "compare";
+};
 const ON_FAIL_CAPTIONS = { qa: "실패하면 개발로 되돌려요", security: "심각하면 개발로 되돌려요" };
 const ON_FAIL_SUBJECTS = { qa: "실패하면", security: "심각하면" };
 
@@ -185,6 +195,7 @@ export {
     PHASE_DONE,
     DESIGN_FORMAT_OPTIONS,
     BRAINSTORM_OPTIONS,
+    getBrainstormMode,
     ON_FAIL_OPTIONS,
     ON_FAIL_CAPTIONS,
     ALLOW_OPTIONS,

@@ -12,6 +12,7 @@ import { useRunsStore } from "../../stores/runsStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { StepCard } from "../steps/StepCard.jsx";
+import { DebateReview } from "./DebateReview.jsx";
 import { DocPreview } from "./DocPreview.jsx";
 import { ProposalCompare } from "./ProposalCompare.jsx";
 import { usePhaseDoc } from "./usePhaseDoc.js";
@@ -25,6 +26,16 @@ const LEADS = {
 const COMPARE_LEADS = {
     plan: { title: "기획안이 두 개 준비됐어요.", lead: "Claude와 Codex가 따로 쓴 안이에요. 하나를 골라 주세요." },
     design: { title: "디자인 안이 두 개 준비됐어요.", lead: "Claude와 Codex가 따로 그린 안이에요. 하나를 골라 주세요." }
+};
+
+// Claude와 Codex가 협의한 단계. 합의안을 보여 주고 못 맞춘 쟁점만 고른다.
+const DEBATE_LEADS = {
+    plan: { title: "협의한 기획안이 준비됐어요." },
+    design: { title: "협의한 디자인이 준비됐어요." }
+};
+
+const getDebateLead = (debate) => {
+    return debate.disputes.length ? "Claude와 Codex가 주고받아 합의안을 만들었어요. 끝까지 못 맞춘 쟁점만 골라 주세요." : "Claude와 Codex가 주고받아 합의했어요. 합의안을 확인해 주세요.";
 };
 
 // 방금 이 단계에서 멈춘 실행이면 몇 회차·얼마나 걸렸는지와 커밋 수를 알린다. 커밋은 작업 브랜치에 있다.
@@ -41,6 +52,14 @@ const getMeta = (state, phase, workBranch) => {
     return [`${label}에 ${state.rounds.length}회차, ${formatMinutesSpan(minutes)}이 걸렸어요.`, commits ? `커밋 ${commits}개는 ${workBranch} 브랜치에 있어요.` : "이번에는 커밋을 남기지 않았어요."];
 };
 
+const getLeadText = (phase, proposals, debate) => {
+    if (debate) {
+        return { ...LEADS[phase], ...DEBATE_LEADS[phase], lead: getDebateLead(debate) };
+    }
+
+    return proposals ? { ...LEADS[phase], ...COMPARE_LEADS[phase] } : LEADS[phase];
+};
+
 // 확인 기다림: 확인받기로 둔 단계(기획·디자인)가 끝나 멈춘 뒤 산출물을 보여주고, 확인하고 다음 단계를 시작하거나 고칠 점과 함께 그 단계를 다시 한다.
 const ApprovalView = ({ phase, side = null }) => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
@@ -51,7 +70,8 @@ const ApprovalView = ({ phase, side = null }) => {
     const [feedback, setFeedback] = useState("");
     const label = PHASE_LABELS[phase];
     const proposals = buildPhase?.proposals?.phase === phase && !buildPhase.proposals.picked ? buildPhase.proposals : null;
-    const text = proposals ? { ...LEADS[phase], ...COMPARE_LEADS[phase] } : LEADS[phase];
+    const debate = buildPhase?.debate?.phase === phase && !buildPhase.debate.resolved ? buildPhase.debate : null;
+    const text = getLeadText(phase, proposals, debate);
     const feedbackArea = (
         <>
             <label className="approval-feedback">
@@ -86,7 +106,9 @@ const ApprovalView = ({ phase, side = null }) => {
                 <h1 id="approval-title">{text.title}</h1>
                 <p className="lead">{text.lead}</p>
             </div>
-            {proposals ? (
+            {debate ? (
+                <DebateReview phase={phase} debate={debate} nextPhase={NEXT_PHASES[phase]} doc={doc} docName={text.docName} isStarting={isStarting} feedbackArea={feedbackArea} />
+            ) : proposals ? (
                 <>
                     <ProposalCompare phase={phase} proposals={proposals} nextPhase={NEXT_PHASES[phase]} isStarting={isStarting} />
                     <details className="approval-revise">

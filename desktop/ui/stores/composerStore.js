@@ -36,7 +36,8 @@ const useComposerStore = create(() => ({
     qaOnFail: DEFAULT_QA_ON_FAIL,
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
     brainstorm: [],
-    crossReview: false
+    crossReview: false,
+    debate: []
 }));
 
 // 체크를 바꾼 목록. 순서는 고를 수 있는 값의 순서로 맞춰 저장 값이 흔들리지 않게 한다.
@@ -97,13 +98,13 @@ const handleOptionChange = () => {
     }
 };
 
-const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort", "mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview"];
+const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort", "mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate"];
 
 // 시작·예약 저장 때 엔진에 넘길 작업 모드와 신규 개발 설정
 const getModeOptions = () => {
-    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, brainstorm, crossReview } = useComposerStore.getState();
+    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, brainstorm, crossReview, debate } = useComposerStore.getState();
 
-    return { mode: mode, gates: gates, allow: allow, designFormat: designFormat, qaOnFail: qaOnFail, securityOnFail: securityOnFail, brainstorm: brainstorm, crossReview: crossReview };
+    return { mode: mode, gates: gates, allow: allow, designFormat: designFormat, qaOnFail: qaOnFail, securityOnFail: securityOnFail, brainstorm: brainstorm, crossReview: crossReview, debate: debate };
 };
 
 // 저장된 설정으로 컴포저의 값을 채운다. keys를 주면 그 키만 바꿔, 설정 패널에서 한 값을 바꿨다고 쓰던 작업 문구까지 되돌리지 않는다.
@@ -144,23 +145,22 @@ const composer = {
         useComposerStore.setState((current) => {
             const allow = toggleChoice(current.allow, ALLOW_KEYS, key);
 
-            return allow.includes("send") ? { allow: allow } : { allow: allow, brainstorm: [], crossReview: false };
+            return allow.includes("send") ? { allow: allow } : { allow: allow, brainstorm: [], crossReview: false, debate: [] };
         }),
-    // 단계에 Codex를 켜면 보내기도 함께 켠다(단계 칸이 그 사실을 알린다). 모두 끄면 교차검토도 끈다.
-    toggleBrainstorm: (phase) =>
+    // 단계를 누가 쓸지(claude: Claude만, compare: 나란히 비교, debate: 협의). Codex를 쓰면 보내기도 함께 켠다(단계 칸이 그 사실을 알린다).
+    // 나란히 비교하는 단계가 하나도 없으면 교차검토도 끈다(협의는 이미 서로 검토한다).
+    setBrainstormMode: (phase, brainstormMode) =>
         useComposerStore.setState((current) => {
-            const brainstorm = toggleChoice(current.brainstorm, BRAINSTORM_PHASES, phase);
+            const isCodex = brainstormMode !== "claude";
+            const brainstorm = BRAINSTORM_PHASES.filter((item) => (item === phase ? isCodex : current.brainstorm.includes(item)));
+            const debate = BRAINSTORM_PHASES.filter((item) => (item === phase ? brainstormMode === "debate" : current.debate.includes(item) && brainstorm.includes(item)));
+            const hasCompare = brainstorm.some((item) => !debate.includes(item));
 
             return {
                 brainstorm: brainstorm,
-                allow: brainstorm.length
-                    ? toggleChoice(
-                          current.allow.filter((key) => key !== "send"),
-                          ALLOW_KEYS,
-                          "send"
-                      )
-                    : current.allow,
-                crossReview: brainstorm.length ? current.crossReview : false
+                debate: debate,
+                allow: brainstorm.length && !current.allow.includes("send") ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow,
+                crossReview: hasCompare ? current.crossReview : false
             };
         }),
     setCrossReview: (isOn) => useComposerStore.setState({ crossReview: isOn }),

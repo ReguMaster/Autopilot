@@ -117,7 +117,7 @@ const isValidRoundOptions = ({ model, effort }) => {
 };
 
 // 작업 모드와 신규 개발 설정. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview"];
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate"];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
@@ -1201,10 +1201,35 @@ const handleGetPhase = async (event, requestedDir) => {
 // 여러 AI가 안을 낸 단계에서 고를 수 있는 안. 엔진의 approve --pick 값과 같다.
 const PROPOSAL_PICKS = ["claude", ...BRAINSTORM_PROVIDERS];
 
-// 확인을 기다리는 신규 개발 단계를 승인한다. 다음 실행이 다음 단계부터 한다. 실행 중에는 막는다. pick은 여러 AI가 안을 낸 단계에서 고른 안이다.
-const handleApprovePhase = async (event, requestedDir, pick) => {
+// 협의한 단계의 쟁점마다 고른 쪽({ d1: "claude" }). 엔진 approve --resolve 값으로 바꾸고, 형식이 틀리면 null이다(빈 값은 고를 쟁점이 없는 승인).
+const DISPUTE_ID_PATTERN = /^d\d{1,2}$/;
+const MAX_DISPUTES = 10;
+
+const getResolveArgs = (resolutions) => {
+    if (resolutions === undefined || resolutions === null) {
+        return [];
+    }
+
+    const entries = typeof resolutions === "object" && !Array.isArray(resolutions) ? Object.entries(resolutions) : null;
+
+    if (!entries || entries.length > MAX_DISPUTES || !entries.every(([id, side]) => DISPUTE_ID_PATTERN.test(id) && PROPOSAL_PICKS.includes(side))) {
+        return null;
+    }
+
+    return entries.length ? ["--resolve", entries.map(([id, side]) => `${id}=${side}`).join(",")] : [];
+};
+
+// 확인을 기다리는 신규 개발 단계를 승인한다. 다음 실행이 다음 단계부터 한다. 실행 중에는 막는다.
+// pick은 여러 AI가 안을 낸 단계에서 고른 안이고, resolutions는 협의한 단계의 쟁점마다 고른 쪽이다.
+const handleApprovePhase = async (event, requestedDir, pick, resolutions) => {
+    const resolveArgs = getResolveArgs(resolutions);
+
     if (pick !== undefined && pick !== null && !PROPOSAL_PICKS.includes(pick)) {
         return createFailure("INVALID_PICK", "고를 수 없는 안이에요.");
+    }
+
+    if (!resolveArgs) {
+        return createFailure("INVALID_RESOLVE", "고를 수 없는 쟁점이에요.");
     }
 
     const session = sessionPool.get(requestedDir);
@@ -1225,7 +1250,7 @@ const handleApprovePhase = async (event, requestedDir, pick) => {
     }
 
     return new Promise((resolve) => {
-        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "approve", pick ? ["--pick", pick] : [], async (error, stdout, stderr) => {
+        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "approve", [...(pick ? ["--pick", pick] : []), ...resolveArgs], async (error, stdout, stderr) => {
             if (error) {
                 resolve(createFailure("APPROVE_FAILED", (stderr || error.message).trim()));
 

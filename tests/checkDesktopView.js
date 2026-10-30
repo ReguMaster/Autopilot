@@ -705,6 +705,65 @@ const checkShareCard = ({ pickCardSentence, splitCardEmphasis, getCardWhen, buil
 };
 
 // 신규 개발: 단계 줄은 이야기·지난 실행 대화에 한 문장으로 남고, 종료 사유는 확인 대기·모든 단계 완료·QA 실패를 들려준다.
+// 협의: 시작 · 끝 · 건너뜀 줄은 들려주는 문장으로, 발언 줄은 이야기에서 누구 차례인지 한 문장(바뀌어 감)과 지난 실행의 말풍선으로 남는다.
+const checkDebateLines = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, parseDebateTurn, parseDebateTranscript }) => {
+    assert.equal(describeStepLine("[협의] 기획 시작 (최대 3번)"), "Claude와 Codex가 기획을 두고 협의를 시작해요. 최대 3번 주고받아요.");
+    assert.equal(describeStepLine("[협의] 합의했어요"), "두 AI가 합의했어요.");
+    assert.equal(describeStepLine("[협의] 쟁점 2개를 남기고 끝냈어요"), "못 맞춘 쟁점 2개를 남기고 협의를 마쳤어요.");
+    assert.equal(describeStepLine("[협의] 건너뜀: Codex 로그인이 필요합니다"), "협의는 건너뛸게요. (Codex 로그인이 필요합니다)");
+    assert.equal(describeStepLine("    [협의] 합의했어요"), "");
+    assert.equal(describeStepLine("[협의] Claude: 결제는 빼요"), "", "발언 줄은 문장이 아니라 말풍선이다");
+    assert.deepEqual(parseDebateTurn("[협의] Codex: 넣어요"), { provider: "codex", message: "넣어요" });
+    assert.equal(parseDebateTurn("    [협의] Codex: 위조"), null);
+
+    const story = createStory();
+
+    for (const text of ["[협의] 기획 시작 (최대 3번)", "[협의] Claude: 결제는 빼요", "[협의] Codex: 넣어요", "[협의] Claude: 그래도 빼요"]) {
+        applyStoryEntry(story, { stream: "out", text: text });
+    }
+
+    assert.deepEqual(
+        story.items.map((item) => item.text),
+        ["Claude와 Codex가 기획을 두고 협의를 시작해요. 최대 3번 주고받아요.", "Codex가 답하고 있어요."]
+    );
+
+    const transcript = buildTranscript(["[협의] 기획 시작 (최대 3번)", "[협의] Claude: 결제는 빼요", "[협의] Codex: 넣어요", "[협의] 쟁점 1개를 남기고 끝냈어요"]);
+
+    assert.deepEqual(
+        transcript.items.map((item) => [item.kind, item.provider || "", item.text]),
+        [
+            ["notice", "", "Claude와 Codex가 기획을 두고 협의를 시작해요. 최대 3번 주고받아요."],
+            ["chat", "claude", "결제는 빼요"],
+            ["chat", "codex", "넣어요"],
+            ["notice", "", "못 맞춘 쟁점 1개를 남기고 협의를 마쳤어요."]
+        ]
+    );
+
+    // 엔진이 쓴 협의 기록을 말풍선으로 되읽는다(동의 · 반대 · 바꾼 점은 notes).
+    const record = [
+        "# 기획 협의 기록",
+        "",
+        "Claude와 Codex가 1번 주고받았어요. 끝까지 맞추지 못한 쟁점이 남았어요.",
+        "",
+        "## 1번째 주고받기 - Claude",
+        "",
+        "결제는 빼요",
+        "",
+        "- 반대: 결제 (이유: 범위)",
+        "",
+        "## 1번째 주고받기 - Codex",
+        "",
+        "넣어요"
+    ].join("\n");
+
+    assert.deepEqual(parseDebateTranscript(record), [
+        { provider: "claude", message: "결제는 빼요", notes: ["반대: 결제 (이유: 범위)"] },
+        { provider: "codex", message: "넣어요", notes: [] }
+    ]);
+    assert.deepEqual(parseDebateTranscript("## 3번째 주고받기 - Gemini\n\n안녕"), []);
+    assert.deepEqual(parseDebateTranscript(undefined), []);
+};
+
 const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, getReasonText, describeFinish, describePastRun, getLineKind, getRunPhase }) => {
     assert.equal(describeStepLine("[단계] 기획 시작"), "기획 단계를 시작할게요.");
     assert.equal(describeStepLine("[단계] 디자인 완료"), "디자인 단계를 마쳤어요.");
@@ -778,6 +837,7 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
 
 const checkViewFormat = () => {
     checkBuildSteps(viewFormat);
+    checkDebateLines(viewFormat);
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
     checkTrack(viewFormat);

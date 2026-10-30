@@ -6,6 +6,7 @@ import { Gains } from "../../components/Gains.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { RunList } from "../../components/RunList.jsx";
 import { Tag } from "../../components/Tag.jsx";
+import { PROVIDER_LABELS } from "../../lib/constants.js";
 import { useRunsStore } from "../../stores/runsStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 
@@ -80,6 +81,15 @@ const ChatItem = memo(({ item }) => {
                 <span className="subject">{item.subject || "제목 없음"}</span>
                 <ins>{`+${item.insertions}`}</ins>
                 <del>{`−${item.deletions}`}</del>
+            </li>
+        );
+    }
+
+    if (item.kind === "chat") {
+        return (
+            <li className="chat-item debate" data-provider={item.provider}>
+                <b>{PROVIDER_LABELS[item.provider]}</b>
+                <span>{item.text}</span>
             </li>
         );
     }

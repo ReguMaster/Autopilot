@@ -142,9 +142,9 @@ const resetProgress = async () => {
 };
 
 // 확인을 기다리는 신규 개발 단계를 승인한다. 성공하면 다음 실행이 다음 단계부터 하고, 단계 상태를 메인이 돌려준 값으로 바꾼다.
-// pick은 여러 AI가 안을 낸 단계에서 고른 안(claude·codex)이다.
-const approvePhase = async (pick) => {
-    const result = await window.autopilot.approvePhase(undefined, pick);
+// pick은 여러 AI가 안을 낸 단계에서 고른 안(claude·codex)이고, resolutions는 협의한 단계의 쟁점마다 고른 쪽({ d1: "codex" })이다.
+const approvePhase = async (pick, resolutions) => {
+    const result = await window.autopilot.approvePhase(undefined, pick, resolutions);
 
     ui.showFailure(result);
 
@@ -156,8 +156,8 @@ const approvePhase = async (pick) => {
 };
 
 // 확인을 기다리던 단계를 승인하고 바로 다음 단계를 시작한다.
-const approveAndStart = async (pick) => {
-    if (await approvePhase(pick)) {
+const approveAndStart = async (pick, resolutions) => {
+    if (await approvePhase(pick, resolutions)) {
         await startRun();
     }
 };

@@ -33,7 +33,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     kill: (projectDir) => ipcRenderer.invoke("autopilot:kill", projectDir),
     resetProgress: (projectDir) => ipcRenderer.invoke("autopilot:reset-progress", projectDir),
     getPhase: (projectDir) => ipcRenderer.invoke("autopilot:get-phase", projectDir),
-    approvePhase: (projectDir, pick) => ipcRenderer.invoke("autopilot:approve-phase", projectDir, pick),
+    approvePhase: (projectDir, pick, resolutions) => ipcRenderer.invoke("autopilot:approve-phase", projectDir, pick, resolutions),
     getProviders: () => ipcRenderer.invoke("autopilot:get-providers"),
     initGitRepo: () => ipcRenderer.invoke("autopilot:init-git-repo"),
     readPhaseDoc: (phase, projectDir) => ipcRenderer.invoke("autopilot:read-phase-doc", phase, projectDir),

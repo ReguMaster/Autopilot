@@ -4,7 +4,7 @@ import { formatEndTimeShort } from "../../../viewFormat.js";
 import { loadProviders } from "../../actions/runs.js";
 import { Select } from "../../components/Select.jsx";
 import { PHASE_LABELS } from "../../lib/constants.js";
-import { BRAINSTORM_OPTIONS, DESIGN_FORMAT_OPTIONS, ON_FAIL_CAPTIONS, ON_FAIL_OPTIONS, getBuildGreeting, getReadySteps } from "../../lib/buildSteps.js";
+import { BRAINSTORM_OPTIONS, getBrainstormMode, DESIGN_FORMAT_OPTIONS, ON_FAIL_CAPTIONS, ON_FAIL_OPTIONS, getBuildGreeting, getReadySteps } from "../../lib/buildSteps.js";
 import { useClock } from "../../stores/clock.js";
 import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
@@ -34,35 +34,36 @@ const DesignFormat = () => {
     );
 };
 
-// 이 단계에 Codex도 따로 안을 낼지. 켜면 외부 서비스로 보내기도 켜진다. Codex를 쓸 수 없으면 이유를 보이고 잠근다.
+// 이 단계를 Claude만 쓸지, Codex와 나란히 비교할지, 협의할지. Codex를 쓰면 외부 서비스로 보내기도 켜진다. Codex를 쓸 수 없으면 이유를 보이고 잠근다.
 const Brainstorm = ({ phase }) => {
-    const { isOn, crossReview } = useComposerStore(useShallow((store) => ({ isOn: store.brainstorm.includes(phase), crossReview: store.crossReview })));
+    const { brainstormMode, crossReview } = useComposerStore(useShallow((store) => ({ brainstormMode: getBrainstormMode(store, phase), crossReview: store.crossReview })));
     const codex = useRunsStore((store) => store.providers?.codex);
+    const isOn = brainstormMode !== "claude";
     const reason = codex && !codex.available && !isOn ? codex.reason : "";
 
     return (
         <>
             <Select
-                value={isOn ? "codex" : "claude"}
+                value={brainstormMode}
                 options={BRAINSTORM_OPTIONS}
-                onChange={() => composer.toggleBrainstorm(phase)}
+                onChange={(value) => composer.setBrainstormMode(phase, value)}
                 disabled={Boolean(reason)}
                 disabledReason={reason}
                 ariaLabel={`${PHASE_LABELS[phase]}을 누가 쓸까요`}
             />
             {reason ? <p className="step-note">{reason}</p> : null}
+            {brainstormMode === "compare" ? (
+                <label className="step-check">
+                    <input type="checkbox" data-cross-review={phase} checked={crossReview} onChange={(event) => composer.setCrossReview(event.target.checked)} />
+                    교차검토
+                </label>
+            ) : null}
             {isOn ? (
-                <>
-                    <label className="step-check">
-                        <input type="checkbox" data-cross-review={phase} checked={crossReview} onChange={(event) => composer.setCrossReview(event.target.checked)} />
-                        교차검토
-                    </label>
-                    <p className="step-note">
-                        보내기를 켰어요.
-                        <br />
-                        끝나면 두 안을 골라요.
-                    </p>
-                </>
+                <p className="step-note">
+                    보내기를 켰어요.
+                    <br />
+                    {brainstormMode === "debate" ? "끝나면 쟁점만 골라요." : "끝나면 두 안을 골라요."}
+                </p>
             ) : null}
         </>
     );

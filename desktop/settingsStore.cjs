@@ -65,7 +65,8 @@ const OVERRIDABLE_KEYS = [
     "qaOnFail",
     "securityOnFail",
     "brainstorm",
-    "crossReview"
+    "crossReview",
+    "debate"
 ];
 const SCHEDULES_KEY = "schedules";
 // 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
@@ -108,6 +109,7 @@ const DEFAULT_SETTINGS = {
     // 여러 AI 브레인스토밍을 켠 단계(Claude와 함께 Codex도 안을 낸다)와 서로 검토하기. 기본은 Claude만이다.
     brainstorm: [],
     crossReview: false,
+    debate: [],
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -160,6 +162,8 @@ const SETTING_VALIDATORS = {
     securityOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
     brainstorm: (value) => isChoiceList(value, BRAINSTORM_PHASES),
     crossReview: (value) => typeof value === "boolean",
+    // 협의로 돌릴 단계. brainstorm에 없는 단계는 엔진 인자를 만들 때 빠진다(engineArgs).
+    debate: (value) => isChoiceList(value, BRAINSTORM_PHASES),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
     claudeDir: (value) => typeof value === "string",

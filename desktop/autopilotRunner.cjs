@@ -27,6 +27,15 @@ const BRAINSTORM_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) (�
 const BRAINSTORM_BLOCKED_PATTERN = /^\[브레인스토밍\] 외부 서비스로 보내기를 허용하지 않아/;
 const BRAINSTORM_STATUSES = { "받는 중": "receiving", 받음: "received", 건너뜀: "skipped" };
 const PROPOSAL_PROVIDERS = ["claude", "codex"];
+// Claude·Codex 협의 줄(엔진 runDebate). 발언은 엔진이 한 줄로 펴서 줄여 쓴다. 실행 화면은 마지막 몇 마디만 보여 준다.
+const DEBATE_START_PATTERN = /^\[협의\] (.+?) 시작 \(최대 (\d+)번\)$/;
+const DEBATE_TURN_PATTERN = /^\[협의\] (Claude|Codex): (.+)$/;
+const DEBATE_END_PATTERN = /^\[협의\] (?:합의했어요|쟁점 (\d+)개를 남기고 끝냈어요)$/;
+const DEBATE_SKIP_PATTERN = /^\[협의\] 건너뜀: (.+)$/;
+const MAX_DEBATE_TURNS = 12;
+const DISPUTE_ID_PATTERN = /^d\d{1,2}$/;
+const MAX_DISPUTES = 10;
+const MAX_DISPUTE_TEXT_LENGTH = 600;
 const DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/;
 const ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
 const ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \(model (\S+), effort (\S+)\))?/;
@@ -62,6 +71,7 @@ const createInitialState = () => {
         mode: "",
         step: null,
         brainstorm: null,
+        debate: null,
         logFile: "",
         reportFile: "",
         work: { toolCalls: 0, filesRead: 0, filesEdited: 0 },
@@ -176,6 +186,44 @@ const applyRound = (state, round, text, isReplay) => {
     state.phase = `${round}회차 ${text}`;
 };
 
+// Claude·Codex 협의의 진행. 시작 줄이 대화를 열고, 발언은 쌓이며, 끝 줄이 합의·쟁점 수를, 건너뜀 줄이 이유를 남긴다. 협의 줄이면 true다.
+const applyDebateLine = (state, line) => {
+    const start = line.match(DEBATE_START_PATTERN);
+
+    if (start) {
+        state.debate = { phaseLabel: start[1], maxTurns: Number(start[2]), status: "running", turns: [], disputes: 0, reason: "" };
+
+        return true;
+    }
+
+    const turn = line.match(DEBATE_TURN_PATTERN);
+
+    if (turn && state.debate) {
+        state.debate.turns = [...state.debate.turns, { provider: turn[1].toLowerCase(), message: turn[2] }].slice(-MAX_DEBATE_TURNS);
+
+        return true;
+    }
+
+    const end = line.match(DEBATE_END_PATTERN);
+
+    if (end && state.debate) {
+        state.debate = { ...state.debate, status: end[1] ? "disputes" : "consensus", disputes: Number(end[1] || 0) };
+
+        return true;
+    }
+
+    const skip = line.match(DEBATE_SKIP_PATTERN);
+
+    // 협의를 시작하기 전에(Codex를 쓸 수 없어서) 건너뛸 수도 있다.
+    if (skip) {
+        state.debate = { ...(state.debate || { phaseLabel: "", maxTurns: 0, turns: [], disputes: 0 }), status: "skipped", reason: skip[1] };
+
+        return true;
+    }
+
+    return false;
+};
+
 // CLI 로그 줄에서 대시보드 상태를 읽는다. 알 수 없는 줄은 무시한다. 이미 쓰인 로그를 다시 읽는 중(isReplay)이면 회차 시각을 알 수 없다.
 const parseLine = (state, line, isReplay = false) => {
     const header = line.match(HEADER_PATTERN);
@@ -214,7 +262,12 @@ const parseLine = (state, line, isReplay = false) => {
     const stepPhase = step && BUILD_PHASES.find((phase) => PHASE_LABELS[phase] === step[1]);
 
     // 신규 개발의 지금 단계. 테스트/QA·보안검토가 개발로 되돌린 횟수는 단계마다 따로 세고 다음 단계 줄에도 이어 둔다.
+    // 새 단계를 시작하면 앞 단계의 협의 대화는 거둔다.
     if (stepPhase) {
+        if (step[2] === "시작") {
+            state.debate = null;
+        }
+
         const retries = { qaRetries: state.step?.qaRetries || 0, securityRetries: state.step?.securityRetries || 0 };
 
         if (step[3] && RETRY_KEYS[stepPhase]) {
@@ -238,6 +291,10 @@ const parseLine = (state, line, isReplay = false) => {
             reason: brainstorm[5] || ""
         };
 
+        return;
+    }
+
+    if (applyDebateLine(state, line)) {
         return;
     }
 
@@ -342,21 +399,47 @@ const parseProposals = (proposals) => {
     return isValid ? { phase: proposals.phase, candidates: [...candidates], picked: proposals.picked } : false;
 };
 
-// 엔진 status 출력의 신규 개발 단계 상태({phase, awaiting, qaRetries, securityRetries, proposals}). 신규 개발을 한 적 없거나 형식이 맞지 않으면 null이다.
+const getDisputeText = (value) => {
+    return typeof value === "string" ? value.slice(0, MAX_DISPUTE_TEXT_LENGTH) : "";
+};
+
+// 협의를 마친 단계의 쟁점과 고른 쪽(엔진 debateUtil.isDebateState). 없으면 null이고 형식이 틀리면 false다.
+const parseDebate = (debate) => {
+    if (debate === undefined || debate === null) {
+        return null;
+    }
+
+    const disputes = Array.isArray(debate?.disputes)
+        ? debate.disputes.map((dispute) => ({ id: dispute?.id, title: getDisputeText(dispute?.title), claude: getDisputeText(dispute?.claude), codex: getDisputeText(dispute?.codex) }))
+        : null;
+    const resolved = debate?.resolved;
+    const isValid =
+        ["plan", "design"].includes(debate?.phase) &&
+        disputes !== null &&
+        disputes.length <= MAX_DISPUTES &&
+        disputes.every((dispute) => DISPUTE_ID_PATTERN.test(dispute.id) && dispute.title && dispute.claude && dispute.codex) &&
+        (resolved === null || (typeof resolved === "object" && disputes.every((dispute) => PROPOSAL_PROVIDERS.includes(resolved[dispute.id]))));
+
+    return isValid ? { phase: debate.phase, disputes: disputes, resolved: resolved === null ? null : Object.fromEntries(disputes.map((dispute) => [dispute.id, resolved[dispute.id]])) } : false;
+};
+
+// 엔진 status 출력의 신규 개발 단계 상태({phase, awaiting, qaRetries, securityRetries, proposals, debate}). 신규 개발을 한 적 없거나 형식이 맞지 않으면 null이다.
 const parseBuildPhase = (stdout) => {
     try {
         const parsed = JSON.parse(stdout.trim().split(/\r?\n/).at(-1))?.phase;
         // 보안검토가 생기기 전의 엔진은 securityRetries를 보내지 않는다.
         const phase = parsed && { securityRetries: 0, ...parsed };
         const proposals = parseProposals(phase?.proposals);
+        const debate = parseDebate(phase?.debate);
         const isValid =
             [...BUILD_PHASES, "done"].includes(phase?.phase) &&
             (phase.awaiting === null || ["plan", "design"].includes(phase.awaiting)) &&
             isCount(phase.qaRetries) &&
             isCount(phase.securityRetries) &&
-            proposals !== false;
+            proposals !== false &&
+            debate !== false;
 
-        return isValid ? { phase: phase.phase, awaiting: phase.awaiting, qaRetries: phase.qaRetries, securityRetries: phase.securityRetries, proposals: proposals } : null;
+        return isValid ? { phase: phase.phase, awaiting: phase.awaiting, qaRetries: phase.qaRetries, securityRetries: phase.securityRetries, proposals: proposals, debate: debate } : null;
     } catch {
         return null;
     }

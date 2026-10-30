@@ -113,6 +113,129 @@ const getRunTabs = () => [
 const RUN_BUILD = { settings: BUILD.settings, tabs: getRunTabs(), state: buildRunState(), model: { buildPhase: { phase: "build", awaiting: null, qaRetries: 0 } } };
 const NARROW = [820, 700];
 
+// Claude · Codex 협의: 고르는 칸, 실행 중 대화, 합의안과 쟁점 고르기
+const DEBATE_TURNS = [
+    { provider: "claude", message: "Codex 안의 한 화면 예약은 좋아요. 다만 결제를 처음부터 넣으면 범위가 커져서 이번엔 빼는 게 맞다고 봐요." },
+    { provider: "codex", message: "한 화면 예약에 동의해 줘서 고마워요. 노쇼가 많아서 예약금 결제는 처음부터 있어야 원장님이 써요." },
+    { provider: "claude", message: "노쇼 걱정은 맞아요. 결제 대신 전날 확인 문자를 넣으면 범위를 지키면서 노쇼를 줄일 수 있어요." }
+];
+const DEBATE_DOC = {
+    kind: "file",
+    path: "docs/autopilot/proposals/plan-debate.md",
+    isPartial: false,
+    text: [
+        "# 기획 협의 기록",
+        "",
+        "Claude와 Codex가 3번 주고받았어요. 끝까지 맞추지 못한 쟁점이 남았어요.",
+        "",
+        "## 1번째 주고받기 - Claude",
+        "",
+        DEBATE_TURNS[0].message,
+        "",
+        "- 동의: 한 화면 예약: 손님이 거치는 단계가 줄어요",
+        "- 반대: 결제를 처음부터 넣기 (이유: 심사 · 수수료로 일정이 길어져요)",
+        "",
+        "## 1번째 주고받기 - Codex",
+        "",
+        DEBATE_TURNS[1].message,
+        "",
+        "## 2번째 주고받기 - Claude",
+        "",
+        DEBATE_TURNS[2].message,
+        "",
+        "- 바꾼 점: 전날 확인 문자를 기능에 더해요",
+        "",
+        "## 2번째 주고받기 - Codex",
+        "",
+        "문자는 좋아요. 그래도 결제는 남겨 두는 게 맞다고 봐요. 화면은 4개로 줄이는 데 합의해요."
+    ].join("\n")
+};
+const DISPUTES = [
+    {
+        id: "d1",
+        title: "예약금 결제",
+        claude: "이번엔 빼고 전날 확인 문자로 노쇼를 줄여요. 결제 연동은 심사 · 수수료 때문에 일정이 길어져요.",
+        codex: "예약금 결제를 처음부터 넣어요. 노쇼가 원장님의 가장 큰 고민이라 문자만으로는 부족해요."
+    },
+    {
+        id: "d2",
+        title: "디자이너와 시간 중 먼저 고를 것",
+        claude: "디자이너를 먼저 고르게 해요. 단골은 디자이너가 정해져 있어요.",
+        codex: "시간을 먼저 고르고 그 시간에 되는 디자이너를 보여 줘요. 처음 온 손님이 더 빨리 예약해요."
+    }
+];
+const DEBATE_SCENES = [
+    {
+        name: "ready-build-debate",
+        init: { ...BUILD, settings: { ...BUILD.settings, brainstorm: ["plan", "design"], debate: ["plan"], allow: ["deps", "large", "send"] } },
+        run: async (t) => {
+            await t.shot("ready");
+            await t.shot("steps", "#build-steps");
+        }
+    },
+    {
+        name: "run-build-debate",
+        init: {
+            ...RUN_BUILD,
+            state: buildRunState({
+                step: { phase: "plan", status: "running", qaRetries: 0 },
+                rounds: [round(1, { commits: [commit("5d0c2aa", 182, "[ap] 기획서 초안")] })],
+                round: 1,
+                phase: "1회차 완료",
+                debate: { phaseLabel: "기획", maxTurns: 3, status: "running", turns: DEBATE_TURNS, disputes: 0, reason: "" }
+            }),
+            model: { buildPhase: { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null } }
+        },
+        run: async (t) => {
+            await t.log([
+                "[앱] 엔진을 시작했어요",
+                "[단계] 기획 시작",
+                "10:00:09 기획서의 기능 목록을 다 썼어요.",
+                "[협의] 기획 시작 (최대 3번)",
+                ...DEBATE_TURNS.map((turn) => `[협의] ${turn.provider === "claude" ? "Claude" : "Codex"}: ${turn.message}`)
+            ]);
+            await t.shot("run");
+        }
+    },
+    {
+        name: "approval-plan-debate",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: { phase: "plan", disputes: DISPUTES, resolved: null } },
+                phaseDocs: { plan: PLAN_DOC, "plan-debate": DEBATE_DOC }
+            }
+        },
+        run: async (t) => {
+            await t.shot("approval");
+            await t.click('.dispute[data-dispute="d1"] .dispute-option[data-provider="claude"]');
+            await t.click('.dispute[data-dispute="d2"] .dispute-option[data-provider="codex"]');
+            await t.click("#debate-log summary");
+            await t.wait(300);
+            await t.shot("chosen");
+            await t.click("#approval-approve");
+            await t.wait(300);
+            await t.note(
+                "calls",
+                await t.eval("JSON.stringify(window.__calls.filter((call) => ['approvePhase', 'start'].includes(call[0])).map((call) => call.slice(0, call[0] === 'approvePhase' ? 4 : 1)))")
+            );
+        }
+    },
+    {
+        name: "approval-plan-debate-consensus",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: { phase: "plan", disputes: [], resolved: null } },
+                phaseDocs: { plan: PLAN_DOC, "plan-debate": DEBATE_DOC }
+            }
+        },
+        run: async (t) => {
+            await t.shot("approval");
+        }
+    }
+];
+
 // 신규 개발의 실행 중·확인 기다림·마친 화면과 유지 보수 실행 중, 좁은 창
 const BUILD_RUN_SCENES = [
     {
@@ -423,7 +546,8 @@ const SCENES = [
             await t.shot("ready");
         }
     },
-    ...BUILD_RUN_SCENES
+    ...BUILD_RUN_SCENES,
+    ...DEBATE_SCENES
 ];
 
 module.exports = { SCENES };

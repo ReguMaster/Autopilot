@@ -71,7 +71,7 @@ const getEndTimeError = (endTime, now = Date.now()) => {
 };
 
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, brainstorm = [], crossReview = false }) => {
+const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, brainstorm = [], crossReview = false, debate = [] }) => {
     if (mode !== "build") {
         return [];
     }
@@ -99,8 +99,11 @@ const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, se
     }
 
     // 다른 AI에게 프로젝트 내용을 보내므로 보내기를 허용했을 때만 넘긴다. 제공자는 엔진 기본값(codex)이다.
+    // 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
     if (brainstorm.length && allow.includes("send")) {
-        args.push("--brainstorm", brainstorm.join(","), ...(crossReview ? ["--cross-review"] : []));
+        const hasCompare = brainstorm.some((phase) => !debate.includes(phase));
+
+        args.push("--brainstorm", brainstorm.map((phase) => (debate.includes(phase) ? `${phase}:debate` : phase)).join(","), ...(crossReview && hasCompare ? ["--cross-review"] : []));
     }
 
     return args;

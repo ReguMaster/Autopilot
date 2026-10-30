@@ -255,11 +255,16 @@ const api = {
     kill: respond("kill", async () => ok({})),
     resetProgress: respond("resetProgress", async () => ok({ isReset: true })),
     getPhase: respond("getPhase", async () => ok({ phase: model.buildPhase ?? null })),
-    // 여러 AI가 안을 낸 단계면 고른 안(pick)을 남긴다.
-    approvePhase: respond("approvePhase", async (projectDir, pick) =>
+    // 여러 AI가 안을 낸 단계면 고른 안(pick)을, 협의한 단계면 쟁점마다 고른 쪽(resolutions)을 남긴다.
+    approvePhase: respond("approvePhase", async (projectDir, pick, resolutions) =>
         ok({
             phase: model.buildPhase
-                ? { ...model.buildPhase, awaiting: null, proposals: model.buildPhase.proposals && pick ? { ...model.buildPhase.proposals, picked: pick } : (model.buildPhase.proposals ?? null) }
+                ? {
+                      ...model.buildPhase,
+                      awaiting: null,
+                      proposals: model.buildPhase.proposals && pick ? { ...model.buildPhase.proposals, picked: pick } : (model.buildPhase.proposals ?? null),
+                      debate: model.buildPhase.debate ? { ...model.buildPhase.debate, resolved: resolutions || {} } : null
+                  }
                 : null
         })
     ),

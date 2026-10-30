@@ -871,12 +871,62 @@ const describeBrainstormLine = (text) => {
     return sentences[status];
 };
 
-// 단계 줄과 브레인스토밍 줄을 함께 다룬다(이야기와 지난 실행 대화가 같은 함수를 쓴다).
+// Claude·Codex 협의 줄([협의] …). 발언 줄은 말풍선으로 보여 주고(parseDebateTurn), 나머지는 들려주는 문장으로 바꾼다.
+const DEBATE_TURN_LINE_PATTERN = /^\[협의\] (Claude|Codex): (.+)$/;
+const DEBATE_NOTICES = [
+    [/^\[협의\] (.+?) 시작 \(최대 (\d+)번\)$/, (match) => `Claude와 Codex가 ${match[1]}을 두고 협의를 시작해요. 최대 ${match[2]}번 주고받아요.`],
+    [/^\[협의\] 합의했어요$/, () => "두 AI가 합의했어요."],
+    [/^\[협의\] 쟁점 (\d+)개를 남기고 끝냈어요$/, (match) => `못 맞춘 쟁점 ${match[1]}개를 남기고 협의를 마쳤어요.`],
+    [/^\[협의\] 건너뜀: (.+)$/, (match) => `협의는 건너뛸게요. (${match[1]})`]
+];
+
+const parseDebateTurn = (text) => {
+    const turn = text.match(DEBATE_TURN_LINE_PATTERN);
+
+    return turn ? { provider: turn[1].toLowerCase(), message: turn[2] } : null;
+};
+
+const describeDebateLine = (text) => {
+    for (const [pattern, describe] of DEBATE_NOTICES) {
+        const match = text.match(pattern);
+
+        if (match) {
+            return describe(match);
+        }
+    }
+
+    return "";
+};
+
+// 엔진이 쓴 협의 기록(proposals/<단계>-debate.md, 엔진 debateUtil.formatTranscript)을 말풍선으로 되읽는다. 발언마다 동의 · 반대 · 바꾼 점은 notes다.
+const DEBATE_HEADING_PATTERN = /^## \d+번째 주고받기 - (Claude|Codex)$/;
+const MAX_TRANSCRIPT_TURNS = 20;
+
+const parseDebateTranscript = (text) => {
+    const turns = [];
+
+    for (const line of String(text || "").split(/\r?\n/)) {
+        const heading = line.trim().match(DEBATE_HEADING_PATTERN);
+        const turn = turns.at(-1);
+
+        if (heading) {
+            turns.push({ provider: heading[1].toLowerCase(), message: "", notes: [] });
+        } else if (turn && line.startsWith("- ")) {
+            turn.notes.push(line.slice(2).trim());
+        } else if (turn && !turn.message && line.trim()) {
+            turn.message = line.trim();
+        }
+    }
+
+    return turns.filter((turn) => turn.message).slice(0, MAX_TRANSCRIPT_TURNS);
+};
+
+// 단계 줄과 브레인스토밍 · 협의 줄을 함께 다룬다(이야기와 지난 실행 대화가 같은 함수를 쓴다).
 const describeStepLine = (text) => {
     const step = text.match(STEP_LINE_PATTERN);
 
     if (!step) {
-        return describeBrainstormLine(text);
+        return describeBrainstormLine(text) || describeDebateLine(text);
     }
 
     const [, label, status, retry, maxRetry] = step;
@@ -914,6 +964,24 @@ const applyStoryEntry = (story, { stream, text }) => {
     }
 
     if (stream !== "out") {
+        return;
+    }
+
+    const debateTurn = parseDebateTurn(text);
+
+    // 협의 발언은 실행 화면의 대화가 보여 주므로 이야기에는 누구 차례인지 한 문장만 두고 바꿔 간다.
+    if (debateTurn) {
+        const sentence = debateTurn.provider === "claude" ? "Codex가 답하고 있어요." : "Codex가 답했어요.";
+        const lastItem = story.items.at(-1);
+
+        if (lastItem?.isDebate) {
+            Object.assign(lastItem, { text: sentence, id: story.nextId++ });
+        } else {
+            pushStoryItem(story, { tools: [], text: sentence, isPhrase: false, isDebate: true, time: "" });
+        }
+
+        story.lastType = "";
+
         return;
     }
 
@@ -1134,8 +1202,9 @@ const buildTranscript = (lines) => {
         const limit = round || commit ? null : text.match(TRANSCRIPT_LIMIT_PATTERN);
         const finish = round || commit || limit ? null : text.match(TRANSCRIPT_FINISH_PATTERN);
         const stepText = round || commit || limit || finish ? "" : describeStepLine(text);
+        const debateTurn = round || commit || limit || finish || stepText ? null : parseDebateTurn(text);
 
-        if (round || commit || limit || finish || stepText) {
+        if (round || commit || limit || finish || stepText || debateTurn) {
             flushTools();
 
             lastType = "";
@@ -1174,6 +1243,13 @@ const buildTranscript = (lines) => {
 
         if (stepText) {
             pushItem({ kind: "notice", text: stepText });
+
+            continue;
+        }
+
+        // 협의 발언은 지난 실행에서도 말풍선으로 보인다.
+        if (debateTurn) {
+            pushItem({ kind: "chat", provider: debateTurn.provider, text: shortenText(debateTurn.message, TRANSCRIPT_TEXT_LENGTH) });
 
             continue;
         }
@@ -1437,6 +1513,8 @@ export {
     BASH_PHRASES,
     describeTool,
     describeStepLine,
+    parseDebateTurn,
+    parseDebateTranscript,
     parsePreviewBlocks,
     splitInlineCode,
     createStory,

@@ -13,6 +13,7 @@ import { useRunStore } from "../../stores/runStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 import { Course } from "../shell/Course.jsx";
+import { DebateChat } from "../debate/DebateChat.jsx";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { StepCard } from "../steps/StepCard.jsx";
 import { ApplyNote } from "./ApplyNote.jsx";
@@ -199,6 +200,7 @@ const RunView = () => {
             <div className="run-grid">
                 <div className="run-main">
                     {screen === "run" ? <Course /> : null}
+                    <DebateChat />
 
                     <div id="story-past" ref={pastRef} className="past">
                         {view.pastItems.map((item) => (

@@ -138,6 +138,10 @@ const checkNormalize = () => {
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "design"], crossReview: true }), { brainstorm: ["plan", "design"], crossReview: true });
     assert.deepEqual(normalizeOverrides({ brainstorm: ["build"], crossReview: "yes" }), {});
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "plan"] }), {});
+    // 협의로 돌릴 단계도 기획 · 디자인만 받는다. 이 키가 없던 옛 설정은 기본값(협의 없음)이다.
+    assert.deepEqual(buildDefaults.debate, []);
+    assert.deepEqual(normalizeOverrides({ brainstorm: ["plan"], debate: ["plan"] }), { brainstorm: ["plan"], debate: ["plan"] });
+    assert.deepEqual(normalizeOverrides({ debate: ["qa"] }), {});
     assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
     assert.equal(normalizeSettings({}).logRetentionDays, 30);
     assert.equal(normalizeSettings({ logRetentionDays: 7 }).logRetentionDays, 7);
