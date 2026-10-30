@@ -292,6 +292,27 @@ const getProposalFormatPrompt = (runState) => {
         : "디자인은 마크다운 문서 하나로 내고 화면마다 ASCII 와이어프레임을 넣는다.";
 };
 
+const ALLOW_SCOPES = { deps: "새 라이브러리(패키지) 추가", large: "새 폴더 구조 · Framework 선택 같은 큰 구조", "external-api": "외부 API 호출" };
+
+// 다른 AI는 정책 문서를 받지 않으므로 기획서의 기술 선택이 기댈 허용 범위를 직접 알린다.
+const getProposalScopePrompt = (runState) => {
+    if (runState.phase !== "plan") {
+        return "";
+    }
+
+    const keys = Object.keys(ALLOW_SCOPES);
+    const allowed = keys.filter((key) => runState.allow.includes(key)).map((key) => ALLOW_SCOPES[key]);
+    const denied = keys.filter((key) => !runState.allow.includes(key)).map((key) => ALLOW_SCOPES[key]);
+
+    return [
+        "기술 선택의 허용 범위(AUTOPILOT_POLICY.md)는 이번 실행에서 이렇다.",
+        allowed.length ? `허용함: ${allowed.join(", ")}.` : "",
+        denied.length ? `허용하지 않음: ${denied.join(", ")}. 허용하지 않은 것은 꼭 필요한 경우가 아니면 기획에 넣지 않는다.` : ""
+    ]
+        .filter(Boolean)
+        .join(" ");
+};
+
 // 다른 AI에게 같은 단계의 독립된 안을 받는다. 읽기 전용으로 돌리므로 파일 대신 최종 답변으로 받는다.
 const getProposalPrompt = (runState) => {
     const brief = getPhaseBrief(runState);
@@ -305,6 +326,7 @@ const getProposalPrompt = (runState) => {
             ? `기획서는 \`docs/autopilot/plan.md\` 대신 사용자가 고른 \`${runState.adoption.file}\`를 따른다.`
             : "",
         `산출물: ${brief.output} 단, 파일에 쓰지 말고 그 문서 전체를 최종 답변으로 출력한다.`,
+        getProposalScopePrompt(runState),
         getProposalFormatPrompt(runState),
         "완료 기준:",
         ...brief.criteria.map((criterion) => `- ${criterion}`),

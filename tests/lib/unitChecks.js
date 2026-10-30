@@ -390,6 +390,12 @@ const checkBrainstormRules = (context) => {
     assert.match(proposalPrompt, /10\) 위험과 가정/);
     assert.match(proposalPrompt, /파일을 만들거나 고치지 말고, 결과는 최종 답변으로만 낸다/);
     assert.match(proposalPrompt, /<TASKS>\n미용실 예약 웹앱\n<\/TASKS>/);
+
+    // 다른 AI는 정책을 받지 않으므로 기획 안에는 이번 실행의 허용 범위를 직접 적는다.
+    assert.match(proposalPrompt, /허용하지 않음: 새 라이브러리\(패키지\) 추가, 새 폴더 구조 · Framework 선택 같은 큰 구조, 외부 API 호출\./);
+    assert.doesNotMatch(proposalPrompt, /허용함:/);
+    assert.match(promptUtil.getProposalPrompt({ ...runState, allow: ["deps", "send"] }), /허용함: 새 라이브러리\(패키지\) 추가\. 허용하지 않음: 새 폴더 구조/);
+    assert.doesNotMatch(promptUtil.getProposalPrompt({ ...runState, phase: "design" }), /허용 범위/);
     assert.match(promptUtil.getProposalPrompt({ ...runState, phase: "design" }), /HTML 문서 하나/);
     assert.match(
         promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", main: "claude", file: "docs/autopilot/proposals/plan-codex.md" } }),
