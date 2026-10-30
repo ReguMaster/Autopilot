@@ -76,7 +76,9 @@ const DocPreview = ({ doc, isLoading = false }) => {
     return (
         <article className="doc-preview" aria-label="산출물 미리보기">
             <p className="doc-path">{doc.kind === "folder" ? `${doc.path}/` : doc.path}</p>
-            {doc.kind === "folder" ? (
+            {doc.kind === "file" && doc.path.endsWith(".html") ? (
+                <p className="doc-empty">HTML 시안이라 여기서는 그리지 않아요. 열기로 브라우저에서 화면을 봐 주세요.</p>
+            ) : doc.kind === "folder" ? (
                 <ul className="doc-files">
                     {doc.entries.map((entry) => (
                         <li key={entry}>

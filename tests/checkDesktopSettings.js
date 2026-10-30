@@ -132,6 +132,12 @@ const checkNormalize = () => {
         "허용되지 않은 신규 개발 값과 날짜를 붙인 종료 시각은 버린다"
     );
     assert.deepEqual(normalizeOverrides({ mode: "build", gates: ["design"], securityOnFail: "stop" }), { mode: "build", gates: ["design"], securityOnFail: "stop" });
+
+    // 여러 AI 브레인스토밍: 기본은 Claude만이고, 기획 · 디자인이 아닌 단계나 겹친 값은 버린다.
+    assert.deepEqual([buildDefaults.brainstorm, buildDefaults.crossReview], [[], false]);
+    assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "design"], crossReview: true }), { brainstorm: ["plan", "design"], crossReview: true });
+    assert.deepEqual(normalizeOverrides({ brainstorm: ["build"], crossReview: "yes" }), {});
+    assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "plan"] }), {});
     assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
     assert.equal(normalizeSettings({}).logRetentionDays, 30);
     assert.equal(normalizeSettings({ logRetentionDays: 7 }).logRetentionDays, 7);

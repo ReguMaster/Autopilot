@@ -24,6 +24,10 @@ const DEFAULT_DESIGN_FORMAT = "html";
 const ON_FAIL_CHOICES = ["stop", "retry:1", "retry:2", "retry:3", "retry:4", "retry:5"];
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
+// 여러 AI 브레인스토밍. Claude와 함께 안을 내는 제공자(엔진 config.js의 BRAINSTORM_PHASES·BRAINSTORM_PROVIDERS·PROVIDER_LABELS).
+const BRAINSTORM_PHASES = ["plan", "design"];
+const BRAINSTORM_PROVIDERS = ["codex"];
+const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 
 const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·Effort를 바꿀 수 없어요";
 
@@ -56,6 +60,9 @@ export {
     ON_FAIL_CHOICES,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PHASES,
+    BRAINSTORM_PROVIDERS,
+    PROVIDER_LABELS,
     OPTIONS_LOCKED_TITLE,
     MAIN_ACTIONS
 };

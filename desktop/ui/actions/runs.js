@@ -33,6 +33,13 @@ const loadBuildPhase = async () => {
     }
 };
 
+// 단계 카드가 Codex를 고를 수 있는지 보여주도록 메인에 묻는다(메인이 잠시 기억한다).
+const loadProviders = async () => {
+    const result = await window.autopilot.getProviders();
+
+    useRunsStore.setState({ providers: result.status === STATUS_OK ? result.data : null });
+};
+
 // 목록을 읽지 못해도 시작 화면은 그대로 쓸 수 있어야 하므로 실패하면 조용히 비운다. 시작·탭 전환·실행 종료 뒤에 불려 단계 상태도 함께 읽는다.
 const loadRecentRuns = async () => {
     const token = ++recentToken;
@@ -126,4 +133,4 @@ const deleteArchiveRun = async () => {
     setNote("기록을 지웠어요.");
 };
 
-export { loadStreakDays, loadBuildPhase, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };
+export { loadStreakDays, loadBuildPhase, loadProviders, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };

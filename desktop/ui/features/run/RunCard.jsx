@@ -77,13 +77,32 @@ const CommitList = ({ rounds }) => {
     );
 };
 
+const BRAINSTORM_NOTES = { receiving: "받는 중", received: "받음", skipped: "건너뜀" };
+
+// 다른 AI(지금은 Codex)의 안 · 검토를 받는 상태. 엔진 로그의 마지막 브레인스토밍 줄을 따른다.
+const BrainstormState = ({ brainstorm }) => {
+    const isBlocked = brainstorm.status === "blocked";
+
+    return (
+        <section className="card-section" aria-label="다른 AI">
+            <h3>다른 AI</h3>
+            <p id="card-ai" className="card-ai" data-status={brainstorm.status} title={brainstorm.reason || undefined}>
+                <b>{isBlocked ? "보내기가 꺼져 있어 Claude만 써요" : `${brainstorm.provider} ${brainstorm.phaseLabel} ${brainstorm.kind === "review" ? "검토" : "안"}`}</b>
+                {isBlocked ? null : <span>{BRAINSTORM_NOTES[brainstorm.status]}</span>}
+            </p>
+            {brainstorm.status === "skipped" && brainstorm.reason ? <p className="card-empty">{brainstorm.reason}</p> : null}
+        </section>
+    );
+};
+
 // 실행 중 오른쪽 카드: 신규 개발은 단계 문서, 유지 보수는 회차 목록, 그 아래에 남긴 커밋과 한 일의 숫자를 둔다.
 const RunCard = () => {
-    const { mode, rounds, step } = useRunStore(useShallow((store) => ({ mode: store.state.mode, rounds: store.state.rounds, step: store.state.step })));
+    const { mode, rounds, step, brainstorm } = useRunStore(useShallow((store) => ({ mode: store.state.mode, rounds: store.state.rounds, step: store.state.step, brainstorm: store.state.brainstorm })));
 
     return (
         <aside id="run-card" className="run-card" aria-label="이번 실행">
             {mode === "build" ? <PhaseDocs step={step} /> : <RoundList rounds={rounds} />}
+            {mode === "build" && brainstorm ? <BrainstormState brainstorm={brainstorm} /> : null}
             <CommitList rounds={rounds} />
             <Work />
         </aside>

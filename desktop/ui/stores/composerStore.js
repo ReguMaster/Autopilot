@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { getEndTimeAfter, getModelFamily, shiftEndTime } from "../../viewFormat.js";
 import {
     ALLOW_KEYS,
+    BRAINSTORM_PHASES,
     DEFAULT_ALLOW,
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_EFFORT_LEVEL,
@@ -33,7 +34,9 @@ const useComposerStore = create(() => ({
     allow: DEFAULT_ALLOW,
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
-    securityOnFail: DEFAULT_SECURITY_ON_FAIL
+    securityOnFail: DEFAULT_SECURITY_ON_FAIL,
+    brainstorm: [],
+    crossReview: false
 }));
 
 // 체크를 바꾼 목록. 순서는 고를 수 있는 값의 순서로 맞춰 저장 값이 흔들리지 않게 한다.
@@ -94,13 +97,13 @@ const handleOptionChange = () => {
     }
 };
 
-const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort", "mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail"];
+const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort", "mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview"];
 
 // 시작·예약 저장 때 엔진에 넘길 작업 모드와 신규 개발 설정
 const getModeOptions = () => {
-    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail } = useComposerStore.getState();
+    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, brainstorm, crossReview } = useComposerStore.getState();
 
-    return { mode: mode, gates: gates, allow: allow, designFormat: designFormat, qaOnFail: qaOnFail, securityOnFail: securityOnFail };
+    return { mode: mode, gates: gates, allow: allow, designFormat: designFormat, qaOnFail: qaOnFail, securityOnFail: securityOnFail, brainstorm: brainstorm, crossReview: crossReview };
 };
 
 // 저장된 설정으로 컴포저의 값을 채운다. keys를 주면 그 키만 바꿔, 설정 패널에서 한 값을 바꿨다고 쓰던 작업 문구까지 되돌리지 않는다.
@@ -136,7 +139,31 @@ const composer = {
     setEndTime: (endTime) => useComposerStore.setState({ endTime: endTime }),
     setMode: (mode) => useComposerStore.setState({ mode: mode }),
     toggleGate: (phase) => useComposerStore.setState((current) => ({ gates: toggleChoice(current.gates, GATE_PHASES, phase) })),
-    toggleAllow: (key) => useComposerStore.setState((current) => ({ allow: toggleChoice(current.allow, ALLOW_KEYS, key) })),
+    // Codex는 프로젝트 내용을 외부로 보내므로 보내기를 끄면 브레인스토밍도 Claude만으로 돌린다.
+    toggleAllow: (key) =>
+        useComposerStore.setState((current) => {
+            const allow = toggleChoice(current.allow, ALLOW_KEYS, key);
+
+            return allow.includes("send") ? { allow: allow } : { allow: allow, brainstorm: [], crossReview: false };
+        }),
+    // 단계에 Codex를 켜면 보내기도 함께 켠다(단계 칸이 그 사실을 알린다). 모두 끄면 교차검토도 끈다.
+    toggleBrainstorm: (phase) =>
+        useComposerStore.setState((current) => {
+            const brainstorm = toggleChoice(current.brainstorm, BRAINSTORM_PHASES, phase);
+
+            return {
+                brainstorm: brainstorm,
+                allow: brainstorm.length
+                    ? toggleChoice(
+                          current.allow.filter((key) => key !== "send"),
+                          ALLOW_KEYS,
+                          "send"
+                      )
+                    : current.allow,
+                crossReview: brainstorm.length ? current.crossReview : false
+            };
+        }),
+    setCrossReview: (isOn) => useComposerStore.setState({ crossReview: isOn }),
     setDesignFormat: (designFormat) => useComposerStore.setState({ designFormat: designFormat }),
     setQaOnFail: (qaOnFail) => useComposerStore.setState({ qaOnFail: qaOnFail }),
     setSecurityOnFail: (securityOnFail) => useComposerStore.setState({ securityOnFail: securityOnFail }),

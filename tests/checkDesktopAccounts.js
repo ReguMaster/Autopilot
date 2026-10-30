@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { createAccountStore, normalizeAccounts, sanitizeLabel, resolveBaseDir, getHomeConfigDir, DEFAULT_ACCOUNT_ID, MAX_ACCOUNTS } = require("../desktop/accountStore.cjs");
-const { getAuthStatus, startLogin, isLoginUrl, askClaude } = require("../desktop/claudeCli.cjs");
+const { getAuthStatus, startLogin, isLoginUrl, askClaude, getCodexStatus } = require("../desktop/claudeCli.cjs");
 const { applyLoginShellPath, parseShellPath, mergePath, runLoginShell } = require("../desktop/loginShellPath.cjs");
 const { readKeychainOAuth, getServiceNames, decodeSecret } = require("../desktop/keychainCredentials.cjs");
 
@@ -218,6 +218,19 @@ const createLoginRun = (configDir, fake) => {
     );
 
     return { events: events, session: session };
+};
+
+// 여러 AI 브레인스토밍에 쓸 Codex: PATH에 없으면 설치 안내, `codex login status`가 실패하면 로그인 안내다.
+const checkCodexStatus = async (testDir) => {
+    const fakeFile = path.join(testDir, "fakeCodex.cjs");
+
+    fs.writeFileSync(fakeFile, 'process.exit(process.argv.slice(2).join(" ") === "login status" && process.env.AP_CODEX_LOGIN !== "0" ? 0 : 1);');
+
+    const fake = { command: process.execPath, prefixArgs: [fakeFile] };
+
+    assert.deepEqual(await getCodexStatus(null, { PATH: path.join(testDir, "no-codex-here") }), { available: false, reason: "Codex가 설치돼 있지 않아요" });
+    assert.deepEqual(await getCodexStatus(fake, process.env), { available: true, reason: "" });
+    assert.deepEqual(await getCodexStatus(fake, { ...process.env, AP_CODEX_LOGIN: "0" }), { available: false, reason: "Codex 로그인이 필요해요" });
 };
 
 const checkClaudeCli = async (testDir) => {
@@ -510,6 +523,7 @@ const runChecks = async () => {
 
         await checkClaudeCli(testDir);
         await checkAskClaude(testDir);
+        await checkCodexStatus(testDir);
         await checkLoginShellPath(testDir);
         await checkKeychainCredentials(testDir);
 

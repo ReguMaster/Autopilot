@@ -19,7 +19,8 @@ const {
     DEFAULT_DESIGN_FORMAT,
     ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
-    DEFAULT_SECURITY_ON_FAIL
+    DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PHASES
 } = require("./engineArgs.cjs");
 
 // 저장 형식이 바뀔 때마다 올린다. 버전 키가 없는 옛 파일은 0으로 본다.
@@ -62,7 +63,9 @@ const OVERRIDABLE_KEYS = [
     "allow",
     "designFormat",
     "qaOnFail",
-    "securityOnFail"
+    "securityOnFail",
+    "brainstorm",
+    "crossReview"
 ];
 const SCHEDULES_KEY = "schedules";
 // 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
@@ -102,6 +105,9 @@ const DEFAULT_SETTINGS = {
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
+    // 여러 AI 브레인스토밍을 켠 단계(Claude와 함께 Codex도 안을 낸다)와 서로 검토하기. 기본은 Claude만이다.
+    brainstorm: [],
+    crossReview: false,
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -152,6 +158,8 @@ const SETTING_VALIDATORS = {
     designFormat: (value) => DESIGN_FORMATS.includes(value),
     qaOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
     securityOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
+    brainstorm: (value) => isChoiceList(value, BRAINSTORM_PHASES),
+    crossReview: (value) => typeof value === "boolean",
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
     claudeDir: (value) => typeof value === "string",

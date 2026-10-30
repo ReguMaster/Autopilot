@@ -422,8 +422,31 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.deepEqual(useComposerStore.getState().allow, ["large", "send"]);
     composer.setMode("build");
     composer.setSecurityOnFail("stop");
-    assert.deepEqual(composer.getModeOptions(), { mode: "build", gates: ["plan", "design"], allow: ["large", "send"], designFormat: "html", qaOnFail: "retry:3", securityOnFail: "stop" });
+    assert.deepEqual(composer.getModeOptions(), {
+        mode: "build",
+        gates: ["plan", "design"],
+        allow: ["large", "send"],
+        designFormat: "html",
+        qaOnFail: "retry:3",
+        securityOnFail: "stop",
+        brainstorm: [],
+        crossReview: false
+    });
     composer.setSecurityOnFail("retry:3");
+
+    // 단계에 Codex를 켜면 보내기도 켜지고, 보내기를 끄면 브레인스토밍과 교차검토가 함께 꺼진다.
+    composer.toggleAllow("send");
+    composer.toggleBrainstorm("design");
+    composer.toggleBrainstorm("plan");
+    composer.setCrossReview(true);
+    assert.deepEqual(useComposerStore.getState().brainstorm, ["plan", "design"]);
+    assert.deepEqual(useComposerStore.getState().allow, ["large", "send"]);
+    composer.toggleAllow("send");
+    assert.deepEqual([useComposerStore.getState().brainstorm, useComposerStore.getState().crossReview], [[], false]);
+    composer.toggleBrainstorm("plan");
+    composer.setCrossReview(true);
+    composer.toggleBrainstorm("plan");
+    assert.deepEqual([useComposerStore.getState().brainstorm, useComposerStore.getState().crossReview, useComposerStore.getState().allow], [[], false, ["large", "send"]]);
     composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"] }, ["mode", "gates", "allow"]);
 
     calls.length = 0;

@@ -15,11 +15,11 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
-const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
+const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS, BRAINSTORM_PROVIDERS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
 const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
-const { askClaude } = require("./claudeCli.cjs");
+const { askClaude, getCodexStatus } = require("./claudeCli.cjs");
 const { getDraftPrompt, parseDraft, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
@@ -117,7 +117,7 @@ const isValidRoundOptions = ({ model, effort }) => {
 };
 
 // 작업 모드와 신규 개발 설정. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail"];
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview"];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
@@ -1198,8 +1198,15 @@ const handleGetPhase = async (event, requestedDir) => {
     return { status: STATUS_OK, data: { phase: getProjectError(session.projectDir) ? null : await readBuildPhase(session.projectDir) } };
 };
 
-// 확인을 기다리는 신규 개발 단계를 승인한다. 다음 실행이 다음 단계부터 한다. 실행 중에는 막는다.
-const handleApprovePhase = async (event, requestedDir) => {
+// 여러 AI가 안을 낸 단계에서 고를 수 있는 안. 엔진의 approve --pick 값과 같다.
+const PROPOSAL_PICKS = ["claude", ...BRAINSTORM_PROVIDERS];
+
+// 확인을 기다리는 신규 개발 단계를 승인한다. 다음 실행이 다음 단계부터 한다. 실행 중에는 막는다. pick은 여러 AI가 안을 낸 단계에서 고른 안이다.
+const handleApprovePhase = async (event, requestedDir, pick) => {
+    if (pick !== undefined && pick !== null && !PROPOSAL_PICKS.includes(pick)) {
+        return createFailure("INVALID_PICK", "고를 수 없는 안이에요.");
+    }
+
     const session = sessionPool.get(requestedDir);
 
     if (!session) {
@@ -1218,7 +1225,7 @@ const handleApprovePhase = async (event, requestedDir) => {
     }
 
     return new Promise((resolve) => {
-        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "approve", [], async (error, stdout, stderr) => {
+        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "approve", pick ? ["--pick", pick] : [], async (error, stdout, stderr) => {
             if (error) {
                 resolve(createFailure("APPROVE_FAILED", (stderr || error.message).trim()));
 
@@ -1228,6 +1235,18 @@ const handleApprovePhase = async (event, requestedDir) => {
             resolve({ status: STATUS_OK, data: { phase: await readBuildPhase(projectDir) } });
         });
     });
+};
+
+// 다른 AI 제공자(지금은 Codex)를 쓸 수 있는지. 단계 카드가 열릴 때마다 묻지 않도록 잠시 기억한다.
+const PROVIDER_STATUS_TTL_MS = 60000;
+let providerStatus = { at: 0, data: null };
+
+const handleGetProviders = async () => {
+    if (!providerStatus.data || Date.now() - providerStatus.at > PROVIDER_STATUS_TTL_MS) {
+        providerStatus = { at: Date.now(), data: { codex: await getCodexStatus() } };
+    }
+
+    return { status: STATUS_OK, data: providerStatus.data };
 };
 
 // 확인을 기다리는 단계의 산출물 미리보기. 렌더러는 단계 이름만 보내고 경로는 projectFiles가 정해진 위치로만 정한다.
@@ -1500,6 +1519,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
     ipcMain.handle("autopilot:get-phase", handleGetPhase);
     ipcMain.handle("autopilot:approve-phase", handleApprovePhase);
+    ipcMain.handle("autopilot:get-providers", handleGetProviders);
     ipcMain.handle("autopilot:init-git-repo", handleInitGitRepo);
     ipcMain.handle("autopilot:get-create-info", handleGetCreateInfo);
     ipcMain.handle("autopilot:pick-create-dir", handlePickCreateDir);

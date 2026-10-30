@@ -24,7 +24,10 @@ import {
     DEFAULT_DESIGN_FORMAT as UI_DEFAULT_DESIGN_FORMAT,
     ON_FAIL_CHOICES as UI_ON_FAIL_CHOICES,
     DEFAULT_QA_ON_FAIL as UI_DEFAULT_QA_ON_FAIL,
-    DEFAULT_SECURITY_ON_FAIL as UI_DEFAULT_SECURITY_ON_FAIL
+    DEFAULT_SECURITY_ON_FAIL as UI_DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PHASES as UI_BRAINSTORM_PHASES,
+    BRAINSTORM_PROVIDERS as UI_BRAINSTORM_PROVIDERS,
+    PROVIDER_LABELS as UI_PROVIDER_LABELS
 } from "../desktop/ui/lib/constants.js";
 import {
     MODEL_CHOICES as ENGINE_MODELS,
@@ -47,7 +50,10 @@ import {
     DEFAULT_DESIGN_FORMAT as ENGINE_DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL as ENGINE_DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL as ENGINE_DEFAULT_SECURITY_ON_FAIL,
-    MAX_RUN_DAYS as ENGINE_MAX_RUN_DAYS
+    MAX_RUN_DAYS as ENGINE_MAX_RUN_DAYS,
+    BRAINSTORM_PHASES as ENGINE_BRAINSTORM_PHASES,
+    BRAINSTORM_PROVIDERS as ENGINE_BRAINSTORM_PROVIDERS,
+    PROVIDER_LABELS as ENGINE_PROVIDER_LABELS
 } from "../autopilot/src/utils/config.js";
 import engineUtil from "../autopilot/src/utils/util.js";
 import phaseUtil from "../autopilot/src/utils/phaseUtil.js";
@@ -88,6 +94,8 @@ const {
     ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PHASES,
+    BRAINSTORM_PROVIDERS,
     MAX_RUN_DAYS
 } = require("../desktop/engineArgs.cjs");
 
@@ -997,6 +1005,19 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], designFormat: "figma", qaOnFail: "stop" }).slice(-6), ["--mode", "build", "--design-format", "figma", "--qa-on-fail", "stop"]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], securityOnFail: "retry:1" }).slice(-4), ["--mode", "build", "--security-on-fail", "retry:1"]);
 
+    // 여러 AI 브레인스토밍은 보내기를 허용했을 때만 넘긴다(Codex에 프로젝트 내용이 나간다). 제공자는 엔진 기본값이라 생략한다.
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], crossReview: true }).slice(-6), [
+        "build",
+        "--allow",
+        "send",
+        "--brainstorm",
+        "plan,design",
+        "--cross-review"
+    ]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["design"] }).slice(-2), ["--brainstorm", "design"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], brainstorm: ["plan"], crossReview: true }).slice(-2), ["--mode", "build"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain", allow: ["send"], brainstorm: ["plan"] }), getCliArgs(base));
+
     // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
     const now = new Date(2026, 9, 30, 22, 10).getTime();
 
@@ -1039,16 +1060,46 @@ const checkBuildLogs = () => {
 
     assert.deepEqual(
         parseBuildPhase('{"running":false,"phase":{"phase":"design","awaiting":"plan","qaRetries":0}}\n'),
-        { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0 },
+        { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null },
         "옛 엔진은 securityRetries가 없다"
     );
     assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"done","awaiting":null,"qaRetries":2,"securityRetries":1}}'), {
         phase: "done",
         awaiting: null,
         qaRetries: 2,
-        securityRetries: 1
+        securityRetries: 1,
+        proposals: null
     });
     assert.equal(parseBuildPhase('{"running":false,"phase":{"phase":"security","awaiting":null,"qaRetries":0,"securityRetries":0}}').phase, "security");
+
+    // 여러 AI가 안을 낸 단계의 후보와 고른 안. 형식이 틀리면 단계 상태 전체를 믿지 않는다.
+    const proposals = { phase: "plan", candidates: ["claude", "codex"], picked: null };
+
+    assert.deepEqual(parseBuildPhase(JSON.stringify({ phase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: proposals } })).proposals, proposals);
+    assert.equal(parseBuildPhase('{"phase":{"phase":"design","awaiting":null,"qaRetries":0,"securityRetries":0}}').proposals, null);
+
+    for (const badProposals of [
+        { ...proposals, picked: "gemini" },
+        { ...proposals, candidates: ["claude"] },
+        { ...proposals, phase: "qa" },
+        { ...proposals, candidates: "claude,codex" }
+    ]) {
+        assert.equal(parseBuildPhase(JSON.stringify({ phase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: badProposals } })), null, JSON.stringify(badProposals));
+    }
+
+    // 브레인스토밍 줄은 다른 AI의 안 · 검토를 받는 마지막 소식으로 읽는다.
+    for (const [line, expected] of [
+        ["[브레인스토밍] Codex 기획 안 받는 중", { provider: "Codex", phaseLabel: "기획", kind: "proposal", status: "receiving", reason: "" }],
+        ["[브레인스토밍] Codex 디자인 검토 건너뜀: usage limit reached", { provider: "Codex", phaseLabel: "디자인", kind: "review", status: "skipped", reason: "usage limit reached" }],
+        ["[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.", { provider: "", phaseLabel: "", kind: "proposal", status: "blocked", reason: "" }]
+    ]) {
+        parseLine(state, line);
+        assert.deepEqual(state.brainstorm, expected, line);
+    }
+
+    parseLine(state, "    [브레인스토밍] Codex 기획 안 받음");
+    assert.equal(state.brainstorm.status, "blocked", "들여 쓴 위조 줄은 읽지 않는다");
+    assert.equal(createInitialState().brainstorm, null);
 
     for (const stdout of [
         '{"running":false}',
@@ -1278,7 +1329,17 @@ const checkPhaseDocs = (testDir) => {
     fs.writeFileSync(path.join(docsDir, "security.md"), "| 심각도 | 위치 |\n");
     assert.deepEqual(readPhaseDoc(projectDir, "security"), { kind: "file", path: "docs/autopilot/security.md", text: "| 심각도 | 위치 |\n", isPartial: false });
 
-    for (const phase of ["build", "../plan", "constructor", "__proto__", ""]) {
+    // 여러 AI 브레인스토밍: 다른 AI의 안(디자인은 HTML일 수 있다)과 검토는 정해진 이름으로만 읽는다.
+    fs.mkdirSync(path.join(docsDir, "proposals"), { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "proposals", "plan-codex.md"), "# Codex 기획안\n");
+    fs.writeFileSync(path.join(docsDir, "proposals", "design-codex.html"), "<h1>x</h1>");
+    fs.writeFileSync(path.join(docsDir, "proposals", "plan-review-claude.md"), "- 빈자리\n");
+    assert.equal(readPhaseDoc(projectDir, "plan-codex").path, "docs/autopilot/proposals/plan-codex.md");
+    assert.equal(readPhaseDoc(projectDir, "design-codex").path, "docs/autopilot/proposals/design-codex.html");
+    assert.equal(readPhaseDoc(projectDir, "plan-review-claude").text, "- 빈자리\n");
+    assert.equal(readPhaseDoc(projectDir, "plan-review-codex"), null);
+
+    for (const phase of ["build", "../plan", "constructor", "__proto__", "", "plan-gemini", "proposals/plan-codex", "qa-codex"]) {
         assert.equal(readPhaseDoc(projectDir, phase), null, phase);
     }
 
@@ -1341,7 +1402,10 @@ const checkChoiceSync = () => {
         [DEFAULT_QA_ON_FAIL, UI_DEFAULT_QA_ON_FAIL, ENGINE_DEFAULT_QA_ON_FAIL],
         [DEFAULT_SECURITY_ON_FAIL, UI_DEFAULT_SECURITY_ON_FAIL, ENGINE_DEFAULT_SECURITY_ON_FAIL],
         [RUNNER_BUILD_PHASES, UI_BUILD_PHASES, ENGINE_BUILD_PHASES],
-        [RUNNER_PHASE_LABELS, UI_PHASE_LABELS, ENGINE_PHASE_LABELS]
+        [RUNNER_PHASE_LABELS, UI_PHASE_LABELS, ENGINE_PHASE_LABELS],
+        [BRAINSTORM_PHASES, UI_BRAINSTORM_PHASES, ENGINE_BRAINSTORM_PHASES],
+        [BRAINSTORM_PROVIDERS, UI_BRAINSTORM_PROVIDERS, ENGINE_BRAINSTORM_PROVIDERS],
+        [ENGINE_PROVIDER_LABELS, UI_PROVIDER_LABELS, ENGINE_PROVIDER_LABELS]
     ]) {
         assert.deepEqual(appValue, engineValue);
         assert.deepEqual(uiValue, engineValue);

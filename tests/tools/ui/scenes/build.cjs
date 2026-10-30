@@ -45,6 +45,41 @@ const DESIGN_DOC = {
     entries: ["customer-choose.html", "customer-confirm.html", "customer-time.html", "index.html", "owner-day.html", "owner-hours.html", "style.css"]
 };
 
+// 여러 AI 브레인스토밍: Codex가 따로 낸 기획안 · 디자인 안과 서로의 검토
+const CODEX_PLAN_DOC = {
+    kind: "file",
+    path: "docs/autopilot/proposals/plan-codex.md",
+    isPartial: false,
+    text: [
+        "# 미용실 예약 웹앱",
+        "",
+        "1) 한 줄 요약: 손님은 링크 하나로 예약하고 원장은 오늘 예약을 한 화면에서 관리한다.",
+        "",
+        "## 화면 4개",
+        "- 손님: 예약하기(디자이너 · 날짜 · 시간을 한 화면에서), 예약 확인",
+        "- 원장: 오늘 예약, 근무 시간과 휴무",
+        "",
+        "## 기술 선택",
+        "- SvelteKit, SQLite(Drizzle). 서버 하나로 끝낸다(가정)",
+        "",
+        "## 이번에 하지 않는 것",
+        "- 결제, 알림 문자, 여러 매장"
+    ].join("\n")
+};
+const REVIEW_BY_CODEX = {
+    kind: "file",
+    path: "docs/autopilot/proposals/plan-review-codex.md",
+    isPartial: false,
+    text: "- 예약 변경 · 취소 규칙(몇 시간 전까지)이 없어요\n- 디자이너 휴무가 예약 가능 시간 계산에 빠져 있어요"
+};
+const REVIEW_BY_CLAUDE = {
+    kind: "file",
+    path: "docs/autopilot/proposals/plan-review-claude.md",
+    isPartial: false,
+    text: "- 화면을 한 장으로 합쳐 휴대폰에서 길어질 수 있어요\n- 같은 시간 동시 예약을 막는 방법이 없어요"
+};
+const CODEX_DESIGN_DOC = { kind: "file", path: "docs/autopilot/proposals/design-codex.html", isPartial: false, text: "<!doctype html><title>Codex 디자인 안</title><h1>예약하기</h1>" };
+const PLAN_PROPOSALS = { phase: "plan", candidates: ["claude", "codex"], picked: null };
 const commit = (hash, insertions, subject) => ({ hash: hash, insertions: insertions, deletions: 0, subject: subject });
 const BUILD_ROUNDS = [
     round(1, { commits: [commit("e02b5c9", 903, "[ap] Next.js와 SQLite 기본 구조")] }),
@@ -113,6 +148,32 @@ const BUILD_RUN_SCENES = [
         }
     },
     {
+        name: "run-build-brainstorm",
+        init: {
+            ...RUN_BUILD,
+            state: buildRunState({
+                step: { phase: "plan", status: "running", qaRetries: 0 },
+                rounds: [round(1, { endedAt: 0, outcome: "", commits: [] })],
+                round: 1,
+                phase: "1회차 진행 중",
+                brainstorm: { provider: "Codex", phaseLabel: "기획", kind: "proposal", status: "received", reason: "" }
+            }),
+            model: { buildPhase: { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null } }
+        },
+        run: async (t) => {
+            await t.log([
+                "[앱] 엔진을 시작했어요",
+                "[단계] 기획 시작",
+                "[브레인스토밍] Codex 기획 안 받는 중",
+                "[브레인스토밍] Codex 기획 안 받음",
+                "10:00:05   > Read docs/autopilot/brief.md",
+                "10:00:09 기획서의 기능 목록을 쓰고 있어요."
+            ]);
+            await t.shot("run");
+            await t.shot("card", "#run-card");
+        }
+    },
+    {
         name: "run-maintain",
         init: { settings: { projectDir: PROJECT }, state: runningState(), tabs: [{ projectDir: PROJECT, name: "Kirikomodo", status: "running" }] },
         run: async (t) => {
@@ -155,6 +216,41 @@ const BUILD_RUN_SCENES = [
                 gains: []
             }),
             model: { buildPhase: { phase: "build", awaiting: "design", qaRetries: 0 }, phaseDocs: { design: DESIGN_DOC } }
+        },
+        run: async (t) => {
+            await t.shot("approval");
+        }
+    },
+    {
+        name: "approval-plan-pick",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: PLAN_PROPOSALS },
+                phaseDocs: { plan: PLAN_DOC, "plan-codex": CODEX_PLAN_DOC, "plan-review-codex": REVIEW_BY_CODEX, "plan-review-claude": REVIEW_BY_CLAUDE }
+            }
+        },
+        run: async (t) => {
+            await t.shot("approval");
+            await t.click('.proposal[data-provider="codex"] .proposal-review summary');
+            await t.wait(300);
+            await t.shot("review", '.proposal[data-provider="codex"]');
+            await t.click("#approval-pick-codex");
+            await t.wait(300);
+            await t.note(
+                "calls",
+                await t.eval("JSON.stringify(window.__calls.filter((call) => ['approvePhase', 'start'].includes(call[0])).map((call) => call.slice(0, call[0] === 'approvePhase' ? 3 : 1)))")
+            );
+        }
+    },
+    {
+        name: "approval-design-pick",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: { ...PLAN_PROPOSALS, phase: "design" } },
+                phaseDocs: { design: DESIGN_DOC, "design-codex": CODEX_DESIGN_DOC }
+            }
         },
         run: async (t) => {
             await t.shot("approval");
@@ -288,6 +384,29 @@ const SCENES = [
             await t.wait(400);
             await t.shot("ready");
             await t.shot("popover", "#end-time-popover");
+        }
+    },
+    {
+        name: "ready-build-brainstorm",
+        init: { ...BUILD, settings: { ...BUILD.settings, brainstorm: ["plan"], crossReview: true, allow: ["deps", "large", "send"] } },
+        run: async (t) => {
+            await t.shot("ready");
+            await t.shot("steps", "#build-steps");
+            // 디자인 칸에도 Codex를 켜면 두 칸 모두 교차검토가 보인다. 보내기를 끄면 다시 Claude만이다.
+            await t.click('[aria-label="디자인을 누가 쓸까요"]');
+            await t.wait(300);
+            await t.press("Down");
+            await t.press("Return");
+            await t.wait(300);
+            await t.shot("steps-design", "#build-steps");
+            await t.note("modeOptions", await t.eval("JSON.stringify([...document.querySelectorAll('[data-cross-review]')].map((input) => input.dataset.crossReview))"));
+        }
+    },
+    {
+        name: "ready-build-brainstorm-unavailable",
+        init: { ...BUILD, model: { providers: { codex: { available: false, reason: "Codex 로그인이 필요해요" } } } },
+        run: async (t) => {
+            await t.shot("steps", "#build-steps");
         }
     },
     {

@@ -318,6 +318,38 @@ body[data-view="done"] .view-done {
     color: var(--accent-ink);
 }
 
+.card-ai {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0;
+    font-size: var(--text-sm);
+}
+
+.card-ai b {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.card-ai span {
+    flex: none;
+    color: var(--add);
+    font-size: var(--text-xs);
+}
+
+.card-ai[data-status="receiving"] span {
+    color: var(--accent-ink);
+}
+
+.card-ai[data-status="skipped"] span,
+.card-ai[data-status="blocked"] b {
+    color: var(--muted);
+}
+
 .card-rounds li,
 .card-commits li {
     display: flex;
@@ -577,6 +609,119 @@ body[data-view="done"] .view-done {
     line-height: 1.7;
 }
 
+/* 여러 AI가 따로 낸 안을 합치지 않고 나란히 놓는다. 안마다 검토(접힘)와 이 안으로 시작하는 버튼이 붙는다 */
+.approval-compare {
+    display: grid;
+    flex: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    min-height: 0;
+}
+
+.proposal {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+}
+
+.proposal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.proposal-head b {
+    flex: 1;
+    font-weight: 650;
+}
+
+.proposal-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+.proposal-open:hover:not(:disabled) {
+    color: var(--ink);
+}
+
+.proposal-open .icon {
+    width: 12px;
+    height: 12px;
+}
+
+.proposal > .doc-preview {
+    flex: 1;
+}
+
+.proposal-review {
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    font-size: var(--text-sm);
+}
+
+.proposal-review summary {
+    padding: 8px 12px;
+    color: var(--ink-2);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.proposal-review .doc-preview {
+    max-height: 160px;
+    padding: 0 12px 10px;
+    overflow-y: auto;
+    background: none;
+    box-shadow: none;
+}
+
+/* 검토는 짧아서 아래를 흐리게 자르지 않고 칸 안에서 스크롤한다 */
+.proposal-review .doc-preview::after {
+    display: none;
+}
+
+.approval-revise {
+    margin: 12px 0 14px;
+    font-size: var(--text-sm);
+}
+
+.approval-revise summary {
+    width: max-content;
+    color: var(--muted);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.approval-revise-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.approval-revise-row .approval-feedback {
+    flex: 1;
+    margin-top: 0;
+}
+
+.approval-revise-row .approval-feedback textarea {
+    height: 56px;
+}
+
+.approval-revise-row .button {
+    flex: none;
+    height: 40px;
+}
+
 body[data-approval] .fold-tasks,
 body[data-approval] .main-action {
     display: none;
@@ -677,9 +822,15 @@ body[data-approval] .main-action {
         scrollbar-width: thin;
     }
 
-    .approval-grid {
+    .approval-grid,
+    .approval-compare {
         flex: none;
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .approval-revise-row {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .doc-preview {

@@ -50,6 +50,8 @@ const DEFAULT_SETTINGS = {
     designFormat: "html",
     qaOnFail: "retry:3",
     securityOnFail: "retry:3",
+    brainstorm: [],
+    crossReview: false,
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -73,7 +75,9 @@ const OVERRIDABLE_DEFAULTS = {
     allow: DEFAULT_SETTINGS.allow,
     designFormat: DEFAULT_SETTINGS.designFormat,
     qaOnFail: DEFAULT_SETTINGS.qaOnFail,
-    securityOnFail: DEFAULT_SETTINGS.securityOnFail
+    securityOnFail: DEFAULT_SETTINGS.securityOnFail,
+    brainstorm: DEFAULT_SETTINGS.brainstorm,
+    crossReview: DEFAULT_SETTINGS.crossReview
 };
 const DEFAULT_ACCOUNTS = {
     accounts: [{ id: "default", label: "기본 계정", shared: false }],
@@ -251,7 +255,15 @@ const api = {
     kill: respond("kill", async () => ok({})),
     resetProgress: respond("resetProgress", async () => ok({ isReset: true })),
     getPhase: respond("getPhase", async () => ok({ phase: model.buildPhase ?? null })),
-    approvePhase: respond("approvePhase", async () => ok({ phase: model.buildPhase ? { ...model.buildPhase, awaiting: null } : null })),
+    // 여러 AI가 안을 낸 단계면 고른 안(pick)을 남긴다.
+    approvePhase: respond("approvePhase", async (projectDir, pick) =>
+        ok({
+            phase: model.buildPhase
+                ? { ...model.buildPhase, awaiting: null, proposals: model.buildPhase.proposals && pick ? { ...model.buildPhase.proposals, picked: pick } : (model.buildPhase.proposals ?? null) }
+                : null
+        })
+    ),
+    getProviders: respond("getProviders", async () => ok(model.providers ?? { codex: { available: true, reason: "" } })),
     readPhaseDoc: respond("readPhaseDoc", async (phase) => (model.phaseDocs?.[phase] ? ok(model.phaseDocs[phase]) : fail("NO_DOC", "산출물 문서를 아직 찾지 못했어요."))),
     openPhaseDoc: respond("openPhaseDoc", async () => ok({})),
     initGitRepo: respond("initGitRepo", async () => ok(getSettingsView())),

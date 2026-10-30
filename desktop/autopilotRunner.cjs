@@ -22,6 +22,11 @@ const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa:
 const RETRY_KEYS = { qa: "qaRetries", security: "securityRetries" };
 const STEP_PATTERN = /^\[단계\] (.+?) (시작|완료|확인 대기|실패)(?: - 개발로 되돌림 \((\d+)\/\d+\))?$/;
 const STEP_STATUSES = { 시작: "running", 완료: "done", "확인 대기": "awaiting", 실패: "failed" };
+// 여러 AI 브레인스토밍 줄. 제공자 이름은 엔진 config.js의 PROVIDER_LABELS, 후보 키는 PROVIDER_CLAUDE·BRAINSTORM_PROVIDERS와 같다.
+const BRAINSTORM_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) (받는 중|받음|건너뜀)(?:: (.+))?$/;
+const BRAINSTORM_BLOCKED_PATTERN = /^\[브레인스토밍\] 외부 서비스로 보내기를 허용하지 않아/;
+const BRAINSTORM_STATUSES = { "받는 중": "receiving", 받음: "received", 건너뜀: "skipped" };
+const PROPOSAL_PROVIDERS = ["claude", "codex"];
 const DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/;
 const ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
 const ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \(model (\S+), effort (\S+)\))?/;
@@ -56,6 +61,7 @@ const createInitialState = () => {
         policy: "",
         mode: "",
         step: null,
+        brainstorm: null,
         logFile: "",
         reportFile: "",
         work: { toolCalls: 0, filesRead: 0, filesEdited: 0 },
@@ -220,6 +226,27 @@ const parseLine = (state, line, isReplay = false) => {
         return;
     }
 
+    const brainstorm = line.match(BRAINSTORM_PATTERN);
+
+    // 다른 AI의 안 · 검토를 받는 상태. 실행 화면의 카드가 마지막 소식만 보여준다.
+    if (brainstorm) {
+        state.brainstorm = {
+            provider: brainstorm[1],
+            phaseLabel: brainstorm[2],
+            kind: brainstorm[3] === "안" ? "proposal" : "review",
+            status: BRAINSTORM_STATUSES[brainstorm[4]],
+            reason: brainstorm[5] || ""
+        };
+
+        return;
+    }
+
+    if (BRAINSTORM_BLOCKED_PATTERN.test(line)) {
+        state.brainstorm = { provider: "", phaseLabel: "", kind: "proposal", status: "blocked", reason: "" };
+
+        return;
+    }
+
     const finish = line.match(FINISH_PATTERN);
 
     if (finish) {
@@ -298,16 +325,38 @@ const isCount = (value) => {
     return Number.isInteger(value) && value >= 0;
 };
 
-// 엔진 status 출력의 신규 개발 단계 상태({phase, awaiting, qaRetries, securityRetries}). 신규 개발을 한 적 없거나 형식이 맞지 않으면 null이다.
+// 여러 AI가 안을 낸 단계의 후보와 고른 안. 없으면 null이고 형식이 틀리면 false다.
+const parseProposals = (proposals) => {
+    if (proposals === undefined || proposals === null) {
+        return null;
+    }
+
+    const candidates = proposals?.candidates;
+    const isValid =
+        ["plan", "design"].includes(proposals?.phase) &&
+        Array.isArray(candidates) &&
+        candidates.length > 1 &&
+        candidates.every((candidate) => PROPOSAL_PROVIDERS.includes(candidate)) &&
+        (proposals.picked === null || candidates.includes(proposals.picked));
+
+    return isValid ? { phase: proposals.phase, candidates: [...candidates], picked: proposals.picked } : false;
+};
+
+// 엔진 status 출력의 신규 개발 단계 상태({phase, awaiting, qaRetries, securityRetries, proposals}). 신규 개발을 한 적 없거나 형식이 맞지 않으면 null이다.
 const parseBuildPhase = (stdout) => {
     try {
         const parsed = JSON.parse(stdout.trim().split(/\r?\n/).at(-1))?.phase;
         // 보안검토가 생기기 전의 엔진은 securityRetries를 보내지 않는다.
         const phase = parsed && { securityRetries: 0, ...parsed };
+        const proposals = parseProposals(phase?.proposals);
         const isValid =
-            [...BUILD_PHASES, "done"].includes(phase?.phase) && (phase.awaiting === null || ["plan", "design"].includes(phase.awaiting)) && isCount(phase.qaRetries) && isCount(phase.securityRetries);
+            [...BUILD_PHASES, "done"].includes(phase?.phase) &&
+            (phase.awaiting === null || ["plan", "design"].includes(phase.awaiting)) &&
+            isCount(phase.qaRetries) &&
+            isCount(phase.securityRetries) &&
+            proposals !== false;
 
-        return isValid ? { phase: phase.phase, awaiting: phase.awaiting, qaRetries: phase.qaRetries, securityRetries: phase.securityRetries } : null;
+        return isValid ? { phase: phase.phase, awaiting: phase.awaiting, qaRetries: phase.qaRetries, securityRetries: phase.securityRetries, proposals: proposals } : null;
     } catch {
         return null;
     }

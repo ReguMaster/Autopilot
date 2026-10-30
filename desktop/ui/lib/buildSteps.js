@@ -16,6 +16,11 @@ const ON_FAIL_OPTIONS = [
     ...ON_FAIL_CHOICES.filter((value) => value !== "stop").map((value) => ({ value: value, label: `${value.split(":")[1]}번까지` })),
     { value: "stop", label: "되돌리지 않기", hint: "결과만 남기고 멈춰요" }
 ];
+// 기획 · 디자인 칸의 누가 쓸까요. Codex를 고르면 Claude와 따로 안을 내고, 그 단계가 끝나면 두 안을 골라요.
+const BRAINSTORM_OPTIONS = [
+    { value: "claude", label: "Claude만", hint: "Claude 혼자 써요" },
+    { value: "codex", label: "Claude + Codex", hint: "둘이 따로 안을 내고, 끝나면 나란히 보고 골라요" }
+];
 const ON_FAIL_CAPTIONS = { qa: "실패하면 개발로 되돌려요", security: "심각하면 개발로 되돌려요" };
 const ON_FAIL_SUBJECTS = { qa: "실패하면", security: "심각하면" };
 
@@ -179,6 +184,7 @@ export {
     PHASE_DETAILS,
     PHASE_DONE,
     DESIGN_FORMAT_OPTIONS,
+    BRAINSTORM_OPTIONS,
     ON_FAIL_OPTIONS,
     ON_FAIL_CAPTIONS,
     ALLOW_OPTIONS,

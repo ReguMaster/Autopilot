@@ -10,6 +10,7 @@ const AUTH_STATUS_TIMEOUT_MS = 20000;
 const RENEW_TIMEOUT_MS = 60000;
 const ASK_TIMEOUT_MS = 90000;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
+const PROVIDER_STATUS_TIMEOUT_MS = 10000;
 const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
 const LOGIN_URL_HOSTS = ["claude.com", "claude.ai", "anthropic.com"];
 const LOGIN_CODE_PATTERN = /^[\w#.~-]{4,400}$/;
@@ -27,10 +28,10 @@ const isExecutableFile = (file) => {
     }
 };
 
-// claude 실행 파일을 PATH에서 찾는다. 네이티브 설치본(claude.exe)과 npm 설치본(claude.cmd)을 모두 받는다.
-const findClaude = (processEnv = process.env) => {
+// 실행 파일을 PATH에서 찾는다. 네이티브 설치본(.exe)과 npm 설치본(.cmd)을 모두 받는다.
+const findExecutable = (baseName, processEnv = process.env) => {
     const searchPath = Object.entries(processEnv).find(([key]) => key.toUpperCase() === "PATH")?.[1] || "";
-    const names = IS_WINDOWS ? ["claude.exe", "claude.cmd", "claude.bat"] : ["claude"];
+    const names = IS_WINDOWS ? [".exe", ".cmd", ".bat"].map((extension) => baseName + extension) : [baseName];
 
     for (const directory of searchPath.split(path.delimiter).map((entry) => entry.replace(/^"|"$/g, ""))) {
         for (const name of names) {
@@ -43,6 +44,10 @@ const findClaude = (processEnv = process.env) => {
     }
 
     return "";
+};
+
+const findClaude = (processEnv = process.env) => {
+    return findExecutable("claude", processEnv);
 };
 
 // 이 파일이 넘기는 인자는 고정 값과 LOGIN_EMAIL_PATTERN을 통과한 이메일뿐이라 CMD 래퍼도 안전하게 실행할 수 있다. 경로에 CMD가 해석하는 문자가 있으면 거부한다.
@@ -334,4 +339,39 @@ const startLogin = (configDir, handlers, options = {}) => {
     };
 };
 
-module.exports = { findClaude, getAuthStatus, renewCredentials, askClaude, startLogin, isLoginUrl, LOGIN_CODE_PATTERN, LOGIN_EMAIL_PATTERN };
+// 여러 AI 브레인스토밍에 쓸 Codex가 설치 · 로그인돼 있는지(`codex login status`의 종료 코드). launch는 검증용 가짜 실행 파일이다.
+const getCodexStatus = (launch = null, processEnv = process.env) => {
+    const command = launch?.command || findExecutable("codex", processEnv);
+
+    if (!command) {
+        return Promise.resolve({ available: false, reason: "Codex가 설치돼 있지 않아요" });
+    }
+
+    return new Promise((resolve) => {
+        let child;
+
+        try {
+            child = spawnClaudeProcess({ command: command, prefixArgs: launch?.prefixArgs || [] }, ["login", "status"], { env: processEnv, windowsHide: true, stdio: "ignore" });
+        } catch {
+            resolve({ available: false, reason: "Codex를 실행하지 못했어요" });
+
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            child.kill();
+            resolve({ available: false, reason: "Codex 로그인을 확인하지 못했어요" });
+        }, PROVIDER_STATUS_TIMEOUT_MS);
+
+        child.once("error", () => {
+            clearTimeout(timer);
+            resolve({ available: false, reason: "Codex를 실행하지 못했어요" });
+        });
+        child.once("exit", (code) => {
+            clearTimeout(timer);
+            resolve(code === 0 ? { available: true, reason: "" } : { available: false, reason: "Codex 로그인이 필요해요" });
+        });
+    });
+};
+
+module.exports = { findClaude, getCodexStatus, getAuthStatus, renewCredentials, askClaude, startLogin, isLoginUrl, LOGIN_CODE_PATTERN, LOGIN_EMAIL_PATTERN };

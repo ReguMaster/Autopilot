@@ -847,11 +847,36 @@ const describeTool = (name, argument) => {
 // 신규 개발의 단계 줄([단계] …)을 들려주는 문장으로 바꾼다. 단계 줄이 아니면 빈 문자열이다.
 const STEP_LINE_PATTERN = /^\[단계\] (.+?) (시작|완료|확인 대기|실패)(?: - 개발로 되돌림 \((\d+)\/(\d+)\))?$/;
 
+// 여러 AI 브레인스토밍 줄([브레인스토밍] …)을 들려주는 문장으로 바꾼다. 형식은 엔진 로그 계약(루트 CLAUDE.md)과 같다.
+const BRAINSTORM_LINE_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) (받는 중|받음|건너뜀)(?:: (.+))?$/;
+
+const describeBrainstormLine = (text) => {
+    if (text.startsWith("[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아")) {
+        return "외부 서비스로 보내기가 꺼져 있어서 다른 AI의 안은 받지 않을게요.";
+    }
+
+    const line = text.match(BRAINSTORM_LINE_PATTERN);
+
+    if (!line) {
+        return "";
+    }
+
+    const [, provider, label, kind, status, reason] = line;
+    const why = reason ? ` (${reason})` : "";
+    const sentences =
+        kind === "안"
+            ? { "받는 중": `${provider}에게 ${label} 안을 따로 받고 있어요.`, 받음: `${provider}의 ${label} 안을 받았어요.`, 건너뜀: `${provider}의 ${label} 안은 건너뛸게요.${why}` }
+            : { "받는 중": `${provider}가 ${label} 결과를 검토하고 있어요.`, 받음: `${provider}의 ${label} 검토를 받았어요.`, 건너뜀: `${provider}의 ${label} 검토는 건너뛸게요.${why}` };
+
+    return sentences[status];
+};
+
+// 단계 줄과 브레인스토밍 줄을 함께 다룬다(이야기와 지난 실행 대화가 같은 함수를 쓴다).
 const describeStepLine = (text) => {
     const step = text.match(STEP_LINE_PATTERN);
 
     if (!step) {
-        return "";
+        return describeBrainstormLine(text);
     }
 
     const [, label, status, retry, maxRetry] = step;

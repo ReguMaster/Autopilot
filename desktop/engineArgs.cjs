@@ -19,6 +19,9 @@ const DEFAULT_DESIGN_FORMAT = "html";
 const ON_FAIL_PATTERN = /^(stop|retry:[1-5])$/;
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
+// 여러 AI 브레인스토밍을 켤 수 있는 단계와 Claude와 함께 안을 내는 제공자(엔진 config.js의 BRAINSTORM_PHASES·BRAINSTORM_PROVIDERS).
+const BRAINSTORM_PHASES = ["plan", "design"];
+const BRAINSTORM_PROVIDERS = ["codex"];
 // 종료 시각은 HH:mm(다음에 오는 그 시각) 또는 yyyy-MM-dd HH:mm(그 날짜)이다. 날짜는 엔진의 MAX_RUN_DAYS(7일) 뒤까지다.
 const END_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2} )?([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_RUN_DAYS = 7;
@@ -68,7 +71,7 @@ const getEndTimeError = (endTime, now = Date.now()) => {
 };
 
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail }) => {
+const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, brainstorm = [], crossReview = false }) => {
     if (mode !== "build") {
         return [];
     }
@@ -93,6 +96,11 @@ const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, se
 
     if (securityOnFail && securityOnFail !== DEFAULT_SECURITY_ON_FAIL) {
         args.push("--security-on-fail", securityOnFail);
+    }
+
+    // 다른 AI에게 프로젝트 내용을 보내므로 보내기를 허용했을 때만 넘긴다. 제공자는 엔진 기본값(codex)이다.
+    if (brainstorm.length && allow.includes("send")) {
+        args.push("--brainstorm", brainstorm.join(","), ...(crossReview ? ["--cross-review"] : []));
     }
 
     return args;
@@ -171,5 +179,7 @@ module.exports = {
     ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    BRAINSTORM_PHASES,
+    BRAINSTORM_PROVIDERS,
     MAX_RUN_DAYS
 };

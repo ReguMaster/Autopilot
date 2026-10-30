@@ -1,18 +1,22 @@
+import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { formatEndTimeShort } from "../../../viewFormat.js";
+import { loadProviders } from "../../actions/runs.js";
 import { Select } from "../../components/Select.jsx";
-import { DESIGN_FORMAT_OPTIONS, ON_FAIL_CAPTIONS, ON_FAIL_OPTIONS, getBuildGreeting, getReadySteps } from "../../lib/buildSteps.js";
+import { PHASE_LABELS } from "../../lib/constants.js";
+import { BRAINSTORM_OPTIONS, DESIGN_FORMAT_OPTIONS, ON_FAIL_CAPTIONS, ON_FAIL_OPTIONS, getBuildGreeting, getReadySteps } from "../../lib/buildSteps.js";
 import { useClock } from "../../stores/clock.js";
 import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
 import { StepCard } from "../steps/StepCard.jsx";
 
+// 두 AI가 안을 낸 단계는 고르려고 늘 멈추므로 확인받기를 켠 채로 잠근다.
 const GateCheck = ({ phase }) => {
-    const isOn = useComposerStore((store) => store.gates.includes(phase));
+    const { isOn, isBrainstorm } = useComposerStore(useShallow((store) => ({ isOn: store.gates.includes(phase), isBrainstorm: store.brainstorm.includes(phase) })));
 
     return (
-        <label className="step-check">
-            <input type="checkbox" data-gate={phase} checked={isOn} onChange={() => composer.toggleGate(phase)} />
+        <label className="step-check" title={isBrainstorm ? "두 안을 고르려고 늘 멈춰요" : undefined}>
+            <input type="checkbox" data-gate={phase} checked={isOn || isBrainstorm} disabled={isBrainstorm} onChange={() => composer.toggleGate(phase)} />
             끝나면 멈추고 확인받기
         </label>
     );
@@ -26,6 +30,40 @@ const DesignFormat = () => {
         <>
             <Select value={designFormat} options={DESIGN_FORMAT_OPTIONS} onChange={composer.setDesignFormat} ariaLabel="디자인 산출물" />
             {["figma", "image"].includes(designFormat) && !canSend ? <p className="step-note">보내기를 허용하지 않으면 HTML로 만들어요</p> : null}
+        </>
+    );
+};
+
+// 이 단계에 Codex도 따로 안을 낼지. 켜면 외부 서비스로 보내기도 켜진다. Codex를 쓸 수 없으면 이유를 보이고 잠근다.
+const Brainstorm = ({ phase }) => {
+    const { isOn, crossReview } = useComposerStore(useShallow((store) => ({ isOn: store.brainstorm.includes(phase), crossReview: store.crossReview })));
+    const codex = useRunsStore((store) => store.providers?.codex);
+    const reason = codex && !codex.available && !isOn ? codex.reason : "";
+
+    return (
+        <>
+            <Select
+                value={isOn ? "codex" : "claude"}
+                options={BRAINSTORM_OPTIONS}
+                onChange={() => composer.toggleBrainstorm(phase)}
+                disabled={Boolean(reason)}
+                disabledReason={reason}
+                ariaLabel={`${PHASE_LABELS[phase]}을 누가 쓸까요`}
+            />
+            {reason ? <p className="step-note">{reason}</p> : null}
+            {isOn ? (
+                <>
+                    <label className="step-check">
+                        <input type="checkbox" data-cross-review={phase} checked={crossReview} onChange={(event) => composer.setCrossReview(event.target.checked)} />
+                        교차검토
+                    </label>
+                    <p className="step-note">
+                        보내기를 켰어요.
+                        <br />
+                        끝나면 두 안을 골라요.
+                    </p>
+                </>
+            ) : null}
         </>
     );
 };
@@ -49,11 +87,17 @@ const OnFail = ({ phase }) => {
 };
 
 const SETTINGS = {
-    plan: <GateCheck phase="plan" />,
+    plan: (
+        <>
+            <GateCheck phase="plan" />
+            <Brainstorm phase="plan" />
+        </>
+    ),
     design: (
         <>
             <GateCheck phase="design" />
             <DesignFormat />
+            <Brainstorm phase="design" />
         </>
     ),
     build: <p className="step-none">따로 정할 것이 없어요</p>,
@@ -69,6 +113,10 @@ const BuildReady = () => {
     const greeting = getBuildGreeting({ buildPhase: buildPhase, endLabel: endLabel, gates: gates });
     const cells = getReadySteps(buildPhase);
     const settings = Object.fromEntries(cells.filter((cell) => cell.state !== "done").map((cell) => [cell.phase, SETTINGS[cell.phase]]));
+
+    useEffect(() => {
+        loadProviders();
+    }, []);
 
     return (
         <>
