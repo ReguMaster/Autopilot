@@ -1,15 +1,26 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { useShallow } from "zustand/react/shallow";
+import { HeadTag } from "../../components/HeadTag.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { SwapText } from "../../components/SwapText.jsx";
 import { replayAnimation } from "../../hooks/useReplay.js";
+import { useView } from "../../hooks/useView.js";
+import { getRunSteps } from "../../lib/buildSteps.js";
+import { PHASE_LABELS } from "../../lib/constants.js";
+import { useComposerStore } from "../../stores/composerStore.js";
+import { useRunStore } from "../../stores/runStore.js";
+import { useRunsStore } from "../../stores/runsStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
+import { Course } from "../shell/Course.jsx";
+import { ProjectHead } from "../shell/ProjectHead.jsx";
+import { StepCard } from "../steps/StepCard.jsx";
 import { ApplyNote } from "./ApplyNote.jsx";
 import { LinkedRepoPeek } from "../shell/LinkedRepoPeek.jsx";
 import { Outcome } from "./Outcome.jsx";
 import { startReveal } from "./reveal.js";
+import { RunCard } from "./RunCard.jsx";
 import { createStoryModel, isSameView } from "./storyModel.js";
-import { Work } from "./Work.jsx";
 
 const PAST_SLIDE_MS = 520;
 const PAST_SLIDE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
@@ -65,6 +76,40 @@ const PastItem = ({ item }) => {
     );
 };
 
+// 프로젝트 이름 줄의 상태: 신규 개발은 지금 단계, 유지 보수는 개선 정책. 종료 신호를 보냈으면 멈추는 중이다.
+const RunTag = () => {
+    const { status, mode, step, policy } = useRunStore(useShallow((store) => ({ status: store.state.status, mode: store.state.mode, step: store.state.step, policy: store.state.policy })));
+
+    if (status === "stopping") {
+        return (
+            <HeadTag id="run-tag" tone="warn" icon="icon-pause">
+                이번 회차를 마치고 멈춰요
+            </HeadTag>
+        );
+    }
+
+    const text = mode === "build" ? `신규 개발, ${step ? PHASE_LABELS[step.phase] : "준비"} 중` : `유지 보수, ${policy.split(" (")[0] || "실행 중"}`;
+
+    return (
+        <HeadTag id="run-tag" tone="run">
+            {text}
+        </HeadTag>
+    );
+};
+
+// 신규 개발 실행의 단계 카드(한 줄). 지금 단계는 엔진의 [단계] 줄이 정한다.
+const RunSteps = () => {
+    const { mode, step, round } = useRunStore(useShallow((store) => ({ mode: store.state.mode, step: store.state.step, round: store.state.round })));
+    const buildPhase = useRunsStore((store) => store.buildPhase);
+    const { gates, qaOnFail } = useComposerStore(useShallow((store) => ({ gates: store.gates, qaOnFail: store.qaOnFail })));
+
+    if (mode !== "build") {
+        return null;
+    }
+
+    return <StepCard id="run-steps" cells={getRunSteps({ step: step, buildPhase: buildPhase, gates: gates, qaOnFail: qaOnFail, round: round })} />;
+};
+
 // 실행 중 화면: 지난 문장은 위로 올라가며 흐려지고 지금 문장이 크게 쓰인다.
 // 새 문장·이동·드러내기 애니메이션이 끝나기 전에 상태가 오면 가장 최근 모양만 모아 두었다가 끝난 뒤 한 번 그린다(애니메이션이 끊기지 않게).
 const RunView = () => {
@@ -77,6 +122,7 @@ const RunView = () => {
 
     gate.current.view = view;
     const isHistoryOpen = useUiStore((store) => store.history);
+    const screen = useView();
 
     gate.current.run = () => {
         const current = gate.current;
@@ -145,31 +191,42 @@ const RunView = () => {
 
     return (
         <section ref={sectionRef} className="story view-run" aria-label="지금 하는 일">
-            <div id="story-past" ref={pastRef} className="past">
-                {view.pastItems.map((item) => (
-                    <PastItem key={item.key} item={item} />
-                ))}
+            <ProjectHead>
+                <RunTag />
+            </ProjectHead>
+            <RunSteps />
+
+            <div className="run-grid">
+                <div className="run-main">
+                    {screen === "run" ? <Course /> : null}
+
+                    <div id="story-past" ref={pastRef} className="past">
+                        {view.pastItems.map((item) => (
+                            <PastItem key={item.key} item={item} />
+                        ))}
+                    </div>
+
+                    <Outcome />
+
+                    <p ref={lineRef} className="now" data-length={getNowLength(view.text)} aria-live="polite">
+                        <span id="now-text" className="now-text">
+                            {view.text}
+                        </span>
+                        <i className="caret" aria-hidden="true"></i>
+                    </p>
+                    <div className="now-meta">
+                        <SwapText id="now-time" className="num" value={view.time} />
+                        <ApplyNote />
+                        <button type="button" id="live-panel" className="link" aria-controls="history" aria-expanded={isHistoryOpen} onClick={() => ui.setHistory(!isHistoryOpen)}>
+                            <Icon symbol="icon-lines" />
+                            전체 기록
+                        </button>
+                    </div>
+
+                    <LinkedRepoPeek />
+                </div>
+                <RunCard />
             </div>
-
-            <Outcome />
-
-            <p ref={lineRef} className="now" data-length={getNowLength(view.text)} aria-live="polite">
-                <span id="now-text" className="now-text">
-                    {view.text}
-                </span>
-                <i className="caret" aria-hidden="true"></i>
-            </p>
-            <div className="now-meta">
-                <SwapText id="now-time" className="num" value={view.time} />
-                <ApplyNote />
-                <button type="button" id="live-panel" className="link" aria-controls="history" aria-expanded={isHistoryOpen} onClick={() => ui.setHistory(!isHistoryOpen)}>
-                    <Icon symbol="icon-lines" />
-                    전체 기록
-                </button>
-            </div>
-
-            <LinkedRepoPeek />
-            <Work />
         </section>
     );
 };

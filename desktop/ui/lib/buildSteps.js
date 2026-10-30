@@ -85,4 +85,78 @@ const getBuildActionLabel = (buildPhase) => {
     return buildPhase?.awaiting ? `${PHASE_LABELS[startPhase]} 다시 하기` : `${PHASE_LABELS[startPhase]} 시작`;
 };
 
-export { PHASE_DETAILS, PHASE_DONE, DESIGN_FORMAT_OPTIONS, QA_ON_FAIL_OPTIONS, ALLOW_OPTIONS, getBuildStartPhase, getReadySteps, getBuildGreeting, getBuildActionLabel };
+const getQaOnFailLabel = (qaOnFail) => {
+    return QA_ON_FAIL_OPTIONS.find((option) => option.value === qaOnFail)?.label || "";
+};
+
+// 실행 중·마친 뒤의 단계 카드. 엔진의 [단계] 줄(step)이 있으면 그 단계가 지금이고, 오기 전에는 시작할 단계(buildPhase)가 지금이다.
+// 마친 단계 중 확인받기로 둔 것은 "확인함", 테스트/QA에서 돌아온 개발은 몇 번째로 다시 하는지 보여준다.
+const getRunSteps = ({ step, buildPhase, gates, qaOnFail, round }) => {
+    const current = step?.phase || getBuildStartPhase(buildPhase);
+    const currentIndex = current === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(current);
+    const maxRetries = qaOnFail === "stop" ? 0 : Number(String(qaOnFail).split(":")[1] || 0);
+
+    return BUILD_PHASES.map((phase, index) => {
+        if (index < currentIndex || (index === currentIndex && step?.status === "done")) {
+            return { phase: phase, state: "done", detail: gates.includes(phase) ? "확인함" : "마쳤어요" };
+        }
+
+        if (index === currentIndex && step?.status === "awaiting") {
+            return { phase: phase, state: "hold", detail: "확인을 기다려요" };
+        }
+
+        if (index === currentIndex && step?.status === "failed") {
+            return { phase: phase, state: "hold", detail: "고치지 못한 실패가 남았어요" };
+        }
+
+        if (index === currentIndex) {
+            const retryText = phase === "build" && step?.qaRetries ? `다시 개발 ${step.qaRetries}/${maxRetries}` : "";
+
+            return { phase: phase, state: "active", detail: retryText || (round ? `${round}회차` : "준비하고 있어요") };
+        }
+
+        return { phase: phase, state: "waiting", detail: phase === "qa" ? getQaOnFailLabel(qaOnFail) : PHASE_DETAILS[phase] };
+    });
+};
+
+// 실행 중 카드의 단계 문서: 지금까지 온 단계의 산출물. 지금 단계 것은 쓰는 중, 지난 단계 것은 확인받기로 뒀으면 확인함이다.
+const getPhaseDocs = ({ step, buildPhase, gates, designFormat }) => {
+    const current = step?.phase || getBuildStartPhase(buildPhase);
+    const currentIndex = current === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(current);
+    const docs = [
+        { phase: "plan", path: "docs/autopilot/plan.md" },
+        { phase: "design", path: designFormat === "md" ? "docs/autopilot/design.md" : "docs/autopilot/design/" },
+        { phase: "qa", path: "docs/autopilot/qa.md" }
+    ];
+
+    return docs
+        .filter((doc) => BUILD_PHASES.indexOf(doc.phase) <= currentIndex)
+        .map((doc) => {
+            const isWriting = doc.phase === current && step?.status !== "done";
+
+            return { ...doc, note: isWriting ? "쓰는 중" : gates.includes(doc.phase) ? "확인함" : "마침" };
+        });
+};
+
+// 확인을 기다리던 단계를 고칠 점과 함께 다시 할 때 엔진에 넘기는 작업. 처음 적은 만들 것도 함께 넘겨 기준을 잃지 않게 한다.
+const getRevisionTasks = (feedback, tasks) => {
+    const original = tasks.trim();
+
+    return ["수정 요청:", feedback.trim(), ...(original ? ["", "처음 적은 만들 것:", original] : [])].join("\n");
+};
+
+export {
+    PHASE_DETAILS,
+    PHASE_DONE,
+    DESIGN_FORMAT_OPTIONS,
+    QA_ON_FAIL_OPTIONS,
+    ALLOW_OPTIONS,
+    getBuildStartPhase,
+    getReadySteps,
+    getBuildGreeting,
+    getBuildActionLabel,
+    getQaOnFailLabel,
+    getRunSteps,
+    getPhaseDocs,
+    getRevisionTasks
+};

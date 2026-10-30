@@ -185,3 +185,20 @@
 .step-note {
     color: var(--warn);
 }
+
+/* 좁은 창에서는 설정을 펼친 카드가 두 줄(2×2)로 접힌다 */
+@media (max-width: 960px) {
+    .step-card.expanded {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .step-card.expanded .step:nth-child(3) {
+        box-shadow: inset 0 1px 0 var(--hair);
+    }
+
+    .step-card.expanded .step:nth-child(4) {
+        box-shadow:
+            inset 1px 0 0 var(--hair),
+            inset 0 1px 0 var(--hair);
+    }
+}

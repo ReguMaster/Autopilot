@@ -1,4 +1,5 @@
 import { buildShareCard } from "../../viewFormat.js";
+import { getRevisionTasks } from "../lib/buildSteps.js";
 import { STATUS_OK } from "../lib/constants.js";
 import { getProjectName } from "../lib/projectName.js";
 import { getSettings } from "../stores/appStore.js";
@@ -16,7 +17,8 @@ const STOP_CONFIRM_MS = 4000;
 let stopArmTimer = 0;
 
 // 시작은 선택한 값을 엔진에 넘기고, 로그인이 필요하면 안내 줄에 로그인 버튼을 보여준다. 응답을 기다리는 동안 다시 누르지 못하게 한다.
-const startRun = async () => {
+// overrides는 컴포저 값 대신 넘길 값이다(단계 수정 요청의 작업과 keepTasks).
+const startRun = async (overrides = {}) => {
     if (useUiStore.getState().isStarting) {
         return;
     }
@@ -25,7 +27,15 @@ const startRun = async () => {
 
     try {
         const { tasks, endTime, policy, extendOnLimit } = useComposerStore.getState();
-        const result = await window.autopilot.start({ tasks: tasks, endTime: endTime, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions(), ...composer.getModeOptions() });
+        const result = await window.autopilot.start({
+            tasks: tasks,
+            endTime: endTime,
+            policy: policy,
+            extendOnLimit: extendOnLimit,
+            ...composer.getSelectedOptions(),
+            ...composer.getModeOptions(),
+            ...overrides
+        });
         const isLoginRequired = result.status !== STATUS_OK && result.error.code === "LOGIN_REQUIRED";
 
         ui.showLoginRequired(isLoginRequired ? result.error.msg : null);
@@ -144,6 +154,27 @@ const approvePhase = async () => {
     return result.status === STATUS_OK;
 };
 
+// 확인을 기다리던 단계를 승인하고 바로 다음 단계를 시작한다.
+const approveAndStart = async () => {
+    if (await approvePhase()) {
+        await startRun();
+    }
+};
+
+// 고칠 점을 수정 요청으로 넘겨 확인을 기다리던 단계를 다시 한다. 작업 칸의 만들 것은 다음 시작의 기본값으로 그대로 둔다(keepTasks).
+const revisePhase = async (feedback) => {
+    await startRun({ tasks: getRevisionTasks(feedback, useComposerStore.getState().tasks), keepTasks: true });
+};
+
+// 단계 산출물(plan.md·design·qa.md)은 메인이 정해진 위치에서만 읽고 연다.
+const readPhaseDoc = (phase) => {
+    return window.autopilot.readPhaseDoc(phase);
+};
+
+const openPhaseDoc = async (phase) => {
+    ui.showFailure(await window.autopilot.openPhaseDoc(phase));
+};
+
 // 로그인 자동 실행·트레이 상주는 둘을 함께 보내고, 메인이 돌려준 설정으로 맞춘다.
 const changeSystemSettings = async (patch) => {
     const { keepInTray, launchAtLogin } = getSettings();
@@ -160,4 +191,20 @@ const openUpdate = async () => {
     ui.showFailure(await window.autopilot.openUpdate());
 };
 
-export { STOP_CONFIRM_MS, startRun, setStopArmed, handleMainAction, openReport, saveShareCard, selectProject, resetProgress, approvePhase, changeSystemSettings, openUpdate };
+export {
+    STOP_CONFIRM_MS,
+    startRun,
+    setStopArmed,
+    handleMainAction,
+    openReport,
+    saveShareCard,
+    selectProject,
+    resetProgress,
+    approvePhase,
+    approveAndStart,
+    revisePhase,
+    readPhaseDoc,
+    openPhaseDoc,
+    changeSystemSettings,
+    openUpdate
+};

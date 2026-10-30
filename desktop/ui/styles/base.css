@@ -24,6 +24,7 @@
     --ok-wash: #e8f6ee;
     --ok-line: #cce8d8;
     --del: #c2362e;
+    --bad-wash: #fdeeec;
     --warn: #96560a;
     --warn-wash: #fdf3e2;
     --warn-line: #f3dcb8;
@@ -77,6 +78,7 @@
         --ok-wash: #11251b;
         --ok-line: #1f4a35;
         --del: #e5534b;
+        --bad-wash: #2c1618;
         --warn: #f1b35e;
         --warn-wash: #2a2010;
         --warn-line: #4f3a16;

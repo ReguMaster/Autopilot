@@ -11,23 +11,24 @@ import { ReadyView } from "./features/ready/ReadyView.jsx";
 import { RunView } from "./features/run/RunView.jsx";
 import { ScheduleSheet } from "./features/schedule/ScheduleSheet.jsx";
 import { SettingsPanel } from "./features/settings/SettingsPanel.jsx";
-import { Course } from "./features/shell/Course.jsx";
 import { Notices } from "./features/shell/Notices.jsx";
 import { Rail } from "./features/shell/Rail.jsx";
 import { TitleBar } from "./features/shell/TitleBar.jsx";
 import { useBodyFlags, useNativeFeel, useRevealWhenReady } from "./hooks/useBodyFlags.js";
 import { useOverlayDismiss } from "./hooks/useOverlayDismiss.js";
+import { useApproval } from "./hooks/useApproval.js";
 import { useView } from "./hooks/useView.js";
 import { useRunStore } from "./stores/runStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
 
-// 왼쪽에 프로젝트 레일, 오른쪽 열에 위에서부터 실행 줄(창 끌기 영역), 상태 줄, 본문, 안내 문구, 컴포저를 쌓고 패널·시트가 그 위에 뜬다.
+// 왼쪽에 프로젝트 레일, 오른쪽 열에 위에서부터 실행 줄(창 끌기 영역), 본문, 안내 문구, 컴포저를 쌓고 패널·시트가 그 위에 뜬다. 상태 줄(Course)은 실행·마친 화면이 본문 안에 둔다.
 const App = () => {
     const view = useView();
     const status = useRunStore((store) => store.state.status);
     const { panel, history, archive, schedule, tasksOpen } = useUiStore();
+    const approval = useApproval();
 
-    useBodyFlags({ view: view, status: status, isTasksOpen: tasksOpen, panel: panel, history: history, archive: archive, schedule: schedule });
+    useBodyFlags({ view: view, status: status, isTasksOpen: tasksOpen, isApproval: Boolean(approval), panel: panel, history: history, archive: archive, schedule: schedule });
     useRevealWhenReady();
     useNativeFeel();
     useOverlayDismiss();
@@ -45,7 +46,6 @@ const App = () => {
             <div className="main-column">
                 <TitleBar />
                 <div className="content">
-                    <Course />
                     <main className="stage">
                         <ReadyView />
                         <RunView />

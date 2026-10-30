@@ -16,6 +16,8 @@ import { useUiStore } from "../../stores/uiStore.js";
 import { LinkedRepoPeek } from "../shell/LinkedRepoPeek.jsx";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { BuildReady } from "./BuildReady.jsx";
+import { ApprovalView } from "../approval/ApprovalView.jsx";
+import { useApproval } from "../../hooks/useApproval.js";
 
 const RECENT_RUN_COUNT = 3;
 
@@ -97,6 +99,16 @@ const ReadyView = () => {
     const isBuild = useComposerStore((store) => store.mode === "build");
     const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
     const showBuild = isBuild && hasProject;
+    const approval = useApproval();
+
+    // 확인받기 단계에서 멈췄으면 산출물을 확인하는 화면이다. 마친 화면에서도 같은 화면을 쓴다(FinishView).
+    if (approval) {
+        return (
+            <section className="greet view-ready approval" data-mode="build" aria-label="확인 기다림">
+                <ApprovalView phase={approval} side={<ModeSeg />} />
+            </section>
+        );
+    }
 
     return (
         <section className="greet view-ready" data-mode={showBuild ? "build" : "maintain"} aria-label="시작 전">

@@ -525,6 +525,10 @@ const describeFinish = (state) => {
         title = "도중에 멈췄어요.";
     } else if (/ 확인 대기$/.test(state.reason)) {
         title = "확인을 기다리고 있어요.";
+    } else if (/모든 단계 완료$/.test(state.reason)) {
+        title = "모든 단계를 마쳤어요.";
+    } else if (state.reason === "테스트/QA 실패") {
+        title = "테스트/QA에서 멈췄어요.";
     } else if (tone === "warn") {
         title = "여기까지 하고 멈췄어요.";
     } else if (hour >= 5 && hour < 12) {
@@ -645,8 +649,78 @@ const getTrack = (state, nowMs) => {
         commits: rounds.filter((round) => round.endedAt && round.commits?.length).map((round) => ({ at: toPercent(round.endedAt), count: round.commits.length })),
         head: isRunning ? toPercent(nowMs) : null,
         startText: formatClock(state.startedAt),
-        endText: formatClock(state.deadlineAt)
+        // 하루를 넘기는 실행(날짜를 붙인 종료 시각)은 끝나는 날짜도 함께 보인다. 밤샘처럼 하루 안이면 시각만으로 알 수 있다.
+        endText: state.deadlineAt - state.startedAt >= DAY_MS ? formatDeadline(state.deadlineAt) : formatClock(state.deadlineAt)
     };
+};
+
+/* 단계 산출물 미리보기: 마크다운을 제목·목록·문단·코드 블록으로만 나눈다. 화면은 글자로만 그리고 HTML은 해석하지 않는다 */
+
+const PREVIEW_BLOCK_LIMIT = 80;
+const PREVIEW_FENCE_PATTERN = /^\s*(```|~~~)/;
+const PREVIEW_HEADING_PATTERN = /^(#{1,6})\s+(.+?)\s*#*$/;
+const PREVIEW_ITEM_PATTERN = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.+)$/;
+const PREVIEW_RULE_PATTERN = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+
+const cleanPreviewText = (text) => {
+    return text
+        .replace(/^>\s?/, "")
+        .replace(/\*\*|__/g, "")
+        .trim();
+};
+
+const parsePreviewBlocks = (text) => {
+    const blocks = [];
+    let fence = null;
+    let isParagraphOpen = false;
+
+    for (const line of text.split(/\r?\n/)) {
+        if (blocks.length >= PREVIEW_BLOCK_LIMIT) {
+            break;
+        }
+
+        if (PREVIEW_FENCE_PATTERN.test(line)) {
+            if (fence) {
+                blocks.push({ type: "code", text: fence.join("\n") });
+            }
+
+            fence = fence ? null : [];
+            isParagraphOpen = false;
+            continue;
+        }
+
+        if (fence) {
+            fence.push(line);
+            continue;
+        }
+
+        const heading = line.match(PREVIEW_HEADING_PATTERN);
+        const item = line.match(PREVIEW_ITEM_PATTERN);
+        const isText = Boolean(line.trim()) && !PREVIEW_RULE_PATTERN.test(line);
+
+        if (heading) {
+            blocks.push({ type: "heading", level: Math.min(heading[1].length, 3), text: cleanPreviewText(heading[2]) });
+        } else if (item) {
+            blocks.push({ type: "item", text: cleanPreviewText(item[1]) });
+        } else if (isText && isParagraphOpen) {
+            blocks.at(-1).text += ` ${cleanPreviewText(line)}`;
+        } else if (isText) {
+            blocks.push({ type: "para", text: cleanPreviewText(line) });
+        }
+
+        isParagraphOpen = !heading && !item && isText;
+    }
+
+    if (fence?.length && blocks.length < PREVIEW_BLOCK_LIMIT) {
+        blocks.push({ type: "code", text: fence.join("\n") });
+    }
+
+    return blocks;
+};
+
+// 글 속 `코드`를 나눈다. 홀수 번째 조각이 코드다.
+const splitInlineCode = (text) => {
+    return text.split("`").map((part, index) => ({ text: part, isCode: index % 2 === 1 }));
 };
 
 /* 이야기: 엔진 로그의 Claude 문장과 도구 호출을 읽어, 도구 호출 뒤에 이어지는 문장 단위(beat)로 묶는다 */
@@ -1326,6 +1400,8 @@ export {
     BASH_PHRASES,
     describeTool,
     describeStepLine,
+    parsePreviewBlocks,
+    splitInlineCode,
     createStory,
     pushStoryItem,
     applyStoryEntry,

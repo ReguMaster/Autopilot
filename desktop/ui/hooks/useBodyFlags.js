@@ -3,18 +3,19 @@ import { useEffect, useLayoutEffect } from "react";
 const OVERLAYS = ["settings", "profile", "history", "archive", "schedule"];
 
 // ui/styles의 CSS가 body의 data-속성·클래스를 보고 화면을 바꾼다. 화면 상태를 그 한 곳에 반영한다.
-const useBodyFlags = ({ view, status, isTasksOpen, panel, history, archive, schedule }) => {
+const useBodyFlags = ({ view, status, isTasksOpen, isApproval, panel, history, archive, schedule }) => {
     useLayoutEffect(() => {
         const open = { settings: panel === "settings", profile: panel === "profile", history: history, archive: archive, schedule: schedule };
 
         document.body.dataset.view = view;
         document.body.dataset.status = status;
         document.body.toggleAttribute("data-tasks-open", isTasksOpen);
+        document.body.toggleAttribute("data-approval", isApproval);
 
         for (const name of OVERLAYS) {
             document.body.classList.toggle(`${name}-open`, open[name]);
         }
-    }, [view, status, isTasksOpen, panel, history, archive, schedule]);
+    }, [view, status, isTasksOpen, isApproval, panel, history, archive, schedule]);
 };
 
 // 서체와 첫 상태가 준비된 뒤에 화면을 차례로 드러낸다(그 전에는 CSS가 등장 애니메이션을 멈춰 둔다).

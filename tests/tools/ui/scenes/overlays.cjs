@@ -494,9 +494,9 @@ const SCENES = [
             await t.click("#settings-toggle");
             await t.wait(600);
             await t.note("swapped", await flags());
-            await t.click("#titlebar .brand");
+            await t.click(".rail-brand");
             await t.wait(300);
-            await t.click(".course");
+            await t.click(".stage");
             await t.wait(600);
             await t.note("outside-click", await flags());
             await t.click("#live-panel");

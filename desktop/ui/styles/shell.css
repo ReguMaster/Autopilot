@@ -29,6 +29,20 @@
     }
 }
 
+/* 움직임을 줄이면 돌지 않는 대신 꽉 찬 고리가 숨쉬듯 흐려졌다 밝아진다(자리가 바뀌지 않는 투명도 표시는 남긴다) */
+@media (prefers-reduced-motion: reduce) {
+    .ring {
+        border-color: var(--accent);
+        animation: ring-breathe 2.4s ease-in-out infinite;
+    }
+}
+
+@keyframes ring-breathe {
+    50% {
+        opacity: 0.35;
+    }
+}
+
 /* 실행 줄: 본문 위 한 줄. 모든 탭에서 실행 중인 프로젝트를 왼쪽에, 새 버전 알림과 창 버튼을 오른쪽에 둔다 */
 .titlebar {
     flex: none;

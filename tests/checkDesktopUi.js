@@ -16,12 +16,14 @@ const loadUi = async () => {
         import { Modal } from "./components/Modal.jsx";
         import { ProjectList } from "./features/shell/Rail.jsx";
         import { StepCard } from "./features/steps/StepCard.jsx";
+        import { DocPreview } from "./features/approval/DocPreview.jsx";
         export * from "./selectKeys.js";
         export * from "./lib/buildSteps.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
         export const renderModal = (props, children) => renderToStaticMarkup(createElement(Modal, props, children));
         export const renderProjectList = (props) => renderToStaticMarkup(createElement(ProjectList, props));
         export const renderStepCard = (props) => renderToStaticMarkup(createElement(StepCard, props));
+        export const renderDocPreview = (props) => renderToStaticMarkup(createElement(DocPreview, props));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -210,6 +212,47 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
     assert.equal((compact.match(/href="#icon-check"/g) ?? []).length, 2);
 };
 
+// 실행 중 단계 카드: [단계] 줄이 지금 단계를 정하고, 오기 전에는 시작할 단계가 지금이다. 확인받기로 둔 지난 단계는 "확인함"이다.
+const checkRunSteps = ({ getRunSteps, getPhaseDocs, getRevisionTasks, renderDocPreview }) => {
+    const base = { buildPhase: { phase: "build", awaiting: null, qaRetries: 0 }, gates: ["plan"], qaOnFail: "retry:3", round: 4 };
+    const getCells = (options) => getRunSteps({ ...base, ...options }).map((cell) => `${cell.state}:${cell.detail}`);
+
+    assert.deepEqual(getCells({ step: null }), ["done:확인함", "done:마쳤어요", "active:4회차", "waiting:실패하면 개발로, 3번까지"]);
+    assert.deepEqual(getCells({ step: { phase: "build", status: "running", qaRetries: 1 } })[2], "active:다시 개발 1/3");
+    assert.deepEqual(getCells({ step: { phase: "design", status: "awaiting", qaRetries: 0 } }).slice(0, 2), ["done:확인함", "hold:확인을 기다려요"]);
+    assert.deepEqual(
+        getCells({ step: { phase: "qa", status: "done", qaRetries: 1 } }).map((cell) => cell.split(":")[0]),
+        ["done", "done", "done", "done"]
+    );
+    assert.deepEqual(getCells({ step: { phase: "qa", status: "failed", qaRetries: 3 }, qaOnFail: "stop" })[3], "hold:고치지 못한 실패가 남았어요");
+    assert.equal(getCells({ step: null, buildPhase: null, round: 0 })[0], "active:준비하고 있어요");
+
+    assert.deepEqual(
+        getPhaseDocs({ step: { phase: "build", status: "running", qaRetries: 0 }, buildPhase: null, gates: ["plan"], designFormat: "html" }).map((doc) => `${doc.path} ${doc.note}`),
+        ["docs/autopilot/plan.md 확인함", "docs/autopilot/design/ 마침"]
+    );
+    assert.deepEqual(
+        getPhaseDocs({ step: null, buildPhase: null, gates: [], designFormat: "md" }).map((doc) => doc.note),
+        ["쓰는 중"]
+    );
+
+    assert.equal(getRevisionTasks("  주간 보기 추가 ", "미용실 예약 웹앱\n"), "수정 요청:\n주간 보기 추가\n\n처음 적은 만들 것:\n미용실 예약 웹앱");
+    assert.equal(getRevisionTasks("주간 보기", ""), "수정 요청:\n주간 보기");
+
+    // 미리보기는 글자로만 그린다. 문서 속 HTML은 태그가 아니라 글자다.
+    const html = renderDocPreview({ doc: { kind: "file", path: "docs/autopilot/plan.md", text: "# 기획\n- `plan.md` 보기\n<img src=x onerror=alert(1)>", isPartial: true } });
+
+    assert.match(html, /<h3[^>]*>기획<\/h3>/);
+    assert.match(html, /<li><code>plan\.md<\/code> 보기<\/li>/);
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(html, /<img/);
+
+    const folder = renderDocPreview({ doc: { kind: "folder", path: "docs/autopilot/design", entries: ["index.html", "screens/"] } });
+
+    assert.match(folder, /docs\/autopilot\/design[^]*<code>index\.html<\/code>[^]*<code>screens\/<\/code>/);
+    assert.match(renderDocPreview({ doc: null }), /아직 찾지 못했어요/);
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
@@ -218,6 +261,7 @@ const checkUi = async () => {
     checkModalMarkup(ui);
     checkProjectListMarkup(ui);
     checkStepCard(ui);
+    checkRunSteps(ui);
     checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");

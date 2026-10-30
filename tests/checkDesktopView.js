@@ -300,8 +300,45 @@ const checkTrack = ({ getTrack }) => {
     assert.equal(track.head, 20);
     assert.equal(track.startText, "00:30");
     assert.equal(track.endText, "02:10");
+    // 하루를 넘기는 실행은 끝나는 날짜를 함께 보인다.
+    assert.equal(getTrack({ ...state, deadlineAt: new Date(2026, 9, 16, 7, 0).getTime() }, start).endText, "10월 16일 07:00");
     // 끝난 실행은 지금 위치가 없고, 다시 읽은 회차(시각 모름)는 그리지 않는다.
     assert.equal(getTrack({ ...state, status: "idle", endedAt: start + 20 * minute, rounds: [createRound(1, start, start + 10 * minute, [], false)] }, start).segments.length, 0);
+};
+
+// 산출물 미리보기는 제목·목록·문단·코드 블록만 나누고, HTML은 글자 그대로 둔다.
+const checkPreview = ({ parsePreviewBlocks, splitInlineCode }) => {
+    const text = [
+        "# 동네 미용실 **예약** 웹앱 #",
+        "",
+        "손님이 날짜를 고르고",
+        "원장이 예약표를 봐요. <script>x</script>",
+        "---",
+        "## 화면",
+        "- 디자이너 고르기",
+        "2. [x] 예약 확인",
+        "> 인용은 문단",
+        "```",
+        "npm test",
+        "```"
+    ].join("\n");
+
+    assert.deepEqual(parsePreviewBlocks(text), [
+        { type: "heading", level: 1, text: "동네 미용실 예약 웹앱" },
+        { type: "para", text: "손님이 날짜를 고르고 원장이 예약표를 봐요. <script>x</script>" },
+        { type: "heading", level: 2, text: "화면" },
+        { type: "item", text: "디자이너 고르기" },
+        { type: "item", text: "예약 확인" },
+        { type: "para", text: "인용은 문단" },
+        { type: "code", text: "npm test" }
+    ]);
+    assert.equal(parsePreviewBlocks(Array.from({ length: 200 }, (_, index) => `- ${index}`).join("\n")).length, 80);
+    assert.deepEqual(parsePreviewBlocks("```\n닫히지 않은 코드"), [{ type: "code", text: "닫히지 않은 코드" }]);
+    assert.deepEqual(splitInlineCode("`plan.md`를 봐요"), [
+        { text: "", isCode: false },
+        { text: "plan.md", isCode: true },
+        { text: "를 봐요", isCode: false }
+    ]);
 };
 
 const checkStory = ({ parseStoryLine, describeTool, createStory, applyStoryEntry, parseGain, splitFigure }) => {
@@ -708,6 +745,11 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
         "확인을 기다리고 있어요."
     );
 
+    const buildEnd = { status: "idle", endedAt: new Date(2026, 9, 14, 8, 0).getTime(), exitCode: 0, rounds: [], deadlineAt: 0, work: {} };
+
+    assert.equal(describeFinish({ ...buildEnd, reason: "신규 개발: 모든 단계 완료" }).title, "모든 단계를 마쳤어요.");
+    assert.equal(describeFinish({ ...buildEnd, reason: "테스트/QA 실패" }).title, "테스트/QA에서 멈췄어요.");
+
     const now = new Date(2026, 9, 14, 9, 0).getTime();
     const run = { startedAt: now - 3600000, endedAt: now, roundCount: 3, commitCount: 3, insertions: 10, deletions: 0, mode: "build", isEmpty: false, isUnreadable: false, isActive: false };
 
@@ -723,6 +765,7 @@ const checkViewFormat = () => {
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
     checkTrack(viewFormat);
+    checkPreview(viewFormat);
     checkStory(viewFormat);
     checkPastRuns(viewFormat);
 

@@ -72,7 +72,7 @@ const SCENES = [
         name: "readme-done",
         init: {
             settings: { projectDir: PROJECT },
-            state: doneState(),
+            state: doneState({ reason: "예정 시각 도달", exitCode: 0 }),
             tabs: getTabs("idle"),
             logs: ["10:00:03 먼저 프로젝트 구조를 살펴보고 있어요.", "10:40:11 검색 쿼리가 인덱스를 쓰도록 고쳐 뒀어요."].map((text) => ({ stream: "out", text: text, at: NOW }))
         },
