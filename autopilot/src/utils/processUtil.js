@@ -61,7 +61,7 @@ const spawnCommand = (command, args, options) => {
 
     // CMD 래퍼의 셸 해석을 피하도록 사용자 텍스트는 stdin으로만 전달한다.
     if (UNSAFE_CMD_PATH_PATTERN.test(command) || args.some((arg) => !SAFE_CMD_ARG_PATTERN.test(arg))) {
-        throw new Error("CMD 실행 경로 또는 인자에 지원하지 않는 특수문자가 있습니다. 네이티브 Claude 설치본을 사용하세요.");
+        throw new Error(`CMD 실행 경로 또는 인자에 지원하지 않는 특수문자가 있습니다. ${path.basename(command)} 대신 네이티브 설치본을 사용하세요.`);
     }
 
     return spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `""${command}" ${args.join(" ")}"`], { ...options, windowsVerbatimArguments: true });
