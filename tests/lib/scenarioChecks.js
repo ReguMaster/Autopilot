@@ -264,14 +264,14 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(getPhaseLines(firstRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
     assert.match(readLog(firstRun), /^\[설정\] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다\.$/m);
     assert.match(readLog(firstRun), /^Mode : 신규 개발 \(기획 단계부터\)$/m);
-    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null });
+    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null });
     assert.match(readPrompt(), /지금 단계는 \[디자인\]/);
     assert.match(readPrompt(), /정적 HTML 와이어프레임/);
     assert.match(readPrompt(), /외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(readPrompt(), /개선 정책은/);
     assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, {
         running: false,
-        phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null }
+        phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null }
     });
     checkDesktopLogContract(firstRun.data);
 
@@ -309,7 +309,7 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
         "[단계] 보안검토 완료"
     ]);
     assert.match(readPrompt(), /지금 단계는 \[보안검토\][\s\S]*<PHASE>\n단계: 보안검토 \(5\/5\)/);
-    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null });
+    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null, debate: null });
     assert.equal((await runBuild({})).status, STATUS_FAILED);
 
     // 진행 기록 초기화는 단계도 처음(기획)으로 돌린다.
@@ -420,6 +420,166 @@ const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
     ]);
     assert.equal(failedRun.data.rounds[0].outcome, "완료");
     assert(!fs.existsSync(path.join(otherDir, "docs/autopilot/proposals/plan-codex.md")));
+};
+
+// 협의: Claude와 Codex가 같은 대화를 이어 가며 주고받고(최대 3번), 정리 회차가 합의안과 쟁점을 남기면 멈춘다.
+// 쟁점은 하나도 빠짐없이 골라야 승인하고, 다음 실행이 고른 입장을 확정한다. Codex가 중간에 실패하면 나란히 비교로 넘어간다.
+const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
+    const dataDir = scenarioRunner.dataDir;
+    const fakeCodexFile = path.join(context.testDir, "fake-codex.mjs");
+    const codexLog = path.join(context.testDir, "codex-debate.log");
+
+    fs.writeFileSync(fakeCodexFile, FAKE_CODEX_SOURCE);
+
+    const createProject = (name) => {
+        const projectDir = path.join(context.testDir, name);
+
+        fs.mkdirSync(projectDir, { recursive: true });
+        fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+        commitInitialProject(context, projectDir);
+
+        return projectDir;
+    };
+    const runDebate = (projectDir, { env = {}, ...options } = {}) => {
+        fs.rmSync(codexLog, { force: true });
+        fs.rmSync(`${codexLog}.turns`, { force: true });
+
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            providerCommands: { codex: { command: process.execPath, args: [fakeCodexFile] } },
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            gates: [],
+            allow: ["send"],
+            brainstorm: ["plan"],
+            debate: ["plan"],
+            tasks: "미용실 예약 웹앱",
+            env: {
+                ...context.testEnv,
+                AP_MODE: "build",
+                AP_EXPECTED_CWD: projectDir,
+                AP_GIT: context.gitExecutable,
+                AP_PROGRESS_FILE: autopilotUtil.getProgressFile(projectDir, dataDir),
+                AP_CODEX_LOG: codexLog,
+                ...env
+            },
+            limits: { minMinutes: 0, maxRounds: 2, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+    };
+    const getLines = (result) => fs.readFileSync(result.data.logFile, "utf8").match(/^\[(단계|협의)\] .+$/gm);
+    const readPrompt = (projectDir) => fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8");
+    const getPhaseFile = (projectDir) => phaseUtil.getPhaseFile(autopilotUtil.getProgressFile(projectDir, dataDir));
+    const approve = (projectDir, extra = {}) => requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir, ...extra }).status;
+
+    // 첫 번에 둘 다 합의하면 일찍 끝낸다. 정리 회차가 쟁점 없이 끝내면 합의안만 확인한다.
+    const consensusDir = createProject("debate consensus 한글");
+    const consensusRun = await runDebate(consensusDir, { env: { AP_DEBATE: "consensus" } });
+
+    assert.equal(consensusRun.status, STATUS_OK, consensusRun.error?.msg);
+    assert.equal(consensusRun.data.reason, "기획 확인 대기");
+    assert.deepEqual(getLines(consensusRun), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 3번)",
+        "[협의] Claude: 좋아요, Codex 안의 화면 묶기를 받을게요.",
+        "[협의] Codex: 저도 같은 생각이에요.",
+        "[협의] 합의했어요",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기"
+    ]);
+    assert.equal(consensusRun.data.rounds.length, 2);
+    assert.match(readPrompt(consensusDir), /\[기획\] 협의가 끝났다[\s\S]*plan-disputes\.json/);
+    assert.doesNotMatch(readPrompt(consensusDir), /열지 말고 독립적으로/);
+    assert.match(fs.readFileSync(path.join(consensusDir, "docs/autopilot/proposals/plan-debate.md"), "utf8"), /^# 기획 협의 기록\n\nClaude와 Codex가 1번 주고받았어요\. 두 AI가 합의했어요\./);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(consensusDir)).debate, { phase: "plan", disputes: [], resolved: null });
+    assert.equal(phaseUtil.readPhase(getPhaseFile(consensusDir)).proposals, null);
+    assert.equal(approve(consensusDir, { pick: "codex" }), STATUS_FAILED);
+    assert.equal(approve(consensusDir, { resolve: { d1: "claude" } }), STATUS_FAILED);
+    assert.equal(approve(consensusDir), STATUS_OK);
+
+    const consensusAdoptRun = await runDebate(consensusDir, { env: { AP_DEBATE: "consensus" }, limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
+
+    assert.equal(consensusAdoptRun.status, STATUS_OK, consensusAdoptRun.error?.msg);
+    assert.match(readPrompt(consensusDir), /사용자가 \[기획\] 협의의 합의안을 확인했다[\s\S]*지금 단계는 \[디자인\]/);
+    assert.equal(phaseUtil.readPhase(getPhaseFile(consensusDir)).debate, null);
+
+    // 끝까지 맞추지 못하면 3번 주고받고, 둘 다 이어지는 대화로 묻는다. 쟁점은 정리 회차가 남긴 파일에서 형식이 맞는 것만 d1, d2로 옮긴다.
+    const disputeDir = createProject("debate dispute 한글");
+    const disputeRun = await runDebate(disputeDir);
+
+    assert.equal(disputeRun.status, STATUS_OK, disputeRun.error?.msg);
+    assert.deepEqual(getLines(disputeRun), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 3번)",
+        ...Array(3).fill(["[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.", "[협의] Codex: 결제는 처음부터 넣는 게 좋아요."]).flat(),
+        "[협의] 쟁점 2개를 남기고 끝냈어요",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기"
+    ]);
+
+    const claudeCalls = fs.readFileSync(path.join(disputeDir, "debate-claude.log"), "utf8").split("---\n").slice(1);
+    const codexCalls = fs
+        .readFileSync(codexLog, "utf8")
+        .split("---\n")
+        .filter((call) => call.includes("협의") || call.startsWith("exec resume"));
+
+    assert.equal(claudeCalls.length, 3);
+    assert.doesNotMatch(claudeCalls[0], /--resume/);
+    assert.match(claudeCalls[0], /<CLAUDE_안>[\s\S]*<CODEX_안>\n# Codex 기획안/);
+    assert.match(claudeCalls[2], /--resume 11111111-2222-3333-4444-555555555555[\s\S]*3\/3번째 주고받기다\. 이번이 마지막 주고받기다/);
+    assert.equal(codexCalls.length, 3);
+    assert.match(codexCalls[0], /^exec -s read-only --color never -\n너는 \[기획\] 협의에 참여한 Codex다/);
+    assert.match(codexCalls[1], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 -c sandbox_mode=read-only -\nClaude의 답:/);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(disputeDir)).debate, {
+        phase: "plan",
+        disputes: [
+            { id: "d1", title: "결제", claude: "이번엔 빼요", codex: "카드 결제를 넣어요" },
+            { id: "d2", title: "화면 수", claude: "6개", codex: "4개" }
+        ],
+        resolved: null
+    });
+    assert.equal(getRunStatus({ projectDir: disputeDir, dataDir: dataDir }).data.phase.debate.disputes.length, 2);
+    checkDesktopLogContract(disputeRun.data);
+
+    // 쟁점은 모두 골라야 승인한다. 고른 입장은 다음 실행의 첫 일로 합의안에 확정한다.
+    assert.equal(approve(disputeDir), STATUS_FAILED);
+    assert.equal(approve(disputeDir, { resolve: { d1: "claude" } }), STATUS_FAILED);
+    assert.equal(approve(disputeDir, { resolve: { d1: "claude", d2: "codex", d3: "claude" } }), STATUS_FAILED);
+    assert.equal(approve(disputeDir, { resolve: { d1: "claude", d2: "codex" } }), STATUS_OK);
+
+    const resolveRun = await runDebate(disputeDir, { limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
+
+    assert.equal(resolveRun.status, STATUS_OK, resolveRun.error?.msg);
+    assert.match(readPrompt(disputeDir), /협의에서 못 맞춘 쟁점을 정했다[\s\S]*1\) 결제 → Claude 쪽: 이번엔 빼요 2\) 화면 수 → Codex 쪽: 4개[\s\S]*쟁점 확정/);
+
+    // Codex가 협의 중에 실패하면 협의를 건너뛰고 두 안을 나란히 비교한다. 세션 아이디가 없으면 지금까지 주고받은 말을 다시 보낸다.
+    const failDir = createProject("debate fail 한글");
+    const failRun = await runDebate(failDir, { env: { AP_CODEX_DEBATE_FAIL_AT: "2", AP_CODEX_NO_SESSION: "1" } });
+    const failCodexCalls = fs
+        .readFileSync(codexLog, "utf8")
+        .split("---\n")
+        .filter((call) => call.includes("협의에 참여한 Codex"))
+        .slice(-2);
+
+    assert.equal(failRun.status, STATUS_OK, failRun.error?.msg);
+    assert.deepEqual(getLines(failRun), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 3번)",
+        "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",
+        "[협의] Codex: 결제는 처음부터 넣는 게 좋아요.",
+        "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",
+        "[협의] 건너뜀: Codex 답을 받지 못했어요(usage limit reached)",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기"
+    ]);
+    assert.equal(failRun.data.rounds.length, 1);
+    assert.match(failCodexCalls[1], /^exec -s read-only --color never -\n[\s\S]*지금까지 주고받은 말:\nClaude: [\s\S]*Codex: /);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(failDir)).proposals, { phase: "plan", candidates: ["claude", "codex"], picked: null });
+    assert.equal(phaseUtil.readPhase(getPhaseFile(failDir)).debate, null);
 };
 
 // 지시개선은 처리할 작업이 있어야 시작한다. 잠금은 실패해도 남기지 않는다.
@@ -1054,5 +1214,6 @@ export {
     checkCliRun,
     checkSessionRunner,
     checkBuildMode,
-    checkBrainstorm
+    checkBrainstorm,
+    checkDebate
 };

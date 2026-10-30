@@ -2,6 +2,9 @@ import {
     ALLOW_KEYS,
     BRAINSTORM_PHASES,
     BRAINSTORM_PROVIDERS,
+    BRAINSTORM_COMPARE,
+    BRAINSTORM_DEBATE,
+    BRAINSTORM_MODES,
     PROVIDER_CLAUDE,
     DESIGN_FORMATS,
     EFFORT_LEVELS,
@@ -14,15 +17,16 @@ import {
     MODES,
     MODEL_CHOICES
 } from "./config.js";
+import debateUtil from "./debateUtil.js";
 import phaseUtil from "./phaseUtil.js";
 import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan,design] [--brainstorm-with codex] [--cross-review] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--cross-review] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>",
-    "AutoPilot approve --project <dir> [--pick claude|codex]"
+    "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
@@ -46,7 +50,7 @@ const RUN_OPTION_KEYS = {
     "--brainstorm": "brainstorm",
     "--brainstorm-with": "brainstormWith"
 };
-const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick" };
+const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
 // 신규 개발에서만 뜻이 있는 인자
 const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "crossReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
@@ -131,6 +135,25 @@ const parseListOption = (optionName, text, choices) => {
     return items;
 };
 
+// --brainstorm 값. 단계마다 :compare(나란히 비교, 기본) 또는 :debate(협의)를 붙인다. 협의 단계는 options.debate에 따로 담는다.
+const parseBrainstormOption = (options) => {
+    const entries = options.brainstorm.split(",").map((item) => item.split(":"));
+    const isValid = entries.every(([phase, mode = BRAINSTORM_COMPARE, ...rest]) => BRAINSTORM_PHASES.includes(phase) && BRAINSTORM_MODES.includes(mode) && !rest.length);
+    const phases = entries.map(([phase]) => phase);
+
+    if (!isValid || new Set(phases).size !== phases.length) {
+        throw new Error(`--brainstorm 값은 ${BRAINSTORM_PHASES.join(", ")} 중에서 쉼표로 고르고, 단계마다 :${BRAINSTORM_MODES.join(" 또는 :")}를 붙일 수 있습니다.`);
+    }
+
+    const debate = entries.filter(([, mode]) => mode === BRAINSTORM_DEBATE).map(([phase]) => phase);
+
+    options.brainstorm = phases;
+
+    if (debate.length) {
+        options.debate = debate;
+    }
+};
+
 // 작업 모드와 신규 개발 인자. 신규 개발 인자를 유지 보수 모드에 주면 계약이 흐려지므로 거부한다.
 const parseModeOptions = (options) => {
     if (options.mode !== undefined && !MODES.includes(options.mode)) {
@@ -150,7 +173,7 @@ const parseModeOptions = (options) => {
     }
 
     if (options.brainstorm !== undefined) {
-        options.brainstorm = parseListOption("--brainstorm", options.brainstorm, BRAINSTORM_PHASES);
+        parseBrainstormOption(options);
     }
 
     if (options.brainstormWith !== undefined) {
@@ -159,6 +182,11 @@ const parseModeOptions = (options) => {
 
     if (!options.brainstorm && (options.brainstormWith || options.crossReview)) {
         throw new Error("--brainstorm-with · --cross-review 는 --brainstorm 과 함께 씁니다.");
+    }
+
+    // 협의는 이미 서로 검토하므로 교차검토는 나란히 비교하는 단계가 있을 때만 쓴다.
+    if (options.crossReview && options.brainstorm.every((phase) => options.debate?.includes(phase))) {
+        throw new Error("--cross-review 는 나란히 비교(compare)하는 단계가 있을 때만 씁니다.");
     }
 
     if (options.designFormat !== undefined && !DESIGN_FORMATS.includes(options.designFormat)) {
@@ -237,12 +265,26 @@ const parseProjectArgs = (args) => {
     return parseOptions(args, PROJECT_OPTION_KEYS);
 };
 
-// approve는 여러 AI가 안을 낸 단계면 고른 안(--pick)도 받는다. 후보에 있는지는 단계 상태를 읽어 서비스가 확인한다.
+// approve는 여러 AI가 안을 낸 단계면 고른 안(--pick)을, 협의한 단계면 쟁점마다 고른 쪽(--resolve)을 받는다. 후보·쟁점에 맞는지는 단계 상태를 읽어 서비스가 확인한다.
 const parseApproveArgs = (args) => {
     const options = parseOptions(args, APPROVE_OPTION_KEYS);
 
     if (options.pick !== undefined && ![PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].includes(options.pick)) {
         throw new Error(`--pick 값은 ${[PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    if (options.resolve !== undefined) {
+        const resolutions = debateUtil.parseResolutions(options.resolve);
+
+        if (!resolutions) {
+            throw new Error(`--resolve 값은 d1=${[PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].join("|")} 꼴을 쉼표로 이어 씁니다(쟁점마다 한 번).`);
+        }
+
+        options.resolve = resolutions;
+    }
+
+    if (options.pick !== undefined && options.resolve !== undefined) {
+        throw new Error("--pick 과 --resolve 는 함께 쓸 수 없습니다.");
     }
 
     return options;

@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BUILD_PHASES, GATE_PHASES, PHASE_DONE, PHASE_FILE_NAME, ON_FAIL_STOP, MAX_FAIL_RETRIES, BRAINSTORM_PHASES, PROVIDER_CLAUDE, BRAINSTORM_PROVIDERS, PROPOSALS_DIR } from "./config.js";
+import debateUtil from "./debateUtil.js";
 
-const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null };
+const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
 const RETRY_PATTERN = /^retry:(\d+)$/;
 // fail을 남기면 개발로 되돌리는 단계와 그 단계가 되돌린 횟수를 세는 키
 const RETRY_KEYS = { qa: "qaRetries", security: "securityRetries" };
@@ -40,18 +41,19 @@ const isPhaseState = (state) => {
         (state.awaiting === null || GATE_PHASES.includes(state.awaiting)) &&
         isCount(state.qaRetries) &&
         isCount(state.securityRetries) &&
-        isProposals(state.proposals)
+        isProposals(state.proposals) &&
+        debateUtil.isDebateState(state.debate)
     );
 };
 
 // 파일이 없거나 깨졌으면 처음(기획)부터다. 단계 산출물은 저장소에 commit되어 있어 다시 시작해도 잃는 것이 없다.
-// 보안검토 · 브레인스토밍이 생기기 전에 쓴 파일에는 securityRetries · proposals가 없으므로 0 · null로 본다.
+// 보안검토 · 브레인스토밍 · 협의가 생기기 전에 쓴 파일에는 securityRetries · proposals · debate가 없으므로 0 · null로 본다.
 const readPhase = (phaseFile) => {
     try {
-        const state = { securityRetries: 0, proposals: null, ...JSON.parse(fs.readFileSync(phaseFile, "utf8")) };
+        const state = { securityRetries: 0, proposals: null, debate: null, ...JSON.parse(fs.readFileSync(phaseFile, "utf8")) };
 
         return isPhaseState(state)
-            ? { phase: state.phase, awaiting: state.awaiting, qaRetries: state.qaRetries, securityRetries: state.securityRetries, proposals: state.proposals }
+            ? { phase: state.phase, awaiting: state.awaiting, qaRetries: state.qaRetries, securityRetries: state.securityRetries, proposals: state.proposals, debate: state.debate }
             : { ...INITIAL_PHASE };
     } catch {
         return { ...INITIAL_PHASE };
@@ -72,13 +74,14 @@ const getStartPhase = (state) => {
         return { state: state, isRevision: false };
     }
 
-    return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null }, isRevision: true };
+    return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null, debate: null }, isRevision: true };
 };
 
 // 단계를 마친 세션이 남긴 결과(테스트/QA·보안검토만 pass·fail)로 다음 상태와 일어난 일을 정한다.
 // maxRetries는 단계별로 개발에 되돌릴 수 있는 횟수({ qa, security })다.
 // candidates는 이 단계에 안을 낸 제공자들이다. 둘 이상이면 사용자가 골라야 하므로 확인받기 설정과 상관없이 멈춘다.
-const getPhaseTransition = (state, result, gates, maxRetries, candidates = []) => {
+// debate는 두 AI가 협의를 마친 결과({ phase, disputes, resolved: null })다. 쟁점을 고르거나 합의안을 확인해야 하므로 늘 멈춘다.
+const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], debate = null) => {
     const retryKey = RETRY_KEYS[state.phase];
 
     if (retryKey && result === "fail") {
@@ -93,6 +96,10 @@ const getPhaseTransition = (state, result, gates, maxRetries, candidates = []) =
 
     if (nextPhase === PHASE_DONE) {
         return { state: { ...state, phase: PHASE_DONE, awaiting: null }, event: "done" };
+    }
+
+    if (debate) {
+        return { state: { ...state, phase: nextPhase, awaiting: state.phase, debate: debate }, event: "await" };
     }
 
     if (candidates.length > 1) {
@@ -115,6 +122,15 @@ const getReviewPath = (phase, reviewer) => {
     return `${PROPOSALS_DIR}/${phase}-review-${reviewer}.md`;
 };
 
+// 협의 기록(엔진이 쓴다)과 합의 정리 회차가 남기는 못 맞춘 쟁점.
+const getDebatePath = (phase) => {
+    return `${PROPOSALS_DIR}/${phase}-debate.md`;
+};
+
+const getDisputesPath = (phase) => {
+    return `${PROPOSALS_DIR}/${phase}-disputes.json`;
+};
+
 // --qa-on-fail·--security-on-fail 값. stop은 0, retry:N은 1~MAX_FAIL_RETRIES의 N이다. 형식이 틀리면 null.
 const parseOnFail = (text) => {
     if (text === ON_FAIL_STOP) {
@@ -127,4 +143,18 @@ const parseOnFail = (text) => {
     return retries >= 1 && retries <= MAX_FAIL_RETRIES ? retries : null;
 };
 
-export default { INITIAL_PHASE, RETRY_KEYS, getPhaseFile, isPhaseState, readPhase, writePhase, getStartPhase, getPhaseTransition, getProposalPath, getReviewPath, parseOnFail };
+export default {
+    INITIAL_PHASE,
+    RETRY_KEYS,
+    getPhaseFile,
+    isPhaseState,
+    readPhase,
+    writePhase,
+    getStartPhase,
+    getPhaseTransition,
+    getProposalPath,
+    getReviewPath,
+    getDebatePath,
+    getDisputesPath,
+    parseOnFail
+};

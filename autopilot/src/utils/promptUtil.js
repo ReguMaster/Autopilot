@@ -1,4 +1,4 @@
-import { BUILD_PHASES, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
+import { BUILD_PHASES, DEBATE_MAX_TURNS, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
 import dateUtil from "./dateUtil.js";
 import phaseUtil from "./phaseUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "./guideText.js";
@@ -107,10 +107,36 @@ const getPhaseBrief = (runState) => {
     };
 };
 
+// 단계의 정식 산출물. 협의 정리와 쟁점 확정이 고칠 대상이다.
+const getArtefactText = (phase) => {
+    return phase === "plan" ? "`docs/autopilot/plan.md`" : "디자인 산출물(`docs/autopilot/design.md`와 `docs/autopilot/design/`)";
+};
+
+// 협의를 마친 단계를 사용자가 확인했으면 이번 실행의 첫 일로 쟁점마다 고른 입장을 합의안에 확정한다.
+const getDebateAdoptionPrompt = (runState) => {
+    const { phase, choices } = runState.adoption;
+    const label = PHASE_LABELS[phase];
+
+    if (!choices.length) {
+        return `사용자가 [${label}] 협의의 합의안을 확인했다. 지금 단계의 일을 하기 전에 아직 commit하지 않은 \`${PROPOSALS_DIR}/\` 파일이 있으면 commit한다(\`${runState.commitPrefix} ${label}: 합의안 확정\`).`;
+    }
+
+    const choiceText = choices.map((choice, index) => `${index + 1}) ${choice.title} → ${PROVIDER_LABELS[choice.side]} 쪽: ${choice.position}`).join(" ");
+
+    return [
+        `사용자가 [${label}] 협의에서 못 맞춘 쟁점을 정했다. 지금 단계의 일을 하기 전에 먼저 ${getArtefactText(phase)}에서 쟁점으로 표시한 부분을 아래 고른 입장으로 확정하고 쟁점 표시를 지운다. ${choiceText}`,
+        `아직 commit하지 않은 \`${PROPOSALS_DIR}/\` 파일과 함께 commit한다(\`${runState.commitPrefix} ${label}: 쟁점 확정\`). 이후 단계는 확정한 안을 따른다.`
+    ].join(" ");
+};
+
 // 사용자가 여러 AI의 안 중 하나를 골랐으면 이번 실행의 첫 일로 그 안을 정식 산출물로 확정한다.
 const getAdoptionPrompt = (runState) => {
     if (!runState.adoption) {
         return "";
+    }
+
+    if (runState.adoption.choices) {
+        return getDebateAdoptionPrompt(runState);
     }
 
     const { phase, picked, file } = runState.adoption;
@@ -140,6 +166,12 @@ const getBrainstormPrompt = (runState) => {
 
     const label = PHASE_LABELS[runState.phase];
     const reviewPath = phaseUtil.getReviewPath(runState.phase, PROVIDER_CLAUDE);
+
+    // 협의 단계는 앱이 협의를 진행하고 다음 회차가 결과를 정리한다. 그 전까지는 독립된 안을 쓰는 것만 한다.
+    if (runState.debate?.includes(runState.phase)) {
+        return `이 단계는 다른 AI도 따로 안을 내고, 네 산출물을 마치면 앱이 두 AI의 협의를 진행한다. 네 산출물을 다 쓰기 전에는 \`${PROPOSALS_DIR}/\`를 열지 말고 독립적으로 쓴다.`;
+    }
+
     const readyPrompts = Object.entries(runState.proposalReady || {}).map(([provider, file]) => {
         const providerLabel = PROVIDER_LABELS[provider];
         const reviewPrompt = runState.crossReview
@@ -152,15 +184,91 @@ const getBrainstormPrompt = (runState) => {
     return [`이 단계는 다른 AI도 따로 안을 내고 사용자가 안들을 나란히 보고 고른다. 네 산출물을 다 쓰기 전에는 \`${PROPOSALS_DIR}/\`를 열지 말고 독립적으로 쓴다.`, ...readyPrompts].join(" ");
 };
 
+// 협의를 마친 단계의 정리 회차. 합의안을 쓰고 못 맞춘 쟁점만 파일로 남긴다(엔진이 PHASE.json으로 옮겨 사용자에게 보인다).
+const getDebateSynthesisPrompt = (runState) => {
+    if (runState.debateStage !== "synthesis") {
+        return "";
+    }
+
+    const label = PHASE_LABELS[runState.phase];
+    const codexFile = runState.proposalReady?.codex;
+    const disputesPath = phaseUtil.getDisputesPath(runState.phase);
+
+    return [
+        `[${label}] 협의가 끝났다. 엔진이 두 AI의 협의 기록을 \`${phaseUtil.getDebatePath(runState.phase)}\`에 남겼다. 이번 회차는 <PHASE>의 산출물을 새로 쓰지 않고 협의 결과만 정리한다.`,
+        `1) 협의 기록과 두 안(${getArtefactText(runState.phase)}, \`${codexFile}\`)을 읽고 두 AI가 합의한 내용을 반영해 ${getArtefactText(runState.phase)}을 합의안으로 고친다.`,
+        `2) 끝까지 맞추지 못한 쟁점만 \`${disputesPath}\`에 JSON 배열로 쓴다. 형식: [{"title": "쟁점 제목", "claude": "Claude 쪽 입장과 이유", "codex": "Codex 쪽 입장과 이유"}]. 쟁점이 없으면 []를 쓴다. 합의안에서 쟁점 부분은 어느 쪽으로도 확정하지 말고 쟁점이라고 표시만 해 둔다(사용자가 고른다).`,
+        `3) 합의안 · 협의 기록 · 쟁점 파일 · \`${codexFile}\`를 함께 commit한다(\`${runState.commitPrefix} ${label}: 협의 결과\`). 그다음 <PHASE>의 완료 신호를 남긴다.`
+    ].join(" ");
+};
+
+// 협의의 규칙과 답의 형식. 근거 없이 상대를 따라가지 않게 한다.
+const DEBATE_RULES = [
+    "규칙: 동의하는 점에는 근거를, 반대하는 점에는 이유를 반드시 적는다. 근거 없이 상대 주장을 받아들이거나 양보하지 않는다. 같은 생각이면 억지로 반대하지 않는다.",
+    "반대할 점이 하나라도 남았으면 consensus는 false다. 협의가 끝나면 사용자는 합의안과 못 맞춘 쟁점만 본다.",
+    '답은 인사 · 설명 · 코드 블록 없이 이 JSON 하나만 쓴다: {"message": "1인칭 해요체로 300자 이내의 발언", "agree": ["동의하는 점과 근거"], "disagree": [{"point": "반대하는 점", "reason": "이유"}], "changes": ["네 안에서 바꾸기로 한 점"], "consensus": false}'
+].join("\n");
+
+const MAX_DEBATE_DOC_LENGTH = 60000;
+
+const getTurnBody = (turn) => {
+    return { message: turn.message, agree: turn.agree, disagree: turn.disagree, changes: turn.changes, consensus: turn.consensus };
+};
+
+const getDebateDoc = (title, text) => {
+    const body = text.length > MAX_DEBATE_DOC_LENGTH ? `${text.slice(0, MAX_DEBATE_DOC_LENGTH)}\n…(이하 생략)` : text;
+
+    return `<${title}>\n${body}\n</${title}>`;
+};
+
+// 협의의 첫 발언. Claude는 도구 없이 답하므로 두 안을 본문으로 받고, Codex는 읽기 전용으로 저장소의 파일을 직접 읽는다.
+// transcript는 Codex가 대화를 이을 수 없을 때(세션 아이디를 못 찾음) 지금까지 주고받은 말을 다시 보내는 데 쓴다.
+const getDebateOpeningPrompt = (runState, provider, { claudeDoc = "", codexDoc = "", lastTurn = null, transcript = [] } = {}) => {
+    const label = PHASE_LABELS[runState.phase];
+    const codexFile = runState.proposalReady?.codex;
+    const intro = `너는 [${label}] 협의에 참여한 ${PROVIDER_LABELS[provider]}다. 같은 만들 것으로 Claude는 ${getArtefactText(runState.phase)}를, Codex는 \`${codexFile}\`를 따로 썼다. 두 AI가 최대 ${DEBATE_MAX_TURNS}번 주고받으며 더 나은 안을 찾는다.`;
+
+    if (provider === PROVIDER_CLAUDE) {
+        return [
+            intro,
+            "먼저 Codex 안을 네 안과 비교해 의견을 말한다.",
+            DEBATE_RULES,
+            runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : "",
+            getDebateDoc("CLAUDE_안", claudeDoc),
+            getDebateDoc("CODEX_안", codexDoc)
+        ]
+            .filter(Boolean)
+            .join("\n\n");
+    }
+
+    return [
+        intro,
+        `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 않는다. 두 안을 읽고 아래 Claude의 발언에 답한다.`,
+        DEBATE_RULES,
+        transcript.length ? `지금까지 주고받은 말:\n${transcript.map((turn) => `${PROVIDER_LABELS[turn.provider]}: ${JSON.stringify(getTurnBody(turn))}`).join("\n")}` : "",
+        lastTurn ? `Claude의 발언: ${JSON.stringify(getTurnBody(lastTurn))}` : ""
+    ]
+        .filter(Boolean)
+        .join("\n\n");
+};
+
+// 이어지는 발언. 상대의 마지막 발언을 전하고 몇 번째인지 알린다.
+const getDebateReplyPrompt = (otherTurn, exchange) => {
+    const lastPrompt = exchange === DEBATE_MAX_TURNS ? " 이번이 마지막 주고받기다. 남은 반대는 쟁점으로 사용자에게 넘어간다." : "";
+
+    return [`${PROVIDER_LABELS[otherTurn.provider]}의 답: ${JSON.stringify(getTurnBody(otherTurn))}`, `지금은 ${exchange}/${DEBATE_MAX_TURNS}번째 주고받기다.${lastPrompt}`, DEBATE_RULES].join("\n\n");
+};
+
 // 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
 const getPhasePrompt = (runState) => {
     const label = PHASE_LABELS[runState.phase];
 
     return [
         getAdoptionPrompt(runState),
+        getDebateSynthesisPrompt(runState),
         `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 ${BUILD_PHASES.map((phase) => PHASE_LABELS[phase]).join(" → ")} 순서이며, 이 세션은 지금 단계의 일만 하고 아래 <PHASE>의 틀을 따른다.`,
         runState.isRevision ? `이 단계는 사용자가 산출물을 확인하고 다시 하라고 돌려보낸 것이다. <TASKS>의 수정 요청을 반영해 ${label} 산출물을 고친다.` : "",
-        getBrainstormPrompt(runState)
+        runState.debateStage === "synthesis" ? "" : getBrainstormPrompt(runState)
     ]
         .filter(Boolean)
         .join(" ");
@@ -287,4 +395,4 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
     return `${roundPrompt}\n\n${tasksBlock}${phaseBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix, runState.mode)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch, runState.mode === MODE_BUILD ? runState.allow : null)}\n</AUTOPILOT_POLICY.md>`;
 };
 
-export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt };
+export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt, getDebateOpeningPrompt, getDebateReplyPrompt };

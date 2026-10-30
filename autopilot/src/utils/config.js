@@ -49,6 +49,13 @@ const BRAINSTORM_PROVIDERS = ["codex"];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 const PROPOSALS_DIR = "docs/autopilot/proposals";
 const PROVIDER_TIMEOUT_MINUTES = 30;
+// 브레인스토밍 방식. compare는 두 안을 나란히 보여 주고 사용자가 고르고, debate는 두 AI가 주고받아 합의안과 못 맞춘 쟁점을 남긴다.
+const BRAINSTORM_COMPARE = "compare";
+const BRAINSTORM_DEBATE = "debate";
+const BRAINSTORM_MODES = [BRAINSTORM_COMPARE, BRAINSTORM_DEBATE];
+// 협의에서 주고받는 최대 횟수. 한 번은 Claude가 말하고 Codex가 답하는 것이다.
+const DEBATE_MAX_TURNS = 3;
+const DEBATE_TURN_MINUTES = 10;
 
 const DEFAULT_END_TIME = "07:00";
 const DEFAULT_MODEL = "opus";
@@ -140,6 +147,11 @@ export {
     PROVIDER_LABELS,
     PROPOSALS_DIR,
     PROVIDER_TIMEOUT_MINUTES,
+    BRAINSTORM_COMPARE,
+    BRAINSTORM_DEBATE,
+    BRAINSTORM_MODES,
+    DEBATE_MAX_TURNS,
+    DEBATE_TURN_MINUTES,
     DEFAULT_END_TIME,
     DEFAULT_MODEL,
     FALLBACK_MODEL,

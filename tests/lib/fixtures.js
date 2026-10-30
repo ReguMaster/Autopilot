@@ -16,6 +16,15 @@ let prompt = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => prompt += chunk);
 process.stdin.on('end', () => {
+  // 협의의 Claude 발언(도구 없는 짧은 호출)은 회차 세션과 따로 기록하고 JSON 한 줄로 답한다. AP_DEBATE=consensus면 바로 합의한다.
+  if (process.argv.includes('--tools=')) {
+    fs.appendFileSync('debate-claude.log', '---\n' + process.argv.slice(2).join(' ') + '\n' + prompt + '\n');
+    const turn = process.env.AP_DEBATE === 'consensus'
+      ? { message: '좋아요, Codex 안의 화면 묶기를 받을게요.', agree: ['화면 묶기: 단계가 줄어요'], disagree: [], changes: ['화면을 4개로 줄여요'], consensus: true }
+      : { message: '저는 결제를 넣지 않는 쪽이 맞다고 봐요.\n줄바꿈도 한 줄로 펴져야 해요.', agree: [], disagree: [{ point: '결제 넣기', reason: '이번 범위가 아니에요' }], changes: [], consensus: false };
+    console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: '11111111-2222-3333-4444-555555555555', result: '답이에요.\n' + JSON.stringify(turn) }));
+    return;
+  }
   fs.writeFileSync('prompt.txt', prompt);
   if (fs.existsSync('.autopilot/progress/RUNNING')) fs.writeFileSync('lock-snapshot.txt', fs.readFileSync('.autopilot/progress/RUNNING', 'utf8'));
   fs.appendFileSync('cleanup.log', /AUTOPILOT_PROGRESS_[0-9a-f-]{36}\.md/.test(prompt) ? '1' : '0');
@@ -66,6 +75,11 @@ process.stdin.on('end', () => {
     fs.appendFileSync('work.txt', 'phase\n');
     execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
     execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] phase']);
+    // 협의를 정리하는 회차는 쟁점 파일을 쓴다. 형식이 틀린 항목은 엔진이 걸러야 한다.
+    if (prompt.includes('협의가 끝났다')) {
+      const disputes = process.env.AP_DEBATE === 'consensus' ? [] : [{ title: '결제', claude: '이번엔 빼요', codex: '카드 결제를 넣어요' }, { title: '화면 수', claude: '6개', codex: '4개' }, { title: '' }];
+      fs.writeFileSync('docs/autopilot/proposals/plan-disputes.json', JSON.stringify(disputes));
+    }
     const marker = prompt.match(/파일 \x60(\.autopilot\/progress\/[^\x60]+\/PHASE_DONE)\x60/)[1];
     let phaseResult = 'pass';
     for (const [label, countFile, failCount] of [['테스트/QA', 'qa-count.txt', process.env.AP_QA_FAILS], ['보안검토', 'security-count.txt', process.env.AP_SECURITY_FAILS]]) {
@@ -97,6 +111,21 @@ process.stdin.on("end", () => {
   if (process.env.AP_CODEX_FAIL === "1") {
     console.error("progress\nusage limit reached");
     process.exit(1);
+  }
+  // 협의 발언. 세션 아이디를 stderr 머리말에 남기고(AP_CODEX_NO_SESSION=1이면 안 남김) AP_CODEX_DEBATE_FAIL_AT번째 발언에서 실패한다.
+  if (prompt.includes("협의에 참여한 Codex") || args[1] === "resume") {
+    const turnsFile = process.env.AP_CODEX_LOG + ".turns";
+    const turn = (fs.existsSync(turnsFile) ? Number(fs.readFileSync(turnsFile, "utf8")) : 0) + 1;
+    fs.writeFileSync(turnsFile, String(turn));
+    if (Number(process.env.AP_CODEX_DEBATE_FAIL_AT || 0) === turn) {
+      console.error("usage limit reached");
+      process.exit(1);
+    }
+    if (process.env.AP_CODEX_NO_SESSION !== "1") console.error("OpenAI Codex\nsession id: 01a18d02-d1e7-7b20-831e-d85c25a2b4f2\n--------");
+    console.log(JSON.stringify(process.env.AP_DEBATE === "consensus"
+      ? { message: "저도 같은 생각이에요.", agree: ["범위: 맞아요"], disagree: [], changes: [], consensus: true }
+      : { message: "결제는 처음부터 넣는 게 좋아요.", agree: [], disagree: [{ point: "결제 빼기", reason: "노쇼를 막아요" }], changes: [], consensus: false }));
+    return;
   }
   console.log(prompt.includes("검토자") ? "- Codex 검토: 빈자리 하나" : "\x60\x60\x60markdown\n# Codex 기획안\n\n1) 한 줄 요약\n\x60\x60\x60");
 });

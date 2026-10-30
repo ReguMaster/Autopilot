@@ -25,6 +25,8 @@ import {
     PROVIDER_CLAUDE,
     PROVIDER_LABELS,
     PROVIDER_TIMEOUT_MINUTES,
+    DEBATE_MAX_TURNS,
+    DEBATE_TURN_MINUTES,
     WORK_DIR_NAME,
     PROGRESS_DIR_NAME,
     TODO_COMPLETE_FILE_NAME,
@@ -49,6 +51,7 @@ import reportUtil from "../utils/reportUtil.js";
 import autopilotUtil from "../utils/autopilotUtil.js";
 import phaseUtil from "../utils/phaseUtil.js";
 import providerUtil from "../utils/providerUtil.js";
+import debateUtil from "../utils/debateUtil.js";
 
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
@@ -122,17 +125,27 @@ const getModeSettings = (options, progressFile, tasks) => {
         brainstormWith: brainstorm.length && canSend ? options.brainstormWith || BRAINSTORM_PROVIDERS : [],
         isBrainstormBlocked: brainstorm.length > 0 && !canSend,
         crossReview: Boolean(options.crossReview),
-        proposals: state.proposals
+        debate: options.debate || [],
+        proposals: state.proposals,
+        debateState: state.debate
     };
 };
 
 // PHASE.json에 쓸 지금 단계 상태. 확인 대기와 고른 안은 단계를 마치거나 확정할 때만 정한다.
 const getPhaseState = (runState) => {
-    return { phase: runState.phase, awaiting: null, qaRetries: runState.qaRetries, securityRetries: runState.securityRetries, proposals: null };
+    return { phase: runState.phase, awaiting: null, qaRetries: runState.qaRetries, securityRetries: runState.securityRetries, proposals: null, debate: null };
 };
 
 // 사용자가 고른 안이 있으면 이번 실행의 첫 회차가 정식 산출물로 확정한다. 디자인은 HTML로 받았을 수 있다.
-const getAdoption = (projectDir, proposals) => {
+// 협의한 단계면 쟁점마다 고른 쪽의 입장(choices)을 합의안에 확정한다. 쟁점이 없었으면 choices가 비어 있다.
+const getAdoption = (projectDir, proposals, debate) => {
+    if (debate?.resolved) {
+        return {
+            phase: debate.phase,
+            choices: debate.disputes.map((dispute) => ({ title: dispute.title, side: debate.resolved[dispute.id], position: dispute[debate.resolved[dispute.id]] }))
+        };
+    }
+
     if (!proposals?.picked) {
         return null;
     }
@@ -227,7 +240,8 @@ const prepareRun = (options) => {
     };
     const readyProposals = modeSettings.mode === MODE_BUILD ? getReadyProposals(projectDir, modeSettings) : {};
 
-    runState.adoption = modeSettings.mode === MODE_BUILD ? getAdoption(projectDir, modeSettings.proposals) : null;
+    runState.adoption = modeSettings.mode === MODE_BUILD ? getAdoption(projectDir, modeSettings.proposals, modeSettings.debateState) : null;
+    runState.debateStage = null;
     runState.proposalReady = readyProposals;
     runState.proposalPhase = Object.keys(readyProposals).length ? modeSettings.phase : null;
 
@@ -591,6 +605,116 @@ const requestProposals = async (context, loopState) => {
     }
 };
 
+// 협의할 때 Claude에게 보여 줄 Claude의 산출물. 디자인 폴더의 파일은 이름만 알린다.
+const readPhaseArtefact = (projectDir, phase) => {
+    if (phase === "plan") {
+        return fileUtil.readTextFile(path.join(projectDir, "docs/autopilot/plan.md"));
+    }
+
+    const designDir = path.join(projectDir, "docs/autopilot/design");
+    const designFiles = fs.existsSync(designDir) ? fs.readdirSync(designDir) : [];
+
+    return [fileUtil.readTextFile(path.join(projectDir, "docs/autopilot/design.md")), designFiles.length ? `(docs/autopilot/design/ 파일: ${designFiles.join(", ")})` : ""]
+        .filter(Boolean)
+        .join("\n\n");
+};
+
+// 협의: Claude와 Codex가 각자 같은 대화를 이어 가며 최대 DEBATE_MAX_TURNS번 주고받는다. 한 번은 Claude가 말하고 Codex가 답하는 것이다.
+// 둘 다 같은 번에 합의라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
+const runDebate = async (context, loopState) => {
+    const { options, env, runState, writeLog } = context;
+    const { phase, projectDir } = runState;
+    const codexFile = runState.proposalReady.codex;
+    const roundOptions = getRoundOptions(context);
+    const claude = {
+        command: context.command,
+        baseArgs: options.commandArgs || [],
+        model: roundOptions.model,
+        extraArgs: context.unsupportedFlags.includes("--effort") ? [] : ["--effort", "medium"],
+        sessionId: null
+    };
+    const docs = { claudeDoc: readPhaseArtefact(projectDir, phase), codexDoc: fileUtil.readTextFile(path.join(projectDir, codexFile)) };
+    const turns = [];
+    let codexSessionId = null;
+
+    const skip = (reason) => {
+        writeLog(`[협의] 건너뜀: ${reason}`);
+
+        return null;
+    };
+
+    const getCallOptions = () => ({
+        cwd: projectDir,
+        processEnv: env,
+        deadline: Math.min(+runState.deadline, Date.now() + DEBATE_TURN_MINUTES * MINUTE_MS),
+        shouldStop: () => isStopRequested(context, loopState),
+        onProcessChange: (childProcess) => {
+            loopState.activeProcess = childProcess;
+        }
+    });
+
+    context.providerChecks.codex ??= await providerUtil.checkProvider("codex", { cwd: projectDir, processEnv: env, override: options.providerCommands?.codex });
+
+    if (context.providerChecks.codex.error) {
+        return skip(context.providerChecks.codex.error);
+    }
+
+    writeLog(`[협의] ${PHASE_LABELS[phase]} 시작 (최대 ${DEBATE_MAX_TURNS}번)`);
+
+    for (let exchange = 1; exchange <= DEBATE_MAX_TURNS; exchange++) {
+        const claudePrompt = exchange === 1 ? promptUtil.getDebateOpeningPrompt(runState, PROVIDER_CLAUDE, docs) : promptUtil.getDebateReplyPrompt(turns.at(-1), exchange);
+        const claudeAnswer = await providerUtil.askClaude(claude, claudePrompt, getCallOptions());
+        const claudeTurn = claudeAnswer.text ? debateUtil.parseTurn(claudeAnswer.text) : null;
+
+        if (!claudeTurn || !(claudeAnswer.sessionId || claude.sessionId)) {
+            return skip(`Claude 답을 받지 못했어요(${claudeAnswer.error || "형식이 맞지 않아요"})`);
+        }
+
+        claude.sessionId = claudeAnswer.sessionId || claude.sessionId;
+        turns.push({ provider: PROVIDER_CLAUDE, ...claudeTurn });
+        writeLog(`[협의] Claude: ${debateUtil.getLogText(claudeTurn.message)}`);
+
+        // Codex의 세션 아이디를 못 찾으면 대화를 이을 수 없으므로 지금까지 주고받은 말을 다시 보낸다.
+        const codexPrompt = codexSessionId
+            ? promptUtil.getDebateReplyPrompt(turns.at(-1), exchange)
+            : promptUtil.getDebateOpeningPrompt(runState, "codex", { lastTurn: turns.at(-1), transcript: turns.slice(0, -1) });
+        const codexAnswer = await providerUtil.askProvider("codex", context.providerChecks.codex, codexPrompt, getCallOptions(), codexSessionId);
+        const codexTurn = codexAnswer.text ? debateUtil.parseTurn(codexAnswer.text) : null;
+
+        if (!codexTurn) {
+            return skip(`Codex 답을 받지 못했어요(${codexAnswer.error || "형식이 맞지 않아요"})`);
+        }
+
+        codexSessionId = codexAnswer.sessionId || codexSessionId;
+        turns.push({ provider: "codex", ...codexTurn });
+        writeLog(`[협의] Codex: ${debateUtil.getLogText(codexTurn.message)}`);
+
+        if (claudeTurn.consensus && codexTurn.consensus) {
+            return { turns: turns, isConsensus: true };
+        }
+    }
+
+    return { turns: turns, isConsensus: false };
+};
+
+// 협의 단계에서 Claude가 산출물을 마치면 협의를 하고, 다음 회차가 결과를 정리하게 한다. 정리 회차로 넘어가면 true다.
+const startDebate = async (context, loopState) => {
+    const { runState, phaseDoneFile } = context;
+    const debate = await runDebate(context, loopState);
+
+    if (!debate) {
+        return false;
+    }
+
+    writeProposalFile(runState.projectDir, phaseUtil.getDebatePath(runState.phase), debateUtil.formatTranscript(PHASE_LABELS[runState.phase], debate.turns, debate.isConsensus));
+    fileUtil.removeFiles([phaseDoneFile]);
+    runState.debateStage = "synthesis";
+    // 협의와 정리는 같은 단계의 일이라 정리 회차가 commit 없이 끝나도 idle로 몰지 않는다.
+    loopState.idleCount = 0;
+
+    return true;
+};
+
 // 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA·보안검토 실패로 실행을 끝내야 하면 true를 반환한다.
 // 다른 AI의 안을 받은 단계는 교차검토를 받고, 사용자가 안을 고르도록 멈춘다. 다른 AI의 검토는 다음 실행이 commit한다.
 const applyPhaseDone = async (context, loopState) => {
@@ -600,9 +724,26 @@ const applyPhaseDone = async (context, loopState) => {
     const label = PHASE_LABELS[phase];
     const maxRetries = { qa: runState.maxQaRetries, security: runState.maxSecurityRetries };
     const readyProviders = runState.brainstorm?.includes(phase) ? Object.keys(runState.proposalReady) : [];
-    const candidates = readyProviders.length ? [PROVIDER_CLAUDE, ...readyProviders] : [];
+    const isDebatePhase = Boolean(runState.debate?.includes(phase) && runState.proposalReady?.codex);
+
+    if (isDebatePhase && runState.debateStage !== "synthesis" && (await startDebate(context, loopState))) {
+        return false;
+    }
+
+    // 협의를 정리한 회차가 남긴 쟁점을 상태로 옮긴다. 사용자는 합의안을 확인하고 쟁점마다 한쪽을 고른다.
+    const debateResult =
+        runState.debateStage === "synthesis"
+            ? { phase: phase, disputes: debateUtil.parseDisputes(fileUtil.readTextFile(path.join(runState.projectDir, phaseUtil.getDisputesPath(phase)))), resolved: null }
+            : null;
+    const candidates = !debateResult && readyProviders.length ? [PROVIDER_CLAUDE, ...readyProviders] : [];
     const reviewState = { ...runState };
-    const { state, event } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates);
+    const { state, event } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult);
+
+    runState.debateStage = null;
+
+    if (debateResult) {
+        writeLog(debateResult.disputes.length ? `[협의] 쟁점 ${debateResult.disputes.length}개를 남기고 끝냈어요` : "[협의] 합의했어요");
+    }
 
     fileUtil.removeFiles([phaseDoneFile]);
     phaseUtil.writePhase(runState.phaseFile, state);
@@ -639,7 +780,7 @@ const applyPhaseDone = async (context, loopState) => {
 
     if (event === "await") {
         // 교차검토: 다른 AI가 Claude의 산출물을 읽고 고칠 점을 낸다. 실패해도 고르는 데는 지장이 없다.
-        for (const provider of runState.crossReview ? readyProviders : []) {
+        for (const provider of runState.crossReview && !debateResult ? readyProviders : []) {
             const review = await askProvider(context, loopState, provider, promptUtil.getReviewPrompt(reviewState), `${label} 검토`);
 
             if (review) {
@@ -955,7 +1096,27 @@ const requestProgressReset = (options = {}) => {
     }
 };
 
-// 확인을 기다리는 신규 개발 단계를 승인해 다음 실행이 다음 단계부터 하게 한다. 여러 AI가 안을 낸 단계면 고른 안(pick)이 필요하다.
+// 협의한 단계의 승인. 쟁점이 있으면 쟁점마다 고른 쪽(resolve)이 모두 있어야 하고, 없으면 그대로 승인한다.
+const approveDebate = (phaseFile, state, options) => {
+    const ids = state.debate.disputes.map((dispute) => dispute.id);
+    const resolutions = options.resolve || {};
+
+    if (options.pick) {
+        throw new Error("협의한 단계는 --pick 대신 --resolve로 쟁점마다 고릅니다.");
+    }
+
+    if (Object.keys(resolutions).length !== ids.length || !ids.every((id) => Object.hasOwn(resolutions, id))) {
+        throw new Error(ids.length ? `쟁점마다 고른 쪽이 필요합니다(--resolve ${ids.map((id) => `${id}=claude|codex`).join(",")}).` : "고를 쟁점이 없습니다. --resolve 없이 승인합니다.");
+    }
+
+    const approvedState = { ...state, awaiting: null, debate: { ...state.debate, resolved: resolutions } };
+
+    phaseUtil.writePhase(phaseFile, approvedState);
+
+    return { status: STATUS_OK, data: { phase: approvedState } };
+};
+
+// 확인을 기다리는 신규 개발 단계를 승인해 다음 실행이 다음 단계부터 하게 한다. 여러 AI가 안을 낸 단계면 고른 안(pick)이, 협의한 단계면 쟁점마다 고른 쪽(resolve)이 필요하다.
 const requestPhaseApproval = (options = {}) => {
     try {
         const { projectDir, workDir } = getProjectPaths(options);
@@ -969,6 +1130,14 @@ const requestPhaseApproval = (options = {}) => {
 
         if (!fs.existsSync(phaseFile) || !state.awaiting) {
             throw new Error("확인을 기다리는 단계가 없습니다.");
+        }
+
+        if (state.debate) {
+            return approveDebate(phaseFile, state, options);
+        }
+
+        if (options.resolve) {
+            throw new Error("협의한 단계가 아니어서 고를 쟁점이 없습니다.");
         }
 
         const candidates = state.proposals?.candidates || [];

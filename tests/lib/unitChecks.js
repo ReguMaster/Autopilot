@@ -12,6 +12,7 @@ import gitUtil from "../../autopilot/src/utils/gitUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
 import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "../../autopilot/src/utils/guideText.js";
+import debateUtil from "../../autopilot/src/utils/debateUtil.js";
 import promptUtil from "../../autopilot/src/utils/promptUtil.js";
 
 const BOM = String.fromCodePoint(0xfeff);
@@ -223,7 +224,7 @@ const checkBrainstormRules = (context) => {
     assert.throws(() => parseApproveArgs([...project, "--pick", "gpt"]), /--pick/);
 
     const { getPhaseTransition, getStartPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
     const limits = { qa: 3, security: 3 };
     const proposals = { phase: "plan", candidates: ["claude", "codex"], picked: null };
 
@@ -296,10 +297,141 @@ const checkBrainstormRules = (context) => {
     assert.match(promptUtil.getReviewPrompt(runState), /`docs\/autopilot\/plan\.md`\(다른 AI가 쓴 안\)를 읽고 빈자리/);
 };
 
+// 협의: 단계별 방식 인자, 쟁점 고르기 인자, 발언 · 쟁점 해석과 상한, 협의 결과로 멈추는 전환, 협의 · 정리 · 확정 지시.
+const checkDebateRules = (context) => {
+    const { parseRunArgs, parseApproveArgs } = cliUtil;
+    const project = ["--project", "C:\\work\\demo project"];
+    const build = [...project, "--mode", "build"];
+
+    assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan:debate,design"]), { projectDir: "C:\\work\\demo project", mode: "build", brainstorm: ["plan", "design"], debate: ["plan"] });
+    assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan:compare"]).debate, undefined);
+    assert.equal(parseRunArgs([...build, "--brainstorm", "plan:debate,design:compare", "--cross-review"]).crossReview, true);
+
+    for (const brainstorm of ["plan:argue", "plan:debate:x", "plan,plan:debate", "plan:", ":debate"]) {
+        assert.throws(() => parseRunArgs([...build, "--brainstorm", brainstorm]), /--brainstorm/, brainstorm);
+    }
+
+    assert.throws(() => parseRunArgs([...build, "--brainstorm", "plan:debate,design:debate", "--cross-review"]), /--cross-review/);
+    assert.deepEqual(parseApproveArgs([...project, "--resolve", "d1=claude,d2=codex"]).resolve, { d1: "claude", d2: "codex" });
+
+    for (const resolve of ["d1=gpt", "d1=claude,d1=codex", "x1=claude", "d1=claude,", "d1"]) {
+        assert.throws(() => parseApproveArgs([...project, "--resolve", resolve]), /--resolve/, resolve);
+    }
+
+    assert.throws(() => parseApproveArgs([...project, "--pick", "codex", "--resolve", "d1=claude"]), /함께 쓸 수 없습니다/);
+
+    // 발언: 둘레의 글을 걷어 JSON 하나를 읽고, 한 줄로 펴서 길이를 묶는다. 반대가 남았으면 합의가 아니다.
+    const turn = debateUtil.parseTurn(
+        `앞말\n{"message": "첫 줄\\n둘째 줄", "agree": ["a", 3], "disagree": [{"point": "결제", "reason": "범위"}, {"reason": "점 없음"}], "changes": [], "consensus": true}\n뒷말`
+    );
+
+    assert.deepEqual(turn, { message: "첫 줄 둘째 줄", agree: ["a"], disagree: [{ point: "결제", reason: "범위" }], changes: [], consensus: false });
+    assert.equal(debateUtil.parseTurn(JSON.stringify({ message: "가".repeat(400), consensus: true })).message.length, 300);
+    assert.equal(debateUtil.parseTurn(JSON.stringify({ message: "네", consensus: true })).consensus, true);
+
+    for (const text of ["", "합의해요", "{}", '{"message": 3}', "{깨진 json}"]) {
+        assert.equal(debateUtil.parseTurn(text), null, text);
+    }
+
+    assert.equal(debateUtil.getLogText("가".repeat(200)), `${"가".repeat(159)}…`);
+    assert.deepEqual(
+        debateUtil.parseDisputes(
+            `\uFEFF${JSON.stringify([
+                { title: "결제", claude: "빼요", codex: "넣어요" },
+                { title: "빈 입장", claude: "", codex: "x" },
+                { title: "화면", claude: "6개", codex: "4개", extra: 1 }
+            ])}`
+        ),
+        [
+            { id: "d1", title: "결제", claude: "빼요", codex: "넣어요" },
+            { id: "d2", title: "화면", claude: "6개", codex: "4개" }
+        ]
+    );
+    assert.deepEqual(debateUtil.parseDisputes('{"title": "배열 아님"}'), []);
+    assert.deepEqual(debateUtil.parseDisputes("깨짐"), []);
+
+    const disputes = [{ id: "d1", title: "결제", claude: "빼요", codex: "넣어요" }];
+    const debate = { phase: "plan", disputes: disputes, resolved: null };
+
+    assert(debateUtil.isDebateState(null));
+    assert(debateUtil.isDebateState(debate));
+    assert(debateUtil.isDebateState({ ...debate, resolved: { d1: "codex" } }));
+    assert(debateUtil.isDebateState({ phase: "design", disputes: [], resolved: {} }));
+    assert(!debateUtil.isDebateState({ ...debate, resolved: {} }));
+    assert(!debateUtil.isDebateState({ ...debate, resolved: { d1: "gemini" } }));
+    assert(!debateUtil.isDebateState({ ...debate, phase: "build" }));
+    assert(!debateUtil.isDebateState({ ...debate, disputes: [{ ...disputes[0], id: "1" }] }));
+
+    // 협의를 마친 단계는 확인받기 설정과 상관없이 멈추고, 돌려보내면 협의도 다시 한다. 협의가 생기기 전의 상태 파일은 debate가 null이다.
+    const { getPhaseTransition, getStartPhase, readPhase } = phaseUtil;
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
+    const oldPhaseFile = path.join(context.testDir, "old-phase.json");
+
+    assert.deepEqual(getPhaseTransition(plan, "pass", [], { qa: 3, security: 3 }, [], debate), { state: { ...plan, phase: "design", awaiting: "plan", debate: debate }, event: "await" });
+    assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan", debate: debate }), { state: plan, isRevision: true });
+    fs.writeFileSync(oldPhaseFile, JSON.stringify({ phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null }));
+    assert.equal(readPhase(oldPhaseFile).debate, null);
+    assert.equal(readPhase(oldPhaseFile).awaiting, "plan");
+
+    const runState = {
+        mode: "build",
+        phase: "plan",
+        qaRetries: 0,
+        securityRetries: 0,
+        isRevision: false,
+        designFormat: "html",
+        allow: ["send"],
+        tasks: "미용실 예약 웹앱",
+        projectDir: context.testDir,
+        repos: [],
+        progressFile: "progress.md",
+        deadline: new Date(2026, 10, 2, 7, 0),
+        commitPrefix: "[ap]",
+        workBranch: "ai/autopilot",
+        phaseDoneRelPath: ".autopilot/progress/2026-10-30/PHASE_DONE",
+        brainstorm: ["plan"],
+        brainstormWith: ["codex"],
+        crossReview: false,
+        debate: ["plan"],
+        debateStage: null,
+        proposalReady: { codex: "docs/autopilot/proposals/plan-codex.md" },
+        adoption: null
+    };
+    const roundPrompt = promptUtil.getRoundPrompt(runState, 1, 60, "", 2);
+    const synthesisPrompt = promptUtil.getRoundPrompt({ ...runState, debateStage: "synthesis" }, 2, 60, "", 2);
+
+    assert.match(roundPrompt, /네 산출물을 마치면 앱이 두 AI의 협의를 진행한다/);
+    assert.doesNotMatch(roundPrompt, /Codex 안 보관|plan-review-claude/);
+    assert.match(synthesisPrompt, /\[기획\] 협의가 끝났다[\s\S]*plan-debate\.md[\s\S]*plan-disputes\.json[\s\S]*\[ap\] 기획: 협의 결과/);
+    assert.doesNotMatch(synthesisPrompt, /열지 말고 독립적으로/);
+
+    const claudeOpening = promptUtil.getDebateOpeningPrompt(runState, "claude", { claudeDoc: "# 내 안", codexDoc: "x".repeat(70000) });
+
+    assert.match(claudeOpening, /너는 \[기획\] 협의에 참여한 Claude다[\s\S]*근거 없이 상대 주장을 받아들이거나 양보하지 않는다[\s\S]*"consensus": false/);
+    assert.match(claudeOpening, /<CLAUDE_안>\n# 내 안\n<\/CLAUDE_안>/);
+    assert.match(claudeOpening, /…\(이하 생략\)\n<\/CODEX_안>/);
+
+    const lastTurn = { provider: "claude", message: "결제는 빼요", agree: [], disagree: [{ point: "결제", reason: "범위" }], changes: [], consensus: false };
+    const codexOpening = promptUtil.getDebateOpeningPrompt(runState, "codex", { lastTurn: lastTurn, transcript: [{ ...lastTurn, provider: "codex", message: "넣어요" }] });
+
+    assert.match(codexOpening, /읽기만 할 수 있다[\s\S]*지금까지 주고받은 말:\nCodex: \{"message":"넣어요"[\s\S]*Claude의 발언: \{"message":"결제는 빼요"/);
+    assert.match(promptUtil.getDebateReplyPrompt(lastTurn, 3), /^Claude의 답: [\s\S]*3\/3번째 주고받기다\. 이번이 마지막 주고받기다/);
+    assert.doesNotMatch(promptUtil.getDebateReplyPrompt(lastTurn, 2), /마지막/);
+
+    // 승인한 협의 결과는 다음 실행의 첫 일로 확정한다. 쟁점이 없었으면 남은 파일만 commit한다.
+    const adoption = { phase: "plan", choices: [{ title: "결제", side: "codex", position: "넣어요" }] };
+
+    assert.match(
+        promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: adoption }, 1, 60, "", 2),
+        /못 맞춘 쟁점을 정했다[\s\S]*1\) 결제 → Codex 쪽: 넣어요[\s\S]*`\[ap\] 기획: 쟁점 확정`/
+    );
+    assert.match(promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { ...adoption, choices: [] } }, 1, 60, "", 2), /협의의 합의안을 확인했다[\s\S]*`\[ap\] 기획: 합의안 확정`/);
+};
+
 // 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA·보안검토 실패는 단계마다 정한 횟수까지 개발로 되돌린다.
 const checkPhaseRules = (context) => {
     const { getPhaseTransition, getStartPhase, readPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
     const limits = { qa: 3, security: 2 };
 
     assert.deepEqual(getPhaseTransition(plan, "pass", [], limits), { state: { ...plan, phase: "design" }, event: "next" });
@@ -333,7 +465,7 @@ const checkPhaseRules = (context) => {
 
     fs.mkdirSync(path.dirname(oldPhaseFile), { recursive: true });
     fs.writeFileSync(oldPhaseFile, JSON.stringify({ phase: "qa", awaiting: null, qaRetries: 2 }));
-    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null });
+    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null, debate: null });
     fs.writeFileSync(oldPhaseFile, "null");
     assert.deepEqual(readPhase(oldPhaseFile), plan);
 
@@ -703,5 +835,6 @@ export {
     checkStreamEvent,
     checkCommitLineCounts,
     checkPhaseRules,
-    checkBrainstormRules
+    checkBrainstormRules,
+    checkDebateRules
 };
