@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import { STATUS_OK, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED } from "../src/utils/config.js";
-import { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset } from "../src/services/autopilotService.js";
+import { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset, requestPhaseApproval } from "../src/services/autopilotService.js";
 
 import log from "../src/utils/logUtil.js";
 import cliUtil from "../src/utils/cliUtil.js";
@@ -61,6 +61,18 @@ const runCli = async (args = process.argv.slice(2)) => {
         const { isReset, archivePath } = requestProgressResetResult.data;
 
         log.info(isReset ? `Progress record reset. Original archived: ${archivePath}` : "Progress record is already initial.");
+
+        return EXIT_CODE_SUCCESS;
+    }
+
+    if (args[0] === "approve") {
+        const requestPhaseApprovalResult = requestPhaseApproval(cliUtil.parseProjectArgs(args.slice(1)));
+
+        if (requestPhaseApprovalResult.status !== STATUS_OK) {
+            return EXIT_CODE_FAILED;
+        }
+
+        log.info(`Approved. The next run starts the ${requestPhaseApprovalResult.data.phase.phase} phase.`);
 
         return EXIT_CODE_SUCCESS;
     }

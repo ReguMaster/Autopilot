@@ -13,9 +13,17 @@ import {
     REPORT_REFRESH_MS,
     EXIT_CODE_SUCCESS,
     POLICY_TODO,
+    MODE_MAINTAIN,
+    MODE_BUILD,
+    BUILD_PHASES,
+    PHASE_DONE,
+    PHASE_LABELS,
+    DEFAULT_DESIGN_FORMAT,
+    DEFAULT_QA_ON_FAIL,
     WORK_DIR_NAME,
     PROGRESS_DIR_NAME,
     TODO_COMPLETE_FILE_NAME,
+    PHASE_DONE_FILE_NAME,
     STOP_REASON_REQUESTED,
     ROUND_OPTIONS_FILE_NAME,
     PROGRESS_MAX_LINES,
@@ -34,6 +42,7 @@ import promptUtil from "../utils/promptUtil.js";
 import progressUtil from "../utils/progressUtil.js";
 import reportUtil from "../utils/reportUtil.js";
 import autopilotUtil from "../utils/autopilotUtil.js";
+import phaseUtil from "../utils/phaseUtil.js";
 
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
@@ -46,6 +55,7 @@ const writeRunHeader = (context) => {
         `Progress : ${runState.progressFile}`,
         `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
         `Policy : ${runState.policy} (${runState.policySource})`,
+        ...(runState.mode === MODE_BUILD ? [`Mode : 신규 개발 (${PHASE_LABELS[runState.phase]} 단계부터)`] : []),
         `Log : ${runState.logFile}`,
         `Report : ${runState.reportFile}`,
         ...runState.repos.filter((repo) => repo.isLinked).map((repo) => `Linked : ${repo.name} (${repo.dir})`)
@@ -60,6 +70,44 @@ const getProjectPaths = (options) => {
     const projectDir = autopilotUtil.getProjectDir(options.projectDir);
 
     return { projectDir: projectDir, workDir: autopilotUtil.getWorkDir(projectDir) };
+};
+
+// 신규 개발의 단계 상태와 인자를 정한다. 유지 보수 실행이면 mode만 돌려준다.
+const getModeSettings = (options, progressFile, tasks) => {
+    const mode = options.mode || MODE_MAINTAIN;
+
+    if (mode !== MODE_BUILD) {
+        return { mode: mode };
+    }
+
+    const phaseFile = phaseUtil.getPhaseFile(progressFile);
+    const { state, isRevision } = phaseUtil.getStartPhase(phaseUtil.readPhase(phaseFile));
+
+    if (state.phase === PHASE_DONE) {
+        throw new Error("신규 개발의 모든 단계를 이미 마쳤습니다. 진행 기록을 초기화하면 기획부터 다시 시작합니다.");
+    }
+
+    if (state.phase === BUILD_PHASES[0] && !tasks) {
+        throw new Error("신규 개발에는 만들 것이 필요합니다.");
+    }
+
+    const allow = options.allow || [];
+    const requestedDesignFormat = options.designFormat || DEFAULT_DESIGN_FORMAT;
+    // 외부 도구가 필요한 산출물인데 보내기를 허용하지 않았으면 HTML 와이어프레임으로 만든다.
+    const isBlockedDesign = ["figma", "image"].includes(requestedDesignFormat) && !allow.includes("send");
+
+    return {
+        mode: mode,
+        phaseFile: phaseFile,
+        phase: state.phase,
+        qaRetries: state.qaRetries,
+        isRevision: isRevision,
+        gates: options.gates || [],
+        allow: allow,
+        designFormat: isBlockedDesign ? "html" : requestedDesignFormat,
+        requestedDesignFormat: requestedDesignFormat,
+        maxQaRetries: options.maxQaRetries ?? phaseUtil.parseQaOnFail(DEFAULT_QA_ON_FAIL)
+    };
 };
 
 // 실행 전 검증과 폴더·로그 준비를 마치고 회차 실행에 필요한 값을 모아 반환한다.
@@ -83,7 +131,10 @@ const prepareRun = (options) => {
     const tasks = (options.tasks || "").trim();
     const runSettings = { ...settingsUtil.getRunSettings(options.endTime, options.policy, runStart), ...settingsUtil.getGitSettings(options.commitPrefix, options.workBranch) };
 
-    if (runSettings.policy === POLICY_TODO && !tasks) {
+    const progressFile = autopilotUtil.getProgressFile(projectDir, options.dataDir);
+    const modeSettings = getModeSettings(options, progressFile, tasks);
+
+    if (modeSettings.mode !== MODE_BUILD && runSettings.policy === POLICY_TODO && !tasks) {
         throw new Error("지시개선 정책에는 처리할 작업이 필요합니다.");
     }
 
@@ -93,14 +144,19 @@ const prepareRun = (options) => {
     }
 
     const progressDir = path.join(workDir, PROGRESS_DIR_NAME, runDate);
-    const progressFile = autopilotUtil.getProgressFile(projectDir, options.dataDir);
     const runId = `${dateUtil.getTimeString(runStart).replace(/:/g, "")}_${randomUUID().slice(0, 8)}`;
 
     fs.mkdirSync(progressDir, { recursive: true });
     progressUtil.ensureProgressRecord(progressFile);
 
+    // 돌려보낸 단계를 다시 시작했으면 확인 대기를 바로 지워 다음 실행이 같은 상태를 보게 한다.
+    if (modeSettings.isRevision) {
+        phaseUtil.writePhase(modeSettings.phaseFile, { phase: modeSettings.phase, awaiting: null, qaRetries: modeSettings.qaRetries });
+    }
+
     const runState = {
         ...runSettings,
+        ...modeSettings,
         workDir: workDir,
         projectDir: projectDir,
         tasks: tasks,
@@ -115,9 +171,11 @@ const prepareRun = (options) => {
         roundOptionsFile: autopilotUtil.getRoundOptionsFile(workDir),
         logFile: path.join(progressDir, `autopilot_${runId}.log`),
         reportFile: path.join(progressDir, `report_${runId}.html`),
-        todoDoneRelPath: `${WORK_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${TODO_COMPLETE_FILE_NAME}`
+        todoDoneRelPath: `${WORK_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${TODO_COMPLETE_FILE_NAME}`,
+        phaseDoneRelPath: `${WORK_DIR_NAME}/${PROGRESS_DIR_NAME}/${runDate}/${PHASE_DONE_FILE_NAME}`
     };
     const todoDoneFile = path.join(projectDir, runState.todoDoneRelPath);
+    const phaseDoneFile = path.join(projectDir, runState.phaseDoneRelPath);
     const writeLog = log.createFileLogger(runState.logFile);
 
     // 앱이 실행 중인 엔진에 다시 연결할 수 있도록 로그 파일 위치를 잠금에 남긴다. 실패해도 실행에는 영향이 없다.
@@ -128,7 +186,7 @@ const prepareRun = (options) => {
     }
 
     // 이전 실행의 완료·중단 신호와 model·effort 변경이 이번 실행에 영향을 주지 않도록 지운다.
-    fileUtil.removeFiles([todoDoneFile, runState.stopFile, runState.roundOptionsFile]);
+    fileUtil.removeFiles([todoDoneFile, phaseDoneFile, runState.stopFile, runState.roundOptionsFile]);
 
     const context = {
         options: options,
@@ -137,6 +195,7 @@ const prepareRun = (options) => {
         command: command,
         runState: runState,
         todoDoneFile: todoDoneFile,
+        phaseDoneFile: phaseDoneFile,
         writeLog: writeLog,
         unsupportedFlags: [],
         progressCleanupPrompt: "",
@@ -406,9 +465,65 @@ const waitForRetry = async (context, loopState, round) => {
     return false;
 };
 
+// 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA 실패로 실행을 끝내야 하면 true를 반환한다.
+const applyPhaseDone = (context, loopState) => {
+    const { runState, phaseDoneFile, writeLog } = context;
+    const result = fileUtil.readTextFile(phaseDoneFile).trim().split(/\r?\n/)[0].trim().toLowerCase();
+    const label = PHASE_LABELS[runState.phase];
+    const { state, event } = phaseUtil.getPhaseTransition({ phase: runState.phase, awaiting: null, qaRetries: runState.qaRetries }, result, runState.gates, runState.maxQaRetries);
+
+    fileUtil.removeFiles([phaseDoneFile]);
+    phaseUtil.writePhase(runState.phaseFile, state);
+    runState.phase = state.phase;
+    runState.qaRetries = state.qaRetries;
+    runState.isRevision = false;
+
+    if (event === "qa-failed") {
+        writeLog(`[단계] ${label} 실패`);
+        loopState.reason = `${label} 실패`;
+
+        return true;
+    }
+
+    // 단계가 바뀌면 앞 단계의 commit 없는 회차를 새 단계의 idle로 세지 않는다.
+    loopState.idleCount = 0;
+
+    if (event === "retry") {
+        writeLog(`[단계] ${label} 실패 - 개발로 되돌림 (${state.qaRetries}/${runState.maxQaRetries})`);
+        writeLog(`[단계] ${PHASE_LABELS[state.phase]} 시작`);
+
+        return false;
+    }
+
+    writeLog(`[단계] ${label} 완료`);
+
+    if (event === "done") {
+        loopState.reason = "신규 개발: 모든 단계 완료";
+        loopState.isWorkComplete = true;
+
+        return true;
+    }
+
+    if (event === "await") {
+        writeLog(`[단계] ${label} 확인 대기`);
+        loopState.reason = `${label} 확인 대기`;
+
+        return true;
+    }
+
+    writeLog(`[단계] ${PHASE_LABELS[state.phase]} 시작`);
+
+    return false;
+};
+
 // 회차 결과에 따라 종료·대기를 결정한다. 실행을 끝내야 하면 true를 반환한다.
 const handleRoundResult = async (context, loopState, roundResult) => {
     const { runConfig, runState, todoDoneFile } = context;
+
+    // 중단 요청과 같은 회차에 단계를 마쳤어도 단계는 넘긴다. 안 그러면 다음 실행이 끝낸 단계를 다시 한다.
+    if (!roundResult.isFailed && runState.mode === MODE_BUILD && fs.existsSync(context.phaseDoneFile) && applyPhaseDone(context, loopState)) {
+        return true;
+    }
 
     if (isStopRequested(context, loopState)) {
         loopState.reason = STOP_REASON_REQUESTED;
@@ -416,7 +531,7 @@ const handleRoundResult = async (context, loopState, roundResult) => {
         return true;
     }
 
-    if (!roundResult.isFailed && runState.policy === POLICY_TODO && fs.existsSync(todoDoneFile)) {
+    if (!roundResult.isFailed && runState.mode !== MODE_BUILD && runState.policy === POLICY_TODO && fs.existsSync(todoDoneFile)) {
         loopState.reason = "지시개선 정책: 예약 작업 완료";
         loopState.isWorkComplete = true;
 
@@ -523,6 +638,20 @@ const detectUnsupportedFlags = async (context) => {
     return unsupportedFlags;
 };
 
+const writeBuildStart = (context) => {
+    const { runState, writeLog } = context;
+
+    if (runState.mode !== MODE_BUILD) {
+        return;
+    }
+
+    if (runState.designFormat !== runState.requestedDesignFormat) {
+        writeLog("[설정] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다.");
+    }
+
+    writeLog(`[단계] ${PHASE_LABELS[runState.phase]} 시작`);
+};
+
 const runLockedAutopilot = async (options) => {
     const context = prepareRun(options);
     const loopState = createLoopState();
@@ -536,6 +665,8 @@ const runLockedAutopilot = async (options) => {
         if (options.open !== false) {
             processUtil.openFile(context.runState.reportFile);
         }
+
+        writeBuildStart(context);
 
         await runRoundLoop(context, loopState);
     } catch (error) {
@@ -620,12 +751,18 @@ const requestRoundOptions = (roundOptions, options = {}) => {
     }
 };
 
-// 앱이 연결 여부를 판단하도록 실행 중인지와 pid·로그 파일을 알려준다.
+const getPhaseFile = (projectDir, options) => {
+    return phaseUtil.getPhaseFile(autopilotUtil.getProgressFile(projectDir, options.dataDir));
+};
+
+// 앱이 연결 여부를 판단하도록 실행 중인지와 pid·로그 파일을 알려준다. 신규 개발을 한 적 있으면 단계 상태도 담는다.
 const getRunStatus = (options = {}) => {
     try {
-        const { workDir } = getProjectPaths(options);
+        const { projectDir, workDir } = getProjectPaths(options);
+        const phaseFile = getPhaseFile(projectDir, options);
+        const runStatus = autopilotUtil.getRunStatus(autopilotUtil.getLockFile(workDir));
 
-        return { status: STATUS_OK, data: autopilotUtil.getRunStatus(autopilotUtil.getLockFile(workDir)) };
+        return { status: STATUS_OK, data: fs.existsSync(phaseFile) ? { ...runStatus, phase: phaseUtil.readPhase(phaseFile) } : runStatus };
     } catch (error) {
         log.error(util.formatError(error));
 
@@ -653,6 +790,9 @@ const requestProgressReset = (options = {}) => {
             throw new Error(failureMessages.at(-1) || "진행 기록을 초기화하지 못했습니다.");
         }
 
+        // 신규 개발의 단계도 처음(기획)으로 돌린다.
+        fileUtil.removeFiles([getPhaseFile(projectDir, options)]);
+
         return { status: STATUS_OK, data: { isReset: Boolean(resetResult.archivePath), archivePath: resetResult.archivePath } };
     } catch (error) {
         log.error(util.formatError(error));
@@ -661,4 +801,32 @@ const requestProgressReset = (options = {}) => {
     }
 };
 
-export { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset };
+// 확인을 기다리는 신규 개발 단계를 승인해 다음 실행이 다음 단계부터 하게 한다.
+const requestPhaseApproval = (options = {}) => {
+    try {
+        const { projectDir, workDir } = getProjectPaths(options);
+        const phaseFile = getPhaseFile(projectDir, options);
+
+        if (autopilotUtil.isRunLockActive(autopilotUtil.getLockFile(workDir))) {
+            throw new Error("실행 중인 AutoPilot이 있어 단계를 승인할 수 없습니다.");
+        }
+
+        const state = phaseUtil.readPhase(phaseFile);
+
+        if (!fs.existsSync(phaseFile) || !state.awaiting) {
+            throw new Error("확인을 기다리는 단계가 없습니다.");
+        }
+
+        const approvedState = { ...state, awaiting: null };
+
+        phaseUtil.writePhase(phaseFile, approvedState);
+
+        return { status: STATUS_OK, data: { phase: approvedState } };
+    } catch (error) {
+        log.error(util.formatError(error));
+
+        return { status: STATUS_FAILED, error: { code: error.code || ERROR_CODE_AUTOPILOT_ERROR, msg: error.message || String(error) } };
+    }
+};
+
+export { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset, requestPhaseApproval };

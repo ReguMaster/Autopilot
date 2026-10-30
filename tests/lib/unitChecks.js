@@ -10,6 +10,8 @@ import streamUtil from "../../autopilot/src/utils/streamUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
 import gitUtil from "../../autopilot/src/utils/gitUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
+import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
+import { getAutopilotPolicy } from "../../autopilot/src/utils/guideText.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -150,6 +152,67 @@ const checkCommandArgs = () => {
     for (const invalidArgs of [[], project, [...project, "--no-open"], [...project, "23:00"], [...project, "--model", "gpt"], [...project, "--effort", "extreme"], [...project, "--model"]]) {
         assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
     }
+
+    // 신규 개발 인자: 목록은 쉼표로 고르고, 테스트/QA 실패 처리는 되돌릴 횟수(stop은 0)로 바꾼다. 유지 보수 모드에는 줄 수 없다.
+    assert.deepEqual(parseRunArgs([...project, "--mode", "build", "--gate", "plan,design", "--allow", "deps,send", "--design-format", "figma", "--qa-on-fail", "retry:2"]), {
+        projectDir: "C:\\work\\demo project",
+        mode: "build",
+        gates: ["plan", "design"],
+        allow: ["deps", "send"],
+        designFormat: "figma",
+        maxQaRetries: 2
+    });
+    assert.equal(parseRunArgs([...project, "--mode", "build", "--qa-on-fail", "stop"]).maxQaRetries, 0);
+    assert.equal(parseRunArgs([...project, "--mode", "maintain"]).mode, "maintain");
+
+    for (const invalidArgs of [
+        ["--mode", "fast"],
+        ["--gate", "plan"],
+        ["--mode", "maintain", "--allow", "deps"],
+        ["--mode", "build", "--gate", "build"],
+        ["--mode", "build", "--gate", "plan,plan"],
+        ["--mode", "build", "--allow", "deps,"],
+        ["--mode", "build", "--design-format", "pdf"],
+        ["--mode", "build", "--qa-on-fail", "retry:0"],
+        ["--mode", "build", "--qa-on-fail", "retry:6"],
+        ["--mode", "build", "--qa-on-fail", "again"]
+    ]) {
+        assert.throws(() => parseRunArgs([...project, ...invalidArgs]), undefined, invalidArgs.join(" "));
+    }
+
+    assert.deepEqual(parseProjectArgs(project), { projectDir: "C:\\work\\demo project" });
+};
+
+// 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA 실패는 정한 횟수까지 개발로 되돌린다.
+const checkPhaseRules = () => {
+    const { getPhaseTransition, getStartPhase, readPhase, isPhaseState } = phaseUtil;
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0 };
+
+    assert.deepEqual(getPhaseTransition(plan, "pass", [], 3), { state: { phase: "design", awaiting: null, qaRetries: 0 }, event: "next" });
+    assert.deepEqual(getPhaseTransition(plan, "", ["plan"], 3), { state: { phase: "design", awaiting: "plan", qaRetries: 0 }, event: "await" });
+    assert.equal(getPhaseTransition({ phase: "build", awaiting: null, qaRetries: 0 }, "fail", ["plan", "design"], 3).event, "next");
+    assert.deepEqual(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 1 }, "fail", [], 3), { state: { phase: "build", awaiting: null, qaRetries: 2 }, event: "retry" });
+    assert.equal(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 3 }, "fail", [], 3).event, "qa-failed");
+    assert.equal(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 0 }, "fail", [], 0).event, "qa-failed");
+    assert.deepEqual(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 2 }, "pass", [], 3), { state: { phase: "done", awaiting: null, qaRetries: 2 }, event: "done" });
+
+    // 승인 없이 다시 시작하면 확인을 기다리던 단계를 다시 한다.
+    assert.deepEqual(getStartPhase({ phase: "design", awaiting: "plan", qaRetries: 0 }), { state: { phase: "plan", awaiting: null, qaRetries: 0 }, isRevision: true });
+    assert.deepEqual(getStartPhase(plan), { state: plan, isRevision: false });
+
+    assert.equal(phaseUtil.parseQaOnFail("retry:5"), 5);
+    assert.equal(phaseUtil.parseQaOnFail("retry:05"), 5);
+    assert.equal(phaseUtil.parseQaOnFail("Retry:1"), null);
+    assert(!isPhaseState({ phase: "plan", awaiting: "qa", qaRetries: 0 }));
+    assert(!isPhaseState({ phase: "plan", awaiting: null, qaRetries: -1 }));
+    assert.deepEqual(readPhase(path.join(path.sep, "missing", "PHASE.json")), plan);
+
+    // 신규 개발의 허용 체크만 정책에 덧붙는다. 보내기를 켜지 않았으면 외부 도구 금지를 덧붙인다.
+    assert.equal(getAutopilotPolicy("ai/autopilot"), getAutopilotPolicy("ai/autopilot", null));
+    assert.doesNotMatch(getAutopilotPolicy("ai/autopilot"), /신규 개발에서 이번 실행에 허용한 것/);
+    assert.match(getAutopilotPolicy("ai/autopilot", ["deps"]), /새 dependency 추가를 허용한다[\s\S]*외부 도구\(Codex, MCP 서버/);
+    assert.doesNotMatch(getAutopilotPolicy("ai/autopilot", ["send"]), /외부 도구\(Codex, MCP 서버/);
+    assert.match(getAutopilotPolicy("ai/autopilot", []), /완화한 정책이 없다/);
 };
 
 const checkClaudeArgs = async () => {
@@ -450,5 +513,6 @@ export {
     checkProjectPaths,
     checkProgressArchive,
     checkStreamEvent,
-    checkCommitLineCounts
+    checkCommitLineCounts,
+    checkPhaseRules
 };

@@ -1,11 +1,12 @@
-import { EFFORT_LEVELS, MAX_EXTEND_MINUTES, MAX_LINKED_REPOS, MAX_LOG_RETENTION_DAYS, MODEL_CHOICES } from "./config.js";
+import { ALLOW_KEYS, DESIGN_FORMATS, EFFORT_LEVELS, GATE_PHASES, MAX_EXTEND_MINUTES, MAX_LINKED_REPOS, MAX_LOG_RETENTION_DAYS, MAX_QA_RETRIES, MODE_BUILD, MODES, MODEL_CHOICES } from "./config.js";
+import phaseUtil from "./phaseUtil.js";
 import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
-    "AutoPilot stop|status|reset-progress --project <dir>"
+    "AutoPilot stop|status|reset-progress|approve --project <dir>"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
@@ -19,8 +20,15 @@ const RUN_OPTION_KEYS = {
     "--max-extend-minutes": "maxExtendMinutes",
     "--commit-prefix": "commitPrefix",
     "--branch": "workBranch",
-    "--log-retention-days": "logRetentionDays"
+    "--log-retention-days": "logRetentionDays",
+    "--mode": "mode",
+    "--gate": "gates",
+    "--allow": "allow",
+    "--design-format": "designFormat",
+    "--qa-on-fail": "qaOnFail"
 };
+// 신규 개발에서만 뜻이 있는 인자
+const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail"];
 const LINK_PROJECT_OPTION = "--link-project";
 const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
 
@@ -87,6 +95,51 @@ const parseLogRetentionDays = (text) => {
     return days;
 };
 
+// 쉼표로 고른 목록. 모르는 값과 중복은 거부한다.
+const parseListOption = (optionName, text, choices) => {
+    const items = text.split(",");
+
+    if (items.some((item) => !choices.includes(item)) || new Set(items).size !== items.length) {
+        throw new Error(`${optionName} 값은 ${choices.join(", ")} 중에서 쉼표로 고릅니다.`);
+    }
+
+    return items;
+};
+
+// 작업 모드와 신규 개발 인자. 신규 개발 인자를 유지 보수 모드에 주면 계약이 흐려지므로 거부한다.
+const parseModeOptions = (options) => {
+    if (options.mode !== undefined && !MODES.includes(options.mode)) {
+        throw new Error(`--mode 값은 ${MODES.join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
+        throw new Error("--gate · --allow · --design-format · --qa-on-fail 은 --mode build 에서만 쓸 수 있습니다.");
+    }
+
+    if (options.gates !== undefined) {
+        options.gates = parseListOption("--gate", options.gates, GATE_PHASES);
+    }
+
+    if (options.allow !== undefined) {
+        options.allow = parseListOption("--allow", options.allow, ALLOW_KEYS);
+    }
+
+    if (options.designFormat !== undefined && !DESIGN_FORMATS.includes(options.designFormat)) {
+        throw new Error(`--design-format 값은 ${DESIGN_FORMATS.join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    if (options.qaOnFail !== undefined) {
+        const maxQaRetries = phaseUtil.parseQaOnFail(options.qaOnFail);
+
+        if (maxQaRetries === null) {
+            throw new Error(`--qa-on-fail 값은 stop 또는 retry:1~${MAX_QA_RETRIES} 이어야 합니다.`);
+        }
+
+        delete options.qaOnFail;
+        options.maxQaRetries = maxQaRetries;
+    }
+};
+
 // --link-project는 여러 번 쓸 수 있어 나머지 인자를 해석하기 전에 따로 뽑는다.
 const extractLinkedProjects = (args) => {
     const linkedProjectDirs = [];
@@ -124,6 +177,7 @@ const parseRunArgs = (args) => {
     }
 
     settingsUtil.getGitSettings(options.commitPrefix, options.workBranch);
+    parseModeOptions(options);
 
     return {
         ...options,
@@ -133,7 +187,7 @@ const parseRunArgs = (args) => {
     };
 };
 
-// stop · status · reset-progress는 대상 프로젝트만 받는다.
+// stop · status · reset-progress · approve는 대상 프로젝트만 받는다.
 const parseProjectArgs = (args) => {
     return parseOptions(args, PROJECT_OPTION_KEYS);
 };

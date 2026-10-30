@@ -4,7 +4,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { STATUS_OK, STATUS_FAILED, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "../../autopilot/src/utils/config.js";
-import { runAutopilot, requestRoundOptions, requestProgressReset } from "../../autopilot/src/services/autopilotService.js";
+import { runAutopilot, requestRoundOptions, requestProgressReset, requestPhaseApproval, getRunStatus } from "../../autopilot/src/services/autopilotService.js";
+import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
 import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
@@ -219,6 +220,89 @@ const checkProgressCreated = async (scenarioRunner, context, fakeCliFile) => {
 
     assert.equal(result.status, STATUS_OK, result.error?.msg);
     assert.equal(fs.readFileSync(progressFile, "utf8"), progressUtil.PROGRESS_TEMPLATE);
+};
+
+// 신규 개발: 단계를 차례로 밟고, 확인받기로 둔 단계에서 멈췄다가 승인하면 다음 단계부터, 승인 없이 다시 하면 그 단계를 다시 한다.
+const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "build project 한글");
+    const dataDir = scenarioRunner.dataDir;
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+
+    commitInitialProject(context, projectDir);
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+    const phaseFile = phaseUtil.getPhaseFile(progressFile);
+    const runBuild = (options) => {
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            gates: ["design"],
+            tasks: "미용실 예약 웹앱",
+            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile, AP_QA_FAILS: "1" },
+            limits: { minMinutes: 0, maxRounds: 8, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+    };
+    const readLog = (result) => fs.readFileSync(result.data.logFile, "utf8");
+    const readPrompt = () => fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8");
+    const getPhaseLines = (result) => readLog(result).match(/^\[단계\] .+$/gm);
+
+    // 기획은 만들 것이 있어야 시작한다.
+    assert.equal((await runBuild({ tasks: "" })).status, STATUS_FAILED);
+
+    const firstRun = await runBuild({ designFormat: "image" });
+
+    assert.equal(firstRun.status, STATUS_OK, firstRun.error?.msg);
+    assert.equal(firstRun.data.reason, "디자인 확인 대기");
+    assert.deepEqual(getPhaseLines(firstRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
+    assert.match(readLog(firstRun), /^\[설정\] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다\.$/m);
+    assert.match(readLog(firstRun), /^Mode : 신규 개발 \(기획 단계부터\)$/m);
+    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0 });
+    assert.match(readPrompt(), /지금 단계는 \[디자인\]/);
+    assert.match(readPrompt(), /정적 HTML 와이어프레임/);
+    assert.match(readPrompt(), /외부 도구\(Codex, MCP 서버/);
+    assert.doesNotMatch(readPrompt(), /개선 정책은/);
+    assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, { running: false, phase: { phase: "build", awaiting: "design", qaRetries: 0 } });
+    checkDesktopLogContract(firstRun.data);
+
+    // 승인 없이 다시 시작하면 돌려보낸 디자인을 수정 요청으로 다시 한다.
+    const revisionRun = await runBuild({ tasks: "원장 화면에 주간 보기 추가" });
+
+    assert.equal(revisionRun.data.reason, "디자인 확인 대기");
+    assert.deepEqual(getPhaseLines(revisionRun), ["[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
+    assert.match(readPrompt(), /돌려보낸 것이다/);
+
+    // 승인하면 개발부터 하고, 테스트/QA 실패는 한 번 개발로 되돌린 뒤 통과해 끝난다. 확인 대기가 없으면 승인은 거부한다.
+    assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+    assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_FAILED);
+
+    const finalRun = await runBuild({ tasks: "" });
+
+    assert.equal(finalRun.status, STATUS_OK, finalRun.error?.msg);
+    assert.equal(finalRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.deepEqual(getPhaseLines(finalRun), [
+        "[단계] 개발 시작",
+        "[단계] 개발 완료",
+        "[단계] 테스트/QA 시작",
+        "[단계] 테스트/QA 실패 - 개발로 되돌림 (1/3)",
+        "[단계] 개발 시작",
+        "[단계] 개발 완료",
+        "[단계] 테스트/QA 시작",
+        "[단계] 테스트/QA 완료"
+    ]);
+    assert.equal(phaseUtil.readPhase(phaseFile).phase, "done");
+    assert.equal((await runBuild({})).status, STATUS_FAILED);
+
+    // 진행 기록 초기화는 단계도 처음(기획)으로 돌린다.
+    assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+    assert(!fs.existsSync(phaseFile));
 };
 
 // 지시개선은 처리할 작업이 있어야 시작한다. 잠금은 실패해도 남기지 않는다.
@@ -851,5 +935,6 @@ export {
     checkInterrupt,
     checkRunLock,
     checkCliRun,
-    checkSessionRunner
+    checkSessionRunner,
+    checkBuildMode
 };

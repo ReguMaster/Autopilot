@@ -154,7 +154,29 @@ ${commitPrefix} refactor: 구조 정리
 AutoPilot의 목표는 많은 코드를 변경하는 것이 아니다.
 **프로젝트를 더 안정적이고 완성도 높게 만드는 의미 있는 변경을 안전하게 축적하는 것**이다.`;
 
-const getAutopilotPolicy = (workBranch = DEFAULT_WORK_BRANCH) => `# AutoPilot Policy
+const ALLOWED_LINES = {
+    deps: "- 새 dependency 추가를 허용한다. 위 `Dependency`와 `외부 통신` 정책의 dependency 제한 대신 필요한 dependency를 추가하되, 고른 이유를 기획서와 commit 메시지에 남긴다. 기존 dependency를 제거하거나 교체하지는 않는다.",
+    large: "- 새 폴더 구조, Framework 선택처럼 처음부터 만드는 큰 변경을 허용한다. 위 `기본 원칙`의 작은 변경 우선과 `절대 금지`의 전체 구조·Framework 변경 금지는 새로 만드는 부분에 적용하지 않는다. 이미 있는 코드를 지우거나 갈아엎는 일은 여전히 하지 않는다.",
+    "external-api": "- 기획서에 적은 외부 API를 부르는 코드를 허용한다. 키·토큰은 코드에 넣지 않고 환경 변수 자리만 만든다. telemetry는 여전히 추가하지 않는다.",
+    send: "- Codex, Figma, 이미지 생성 같은 외부 도구(MCP 포함)에 작업에 필요한 프로젝트 내용을 보내는 것을 허용한다. 인증정보 · `.env` · 사용자 데이터는 보내지 않는다."
+};
+
+// 신규 개발 실행에서 사용자가 체크한 정책 완화. 유지 보수 실행(allow가 없음)에는 붙지 않는다.
+const getAllowedSection = (allow) => {
+    const allowedLines = allow.map((key) => ALLOWED_LINES[key]);
+    const deniedLines = allow.includes("send") ? [] : ["- 외부 도구(Codex, MCP 서버, 이미지 생성 서비스 등)에 프로젝트 코드나 내용을 보내지 않는다."];
+
+    return `
+
+## 신규 개발에서 이번 실행에 허용한 것
+
+이 실행은 새 제품을 처음부터 만드는 신규 개발이다. 아래 허용 항목은 위 정책의 해당 줄보다 우선하고, 여기에 없는 정책은 그대로 지킨다.
+비밀값 · 운영 환경 · Git 보호 · 파일 삭제 정책은 어떤 경우에도 완화되지 않는다.
+
+${allowedLines.length ? allowedLines.join("\n") : "- 완화한 정책이 없다. 위 정책을 그대로 지킨다."}${deniedLines.length ? `\n${deniedLines.join("\n")}` : ""}`;
+};
+
+const getAutopilotPolicy = (workBranch = DEFAULT_WORK_BRANCH, allow = null) => `# AutoPilot Policy
 
 AutoPilot 작업 중 반드시 지켜야 하는 안전 정책이다. 작업 절차는 \`AUTOPILOT.md\`에 있다.
 
@@ -174,7 +196,7 @@ Git 상태 확인, diff 확인처럼 변경하지 않는 조회는 프로젝트 
 허용 범위 외부의 변경이 필요하다고 판단되면 임의로 수행하지 않고 그 작업을 건너뛴다.
 
 \`autopilot/\` 폴더는 AutoPilot이 로그 · 리포트 · 실행 신호를 두는 작업 폴더이므로 허용 범위 안에 있어도 작업 대상이 아니다.
-이 안에서는 \`.autopilot/progress/<날짜>/TODO_COMPLETE\` 생성과 \`.autopilot/recycle_bin/\`으로의 이동만 한다.
+이 안에서는 프롬프트가 알려주는 \`.autopilot/progress/<날짜>/\`의 완료 신호(TODO_COMPLETE · PHASE_DONE) 생성과 \`.autopilot/recycle_bin/\`으로의 이동만 한다.
 그 밖의 파일(로그 · 리포트 · STOP · RUNNING · ROUND_OPTIONS.json 등)은 읽기만 하고 수정 · 이동 · 삭제하지 않는다.
 
 ## 기본 원칙
@@ -242,6 +264,6 @@ dependency 변경이 프로젝트 전체에 영향을 줄 가능성이 있으면
 - 검증 방법이 없는 경우
 - 데이터 손상 가능성이 있는 경우
 
-작업 중 오류가 발생하면 무리하게 수정하거나 우회하지 않고, 현재 변경사항을 확인해 가능한 안전한 상태로 유지한다.`;
+작업 중 오류가 발생하면 무리하게 수정하거나 우회하지 않고, 현재 변경사항을 확인해 가능한 안전한 상태로 유지한다.${allow ? getAllowedSection(allow) : ""}`;
 
 export { getAutopilotGuide, getAutopilotPolicy };

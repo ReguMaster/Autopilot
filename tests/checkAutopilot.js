@@ -16,7 +16,8 @@ import {
     checkProjectPaths,
     checkProgressArchive,
     checkStreamEvent,
-    checkCommitLineCounts
+    checkCommitLineCounts,
+    checkPhaseRules
 } from "./lib/unitChecks.js";
 import {
     createScenarioRunner,
@@ -37,7 +38,8 @@ import {
     checkInterrupt,
     checkRunLock,
     checkCliRun,
-    checkSessionRunner
+    checkSessionRunner,
+    checkBuildMode
 } from "./lib/scenarioChecks.js";
 
 const checkAutopilot = async () => {
@@ -62,6 +64,7 @@ const checkAutopilot = async () => {
         checkProgressArchive(context);
         checkStreamEvent();
         checkCommitLineCounts();
+        checkPhaseRules();
         checkRunFilePrune(context);
         checkProgressEnsure(context);
         checkProgressReset(context);
@@ -79,6 +82,7 @@ const checkAutopilot = async () => {
         await checkProgressCreated(scenarioRunner, context, fakeCliFile);
         await checkUnsupportedFlags(scenarioRunner, context);
         await checkTasksRequired(context, fakeCliFile);
+        await checkBuildMode(scenarioRunner, context, fakeCliFile);
         checkProgressResetCommand(context);
         await checkRoundOptions(scenarioRunner.runScenario, context);
         await checkGitNames(scenarioRunner.runScenario);
@@ -93,7 +97,7 @@ const checkAutopilot = async () => {
         await checkSessionRunner(context, fakeCliFile);
 
         originalConsoleLog(
-            "OK: arg parsing, project/work dirs, %APPDATA% progress record, tasks in prompt, UTF-8, commits/idle, TODO_COMPLETE, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, log retention, progress record reset, run lock/pid reuse, desktop log contract, CLI entry (linked path, tasks file, status/set/reset-progress/stop), inherited pipes"
+            "OK: arg parsing, project/work dirs, %APPDATA% progress record, tasks in prompt, UTF-8, commits/idle, TODO_COMPLETE, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, log retention, progress record reset, run lock/pid reuse, build mode phases/gates/approve, desktop log contract, CLI entry (linked path, tasks file, status/set/reset-progress/stop), inherited pipes"
         );
     } finally {
         console.log = originalConsoleLog;

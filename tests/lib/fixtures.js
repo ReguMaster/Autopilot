@@ -61,6 +61,19 @@ process.stdin.on('end', () => {
   } else if (mode === 'todo') {
     const marker = prompt.match(/빈 파일 (\.autopilot\/progress\/[^ ]+\/TODO_COMPLETE)/)[1];
     fs.writeFileSync(marker, '');
+  } else if (mode === 'build') {
+    // 단계마다 commit 하나와 단계 완료 신호를 남긴다. AP_QA_FAILS번째까지의 테스트/QA는 fail을 쓴다.
+    fs.appendFileSync('work.txt', 'phase\n');
+    execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
+    execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] phase']);
+    const marker = prompt.match(/파일 \x60(\.autopilot\/progress\/[^\x60]+\/PHASE_DONE)\x60/)[1];
+    let phaseResult = 'pass';
+    if (prompt.includes('지금 단계는 [테스트/QA]')) {
+      const qaCount = (fs.existsSync('qa-count.txt') ? Number(fs.readFileSync('qa-count.txt', 'utf8')) : 0) + 1;
+      fs.writeFileSync('qa-count.txt', String(qaCount));
+      if (qaCount <= Number(process.env.AP_QA_FAILS || 0)) phaseResult = 'fail';
+    }
+    fs.writeFileSync(marker, phaseResult + '\n');
   } else if (mode === 'stop') fs.writeFileSync('.autopilot/progress/STOP', '');
   else if (mode === 'options') fs.writeFileSync('.autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ model: 'sonnet', effort: 'low' }));
   if (mode === 'failure') process.exitCode = 1;
