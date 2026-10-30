@@ -681,12 +681,6 @@ body[data-view="run"] #policy-chip {
     stroke-dasharray: 2.4 2.2;
 }
 
-.choice-divider {
-    height: 1px;
-    margin: 3px 8px;
-    background: var(--hair);
-}
-
 /* Effort 팝오버 머리: 어느 AI의 무엇을 고르는지 제공자 로고와 그 AI가 부르는 이름으로 알린다 */
 .choice-head {
     display: flex;
