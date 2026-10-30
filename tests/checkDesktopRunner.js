@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import {
     DEFAULT_EFFORT_LEVEL as UI_DEFAULT_EFFORT_LEVEL,
@@ -11,7 +11,19 @@ import {
     DEFAULT_POLICY as UI_DEFAULT_POLICY,
     EFFORT_LEVELS as UI_EFFORT_LEVELS,
     MODEL_FAMILIES as UI_MODEL_FAMILIES,
-    POLICIES as UI_POLICIES
+    POLICIES as UI_POLICIES,
+    MODES as UI_MODES,
+    DEFAULT_MODE as UI_DEFAULT_MODE,
+    BUILD_PHASES as UI_BUILD_PHASES,
+    PHASE_LABELS as UI_PHASE_LABELS,
+    GATE_PHASES as UI_GATE_PHASES,
+    DEFAULT_GATES as UI_DEFAULT_GATES,
+    ALLOW_KEYS as UI_ALLOW_KEYS,
+    DEFAULT_ALLOW as UI_DEFAULT_ALLOW,
+    DESIGN_FORMATS as UI_DESIGN_FORMATS,
+    DEFAULT_DESIGN_FORMAT as UI_DEFAULT_DESIGN_FORMAT,
+    QA_ON_FAIL_CHOICES as UI_QA_ON_FAIL_CHOICES,
+    DEFAULT_QA_ON_FAIL as UI_DEFAULT_QA_ON_FAIL
 } from "../desktop/ui/lib/constants.js";
 import {
     MODEL_CHOICES as ENGINE_MODELS,
@@ -24,16 +36,56 @@ import {
     DEFAULT_WORK_BRANCH as ENGINE_WORK_BRANCH,
     MAX_LINKED_REPOS as ENGINE_MAX_LINKED_REPOS,
     POLICY_ALIASES,
-    POLICY_SELF
+    POLICY_SELF,
+    MODES as ENGINE_MODES,
+    BUILD_PHASES as ENGINE_BUILD_PHASES,
+    PHASE_LABELS as ENGINE_PHASE_LABELS,
+    GATE_PHASES as ENGINE_GATE_PHASES,
+    ALLOW_KEYS as ENGINE_ALLOW_KEYS,
+    DESIGN_FORMATS as ENGINE_DESIGN_FORMATS,
+    DEFAULT_DESIGN_FORMAT as ENGINE_DEFAULT_DESIGN_FORMAT,
+    DEFAULT_QA_ON_FAIL as ENGINE_DEFAULT_QA_ON_FAIL,
+    MAX_RUN_DAYS as ENGINE_MAX_RUN_DAYS
 } from "../autopilot/src/utils/config.js";
 import engineUtil from "../autopilot/src/utils/util.js";
+import phaseUtil from "../autopilot/src/utils/phaseUtil.js";
 
 const require = createRequire(import.meta.url);
-const { createRunner, MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("../desktop/autopilotRunner.cjs");
-const { getProjectError, isProjectReportFile } = require("../desktop/projectFiles.cjs");
+const {
+    createRunner,
+    createInitialState,
+    parseLine,
+    parseBuildPhase,
+    MODEL_CHOICES,
+    MODEL_ID_PATTERN,
+    EFFORT_CHOICES,
+    BUILD_PHASES: RUNNER_BUILD_PHASES,
+    PHASE_LABELS: RUNNER_PHASE_LABELS,
+    STATUS_OK,
+    STATUS_FAILED
+} = require("../desktop/autopilotRunner.cjs");
+const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile } = require("../desktop/projectFiles.cjs");
+const { DEFAULT_SETTINGS } = require("../desktop/settingsStore.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
-const { getCliArgs, isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS, MAX_LINKED_REPOS } = require("../desktop/engineArgs.cjs");
+const {
+    getCliArgs,
+    getEndTimeError,
+    isValidCommitPrefix,
+    isValidWorkBranch,
+    DEFAULT_COMMIT_PREFIX,
+    DEFAULT_WORK_BRANCH,
+    DEFAULT_LOG_RETENTION_DAYS,
+    MAX_LINKED_REPOS,
+    MODES,
+    GATE_PHASES,
+    ALLOW_KEYS,
+    DESIGN_FORMATS,
+    DEFAULT_DESIGN_FORMAT,
+    QA_ON_FAIL_PATTERN,
+    DEFAULT_QA_ON_FAIL,
+    MAX_RUN_DAYS
+} = require("../desktop/engineArgs.cjs");
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -923,6 +975,86 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...base, logRetentionDays: 7 }).slice(-2), ["--log-retention-days", "7"]);
     assert(!getCliArgs(base).includes("--link-project"), "연결 저장소가 없으면 인자를 생략한다");
     assert.deepEqual(getCliArgs({ ...base, linkedRepos: ["/api", "/web"] }).slice(-4), ["--link-project", "/api", "--link-project", "/web"]);
+
+    // 신규 개발 인자는 build일 때만 붙고, 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다. 계정 폴더는 맨 뒤다.
+    const buildBase = { ...base, mode: "build", gates: ["plan", "design"], allow: ["deps", "large"], designFormat: DEFAULT_DESIGN_FORMAT, qaOnFail: DEFAULT_QA_ON_FAIL };
+
+    assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain" }), getCliArgs(base));
+    assert.deepEqual(getCliArgs({ ...buildBase, configDir: "/c" }).slice(-8), ["--mode", "build", "--gate", "plan,design", "--allow", "deps,large", "--config-dir", "/c"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [] }).slice(-2), ["--mode", "build"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], designFormat: "figma", qaOnFail: "stop" }).slice(-6), ["--mode", "build", "--design-format", "figma", "--qa-on-fail", "stop"]);
+
+    // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
+    const now = new Date(2026, 9, 30, 22, 10).getTime();
+
+    assert.equal(getEndTimeError("", now), "");
+    assert.equal(getEndTimeError("07:00", now), "");
+    assert.equal(getEndTimeError("2026-11-02 07:00", now), "");
+    assert.equal(getEndTimeError("2026-11-06 22:10", now), "");
+
+    for (const invalidEndTime of ["24:00", "7:00", "2026-10-30 22:00", "2026-10-30 22:10", "2026-11-06 22:11", "2026-02-30 07:00", "2026-11-31 07:00", "2026-11-2 07:00", 700]) {
+        assert(getEndTimeError(invalidEndTime, now), `종료 시각 ${invalidEndTime}`);
+    }
+};
+
+// 신규 개발: 로그의 Mode 헤더와 단계 줄을 상태로 읽고, 엔진 status의 단계 상태를 검증해 읽는다.
+const checkBuildLogs = () => {
+    const state = createInitialState();
+
+    for (const line of ["Mode : 신규 개발 (개발 단계부터)", "[단계] 개발 시작", "[단계] 개발 완료", "[단계] 테스트/QA 시작", "[단계] 테스트/QA 실패 - 개발로 되돌림 (1/3)"]) {
+        parseLine(state, line);
+    }
+
+    assert.equal(state.mode, "build");
+    assert.deepEqual(state.step, { phase: "qa", status: "failed", qaRetries: 1 });
+
+    parseLine(state, "[단계] 개발 시작");
+    assert.deepEqual(state.step, { phase: "build", status: "running", qaRetries: 1 }, "되돌린 횟수는 다음 단계 줄에도 남는다");
+
+    parseLine(state, "[단계] 기획 확인 대기");
+    assert.deepEqual(state.step, { phase: "plan", status: "awaiting", qaRetries: 1 });
+
+    parseLine(state, "    [단계] 디자인 시작");
+    parseLine(state, "[단계] 배포 시작");
+    assert.equal(state.step.phase, "plan", "들여 쓴 위조 줄과 모르는 단계는 읽지 않는다");
+    assert.equal(createInitialState().step, null);
+
+    assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"design","awaiting":"plan","qaRetries":0}}\n'), { phase: "design", awaiting: "plan", qaRetries: 0 });
+    assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"done","awaiting":null,"qaRetries":2}}'), { phase: "done", awaiting: null, qaRetries: 2 });
+
+    for (const stdout of [
+        '{"running":false}',
+        '{"phase":{"phase":"ship","awaiting":null,"qaRetries":0}}',
+        '{"phase":{"phase":"qa","awaiting":"qa","qaRetries":0}}',
+        '{"phase":{"phase":"qa","awaiting":null,"qaRetries":-1}}',
+        "nope",
+        ""
+    ]) {
+        assert.equal(parseBuildPhase(stdout), null, stdout);
+    }
+};
+
+// .git이 없는 폴더에만 새 저장소를 만들 수 있고, 만들면 main 브랜치에 빈 첫 commit이 있는 Git 루트가 된다.
+const checkGitInit = async (testDir) => {
+    const repoDir = path.join(testDir, "new repo 한글");
+    const gitConfig = path.join(testDir, "git-init.gitconfig");
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: "1" };
+
+    fs.mkdirSync(repoDir);
+    fs.writeFileSync(path.join(repoDir, "keep.txt"), "기존 파일\n");
+    fs.writeFileSync(gitConfig, "[user]\n\tname = AutoPilot Check\n\temail = check@example.invalid\n");
+
+    assert.equal(canInitGitRepo(repoDir), true);
+    assert.equal(canInitGitRepo(path.join(testDir, "missing")), false);
+    assert.equal(await initGitRepo(repoDir, { env: env }), "");
+    assert.equal(getProjectError(repoDir), "");
+    assert.equal(canInitGitRepo(repoDir), false, "이미 저장소면 다시 만들지 않는다");
+
+    const head = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoDir, env: env, encoding: "utf8" });
+
+    assert.equal(head.stdout.trim(), "main");
+    assert.equal(fs.readFileSync(path.join(repoDir, "keep.txt"), "utf8"), "기존 파일\n", "기존 파일은 그대로 둔다");
+    assert.notEqual(await initGitRepo(path.join(testDir, "missing"), { env: env }), "", "실패하면 git이 알려준 이유를 돌려준다");
 };
 
 // 커밋 접두어·작업 브랜치의 기본값과 검증 규칙은 엔진과 앱이 같아야 한다.
@@ -960,6 +1092,35 @@ const checkChoiceSync = () => {
     assert.deepEqual(UI_POLICIES, ["auto", "todo"]);
     assert(UI_POLICIES.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
     assert.equal(POLICY_ALIASES[UI_DEFAULT_POLICY], POLICY_SELF);
+
+    // 작업 모드와 신규 개발 값: 엔진·engineArgs·러너·화면이 같아야 하고, 테스트/QA 실패 처리는 엔진이 받는 값만 고른다.
+    for (const [appValue, uiValue, engineValue] of [
+        [MODES, UI_MODES, ENGINE_MODES],
+        [GATE_PHASES, UI_GATE_PHASES, ENGINE_GATE_PHASES],
+        [ALLOW_KEYS, UI_ALLOW_KEYS, ENGINE_ALLOW_KEYS],
+        [DESIGN_FORMATS, UI_DESIGN_FORMATS, ENGINE_DESIGN_FORMATS],
+        [DEFAULT_DESIGN_FORMAT, UI_DEFAULT_DESIGN_FORMAT, ENGINE_DEFAULT_DESIGN_FORMAT],
+        [DEFAULT_QA_ON_FAIL, UI_DEFAULT_QA_ON_FAIL, ENGINE_DEFAULT_QA_ON_FAIL],
+        [RUNNER_BUILD_PHASES, UI_BUILD_PHASES, ENGINE_BUILD_PHASES],
+        [RUNNER_PHASE_LABELS, UI_PHASE_LABELS, ENGINE_PHASE_LABELS]
+    ]) {
+        assert.deepEqual(appValue, engineValue);
+        assert.deepEqual(uiValue, engineValue);
+    }
+
+    assert.equal(MAX_RUN_DAYS, ENGINE_MAX_RUN_DAYS);
+    assert.equal(UI_DEFAULT_MODE, ENGINE_MODES[0]);
+    assert.deepEqual(UI_DEFAULT_GATES, DEFAULT_SETTINGS.gates);
+    assert.deepEqual(UI_DEFAULT_ALLOW, DEFAULT_SETTINGS.allow);
+    assert.equal(DEFAULT_SETTINGS.mode, UI_DEFAULT_MODE);
+
+    for (const value of ["stop", "retry:0", "retry:1", "retry:3", "retry:5", "retry:6", "retry:03", "again"]) {
+        assert.equal(QA_ON_FAIL_PATTERN.test(value), UI_QA_ON_FAIL_CHOICES.includes(value), `테스트/QA 실패 처리 ${value}`);
+
+        if (QA_ON_FAIL_PATTERN.test(value)) {
+            assert.notEqual(phaseUtil.parseQaOnFail(value), null, `엔진도 ${value}를 받는다`);
+        }
+    }
 };
 
 // 공식 모델 목록: 새 모델은 목록에서 그대로 따라오고, 형식이 다른 항목은 걸러내며, 조회가 안 되면 이전 목록을 유지한다.
@@ -1048,8 +1209,10 @@ const runChecks = async () => {
     try {
         checkChoiceSync();
         checkCliArgs();
+        checkBuildLogs();
         checkGitNameSync();
         checkProjectError(testDir);
+        await checkGitInit(testDir);
         checkReportOpenGuard(testDir);
 
         await checkClaudeAccount(testDir);

@@ -9,6 +9,7 @@ const MAX_ARCHIVE_RUNS = 200;
 let recentToken = 0;
 let archiveToken = 0;
 let streakToken = 0;
+let phaseToken = 0;
 
 const setNote = (message, tone = "") => useRunsStore.setState({ note: { message: message, tone: tone } });
 
@@ -22,11 +23,22 @@ const loadStreakDays = async () => {
     }
 };
 
-// 목록을 읽지 못해도 시작 화면은 그대로 쓸 수 있어야 하므로 실패하면 조용히 비운다.
+// 신규 개발의 단계 상태({phase, awaiting, qaRetries}, 한 적 없으면 null). 엔진 status로 읽으므로 실패하면 조용히 비운다.
+const loadBuildPhase = async () => {
+    const token = ++phaseToken;
+    const result = await window.autopilot.getPhase();
+
+    if (token === phaseToken) {
+        useRunsStore.setState({ buildPhase: result.status === STATUS_OK ? result.data.phase : null });
+    }
+};
+
+// 목록을 읽지 못해도 시작 화면은 그대로 쓸 수 있어야 하므로 실패하면 조용히 비운다. 시작·탭 전환·실행 종료 뒤에 불려 단계 상태도 함께 읽는다.
 const loadRecentRuns = async () => {
     const token = ++recentToken;
 
     loadStreakDays();
+    loadBuildPhase();
     const result = await window.autopilot.listRuns(RECENT_RUN_COUNT);
 
     if (token === recentToken) {
@@ -114,4 +126,4 @@ const deleteArchiveRun = async () => {
     setNote("기록을 지웠어요.");
 };
 
-export { loadStreakDays, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };
+export { loadStreakDays, loadBuildPhase, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };

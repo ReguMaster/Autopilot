@@ -249,7 +249,8 @@ const checkRunActions = async ({ runStore, uiStore, composerStore, modalStore, r
             return OK();
         },
         listRuns: async () => OK({ runs: [] }),
-        getStreakDays: async () => OK({ days: [] })
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
     };
     composerStore.composer.setTasks("한 가지 일");
     runStore.applyRunState(createState({ status: "idle" }));
@@ -313,7 +314,8 @@ const checkRunActions = async ({ runStore, uiStore, composerStore, modalStore, r
 };
 
 // 확인을 받는 나머지 동작: 취소하면 IPC를 보내지 않고, 확인해야 보낸다.
-const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, accounts, accountStore }) => {
+const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, accounts, accountStore, uiStore, composerStore }) => {
+    const { useUiStore } = uiStore;
     const { modal, useModalStore } = modalStore;
     const calls = [];
     const record = (name, result = OK()) => {
@@ -329,7 +331,8 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         deleteRun: record("deleteRun"),
         removeAccount: record("removeAccount", OK({ accounts: [{ id: "default", label: "기본 계정" }], activeId: "default", claudeDir: null, snapshots: {} })),
         listRuns: async () => OK({ runs: [] }),
-        getStreakDays: async () => OK({ days: [] })
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
     };
 
     const answer = async (action, isConfirmed) => {
@@ -375,6 +378,39 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     releaseSlow();
     await stale;
     assert.deepEqual(readDays(), ["2026-10-14"]);
+
+    // 신규 개발 단계: 읽은 값이 스토어에 담기고, 승인하면 메인이 돌려준 값으로 바뀌며, 읽지 못하면 비운다.
+    const readPhase = () => runsStore.useRunsStore.getState().buildPhase;
+
+    window.autopilot.getPhase = async () => OK({ phase: { phase: "design", awaiting: "plan", qaRetries: 0 } });
+    await runs.loadBuildPhase();
+    assert.deepEqual(readPhase(), { phase: "design", awaiting: "plan", qaRetries: 0 });
+
+    window.autopilot.approvePhase = async () => OK({ phase: { phase: "design", awaiting: null, qaRetries: 0 } });
+    assert.equal(await run.approvePhase(), true);
+    assert.equal(readPhase().awaiting, null);
+
+    window.autopilot.approvePhase = async () => ({ status: "FAILED", error: { code: "APPROVE_FAILED", msg: "확인을 기다리는 단계가 없습니다." } });
+    assert.equal(await run.approvePhase(), false);
+    assert.equal(useUiStore.getState().notice.message, "확인을 기다리는 단계가 없습니다.");
+
+    window.autopilot.getPhase = async () => ({ status: "FAILED", error: { code: "INVALID_PROJECT", msg: "열려 있는 프로젝트가 아니에요." } });
+    await runs.loadBuildPhase();
+    assert.equal(readPhase(), null);
+
+    // 확인받기·허용 체크는 고를 수 있는 값의 순서로 저장된다.
+    const { composer, useComposerStore } = composerStore;
+
+    composer.toggleGate("plan");
+    assert.deepEqual(useComposerStore.getState().gates, ["design"]);
+    composer.toggleGate("plan");
+    assert.deepEqual(useComposerStore.getState().gates, ["plan", "design"]);
+    composer.toggleAllow("send");
+    composer.toggleAllow("deps");
+    assert.deepEqual(useComposerStore.getState().allow, ["large", "send"]);
+    composer.setMode("build");
+    assert.deepEqual(composer.getModeOptions(), { mode: "build", gates: ["plan", "design"], allow: ["large", "send"], designFormat: "html", qaOnFail: "retry:3" });
+    composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"] }, ["mode", "gates", "allow"]);
 
     calls.length = 0;
     accountStore.useAccountStore.setState({
@@ -489,7 +525,8 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
         },
         selectProject: async () => OK(getView({ projectDir: "/other", tasks: "다른 작업", effort: "low" }, [], "설정을 복구했어요.")),
         listRuns: async () => OK({ runs: [] }),
-        getStreakDays: async () => OK({ days: [] })
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
     };
 
     assert.equal(settings.getScope(), "global", "기본은 전역");
@@ -644,6 +681,7 @@ const checkSettingsPorting = async ({ appStore, settingsActions, composerStore, 
     };
     window.autopilot.listRuns = async () => OK({ runs: [] });
     window.autopilot.getStreakDays = async () => OK({ days: [] });
+    window.autopilot.getPhase = async () => OK({ phase: null });
     calls.length = 0;
 
     await answer(settings.pruneStaleRuns, false);
@@ -731,7 +769,8 @@ const checkProjectEvents = async ({ events, runStore, appStore, run }) => {
     window.autopilot = {
         selectProject: async () => OK({ ...view("/b"), state: createState({ status: "idle", round: 0 }), logs: [{ stream: "out", text: "B 기록" }] }),
         listRuns: async () => OK({ runs: [] }),
-        getStreakDays: async () => OK({ days: [] })
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
     };
 
     await run.selectProject();
@@ -787,7 +826,8 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
         },
         openTab: async () => OK({ ...view("/c"), canceled: false, existing: false, tabs: list("/c", ["/a", "/b", "/c"]), state: createState({ round: 0 }), logs: [] }),
         listRuns: async () => OK({ runs: [] }),
-        getStreakDays: async () => OK({ days: [] })
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
     };
 
     appStore.applySettingsView(view("/a"));
@@ -902,6 +942,33 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
 
     assert.equal(useUiStore.getState().notice.message, "열려 있는 프로젝트가 아니에요.");
     assert.equal(appStore.useAppStore.getState().settings.projectDir, "/a");
+
+    // Git 저장소가 아닌 폴더: 새 저장소를 만들지 먼저 묻고, 취소하면 아무것도 보내지 않으며, 만들면 메인이 이어서 연 결과를 반영한다(경로는 보내지 않는다).
+    const notGitRepo = { status: "FAILED", error: { code: "NOT_GIT_REPO", msg: "Git 저장소가 아니에요." }, data: { projectDir: "/new" } };
+    const initCalls = [];
+
+    window.autopilot.openTab = async () => notGitRepo;
+    window.autopilot.initGitRepo = async (...args) => {
+        initCalls.push(args);
+
+        return OK({ ...view("/new"), tabs: list("/new", ["/a", "/new"]), state: createState({}), logs: [] });
+    };
+
+    let pendingOpen = tabs.openTab();
+
+    await Promise.resolve();
+    assert.match(useModalStore.getState().request.message, /\/new 폴더는 Git 저장소가 아니에요/);
+    modal.answer(false);
+    await pendingOpen;
+    assert.equal(initCalls.length, 0, "취소하면 저장소를 만들지 않는다");
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/a");
+
+    pendingOpen = tabs.openTab();
+    await Promise.resolve();
+    modal.answer(true);
+    await pendingOpen;
+    assert.deepEqual(initCalls, [[]]);
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/new");
 };
 
 const checkStoryView = ({ storyModel }) => {

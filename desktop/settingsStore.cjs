@@ -5,7 +5,21 @@ const { MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES } = require("./autopilot
 const { normalizeSchedules } = require("./scheduleRules.cjs");
 const { readJsonFile, writeJsonFile, recoverJsonFile, BACKUP_SUFFIX } = require("./jsonFile.cjs");
 const { POST_RUN_ACTIONS } = require("./postAction.cjs");
-const { isValidCommitPrefix, isValidWorkBranch, DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, DEFAULT_LOG_RETENTION_DAYS, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
+const {
+    isValidCommitPrefix,
+    isValidWorkBranch,
+    DEFAULT_COMMIT_PREFIX,
+    DEFAULT_WORK_BRANCH,
+    DEFAULT_LOG_RETENTION_DAYS,
+    MAX_LINKED_REPOS,
+    MODES,
+    GATE_PHASES,
+    ALLOW_KEYS,
+    DESIGN_FORMATS,
+    DEFAULT_DESIGN_FORMAT,
+    QA_ON_FAIL_PATTERN,
+    DEFAULT_QA_ON_FAIL
+} = require("./engineArgs.cjs");
 
 // 저장 형식이 바뀔 때마다 올린다. 버전 키가 없는 옛 파일은 0으로 본다.
 const SETTINGS_VERSION = 3;
@@ -20,6 +34,7 @@ const EXTEND_LIMIT_CHOICES = [0, 60, 180, 360, 720, 1440];
 // 지난 실행의 로그·리포트를 보관하는 기간(일)
 const LOG_RETENTION_CHOICES = [7, 14, 30, 90, 180];
 const SLEEP_BLOCK_CHOICES = ["always", "plugged", "never"];
+// 저장하는 종료 시각은 HH:mm뿐이다. 날짜를 붙인 값은 다음 시작에 이미 지났을 수 있어 기억하지 않는다(autopilotIpc.launchRun).
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RECOVERY_NOTICES = {
     restored: "설정 파일이 손상돼 직전 백업으로 복구했어요.",
@@ -27,7 +42,24 @@ const RECOVERY_NOTICES = {
 };
 
 // 프로젝트가 따로 정하지 않으면 전역 값을 쓰는 키. 전역 파일에는 기본값으로, 프로젝트 파일에는 덮어쓴 값만 들어간다.
-const OVERRIDABLE_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "extendLimitMinutes", "commitPrefix", "workBranch", "logRetentionDays", "model", "modelVersions", "effort"];
+const OVERRIDABLE_KEYS = [
+    "tasks",
+    "endTime",
+    "policy",
+    "extendOnLimit",
+    "extendLimitMinutes",
+    "commitPrefix",
+    "workBranch",
+    "logRetentionDays",
+    "model",
+    "modelVersions",
+    "effort",
+    "mode",
+    "gates",
+    "allow",
+    "designFormat",
+    "qaOnFail"
+];
 const SCHEDULES_KEY = "schedules";
 // 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
 const ACCOUNT_KEY = "accountId";
@@ -60,6 +92,11 @@ const DEFAULT_SETTINGS = {
     model: "opus",
     modelVersions: {},
     effort: "high",
+    mode: "maintain",
+    gates: ["plan", "design"],
+    allow: ["deps", "large"],
+    designFormat: DEFAULT_DESIGN_FORMAT,
+    qaOnFail: DEFAULT_QA_ON_FAIL,
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -81,6 +118,11 @@ const isModelVersions = (value) => {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(([family, id]) => MODEL_CHOICES.includes(family) && MODEL_ID_PATTERN.test(id));
 };
 
+// 신규 개발의 확인받기·허용 목록. 고를 수 있는 값만, 겹치지 않게 담는다.
+const isChoiceList = (value, choices) => {
+    return Array.isArray(value) && value.every((item) => choices.includes(item)) && new Set(value).size === value.length;
+};
+
 // 저장된 값이 허용 범위를 벗어나면 기본값으로 대신한다.
 const SETTING_VALIDATORS = {
     projectDir: (value) => typeof value === "string",
@@ -96,6 +138,11 @@ const SETTING_VALIDATORS = {
     model: (value) => MODEL_CHOICES.includes(value),
     modelVersions: isModelVersions,
     effort: (value) => EFFORT_CHOICES.includes(value),
+    mode: (value) => MODES.includes(value),
+    gates: (value) => isChoiceList(value, GATE_PHASES),
+    allow: (value) => isChoiceList(value, ALLOW_KEYS),
+    designFormat: (value) => DESIGN_FORMATS.includes(value),
+    qaOnFail: (value) => typeof value === "string" && QA_ON_FAIL_PATTERN.test(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
     claudeDir: (value) => typeof value === "string",

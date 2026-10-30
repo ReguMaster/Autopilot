@@ -5,9 +5,11 @@ import { getSettings } from "../stores/appStore.js";
 import { composer, useComposerStore } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { getRunState, useRunStore } from "../stores/runStore.js";
+import { useRunsStore } from "../stores/runsStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { settings } from "./settings.js";
-import { applyProjectSwitch } from "./tabs.js";
+import { loadBuildPhase } from "./runs.js";
+import { applyProjectSwitch, confirmGitInit } from "./tabs.js";
 
 const STOP_CONFIRM_MS = 4000;
 
@@ -23,7 +25,7 @@ const startRun = async () => {
 
     try {
         const { tasks, endTime, policy, extendOnLimit } = useComposerStore.getState();
-        const result = await window.autopilot.start({ tasks: tasks, endTime: endTime, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions() });
+        const result = await window.autopilot.start({ tasks: tasks, endTime: endTime, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions(), ...composer.getModeOptions() });
         const isLoginRequired = result.status !== STATUS_OK && result.error.code === "LOGIN_REQUIRED";
 
         ui.showLoginRequired(isLoginRequired ? result.error.msg : null);
@@ -91,7 +93,11 @@ const saveShareCard = async () => {
 };
 
 const selectProject = async () => {
-    const result = await window.autopilot.selectProject();
+    const result = await confirmGitInit(await window.autopilot.selectProject());
+
+    if (!result) {
+        return;
+    }
 
     ui.showFailure(result);
 
@@ -121,6 +127,21 @@ const resetProgress = async () => {
     }
 
     ui.showNotice(result.data.isReset ? "진행 기록을 초기화했어요. 원본은 .autopilot/progress 폴더에 보관했어요." : "이미 초기 상태예요.", "ok");
+    // 진행 기록 초기화는 신규 개발의 단계도 기획으로 돌린다.
+    loadBuildPhase();
+};
+
+// 확인을 기다리는 신규 개발 단계를 승인한다. 성공하면 다음 실행이 다음 단계부터 하고, 단계 상태를 메인이 돌려준 값으로 바꾼다.
+const approvePhase = async () => {
+    const result = await window.autopilot.approvePhase();
+
+    ui.showFailure(result);
+
+    if (result.status === STATUS_OK) {
+        useRunsStore.setState({ buildPhase: result.data.phase });
+    }
+
+    return result.status === STATUS_OK;
 };
 
 // 로그인 자동 실행·트레이 상주는 둘을 함께 보내고, 메인이 돌려준 설정으로 맞춘다.
@@ -139,4 +160,4 @@ const openUpdate = async () => {
     ui.showFailure(await window.autopilot.openUpdate());
 };
 
-export { STOP_CONFIRM_MS, startRun, setStopArmed, handleMainAction, openReport, saveShareCard, selectProject, resetProgress, changeSystemSettings, openUpdate };
+export { STOP_CONFIRM_MS, startRun, setStopArmed, handleMainAction, openReport, saveShareCard, selectProject, resetProgress, approvePhase, changeSystemSettings, openUpdate };

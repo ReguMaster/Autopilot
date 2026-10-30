@@ -117,6 +117,21 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({}).workBranch, "ai/autopilot");
     assert.equal(normalizeSettings({ commitPrefix: "feat:", workBranch: "bot/x" }).workBranch, "bot/x");
     assert.equal(normalizeSettings({ workBranch: "main" }).workBranch, "ai/autopilot", "보호 브랜치는 기본값으로");
+
+    // 작업 모드와 신규 개발: 기본은 유지 보수·확인받기 둘·허용 dependency와 큰 구조이고, 모르는 값·겹친 값은 기본값으로 돌린다. 저장하는 종료 시각에는 날짜를 붙이지 않는다.
+    const buildDefaults = normalizeSettings({});
+
+    assert.deepEqual(
+        [buildDefaults.mode, buildDefaults.gates, buildDefaults.allow, buildDefaults.designFormat, buildDefaults.qaOnFail],
+        ["maintain", ["plan", "design"], ["deps", "large"], "html", "retry:3"]
+    );
+    assert.deepEqual(normalizeSettings({ mode: "build", gates: [], allow: ["send"], designFormat: "figma", qaOnFail: "stop" }).allow, ["send"]);
+    assert.deepEqual(
+        normalizeOverrides({ mode: "fast", gates: ["plan", "plan"], allow: ["root"], designFormat: "pdf", qaOnFail: "retry:9", endTime: "2026-11-02 07:00" }),
+        {},
+        "허용되지 않은 신규 개발 값과 날짜를 붙인 종료 시각은 버린다"
+    );
+    assert.deepEqual(normalizeOverrides({ mode: "build", gates: ["design"] }), { mode: "build", gates: ["design"] });
     assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
     assert.equal(normalizeSettings({}).logRetentionDays, 30);
     assert.equal(normalizeSettings({ logRetentionDays: 7 }).logRetentionDays, 7);

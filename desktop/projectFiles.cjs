@@ -1,6 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFile } = require("node:child_process");
 
+const GIT_TIMEOUT_MS = 30000;
 const WORK_DIR_NAME = ".autopilot";
 const PROGRESS_DIR_NAME = "progress";
 const REPORT_FILE_PATTERN = /^report_[\w-]+\.html$/i;
@@ -17,6 +19,38 @@ const getProjectError = (projectDir) => {
     } catch {
         return "대상 프로젝트 폴더를 찾지 못했어요. 다시 선택해 주세요.";
     }
+};
+
+// .git이 없는 폴더에는 사용자가 확인하면 새 저장소를 만들 수 있다.
+const canInitGitRepo = (dir) => {
+    try {
+        return fs.statSync(dir).isDirectory() && !fs.existsSync(path.join(dir, ".git"));
+    } catch {
+        return false;
+    }
+};
+
+const runGit = (git, args, options) => {
+    return new Promise((resolve) => {
+        execFile(git, args, { ...options, windowsHide: true, timeout: GIT_TIMEOUT_MS, encoding: "utf8" }, (error, stdout, stderr) => resolve(error ? (stderr || error.message).trim() : ""));
+    });
+};
+
+// main 브랜치로 새 저장소를 만들고 빈 첫 commit을 남긴다(작업 브랜치가 main에서 갈라진다). 실패하면 git이 알려준 이유를, 성공하면 빈 문자열을 돌려준다.
+// commit 작성자가 설정되지 않았으면 지어내지 않고 git의 안내를 그대로 알린다.
+const initGitRepo = async (dir, { git = "git", env = process.env } = {}) => {
+    for (const args of [
+        ["init", "-b", "main"],
+        ["commit", "--allow-empty", "-m", "init"]
+    ]) {
+        const error = await runGit(git, args, { cwd: dir, env: env });
+
+        if (error) {
+            return error;
+        }
+    }
+
+    return "";
 };
 
 // 엔진이 알려준 경로를 그대로 열거나 읽지 않도록, 프로젝트 .autopilot/progress/ 아래에 있고 이름이 엔진이 만드는 형식인 파일만 허용한다.
@@ -50,4 +84,4 @@ const getProgressDir = (projectDir) => {
     return path.join(projectDir, WORK_DIR_NAME, PROGRESS_DIR_NAME);
 };
 
-module.exports = { getProjectError, isProjectReportFile, isProjectLogFile, getProgressDir, LOG_FILE_PATTERN, REPORT_FILE_PATTERN };
+module.exports = { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, isProjectLogFile, getProgressDir, LOG_FILE_PATTERN, REPORT_FILE_PATTERN };

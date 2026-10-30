@@ -92,6 +92,7 @@ const summarizeLines = (lines) => {
 
     return {
         policy: state.policy.replace(/ \(.+\)$/, ""),
+        mode: state.mode,
         deadlineAt: state.deadlineAt,
         reason: state.reason,
         roundCount: state.rounds.length,

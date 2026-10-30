@@ -1,7 +1,7 @@
 import { formatBytes } from "../../viewFormat.js";
 import { STATUS_OK } from "../lib/constants.js";
 import { applySettingsView, getSettings } from "../stores/appStore.js";
-import { composer } from "../stores/composerStore.js";
+import { composer, COMPOSER_KEYS } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { loadRecentRuns } from "./runs.js";
@@ -18,8 +18,6 @@ const applyView = (view, composerKeys) => {
         ui.showNotice(view.notice, "warn");
     }
 };
-
-const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort"];
 
 const getImportMessage = ({ projectCount, skippedCount }) => {
     const skipped = skippedCount ? ` 이 PC에 없는 프로젝트 ${skippedCount}개는 건너뛰었어요.` : "";

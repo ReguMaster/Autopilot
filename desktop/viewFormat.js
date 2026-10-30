@@ -178,7 +178,7 @@ const getLineKind = ({ stream, text }) => {
         return "app";
     }
 
-    if (/^\[\d+회차\]|^AutoPilot 종료/.test(text)) {
+    if (/^\[\d+회차\]|^\[단계\]|^AutoPilot 종료/.test(text)) {
         return "round";
     }
 
@@ -391,11 +391,20 @@ const FINISH_REASONS = [
     [/^강제 종료$/, () => "커밋하지 않은 변경은 작업 폴더에 남아 있을 수 있어요."],
     [/연속 \d+회 실패/, () => "연속으로 실패해서 멈췄어요. 전체 기록에서 이유를 확인해 주세요."],
     [/사용량 한도/, () => "사용량 한도 때문에 더 이어 가지 못했어요."],
-    [/회차 상한/, () => "정해진 회차를 모두 채웠어요."]
+    [/회차 상한/, () => "정해진 회차를 모두 채웠어요."],
+    [/^(.+) 확인 대기$/, (state, match) => `${match[1]} 결과를 확인해 주시면 다음 단계를 이어서 할게요.`],
+    [/모든 단계 완료$/, () => "기획부터 테스트/QA까지 모든 단계를 마쳤어요."],
+    [/^테스트\/QA 실패$/, () => "테스트/QA에서 고치지 못한 문제가 남아서 멈췄어요. docs/autopilot/qa.md에서 확인해 주세요."]
 ];
 
 const getReasonText = (reason, deadlineAt) => {
-    return FINISH_REASONS.find(([pattern]) => pattern.test(reason))?.[1]({ deadlineAt: deadlineAt }) || (reason ? `종료 사유: ${reason}` : "");
+    const matched = FINISH_REASONS.find(([pattern]) => pattern.test(reason));
+
+    if (matched) {
+        return matched[1]({ deadlineAt: deadlineAt }, reason.match(matched[0]));
+    }
+
+    return reason ? `종료 사유: ${reason}` : "";
 };
 
 const getWorkSentence = (roundCount, commitCount) => {
@@ -415,6 +424,8 @@ const describeFinish = (state) => {
 
     if (tone === "danger") {
         title = "도중에 멈췄어요.";
+    } else if (/ 확인 대기$/.test(state.reason)) {
+        title = "확인을 기다리고 있어요.";
     } else if (tone === "warn") {
         title = "여기까지 하고 멈췄어요.";
     } else if (hour >= 5 && hour < 12) {
@@ -649,6 +660,32 @@ const describeTool = (name, argument) => {
     return `${name} 도구로 일하고 있어요.`;
 };
 
+// 신규 개발의 단계 줄([단계] …)을 들려주는 문장으로 바꾼다. 단계 줄이 아니면 빈 문자열이다.
+const STEP_LINE_PATTERN = /^\[단계\] (.+?) (시작|완료|확인 대기|실패)(?: - 개발로 되돌림 \((\d+)\/(\d+)\))?$/;
+
+const describeStepLine = (text) => {
+    const step = text.match(STEP_LINE_PATTERN);
+
+    if (!step) {
+        return "";
+    }
+
+    const [, label, status, retry, maxRetry] = step;
+
+    if (retry) {
+        return `${label}에서 문제가 남아서 개발로 돌아가 고칠게요. (${retry}/${maxRetry})`;
+    }
+
+    const sentences = {
+        시작: `${label} 단계를 시작할게요.`,
+        완료: `${label} 단계를 마쳤어요.`,
+        "확인 대기": `${label} 결과를 확인해 주시면 이어서 할게요.`,
+        실패: `${label}에서 고치지 못한 문제가 남았어요.`
+    };
+
+    return sentences[status];
+};
+
 const createStory = () => {
     return { items: [], lastType: "", nextId: 1 };
 };
@@ -668,6 +705,16 @@ const applyStoryEntry = (story, { stream, text }) => {
     }
 
     if (stream !== "out") {
+        return;
+    }
+
+    const stepText = describeStepLine(text);
+
+    // 단계가 바뀌면 이야기에 한 문장으로 남긴다(시각이 없는 엔진 줄이다).
+    if (stepText) {
+        pushStoryItem(story, { tools: [], text: stepText, isPhrase: false, time: "" });
+        story.lastType = "";
+
         return;
     }
 
@@ -728,6 +775,8 @@ const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAST_STATUSES = [
     [/^예정 시각 도달$|예약 작업 완료|연속 새 commit 없음|회차 상한/, "정상 종료", "ok"],
+    [/모든 단계 완료$/, "모든 단계 완료", "ok"],
+    [/^테스트\/QA 실패$/, "QA 실패", "danger"],
     [/^중단 요청$|^강제 종료$/, "중단됨", "warn"],
     [/사용량 한도/, "한도로 멈춤", "warn"],
     [/연속 \d+회 실패|^실행 오류/, "오류 종료", "danger"]
@@ -778,6 +827,11 @@ const getPastStatus = (run) => {
         return { label: "끝맺음 없음", tone: "muted" };
     }
 
+    // 신규 개발이 확인받기 단계에서 멈췄으면 어느 단계인지 그대로 보여준다(예: 기획 확인 대기).
+    if (/ 확인 대기$/.test(run.reason)) {
+        return { label: run.reason, tone: "warn" };
+    }
+
     const matched = PAST_STATUSES.find(([pattern]) => pattern.test(run.reason));
 
     return matched ? { label: matched[1], tone: matched[2] } : { label: "종료", tone: "muted" };
@@ -808,7 +862,7 @@ const formatPastMeta = (run) => {
         return "";
     }
 
-    const parts = [`${run.roundCount}회차`, run.commitCount ? `커밋 ${run.commitCount}개 +${run.insertions} −${run.deletions}` : "커밋 없음"];
+    const parts = [...(run.mode === "build" ? ["신규 개발"] : []), `${run.roundCount}회차`, run.commitCount ? `커밋 ${run.commitCount}개 +${run.insertions} −${run.deletions}` : "커밋 없음"];
 
     return parts.join(" · ");
 };
@@ -869,8 +923,9 @@ const buildTranscript = (lines) => {
         const commit = round ? null : text.match(TRANSCRIPT_COMMIT_PATTERN);
         const limit = round || commit ? null : text.match(TRANSCRIPT_LIMIT_PATTERN);
         const finish = round || commit || limit ? null : text.match(TRANSCRIPT_FINISH_PATTERN);
+        const stepText = round || commit || limit || finish ? "" : describeStepLine(text);
 
-        if (round || commit || limit || finish) {
+        if (round || commit || limit || finish || stepText) {
             flushTools();
 
             lastType = "";
@@ -903,6 +958,12 @@ const buildTranscript = (lines) => {
 
         if (finish) {
             pushItem({ kind: "finish", text: shortenText(finish[1], TRANSCRIPT_TEXT_LENGTH) });
+
+            continue;
+        }
+
+        if (stepText) {
+            pushItem({ kind: "notice", text: stepText });
 
             continue;
         }
@@ -1155,6 +1216,7 @@ export {
     getToolDetail,
     BASH_PHRASES,
     describeTool,
+    describeStepLine,
     createStory,
     pushStoryItem,
     applyStoryEntry,

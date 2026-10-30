@@ -632,7 +632,59 @@ const checkShareCard = ({ pickCardSentence, splitCardEmphasis, getCardWhen, buil
     assert.deepEqual(plain(noGain.facts), ["mireu-api", "이번에는 커밋을 남기지 않았어요"]);
 };
 
+// 신규 개발: 단계 줄은 이야기·지난 실행 대화에 한 문장으로 남고, 종료 사유는 확인 대기·모든 단계 완료·QA 실패를 들려준다.
+const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, getReasonText, describeFinish, describePastRun, getLineKind }) => {
+    assert.equal(describeStepLine("[단계] 기획 시작"), "기획 단계를 시작할게요.");
+    assert.equal(describeStepLine("[단계] 디자인 완료"), "디자인 단계를 마쳤어요.");
+    assert.equal(describeStepLine("[단계] 기획 확인 대기"), "기획 결과를 확인해 주시면 이어서 할게요.");
+    assert.equal(describeStepLine("[단계] 테스트/QA 실패 - 개발로 되돌림 (1/3)"), "테스트/QA에서 문제가 남아서 개발로 돌아가 고칠게요. (1/3)");
+    assert.equal(describeStepLine("[단계] 테스트/QA 실패"), "테스트/QA에서 고치지 못한 문제가 남았어요.");
+    assert.equal(describeStepLine("    [단계] 기획 시작"), "", "들여 쓴 Claude 출력은 단계 줄이 아니다");
+    assert.equal(describeStepLine("12:00:00 [단계] 기획 시작"), "");
+    assert.equal(getLineKind({ stream: "out", text: "[단계] 개발 시작" }), "round");
+
+    const story = createStory();
+
+    applyStoryEntry(story, { stream: "out", text: "12:00:01 기획서를 썼어요." });
+    applyStoryEntry(story, { stream: "out", text: "[단계] 기획 완료" });
+    applyStoryEntry(story, { stream: "out", text: "    이어지는 줄이 아니에요" });
+
+    assert.deepEqual(
+        story.items.map((item) => item.text),
+        ["기획서를 썼어요.", "기획 단계를 마쳤어요."]
+    );
+
+    const transcript = buildTranscript(["[단계] 개발 시작", "12:00:01 코드를 짰어요.", "[단계] 개발 완료"]);
+
+    assert.deepEqual(
+        transcript.items.map((item) => [item.kind, item.text]),
+        [
+            ["notice", "개발 단계를 시작할게요."],
+            ["say", "코드를 짰어요."],
+            ["notice", "개발 단계를 마쳤어요."]
+        ]
+    );
+
+    assert.equal(getReasonText("디자인 확인 대기", 0), "디자인 결과를 확인해 주시면 다음 단계를 이어서 할게요.");
+    assert.equal(getReasonText("신규 개발: 모든 단계 완료", 0), "기획부터 테스트/QA까지 모든 단계를 마쳤어요.");
+    assert.match(getReasonText("테스트/QA 실패", 0), /qa\.md/);
+    assert.equal(
+        describeFinish({ status: "idle", endedAt: new Date(2026, 9, 14, 22, 0).getTime(), exitCode: 0, reason: "기획 확인 대기", rounds: [], deadlineAt: 0, work: {} }).title,
+        "확인을 기다리고 있어요."
+    );
+
+    const now = new Date(2026, 9, 14, 9, 0).getTime();
+    const run = { startedAt: now - 3600000, endedAt: now, roundCount: 3, commitCount: 3, insertions: 10, deletions: 0, mode: "build", isEmpty: false, isUnreadable: false, isActive: false };
+
+    assert.deepEqual({ ...describePastRun({ ...run, reason: "기획 확인 대기" }, now).status }, { label: "기획 확인 대기", tone: "warn" });
+    assert.deepEqual({ ...describePastRun({ ...run, reason: "신규 개발: 모든 단계 완료" }, now).status }, { label: "모든 단계 완료", tone: "ok" });
+    assert.deepEqual({ ...describePastRun({ ...run, reason: "테스트/QA 실패" }, now).status }, { label: "QA 실패", tone: "danger" });
+    assert.match(describePastRun({ ...run, reason: "기획 확인 대기" }, now).meta, /^신규 개발 · 3회차/);
+    assert.doesNotMatch(describePastRun({ ...run, mode: "", reason: "예정 시각 도달" }, now).meta, /신규 개발/);
+};
+
 const checkViewFormat = () => {
+    checkBuildSteps(viewFormat);
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
     checkTrack(viewFormat);

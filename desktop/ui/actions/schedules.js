@@ -28,7 +28,10 @@ const schedules = {
     // 저장하는 순간의 작업·정책·모델·Effort를 예약에 담는다. 실패하면 메시지를 돌려줘 폼이 보여준다.
     save: async (schedule) => {
         const { tasks, policy, extendOnLimit } = useComposerStore.getState();
-        const result = await window.autopilot.saveSchedule({ schedule: schedule, options: { tasks: tasks, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions() } });
+        const result = await window.autopilot.saveSchedule({
+            schedule: schedule,
+            options: { tasks: tasks, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions(), ...composer.getModeOptions() }
+        });
 
         if (result.status !== STATUS_OK) {
             return result.error.msg;

@@ -56,6 +56,7 @@ const checkSummary = async (projectDir) => {
     assert(run.endedAt > run.startedAt || run.endedAt === 0);
     assert.equal(run.reason, "예정 시각 도달");
     assert.equal(run.policy, "auto");
+    assert.equal(run.mode, "", "Mode 헤더가 없으면 유지 보수 실행이다");
     assert.equal(run.roundCount, 2);
     assert.equal(run.commitCount, 2);
     assert.equal(run.insertions, 15);
@@ -75,6 +76,26 @@ const checkSummary = async (projectDir) => {
     assert.deepEqual(detail.lines, COMPLETE_LINES);
     assert.equal(detail.omittedLines, 0);
     assert.equal(detail.run.id, run.id);
+
+    // 신규 개발 실행은 Mode 헤더로 알아보고, 확인받기 단계에서 멈춘 사유를 그대로 읽는다.
+    const buildLines = [
+        ...COMPLETE_LINES.slice(0, 4),
+        "Mode : 신규 개발 (기획 단계부터)",
+        "[단계] 기획 시작",
+        "[1회차] 시작 - 남은 시간 480분",
+        "[1회차] 완료",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기",
+        "AutoPilot 종료 - 기획 확인 대기 (1회차)"
+    ];
+
+    writeRun(projectDir, OTHER_DAY, "autopilot_090000_bbbbbbbb.log", buildLines.join("\n") + "\n");
+
+    const buildRun = (await listRuns(projectDir)).find((item) => item.id === `${OTHER_DAY}/autopilot_090000_bbbbbbbb.log`);
+
+    assert.equal(buildRun.mode, "build");
+    assert.equal(buildRun.reason, "기획 확인 대기");
+    fs.rmSync(path.join(projectDir, ".autopilot", "progress", OTHER_DAY), { recursive: true });
 };
 
 // 최근 실행이 먼저 오고, 날짜 폴더와 파일 이름에 맞지 않는 항목은 목록에 들어오지 않는다.

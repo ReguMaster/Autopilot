@@ -9,6 +9,20 @@ const DEFAULT_POLICY = "auto";
 
 const POLICY_LABELS = { auto: "자율개선", todo: "지시개선" };
 
+// 작업 모드와 신규 개발. 엔진 config.js·engineArgs.cjs와 같다.
+const MODES = ["maintain", "build"];
+const DEFAULT_MODE = "maintain";
+const BUILD_PHASES = ["plan", "design", "build", "qa"];
+const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA" };
+const GATE_PHASES = ["plan", "design"];
+const DEFAULT_GATES = ["plan", "design"];
+const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
+const DEFAULT_ALLOW = ["deps", "large"];
+const DESIGN_FORMATS = ["md", "html", "figma", "image"];
+const DEFAULT_DESIGN_FORMAT = "html";
+const QA_ON_FAIL_CHOICES = ["stop", "retry:1", "retry:2", "retry:3", "retry:4", "retry:5"];
+const DEFAULT_QA_ON_FAIL = "retry:3";
+
 const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·Effort를 바꿀 수 없어요";
 
 // 상태별 가운데 버튼. 종료 요청 후에 누르면 메인 프로세스가 확인 모달을 띄우고 강제 종료한다.
@@ -18,4 +32,27 @@ const MAIN_ACTIONS = {
     stopping: { action: "kill", label: "종료", title: "즉시 중단해요. commit 전 변경은 working tree에 남아요" }
 };
 
-export { STATUS_OK, MODEL_FAMILIES, EFFORT_LEVELS, POLICIES, DEFAULT_MODEL, DEFAULT_EFFORT_LEVEL, DEFAULT_POLICY, POLICY_LABELS, OPTIONS_LOCKED_TITLE, MAIN_ACTIONS };
+export {
+    STATUS_OK,
+    MODEL_FAMILIES,
+    EFFORT_LEVELS,
+    POLICIES,
+    DEFAULT_MODEL,
+    DEFAULT_EFFORT_LEVEL,
+    DEFAULT_POLICY,
+    POLICY_LABELS,
+    MODES,
+    DEFAULT_MODE,
+    BUILD_PHASES,
+    PHASE_LABELS,
+    GATE_PHASES,
+    DEFAULT_GATES,
+    ALLOW_KEYS,
+    DEFAULT_ALLOW,
+    DESIGN_FORMATS,
+    DEFAULT_DESIGN_FORMAT,
+    QA_ON_FAIL_CHOICES,
+    DEFAULT_QA_ON_FAIL,
+    OPTIONS_LOCKED_TITLE,
+    MAIN_ACTIONS
+};

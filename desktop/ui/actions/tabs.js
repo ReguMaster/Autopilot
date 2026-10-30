@@ -15,9 +15,18 @@ const drafts = new Map();
 
 const getUnsavedValues = (saved) => {
     const current = useComposerStore.getState();
-    const values = { tasks: current.tasks, endTime: current.endTime, policy: current.policy, extendOnLimit: current.extendOnLimit, model: current.model, effort: EFFORT_LEVELS[current.effort] };
+    const values = {
+        tasks: current.tasks,
+        endTime: current.endTime,
+        policy: current.policy,
+        extendOnLimit: current.extendOnLimit,
+        model: current.model,
+        effort: EFFORT_LEVELS[current.effort],
+        ...composer.getModeOptions()
+    };
 
-    return Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== saved[key]));
+    // 확인받기·허용 목록은 배열이라 값으로 비교한다.
+    return Object.fromEntries(Object.entries(values).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(saved[key])));
 };
 
 const rememberDraft = (projectDir) => {
@@ -84,8 +93,28 @@ const applyProjectSwitch = (data, { dismissFinish = false } = {}) => {
     loadRecentRuns();
 };
 
+// 고른 폴더가 Git 저장소가 아니면(NOT_GIT_REPO) 새 저장소를 만들지 묻는다. 만들면 메인이 이어서 연 결과를, 취소하면 null을 돌려준다.
+// 메인은 방금 대화상자로 고른 폴더에만 저장소를 만들므로 경로를 보내지 않는다.
+const confirmGitInit = async (result) => {
+    if (result.status === STATUS_OK || result.error.code !== "NOT_GIT_REPO") {
+        return result;
+    }
+
+    const isConfirmed = await modal.confirm({
+        title: "새 Git 저장소를 만들까요?",
+        message: `${result.data.projectDir} 폴더는 Git 저장소가 아니에요. 여기에 main 브랜치로 새 저장소를 만들고 빈 첫 커밋을 남긴 뒤 열게요.`,
+        confirmLabel: "저장소 만들기"
+    });
+
+    return isConfirmed ? window.autopilot.initGitRepo() : null;
+};
+
 const openTab = async () => {
-    const result = await window.autopilot.openTab();
+    const result = await confirmGitInit(await window.autopilot.openTab());
+
+    if (!result) {
+        return;
+    }
 
     ui.showFailure(result);
 
@@ -137,4 +166,4 @@ const closeTab = async (projectDir) => {
     }
 };
 
-export { applyProjectSwitch, openTab, activateTab, closeTab };
+export { applyProjectSwitch, confirmGitInit, openTab, activateTab, closeTab };

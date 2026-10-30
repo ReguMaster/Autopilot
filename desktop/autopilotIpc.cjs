@@ -2,8 +2,8 @@ const { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } = require("el
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { createRunner, execEngine, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
-const { getProjectError, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
+const { createRunner, execEngine, parseBuildPhase, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
+const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
 const { createStreakStore } = require("./streakStore.cjs");
 const { sanitizeCardContent, getCardFileName, renderCardPng } = require("./shareCard.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
@@ -15,9 +15,9 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
-const { getCliArgs, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
+const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, END_TIME_PATTERN } = require("./settingsStore.cjs");
+const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
@@ -112,6 +112,41 @@ const checkEngine = () => {
 
 const isValidRoundOptions = ({ model, effort }) => {
     return MODEL_CHOICES.includes(model) && EFFORT_CHOICES.includes(effort);
+};
+
+// 작업 모드와 신규 개발 설정. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail"];
+
+const pickModeOptions = (source, fallback) => {
+    return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
+};
+
+const isValidModeOptions = (options) => {
+    return MODE_KEYS.every((key) => SETTING_VALIDATORS[key](options[key]));
+};
+
+// 엔진 status가 알려주는 신규 개발 단계 상태({phase, awaiting, qaRetries}). 신규 개발을 한 적 없거나 읽지 못하면 null이다.
+const readBuildPhase = (projectDir) => {
+    return new Promise((resolve) => {
+        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "status", [], (error, stdout) => {
+            resolve(error ? null : parseBuildPhase(stdout));
+        });
+    });
+};
+
+// 신규 개발을 시작할 수 있는지. 기획(또는 돌려보낸 기획)은 만들 것이 있어야 하고, 예약은 확인을 기다리는 단계를 대신 다시 하지 않는다.
+const getBuildStartError = (buildPhase, tasks, isScheduled) => {
+    if (buildPhase?.phase === "done") {
+        return createFailure("BUILD_DONE", "신규 개발의 모든 단계를 마쳤어요. 진행 기록을 초기화하면 기획부터 다시 시작해요.");
+    }
+
+    if (isScheduled && buildPhase?.awaiting) {
+        return createFailure("PHASE_AWAITING", "신규 개발이 단계 확인을 기다리고 있어 예약을 건너뛰었어요.");
+    }
+
+    const startPhase = buildPhase?.awaiting || buildPhase?.phase || "plan";
+
+    return startPhase === "plan" && !tasks.trim() ? createFailure("TASKS_REQUIRED", "신규 개발은 만들 것을 적어야 시작할 수 있어요.") : null;
 };
 
 const resolveModel = (family, modelVersions) => {
@@ -253,8 +288,16 @@ const startScheduledRun = async (schedule, plan) => {
         const result = await launchRun(
             session,
             settings,
-            { tasks: settings.tasks, endTime: plan.endTime, policy: settings.policy, extendOnLimit: settings.extendOnLimit, model: settings.model, effort: settings.effort },
-            { remember: false }
+            {
+                tasks: settings.tasks,
+                endTime: plan.endTime,
+                policy: settings.policy,
+                extendOnLimit: settings.extendOnLimit,
+                model: settings.model,
+                effort: settings.effort,
+                ...pickModeOptions({}, settings)
+            },
+            { remember: false, isScheduled: true }
         );
 
         return result.status === STATUS_OK ? { ok: true, message: `조건이 맞아서 ${plan.endTime}까지 실행을 시작했어요.` } : { ok: false, message: result.error.msg };
@@ -372,19 +415,25 @@ const getStartError = (settings, options) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    if (!isValidRoundOptions(options) || !POLICY_CHOICES.includes(options.policy) || (options.endTime && !END_TIME_PATTERN.test(options.endTime))) {
-        return createFailure("INVALID_OPTIONS", "모델, Effort, 정책, 종료 시각 값이 올바르지 않아요.");
+    if (!isValidRoundOptions(options) || !POLICY_CHOICES.includes(options.policy) || !isValidModeOptions(options)) {
+        return createFailure("INVALID_OPTIONS", "모델, Effort, 정책, 작업 모드 값이 올바르지 않아요.");
     }
 
-    if (options.policy === "todo" && !options.tasks.trim()) {
+    const endTimeError = getEndTimeError(options.endTime);
+
+    if (endTimeError) {
+        return createFailure("INVALID_END_TIME", endTimeError);
+    }
+
+    if (options.mode !== "build" && options.policy === "todo" && !options.tasks.trim()) {
         return createFailure("TASKS_REQUIRED", "지시개선은 처리할 작업을 입력해야 시작할 수 있어요.");
     }
 
     return null;
 };
 
-// 수동 시작과 예약 시작이 함께 쓰는 시작 절차. remember가 참이면 쓴 값을 다음 시작의 기본값으로 저장한다.
-const launchRun = async (session, settings, startOptions, { remember }) => {
+// 수동 시작과 예약 시작이 함께 쓰는 시작 절차. remember가 참이면 쓴 값을 다음 시작의 기본값으로 저장한다(날짜를 붙인 종료 시각은 빼고).
+const launchRun = async (session, settings, startOptions, { remember, isScheduled = false }) => {
     if (!session) {
         return createNoSessionFailure();
     }
@@ -410,6 +459,14 @@ const launchRun = async (session, settings, startOptions, { remember }) => {
             return createFailure("INVALID_PROJECT", `연결 저장소를 쓸 수 없어요 (${brokenRepo}): ${getProjectError(brokenRepo)}`);
         }
 
+        if (startOptions.mode === "build") {
+            const buildError = getBuildStartError(await readBuildPhase(settings.projectDir), startOptions.tasks, isScheduled);
+
+            if (buildError) {
+                return buildError;
+            }
+        }
+
         // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
         const tasksFile = path.join(app.getPath("userData"), TASKS_FILE_NAME);
 
@@ -417,7 +474,9 @@ const launchRun = async (session, settings, startOptions, { remember }) => {
         fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
 
         if (remember) {
-            settingsStore.remember(settings.projectDir, startOptions);
+            const { endTime, ...undatedOptions } = startOptions;
+
+            settingsStore.remember(settings.projectDir, endTime.includes(" ") ? undatedOptions : startOptions);
         }
 
         const model = resolveModel(startOptions.model, settings.modelVersions);
@@ -456,7 +515,8 @@ const handleStart = async (event, options = {}) => {
             policy: options.policy,
             extendOnLimit: options.extendOnLimit === true,
             model: options.model,
-            effort: options.effort
+            effort: options.effort,
+            ...pickModeOptions(options, readEffective(session?.projectDir))
         },
         { remember: true }
     );
@@ -703,31 +763,30 @@ const getSwitchResult = async (session, extra = {}) => {
     return { status: STATUS_OK, data: { ...getSettingsView(), ...extra, tabs: broadcastTabs({ force: true }), state: session.runner.getState(), logs: session.runner.getLogs() } };
 };
 
-const handleSelectProject = async (event) => {
-    if (sessionPool.get().runner.isRunning()) {
-        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
+// 사용자가 방금 대화상자로 고른, .git이 없는 폴더와 그 폴더로 하려던 일(select·tab). 렌더러는 경로를 보내지 않고 이 폴더에만 새 저장소를 만들 수 있다.
+let pendingGitInit = null;
+
+// 고른 폴더를 쓸 수 없으면 실패를 돌려준다. .git이 없는 폴더면 새 저장소를 만들지 화면이 묻도록 NOT_GIT_REPO로 알리고 그 폴더를 기억한다.
+const getSelectionFailure = (selectedDir, kind) => {
+    const projectError = getProjectError(selectedDir);
+
+    if (!projectError) {
+        return null;
     }
 
-    const settings = readSettings();
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const selection = await dialog.showOpenDialog(window, {
-        title: "대상 프로젝트 폴더 선택",
-        defaultPath: settings.projectDir || undefined,
-        properties: ["openDirectory"]
-    });
-
-    if (selection.canceled) {
-        return { status: STATUS_OK, data: getSettingsView() };
-    }
-
-    const projectError = getProjectError(selection.filePaths[0]);
-
-    if (projectError) {
+    if (!canInitGitRepo(selectedDir)) {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    // 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 가고, 아니면 지금 탭의 프로젝트를 바꾼다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
-    const opened = settingsStore.openTab(selection.filePaths[0], { replaceDir: settings.projectDir });
+    pendingGitInit = { dir: selectedDir, kind: kind };
+
+    return { ...createFailure("NOT_GIT_REPO", "Git 저장소가 아니에요. 여기에 새 저장소를 만들 수 있어요."), data: { projectDir: selectedDir } };
+};
+
+// 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 가고, 아니면 지금 탭의 프로젝트를 바꾼다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
+const selectProjectDir = (selectedDir) => {
+    const settings = readSettings();
+    const opened = settingsStore.openTab(selectedDir, { replaceDir: settings.projectDir });
 
     if (opened.error) {
         return createFailure("TOO_MANY_TABS", opened.error);
@@ -741,6 +800,37 @@ const handleSelectProject = async (event) => {
     return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
 };
 
+const openTabDir = (selectedDir) => {
+    const opened = settingsStore.openTab(selectedDir);
+
+    if (opened.error) {
+        return createFailure("TOO_MANY_TABS", opened.error);
+    }
+
+    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
+};
+
+const handleSelectProject = async (event) => {
+    if (sessionPool.get().runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
+    }
+
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const selection = await dialog.showOpenDialog(window, {
+        title: "대상 프로젝트 폴더 선택",
+        defaultPath: readSettings().projectDir || undefined,
+        properties: ["openDirectory"]
+    });
+
+    pendingGitInit = null;
+
+    if (selection.canceled) {
+        return { status: STATUS_OK, data: getSettingsView() };
+    }
+
+    return getSelectionFailure(selection.filePaths[0], "select") || selectProjectDir(selection.filePaths[0]);
+};
+
 // 폴더를 골라 새 탭으로 연다. 이미 열린 프로젝트면 새 탭 없이 그 탭으로 간다.
 const handleOpenTab = async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -750,23 +840,36 @@ const handleOpenTab = async (event) => {
         properties: ["openDirectory"]
     });
 
+    pendingGitInit = null;
+
     if (selection.canceled) {
         return { status: STATUS_OK, data: { ...getSettingsView(), canceled: true, tabs: getTabsPayload() } };
     }
 
-    const projectError = getProjectError(selection.filePaths[0]);
+    return getSelectionFailure(selection.filePaths[0], "tab") || openTabDir(selection.filePaths[0]);
+};
 
-    if (projectError) {
-        return createFailure("INVALID_PROJECT", projectError);
+// 화면이 사용자 확인을 받은 뒤 방금 고른 폴더에 새 저장소를 만들고, 하려던 일(프로젝트 바꾸기·새 탭)을 이어간다.
+const handleInitGitRepo = async () => {
+    const pending = pendingGitInit;
+
+    pendingGitInit = null;
+
+    if (!pending || !canInitGitRepo(pending.dir)) {
+        return createFailure("INVALID_PROJECT", "새 저장소를 만들 폴더를 다시 골라 주세요.");
     }
 
-    const opened = settingsStore.openTab(selection.filePaths[0]);
-
-    if (opened.error) {
-        return createFailure("TOO_MANY_TABS", opened.error);
+    if (pending.kind === "select" && sessionPool.get().runner.isRunning()) {
+        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
     }
 
-    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
+    const initError = await initGitRepo(pending.dir);
+
+    if (initError) {
+        return createFailure("GIT_INIT_FAILED", `새 저장소를 만들지 못했어요: ${initError}`);
+    }
+
+    return pending.kind === "select" ? selectProjectDir(pending.dir) : openTabDir(pending.dir);
 };
 
 const handleActivateTab = async (event, requestedDir) => {
@@ -875,7 +978,8 @@ const handleSaveSchedule = async (event, payload = {}) => {
         policy: composer.policy,
         extendOnLimit: composer.extendOnLimit === true,
         model: composer.model,
-        effort: composer.effort
+        effort: composer.effort,
+        ...pickModeOptions(composer, readEffective(settings.projectDir))
     };
     const parsed = parseSchedule(payload.schedule);
     const projectError = getProjectError(settings.projectDir);
@@ -888,11 +992,11 @@ const handleSaveSchedule = async (event, payload = {}) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    if (!isValidRoundOptions(options) || !POLICY_CHOICES.includes(options.policy)) {
-        return createFailure("INVALID_OPTIONS", "모델, Effort, 정책 값이 올바르지 않아요.");
+    if (!isValidRoundOptions(options) || !POLICY_CHOICES.includes(options.policy) || !isValidModeOptions(options)) {
+        return createFailure("INVALID_OPTIONS", "모델, Effort, 정책, 작업 모드 값이 올바르지 않아요.");
     }
 
-    if (options.policy === "todo" && !options.tasks.trim()) {
+    if (options.mode !== "build" && options.policy === "todo" && !options.tasks.trim()) {
         return createFailure("TASKS_REQUIRED", "지시개선은 처리할 작업을 입력해야 예약할 수 있어요.");
     }
 
@@ -955,6 +1059,49 @@ const handleResetProgress = async (event, requestedDir) => {
             }
 
             resolve({ status: STATUS_OK, data: { isReset: stdout.includes("Progress record reset") } });
+        });
+    });
+};
+
+// 신규 개발의 단계 상태. 신규 개발을 한 적 없으면 phase가 null이다.
+const handleGetPhase = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    return { status: STATUS_OK, data: { phase: getProjectError(session.projectDir) ? null : await readBuildPhase(session.projectDir) } };
+};
+
+// 확인을 기다리는 신규 개발 단계를 승인한다. 다음 실행이 다음 단계부터 한다. 실행 중에는 막는다.
+const handleApprovePhase = async (event, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = session;
+    const projectError = getProjectError(projectDir);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    if (session.runner.isRunning() || session.isLaunching) {
+        return createFailure("RUNNING", "실행 중에는 단계를 승인할 수 없어요.");
+    }
+
+    return new Promise((resolve) => {
+        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "approve", [], async (error, stdout, stderr) => {
+            if (error) {
+                resolve(createFailure("APPROVE_FAILED", (stderr || error.message).trim()));
+
+                return;
+            }
+
+            resolve({ status: STATUS_OK, data: { phase: await readBuildPhase(projectDir) } });
         });
     });
 };
@@ -1191,6 +1338,9 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:restore-defaults", handleRestoreDefaults);
     ipcMain.handle("autopilot:kill", handleKill);
     ipcMain.handle("autopilot:reset-progress", handleResetProgress);
+    ipcMain.handle("autopilot:get-phase", handleGetPhase);
+    ipcMain.handle("autopilot:approve-phase", handleApprovePhase);
+    ipcMain.handle("autopilot:init-git-repo", handleInitGitRepo);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
     ipcMain.handle("autopilot:list-runs", handleListRuns);
     ipcMain.handle("autopilot:read-run", handleReadRun);
