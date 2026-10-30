@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { createAccountStore, normalizeAccounts, sanitizeLabel, resolveBaseDir, getHomeConfigDir, DEFAULT_ACCOUNT_ID, MAX_ACCOUNTS } = require("../desktop/accountStore.cjs");
-const { getAuthStatus, startLogin, isLoginUrl, askClaude, getCodexStatus } = require("../desktop/claudeCli.cjs");
+const { getAuthStatus, renewCredentials, startLogin, isLoginUrl, askClaude, getCodexStatus } = require("../desktop/claudeCli.cjs");
 const { applyLoginShellPath, parseShellPath, mergePath, runLoginShell } = require("../desktop/loginShellPath.cjs");
 const { readKeychainOAuth, getServiceNames, decodeSecret } = require("../desktop/keychainCredentials.cjs");
 
@@ -341,6 +341,19 @@ const checkClaudeCli = async (testDir) => {
 
     assert.equal(cancelled.events.result.ok, false);
     assert.equal(cancelled.events.result.cancelled, true);
+
+    // CMD 래퍼 경로에 CMD가 해석하는 문자가 있어 실행을 거부해도 예외 대신 실패로 알린다. 던지면 앱에 로그인 중 상태가 남아 실행을 시작할 수 없다.
+    const unsafe = { command: path.join(testDir, "bad!dir", "claude.cmd") };
+
+    assert.equal(typeof (await getAuthStatus(cancelDir, unsafe)).error, "string");
+    assert.equal(await renewCredentials(cancelDir, unsafe), false);
+
+    const blocked = createLoginRun(cancelDir, unsafe);
+
+    await waitFor(() => blocked.events.result, "실행하지 못한 로그인도 실패로 끝나야 한다");
+
+    assert.equal(blocked.events.result.ok, false);
+    assert.equal(blocked.session.submitCode("good-code"), false);
 
     // 아는 이메일은 로그인 페이지에 미리 채우도록 --email로 넘기고, 형식이 맞지 않으면(CMD가 해석하는 문자·옵션처럼 보이는 앞의 -) 넘기지 않는다.
     const argsFile = path.join(testDir, "login-args.json");

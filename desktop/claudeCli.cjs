@@ -99,7 +99,16 @@ const getAuthStatus = (configDir, options = {}) => {
             return;
         }
 
-        const child = spawnClaudeProcess(launch, ["auth", "status", "--json"], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+        let child;
+
+        try {
+            child = spawnClaudeProcess(launch, ["auth", "status", "--json"], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+        } catch (error) {
+            resolve({ error: error.message });
+
+            return;
+        }
+
         const timer = setTimeout(() => killProcessTree(child), AUTH_STATUS_TIMEOUT_MS);
         let stdout = "";
 
@@ -153,7 +162,16 @@ const renewCredentials = (configDir, options = {}) => {
             "--system-prompt",
             "Reply-one-word"
         ];
-        const child = spawnClaudeProcess(launch, args, { env: getClaudeEnv(configDir), cwd: os.tmpdir(), windowsHide: true, stdio: ["ignore", "ignore", "ignore"] });
+        let child;
+
+        try {
+            child = spawnClaudeProcess(launch, args, { env: getClaudeEnv(configDir), cwd: os.tmpdir(), windowsHide: true, stdio: ["ignore", "ignore", "ignore"] });
+        } catch {
+            resolve(false);
+
+            return;
+        }
+
         const timer = setTimeout(() => killProcessTree(child), RENEW_TIMEOUT_MS);
 
         child.on("error", () => {
@@ -270,7 +288,16 @@ const startLogin = (configDir, handlers, options = {}) => {
     }
 
     const emailArgs = LOGIN_EMAIL_PATTERN.test(options.email ?? "") ? ["--email", options.email] : [];
-    const child = spawnClaudeProcess(launch, ["auth", "login", "--claudeai", ...emailArgs], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    let child;
+
+    try {
+        child = spawnClaudeProcess(launch, ["auth", "login", "--claudeai", ...emailArgs], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    } catch (error) {
+        handlers.onFinish({ ok: false, message: error.message });
+
+        return { submitCode: () => false, cancel: () => {} };
+    }
+
     let outputTail = "";
     let isCancelled = false;
     let isFinished = false;
