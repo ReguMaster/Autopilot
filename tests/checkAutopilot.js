@@ -18,6 +18,7 @@ import {
     checkStreamEvent,
     checkCommitLineCounts,
     checkPhaseRules,
+    checkAgentRules,
     checkBrainstormRules,
     checkDebateRules
 } from "./lib/unitChecks.js";
@@ -44,7 +45,8 @@ import {
     checkBuildMode,
     checkBrainstorm,
     checkCodexRunner,
-    checkDebate
+    checkDebate,
+    checkHybrid
 } from "./lib/scenarioChecks.js";
 
 const checkAutopilot = async () => {
@@ -70,6 +72,7 @@ const checkAutopilot = async () => {
         checkStreamEvent();
         checkCommitLineCounts();
         checkPhaseRules(context);
+        checkAgentRules();
         checkBrainstormRules(context);
         checkDebateRules(context);
         checkRunFilePrune(context);
@@ -93,6 +96,7 @@ const checkAutopilot = async () => {
         await checkBrainstorm(scenarioRunner, context, fakeCliFile);
         await checkCodexRunner(scenarioRunner, context, fakeCliFile);
         await checkDebate(scenarioRunner, context, fakeCliFile);
+        await checkHybrid(scenarioRunner, context, fakeCliFile);
         checkProgressResetCommand(context);
         await checkRoundOptions(scenarioRunner.runScenario, context);
         await checkGitNames(scenarioRunner.runScenario);
@@ -107,7 +111,7 @@ const checkAutopilot = async () => {
         await checkSessionRunner(context, fakeCliFile);
 
         originalConsoleLog(
-            "OK: arg parsing, project/work dirs, %APPDATA% progress record, tasks in prompt, UTF-8, commits/idle, TODO_COMPLETE, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, log retention, progress record reset, run lock/pid reuse, build mode phases/gates/approve, Claude-Codex debate, brainstorm (codex proposal/review/pick/skip), codex runner (jsonl log, set switch, fallback, limit), desktop log contract, CLI entry (linked path, tasks file, status/set/reset-progress/stop), inherited pipes"
+            "OK: arg parsing, project/work dirs, %APPDATA% progress record, tasks in prompt, UTF-8, commits/idle, TODO_COMPLETE, STOP, model/effort next-round change, retries, is_error, rate limit, timeout/tree kill, SIGINT/SIGHUP, cleanup prompt once, log retention, progress record reset, run lock/pid reuse, build mode phases/gates/approve, Claude-Codex debate, hybrid per-phase main/assistant (codex main + claude assistant proposal/review/debate/adoption, codex fallback), brainstorm (codex proposal/review/pick/skip), codex runner (jsonl log, set switch, fallback, limit), desktop log contract, CLI entry (linked path, tasks file, status/set/reset-progress/stop), inherited pipes"
         );
     } finally {
         console.log = originalConsoleLog;

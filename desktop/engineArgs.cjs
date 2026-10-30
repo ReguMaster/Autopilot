@@ -19,9 +19,9 @@ const DEFAULT_DESIGN_FORMAT = "html";
 const ON_FAIL_PATTERN = /^(stop|retry:[1-5])$/;
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
-// 여러 AI 브레인스토밍을 켤 수 있는 단계와 Claude와 함께 안을 내는 제공자(엔진 config.js의 BRAINSTORM_PHASES·BRAINSTORM_PROVIDERS).
+// 여러 AI 브레인스토밍을 켤 수 있는 단계와 회차를 돌리고 안을 내는 AI(엔진 config.js의 BRAINSTORM_PHASES·AI_PROVIDERS).
 const BRAINSTORM_PHASES = ["plan", "design"];
-const BRAINSTORM_PROVIDERS = ["codex"];
+const AI_PROVIDERS = ["claude", "codex"];
 // Codex에 넘기는 model(Codex가 쓰는 이름)과 reasoning effort. 엔진 config.js의 CODEX_MODEL_PATTERN·CODEX_EFFORT_LEVELS와 같고, 비우면 Codex 설정을 따른다.
 const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
@@ -214,7 +214,7 @@ module.exports = {
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES,
-    BRAINSTORM_PROVIDERS,
+    AI_PROVIDERS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
     CODEX_DEFAULT_VALUE,

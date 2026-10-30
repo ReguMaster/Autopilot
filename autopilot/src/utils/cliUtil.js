@@ -1,12 +1,12 @@
 import {
+    AI_PROVIDERS,
     ALLOW_KEYS,
     BRAINSTORM_PHASES,
-    BRAINSTORM_PROVIDERS,
     BRAINSTORM_COMPARE,
     BRAINSTORM_DEBATE,
     BRAINSTORM_MODES,
+    BUILD_PHASES,
     DEBATE_TURNS_LIMIT,
-    PROVIDER_CLAUDE,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
     CODEX_DEFAULT_VALUE,
@@ -28,7 +28,7 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol|default] [--codex-effort high|default]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
@@ -52,13 +52,13 @@ const RUN_OPTION_KEYS = {
     "--design-format": "designFormat",
     "--qa-on-fail": "qaOnFail",
     "--security-on-fail": "securityOnFail",
+    "--main": "mains",
     "--brainstorm": "brainstorm",
-    "--brainstorm-with": "brainstormWith",
     "--debate-turns": "debateTurns"
 };
 const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
 // 신규 개발에서만 뜻이 있는 인자. Codex의 model·effort는 Codex가 회차를 돌릴 때(--runner codex)도 쓴다.
-const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "debateTurns", "crossReview"];
+const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "debateTurns", "crossReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
 const ON_FAIL_OPTIONS = [
     ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
@@ -190,6 +190,19 @@ const parseBrainstormOption = (options) => {
     }
 };
 
+// --main 값. 단계마다 그 단계의 회차를 돌릴 AI를 phase=claude|codex로 고르고, 없는 단계는 --runner(기본 claude)가 메인이다.
+const parseMainOption = (options) => {
+    const entries = options.mains.split(",").map((item) => item.split("="));
+    const phases = entries.map(([phase]) => phase);
+    const isValid = entries.every(([phase, provider, ...rest]) => BUILD_PHASES.includes(phase) && AI_PROVIDERS.includes(provider) && !rest.length);
+
+    if (!isValid || new Set(phases).size !== phases.length) {
+        throw new Error(`--main 값은 ${BUILD_PHASES.join(" | ")} 중 단계마다 =${AI_PROVIDERS.join("|")}를 붙여 쉼표로 잇습니다 (예: plan=codex,design=claude).`);
+    }
+
+    options.mains = Object.fromEntries(entries);
+};
+
 // 작업 모드와 신규 개발 인자. 신규 개발 인자를 유지 보수 모드에 주면 계약이 흐려지므로 거부한다.
 const parseModeOptions = (options) => {
     if (options.mode !== undefined && !MODES.includes(options.mode)) {
@@ -197,13 +210,17 @@ const parseModeOptions = (options) => {
     }
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
-        throw new Error(
-            "--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --brainstorm · --brainstorm-with · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다."
-        );
+        throw new Error("--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --main · --brainstorm · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다.");
     }
 
-    if ((options.codexModel !== undefined || options.codexEffort !== undefined) && !options.brainstorm && options.runner !== "codex") {
-        throw new Error("--codex-model · --codex-effort 는 --runner codex 나 --brainstorm 과 함께 씁니다.");
+    if (options.mains !== undefined) {
+        parseMainOption(options);
+    }
+
+    const usesCodex = options.runner === "codex" || Object.values(options.mains ?? {}).includes("codex") || Boolean(options.brainstorm);
+
+    if ((options.codexModel !== undefined || options.codexEffort !== undefined) && !usesCodex) {
+        throw new Error("--codex-model · --codex-effort 는 --runner codex 나 --main · --brainstorm 과 함께 씁니다.");
     }
 
     if (options.gates !== undefined) {
@@ -218,16 +235,12 @@ const parseModeOptions = (options) => {
         parseBrainstormOption(options);
     }
 
-    if (options.brainstormWith !== undefined) {
-        options.brainstormWith = parseListOption("--brainstorm-with", options.brainstormWith, BRAINSTORM_PROVIDERS);
-    }
-
     if (options.debateTurns !== undefined) {
         options.debateTurns = parseDebateTurns(options.debateTurns);
     }
 
-    if (!options.brainstorm && (options.brainstormWith || options.debateTurns || options.crossReview)) {
-        throw new Error("--brainstorm-with · --debate-turns · --cross-review 는 --brainstorm 과 함께 씁니다.");
+    if (!options.brainstorm && (options.debateTurns || options.crossReview)) {
+        throw new Error("--debate-turns · --cross-review 는 --brainstorm 과 함께 씁니다.");
     }
 
     if (options.debateTurns && !options.debate) {
@@ -319,15 +332,15 @@ const parseProjectArgs = (args) => {
 const parseApproveArgs = (args) => {
     const options = parseOptions(args, APPROVE_OPTION_KEYS);
 
-    if (options.pick !== undefined && ![PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].includes(options.pick)) {
-        throw new Error(`--pick 값은 ${[PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].join(" | ")} 중 하나여야 합니다.`);
+    if (options.pick !== undefined && !AI_PROVIDERS.includes(options.pick)) {
+        throw new Error(`--pick 값은 ${AI_PROVIDERS.join(" | ")} 중 하나여야 합니다.`);
     }
 
     if (options.resolve !== undefined) {
         const resolutions = debateUtil.parseResolutions(options.resolve);
 
         if (!resolutions) {
-            throw new Error(`--resolve 값은 d1=${[PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS].join("|")} 꼴을 쉼표로 이어 씁니다(쟁점마다 한 번).`);
+            throw new Error(`--resolve 값은 d1=${AI_PROVIDERS.join("|")} 꼴을 쉼표로 이어 씁니다(쟁점마다 한 번).`);
         }
 
         options.resolve = resolutions;

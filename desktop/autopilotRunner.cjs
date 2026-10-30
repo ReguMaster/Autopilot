@@ -23,7 +23,7 @@ const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa:
 const RETRY_KEYS = { qa: "qaRetries", security: "securityRetries" };
 const STEP_PATTERN = /^\[단계\] (.+?) (시작|완료|확인 대기|실패)(?: - 개발로 되돌림 \((\d+)\/\d+\))?$/;
 const STEP_STATUSES = { 시작: "running", 완료: "done", "확인 대기": "awaiting", 실패: "failed" };
-// 여러 AI 브레인스토밍 줄. 제공자 이름은 엔진 config.js의 PROVIDER_LABELS, 후보 키는 PROVIDER_CLAUDE·BRAINSTORM_PROVIDERS와 같다.
+// 여러 AI 브레인스토밍 줄. 제공자 이름은 엔진 config.js의 PROVIDER_LABELS, 후보 키는 AI_PROVIDERS와 같다.
 const BRAINSTORM_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) (받는 중|받음|건너뜀)(?:: (.+))?$/;
 const BRAINSTORM_BLOCKED_PATTERN = /^\[브레인스토밍\] 외부 서비스로 보내기를 허용하지 않아/;
 const BRAINSTORM_PROGRESS_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) 진행 (\d+)분째 \(최대 (\d+)분\)(?:: (.+))?$/;

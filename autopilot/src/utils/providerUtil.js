@@ -144,6 +144,11 @@ const checkProvider = async (name, { cwd, processEnv, override }) => {
     return { command: command, baseArgs: baseArgs };
 };
 
+// 답을 감싼 코드 블록 표시 하나는 걷어낸다.
+const stripCodeFence = (text) => {
+    return text.trim().replace(/^```[\w-]*\n([\s\S]*)\n```$/, "$1");
+};
+
 // 프롬프트를 보내고 최종 답변을 받는다. 앞뒤를 감싼 코드 블록 표시 하나는 걷어낸다.
 // sessionId를 주면 그 대화를 잇는다. 돌려주는 sessionId는 다음 발언에 쓴다(못 찾으면 null).
 const askProvider = async (name, ready, prompt, options, sessionId = null) => {
@@ -159,13 +164,14 @@ const askProvider = async (name, ready, prompt, options, sessionId = null) => {
         return { error: getReason(result.stderr) || `종료 코드 ${result.exitCode}` };
     }
 
-    const text = result.stdout.trim().replace(/^```[\w-]*\n([\s\S]*)\n```$/, "$1");
+    const text = stripCodeFence(result.stdout);
 
     return text ? { text: text, sessionId: provider.sessionPattern.exec(result.stderr)?.[1] || null } : { error: "빈 답변" };
 };
 
-// 협의의 Claude 발언. 도구 · 사용자 설정 · MCP 없이 짧게 묻고 같은 대화를 --resume으로 잇는다. 답과 세션 아이디는 JSON 출력에서 읽는다.
-const askClaude = async ({ command, baseArgs, model, extraArgs = [], sessionId }, prompt, options) => {
+// Claude에게 도구 없이(tools를 주면 그 도구만) 짧게 묻는다. 사용자 설정 · MCP는 쓰지 않고 같은 대화를 --resume으로 잇는다. 답과 세션 아이디는 JSON 출력에서 읽는다.
+// 협의의 Claude 발언은 도구 없이, 보조로서 안 · 검토를 낼 때는 저장소를 읽을 수 있게 읽기 도구(Read·Glob·Grep)만 준다.
+const askClaude = async ({ command, baseArgs, model, extraArgs = [], sessionId, tools = "" }, prompt, options) => {
     const resumeArgs = sessionId && SESSION_ID_PATTERN.test(sessionId) ? ["--resume", sessionId] : [];
     const args = [
         ...baseArgs,
@@ -176,7 +182,7 @@ const askClaude = async ({ command, baseArgs, model, extraArgs = [], sessionId }
         model,
         ...extraArgs,
         "--disable-slash-commands",
-        "--tools=",
+        `--tools=${tools}`,
         "--setting-sources",
         "project",
         "--strict-mcp-config",
@@ -205,7 +211,7 @@ const askClaude = async ({ command, baseArgs, model, extraArgs = [], sessionId }
 
 // 진행 중인 호출의 stderr에서 지금까지 한 일을 한 줄로 읽는다. 읽을 것이 없으면 빈 문자열이다.
 const getActivity = (name, stderr) => {
-    return PROVIDERS[name].getActivity(stderr);
+    return PROVIDERS[name]?.getActivity(stderr) ?? "";
 };
 
-export default { PROVIDERS, checkProvider, askProvider, askClaude, getActivity };
+export default { PROVIDERS, checkProvider, askProvider, askClaude, stripCodeFence, getActivity };

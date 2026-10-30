@@ -24,9 +24,9 @@ const DEFAULT_DESIGN_FORMAT = "html";
 const ON_FAIL_CHOICES = ["stop", "retry:1", "retry:2", "retry:3", "retry:4", "retry:5"];
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
-// 여러 AI 브레인스토밍. Claude와 함께 안을 내는 제공자(엔진 config.js의 BRAINSTORM_PHASES·BRAINSTORM_PROVIDERS·PROVIDER_LABELS).
+// 여러 AI 브레인스토밍. 회차를 돌리고 안을 내는 AI(엔진 config.js의 BRAINSTORM_PHASES·AI_PROVIDERS·PROVIDER_LABELS).
 const BRAINSTORM_PHASES = ["plan", "design"];
-const BRAINSTORM_PROVIDERS = ["codex"];
+const AI_PROVIDERS = ["claude", "codex"];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 // Codex에 넘기는 reasoning effort(엔진 config.js의 CODEX_EFFORT_LEVELS). 비우면 Codex 설정을 따른다.
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
@@ -73,7 +73,7 @@ export {
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES,
-    BRAINSTORM_PROVIDERS,
+    AI_PROVIDERS,
     PROVIDER_LABELS,
     CODEX_EFFORT_LEVELS,
     DEFAULT_RUNNER,

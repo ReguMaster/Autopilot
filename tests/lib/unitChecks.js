@@ -229,13 +229,26 @@ const checkBrainstormRules = (context) => {
     const project = ["--project", "C:\\work\\demo project"];
     const build = [...project, "--mode", "build"];
 
-    assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan,design", "--brainstorm-with", "codex", "--cross-review"]), {
+    assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan,design", "--cross-review"]), {
         projectDir: "C:\\work\\demo project",
         mode: "build",
         brainstorm: ["plan", "design"],
-        brainstormWith: ["codex"],
         crossReview: true
     });
+
+    // 단계마다 메인 AI를 고른다. 없는 단계는 --runner(기본 claude)가 메인이다. Codex가 메인이면 Codex의 model·effort도 받는다.
+    assert.deepEqual(parseRunArgs([...build, "--main", "plan=codex,design=claude,security=codex"]), {
+        projectDir: "C:\\work\\demo project",
+        mode: "build",
+        mains: { plan: "codex", design: "claude", security: "codex" }
+    });
+    assert.deepEqual(parseRunArgs([...build, "--main", "build=codex", "--codex-model", "gpt-6.1-sol"]).mains, { build: "codex" });
+
+    for (const mains of ["plan", "plan=gemini", "plan=codex,plan=claude", "deploy=codex", "plan=codex=x", "codex", "plan=codex,", "=codex"]) {
+        assert.throws(() => parseRunArgs([...build, "--main", mains]), /--main/, mains);
+    }
+
+    assert.throws(() => parseRunArgs([...project, "--main", "plan=codex"]), /--mode build/);
 
     // Codex의 model·effort는 브레인스토밍과 함께만 받고, 비우면 인자를 넘기지 않아 Codex 설정을 따른다.
     assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan", "--codex-model", "gpt-6.1-sol", "--codex-effort", "xhigh"]), {
@@ -250,9 +263,9 @@ const checkBrainstormRules = (context) => {
         [...project, "--brainstorm", "plan"],
         [...project, "--mode", "maintain", "--cross-review"],
         [...build, "--brainstorm", "build"],
-        [...build, "--brainstorm-with", "codex"],
+        [...build, "--brainstorm", "plan", "--brainstorm-with", "codex"],
         [...build, "--cross-review"],
-        [...build, "--brainstorm", "plan", "--brainstorm-with", "gemini"],
+        [...build, "--main", "plan=claude", "--codex-model", "gpt-6.1-sol"],
         [...build, "--codex-model", "gpt-6.1-sol"],
         [...build, "--codex-effort", "high"],
         [...project, "--codex-effort", "high"],
@@ -334,7 +347,8 @@ const checkBrainstormRules = (context) => {
         workBranch: "ai/autopilot",
         phaseDoneRelPath: ".autopilot/progress/2026-10-30/PHASE_DONE",
         brainstorm: ["plan", "design"],
-        brainstormWith: ["codex"],
+        mains: { plan: "claude" },
+        phaseAgents: { phase: "plan", main: "claude", assistant: "codex" },
         crossReview: true,
         proposalReady: { codex: "docs/autopilot/proposals/plan-codex.md" },
         adoption: null
@@ -348,7 +362,13 @@ const checkBrainstormRules = (context) => {
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...runState, phase: "build" }, 1, 60, "", 2), /독립적으로 쓴다/);
 
     // 고른 안은 다음 실행의 첫 일로 확정한다. Claude 안을 골랐으면 남은 파일만 commit한다.
-    const adoptionPrompt = promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", file: "docs/autopilot/proposals/plan-codex.md" } }, 1, 60, "", 2);
+    const adoptionPrompt = promptUtil.getRoundPrompt(
+        { ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", main: "claude", file: "docs/autopilot/proposals/plan-codex.md" } },
+        1,
+        60,
+        "",
+        2
+    );
 
     assert.match(
         adoptionPrompt,
@@ -356,11 +376,11 @@ const checkBrainstormRules = (context) => {
     );
     assert.match(adoptionPrompt, /`\[ap\] 기획: Codex 안으로 확정`/);
     assert.match(
-        promptUtil.getRoundPrompt({ ...runState, phase: "build", adoption: { phase: "design", picked: "codex", file: "docs/autopilot/proposals/design-codex.html" } }, 1, 60, "", 2),
+        promptUtil.getRoundPrompt({ ...runState, phase: "build", adoption: { phase: "design", picked: "codex", main: "claude", file: "docs/autopilot/proposals/design-codex.html" } }, 1, 60, "", 2),
         /design\/index\.html`로 옮기고/
     );
     assert.match(
-        promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "claude", file: "" } }, 1, 60, "", 2),
+        promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "claude", main: "claude", file: "" } }, 1, 60, "", 2),
         /Claude 안을 골랐다\. 지금 단계의 일을 하기 전에 아직 commit하지 않은/
     );
 
@@ -372,10 +392,65 @@ const checkBrainstormRules = (context) => {
     assert.match(proposalPrompt, /<TASKS>\n미용실 예약 웹앱\n<\/TASKS>/);
     assert.match(promptUtil.getProposalPrompt({ ...runState, phase: "design" }), /HTML 문서 하나/);
     assert.match(
-        promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", file: "docs/autopilot/proposals/plan-codex.md" } }),
+        promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", main: "claude", file: "docs/autopilot/proposals/plan-codex.md" } }),
         /plan\.md` 대신 사용자가 고른 `docs\/autopilot\/proposals\/plan-codex\.md`/
     );
     assert.match(promptUtil.getReviewPrompt(runState), /`docs\/autopilot\/plan\.md`\(다른 AI가 쓴 안\)를 읽고 빈자리/);
+
+    // 메인이 Codex이고 보조가 Claude이면 같은 지시가 방향만 바뀐다. 검토 파일 이름은 메인 기준이고, 고른 안이 메인의 것이면 남은 파일만 commit한다.
+    const codexMain = {
+        ...runState,
+        phaseAgents: { phase: "plan", main: "codex", assistant: "claude" },
+        proposalReady: { claude: "docs/autopilot/proposals/plan-claude.md" }
+    };
+    const codexMainPrompt = promptUtil.getRoundPrompt(codexMain, 1, 60, "", 2, "codex");
+
+    assert.match(codexMainPrompt, /`docs\/autopilot\/proposals\/plan-claude\.md`\(Claude 안\)를 읽고 `docs\/autopilot\/proposals\/plan-review-codex\.md`/);
+    assert.match(codexMainPrompt, /`\[ap\] 기획: Claude 안 보관`/);
+    assert.match(codexMainPrompt, /^작업 전에 프로젝트 루트의 `CLAUDE\.md`를 직접 읽어/, "Codex 회차는 CLAUDE.md를 직접 읽게 한다");
+    assert.match(
+        promptUtil.getRoundPrompt({ ...codexMain, phase: "design", adoption: { phase: "plan", picked: "claude", main: "codex", file: "docs/autopilot/proposals/plan-claude.md" } }, 1, 60, "", 2),
+        /사용자가 \[기획\]에서 Claude 안을 골랐다\. 지금 단계의 일을 하기 전에 먼저 지금 `docs\/autopilot\/plan\.md`\(Codex 안\)를 `docs\/autopilot\/proposals\/plan-codex\.md`로 옮기고/
+    );
+    assert.match(
+        promptUtil.getRoundPrompt({ ...codexMain, phase: "build", adoption: { phase: "design", picked: "claude", main: "codex", file: "docs/autopilot/proposals/design-claude.md" } }, 1, 60, "", 2),
+        /Codex의 디자인 산출물[\s\S]*`docs\/autopilot\/proposals\/design-codex\/`로 옮기고/
+    );
+    assert.match(
+        promptUtil.getRoundPrompt({ ...codexMain, phase: "design", adoption: { phase: "plan", picked: "codex", main: "codex", file: "" } }, 1, 60, "", 2),
+        /Codex 안을 골랐다\. 지금 단계의 일을 하기 전에 아직 commit하지 않은/
+    );
+    assert.doesNotMatch(promptUtil.getProposalPrompt({ ...codexMain, phase: "design", adoption: { phase: "plan", picked: "codex", main: "codex", file: "" } }), /대신 사용자가 고른/);
+    assert.match(
+        promptUtil.getProposalPrompt({ ...codexMain, phase: "design", adoption: { phase: "plan", picked: "claude", main: "codex", file: "docs/autopilot/proposals/plan-claude.md" } }),
+        /plan\.md` 대신 사용자가 고른 `docs\/autopilot\/proposals\/plan-claude\.md`/
+    );
+
+    // 보조 없이(blocked)면 브레인스토밍 지시가 없다.
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...runState, phaseAgents: { phase: "plan", main: "claude", assistant: null } }, 1, 60, "", 2), /독립적으로 쓴다/);
+};
+
+// 단계별 메인·보조: 메인은 --main(없으면 --runner)이 정하고 보조는 늘 반대쪽 AI다. Codex 보조는 보내기를 허용해야 하고, Claude 보조는 메인이 Codex일 때 허용과 상관없다.
+const checkAgentRules = () => {
+    const { getOtherProvider, getPhaseMains, getPhaseAgents } = phaseUtil;
+
+    assert.equal(getOtherProvider("claude"), "codex");
+    assert.equal(getOtherProvider("codex"), "claude");
+    assert.deepEqual(getPhaseMains(), { plan: "claude", design: "claude", build: "claude", qa: "claude", security: "claude" });
+    assert.deepEqual(getPhaseMains({ plan: "codex", security: "codex" }), { plan: "codex", design: "claude", build: "claude", qa: "claude", security: "codex" });
+    assert.deepEqual(getPhaseMains({ design: "claude" }, "codex"), { plan: "codex", design: "claude", build: "codex", qa: "codex", security: "codex" }, "--main에 없는 단계는 --runner가 메인이다");
+
+    const mains = getPhaseMains({ plan: "codex" });
+
+    assert.deepEqual(getPhaseAgents({ phase: "plan", mains: mains, brainstorm: ["plan"], canSend: false }), { phase: "plan", main: "codex", assistant: "claude", isBlocked: false });
+    assert.deepEqual(getPhaseAgents({ phase: "design", mains: mains, brainstorm: ["design"], canSend: false }), { phase: "design", main: "claude", assistant: null, isBlocked: true });
+    assert.deepEqual(getPhaseAgents({ phase: "design", mains: mains, brainstorm: ["design"], canSend: true }), { phase: "design", main: "claude", assistant: "codex", isBlocked: false });
+    assert.deepEqual(
+        getPhaseAgents({ phase: "build", mains: mains, brainstorm: ["plan", "design"], canSend: true }),
+        { phase: "build", main: "claude", assistant: null, isBlocked: false },
+        "브레인스토밍하지 않는 단계는 보조가 없다"
+    );
+    assert.deepEqual(getPhaseAgents({ phase: "plan", mains: mains, brainstorm: [], canSend: true }).assistant, null);
 };
 
 // 협의: 단계별 방식 인자, 쟁점 고르기 인자, 발언 · 쟁점 해석과 상한, 협의 결과로 멈추는 전환, 협의 · 정리 · 확정 지시.
@@ -486,7 +561,8 @@ const checkDebateRules = (context) => {
         workBranch: "ai/autopilot",
         phaseDoneRelPath: ".autopilot/progress/2026-10-30/PHASE_DONE",
         brainstorm: ["plan"],
-        brainstormWith: ["codex"],
+        mains: { plan: "claude" },
+        phaseAgents: { phase: "plan", main: "claude", assistant: "codex" },
         crossReview: false,
         debate: ["plan"],
         debateTurns: 3,
@@ -502,7 +578,7 @@ const checkDebateRules = (context) => {
     assert.match(synthesisPrompt, /\[기획\] 협의가 끝났다[\s\S]*plan-debate\.md[\s\S]*plan-disputes\.json[\s\S]*\[ap\] 기획: 협의 결과/);
     assert.doesNotMatch(synthesisPrompt, /열지 말고 독립적으로/);
 
-    const claudeOpening = promptUtil.getDebateOpeningPrompt(runState, "claude", { claudeDoc: "# 내 안", codexDoc: "x".repeat(70000) });
+    const claudeOpening = promptUtil.getDebateOpeningPrompt(runState, "claude", { docs: { claude: "# 내 안", codex: "x".repeat(70000) } });
 
     assert.match(claudeOpening, /너는 \[기획\] 협의에 참여한 Claude다[\s\S]*근거 없이 상대 주장을 받아들이거나 양보하지 않는다[\s\S]*"consensus": false/);
     assert.match(claudeOpening, /<CLAUDE_안>\n# 내 안\n<\/CLAUDE_안>/);
@@ -516,6 +592,27 @@ const checkDebateRules = (context) => {
     assert.doesNotMatch(promptUtil.getDebateReplyPrompt(runState, lastTurn, 2), /마지막/);
     assert.match(promptUtil.getDebateReplyPrompt({ ...runState, debateTurns: 8 }, lastTurn, 5), /5\/8번째 주고받기다\./);
     assert.match(claudeOpening, /최대 3번 주고받으며[\s\S]*"improve": \["더 개선할 점"\]/);
+    assert.match(claudeOpening, /먼저 Codex 안을 네 안과 비교해 의견을 말한다/, "먼저 말하는 메인은 상대 안과 비교한다");
+
+    // 메인이 Codex이면 Codex가 먼저 말하고(저장소를 읽어 두 안을 본다) Claude는 두 안을 본문으로 받아 그 발언에 답한다.
+    const codexMainDebate = { ...runState, phaseAgents: { phase: "plan", main: "codex", assistant: "claude" }, proposalReady: { claude: "docs/autopilot/proposals/plan-claude.md" } };
+    const codexFirst = promptUtil.getDebateOpeningPrompt(codexMainDebate, "codex", {});
+
+    assert.match(
+        codexFirst,
+        /너는 \[기획\] 협의에 참여한 Codex다\. 같은 만들 것으로 Codex는 `docs\/autopilot\/plan\.md`를, Claude는 `docs\/autopilot\/proposals\/plan-claude\.md`를 따로 썼다[\s\S]*읽기만 할 수 있다[\s\S]*두 안을 읽고 먼저 Claude 안을 네 안과 비교해 의견을 말한다/
+    );
+    assert.doesNotMatch(codexFirst, /의 발언:/);
+
+    const codexTurn = { ...lastTurn, provider: "codex", message: "결제는 넣어요" };
+    const claudeSecond = promptUtil.getDebateOpeningPrompt(codexMainDebate, "claude", { docs: { codex: "# 코덱스 안", claude: "# 클로드 안" }, lastTurn: codexTurn });
+
+    assert.match(claudeSecond, /아래 Codex의 발언에 답한다[\s\S]*<CLAUDE_안>\n# 클로드 안[\s\S]*<CODEX_안>\n# 코덱스 안[\s\S]*Codex의 발언: \{"message":"결제는 넣어요"/);
+    assert.match(promptUtil.getDebateReplyPrompt(codexMainDebate, codexTurn, 2), /^Codex의 답: /);
+    assert.match(
+        promptUtil.getRoundPrompt({ ...codexMainDebate, debateStage: "synthesis" }, 2, 60, "", 2, "codex"),
+        /두 안\(`docs\/autopilot\/plan\.md`, `docs\/autopilot\/proposals\/plan-claude\.md`\)/
+    );
 
     // 승인한 협의 결과는 다음 실행의 첫 일로 확정한다. 쟁점이 없었으면 남은 파일만 commit한다.
     const adoption = { phase: "plan", choices: [{ title: "결제", side: "codex", position: "넣어요" }] };
@@ -994,6 +1091,7 @@ export {
     checkStreamEvent,
     checkCommitLineCounts,
     checkPhaseRules,
+    checkAgentRules,
     checkBrainstormRules,
     checkDebateRules
 };

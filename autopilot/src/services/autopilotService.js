@@ -21,8 +21,9 @@ import {
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
-    BRAINSTORM_PROVIDERS,
+    BRAINSTORM_PHASES,
     PROVIDER_CLAUDE,
+    PROVIDER_CODEX,
     PROVIDER_LABELS,
     PROVIDER_TIMEOUT_MINUTES,
     DEBATE_DEFAULT_TURNS,
@@ -55,7 +56,21 @@ import debateUtil from "../utils/debateUtil.js";
 import streamUtil from "../utils/streamUtil.js";
 
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
-const CODEX_RUNNER = "codex";
+// 단계의 안 · 검토를 낼 때 Claude에게 주는 도구. 저장소를 읽기만 하게 한다.
+const READ_ONLY_TOOLS = "Read,Glob,Grep";
+
+// Codex가 회차를 돌리거나(메인) 안을 내는(보조) 실행인지. model·effort 줄을 헤더에 남길지 정한다.
+const isCodexInvolved = (runState, options) => {
+    if (runState.mode !== MODE_BUILD) {
+        return options.runner === PROVIDER_CODEX;
+    }
+
+    return BUILD_PHASES.some((phase) => {
+        const { main, assistant } = phaseUtil.getPhaseAgents({ phase: phase, mains: runState.mains, brainstorm: runState.brainstorm, canSend: runState.allow.includes("send") });
+
+        return main === PROVIDER_CODEX || assistant === PROVIDER_CODEX;
+    });
+};
 
 const writeRunHeader = (context) => {
     const { options, env, runState, writeLog } = context;
@@ -67,10 +82,11 @@ const writeRunHeader = (context) => {
         `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
         `Policy : ${runState.policy} (${runState.policySource})`,
         ...(runState.mode === MODE_BUILD ? [`Mode : 신규 개발 (${PHASE_LABELS[runState.phase]} 단계부터)`] : []),
-        ...(options.runner === CODEX_RUNNER ? ["Runner : Codex"] : []),
-        ...((runState.brainstormWith?.length || options.runner === CODEX_RUNNER) && (options.codexModel || options.codexEffort)
-            ? [`Codex : model ${options.codexModel || "기본값"}, effort ${options.codexEffort || "기본값"}`]
+        ...(options.runner === PROVIDER_CODEX ? ["Runner : Codex"] : []),
+        ...(runState.mode === MODE_BUILD && Object.values(runState.mains).includes(PROVIDER_CODEX)
+            ? [`Main : ${BUILD_PHASES.map((phase) => `${PHASE_LABELS[phase]} ${PROVIDER_LABELS[runState.mains[phase]]}`).join(", ")}`]
             : []),
+        ...(isCodexInvolved(runState, options) && (options.codexModel || options.codexEffort) ? [`Codex : model ${options.codexModel || "기본값"}, effort ${options.codexEffort || "기본값"}`] : []),
         `Log : ${runState.logFile}`,
         `Report : ${runState.reportFile}`,
         ...runState.repos.filter((repo) => repo.isLinked).map((repo) => `Linked : ${repo.name} (${repo.dir})`)
@@ -108,7 +124,8 @@ const getModeSettings = (options, progressFile, tasks) => {
 
     const allow = options.allow || [];
     const brainstorm = options.brainstorm || [];
-    // 다른 AI에게 프로젝트 내용을 보내므로 외부 서비스로 보내기를 허용했을 때만 쓴다.
+    const mains = phaseUtil.getPhaseMains(options.mains, options.runner);
+    // Codex를 보조로 쓰면 프로젝트 내용을 보내므로 외부 서비스로 보내기를 허용했을 때만 쓴다.
     const canSend = allow.includes("send");
     const requestedDesignFormat = options.designFormat || DEFAULT_DESIGN_FORMAT;
     // 외부 도구가 필요한 산출물인데 보내기를 허용하지 않았으면 HTML 와이어프레임으로 만든다.
@@ -127,9 +144,9 @@ const getModeSettings = (options, progressFile, tasks) => {
         requestedDesignFormat: requestedDesignFormat,
         maxQaRetries: options.maxQaRetries ?? phaseUtil.parseOnFail(DEFAULT_QA_ON_FAIL),
         maxSecurityRetries: options.maxSecurityRetries ?? phaseUtil.parseOnFail(DEFAULT_SECURITY_ON_FAIL),
+        mains: mains,
         brainstorm: brainstorm,
-        brainstormWith: brainstorm.length && canSend ? options.brainstormWith || BRAINSTORM_PROVIDERS : [],
-        isBrainstormBlocked: brainstorm.length > 0 && !canSend,
+        isBrainstormBlocked: BRAINSTORM_PHASES.some((phase) => phaseUtil.getPhaseAgents({ phase: phase, mains: mains, brainstorm: brainstorm, canSend: canSend }).isBlocked),
         crossReview: Boolean(options.crossReview),
         debate: options.debate || [],
         debateTurns: options.debateTurns ?? DEBATE_DEFAULT_TURNS,
@@ -159,23 +176,28 @@ const getAdoption = (projectDir, proposals, debate) => {
 
     const htmlFile = phaseUtil.getProposalPath(proposals.phase, proposals.picked, true);
 
-    return { phase: proposals.phase, picked: proposals.picked, file: fs.existsSync(path.join(projectDir, htmlFile)) ? htmlFile : phaseUtil.getProposalPath(proposals.phase, proposals.picked) };
+    return {
+        phase: proposals.phase,
+        picked: proposals.picked,
+        main: proposals.candidates[0],
+        file: fs.existsSync(path.join(projectDir, htmlFile)) ? htmlFile : phaseUtil.getProposalPath(proposals.phase, proposals.picked)
+    };
 };
 
 // 이어서 하는 단계면 이미 받아 둔 다른 AI의 안을 그대로 쓴다. 돌려보낸 단계면 다시 받는다.
 const getReadyProposals = (projectDir, modeSettings) => {
     const readyProposals = {};
 
-    if (modeSettings.isRevision || !modeSettings.brainstorm?.includes(modeSettings.phase)) {
+    const { assistant } = phaseUtil.getPhaseAgents({ phase: modeSettings.phase, mains: modeSettings.mains, brainstorm: modeSettings.brainstorm, canSend: modeSettings.allow.includes("send") });
+
+    if (modeSettings.isRevision || !assistant) {
         return readyProposals;
     }
 
-    for (const provider of modeSettings.brainstormWith) {
-        const file = [true, false].map((isHtml) => phaseUtil.getProposalPath(modeSettings.phase, provider, isHtml)).find((relPath) => fs.existsSync(path.join(projectDir, relPath)));
+    const file = [true, false].map((isHtml) => phaseUtil.getProposalPath(modeSettings.phase, assistant, isHtml)).find((relPath) => fs.existsSync(path.join(projectDir, relPath)));
 
-        if (file) {
-            readyProposals[provider] = file;
-        }
+    if (file) {
+        readyProposals[assistant] = file;
     }
 
     return readyProposals;
@@ -249,6 +271,7 @@ const prepareRun = (options) => {
 
     runState.adoption = modeSettings.mode === MODE_BUILD ? getAdoption(projectDir, modeSettings.proposals, modeSettings.debateState) : null;
     runState.debateStage = null;
+    runState.phaseAgents = null;
     runState.proposalReady = readyProposals;
     runState.proposalPhase = Object.keys(readyProposals).length ? modeSettings.phase : null;
 
@@ -338,7 +361,7 @@ const getSessionCommand = (context, agent) => {
     const { options, command, runState } = context;
     const addDirs = runState.repos.filter((repo) => repo.isLinked).map((repo) => repo.dir);
 
-    if (agent.runner !== CODEX_RUNNER) {
+    if (agent.runner !== PROVIDER_CODEX) {
         return {
             command: command,
             args: options.commandArgs || autopilotUtil.getClaudeArgs({ model: agent.model, effort: agent.effort, unsupportedFlags: context.unsupportedFlags, addDirs: addDirs }),
@@ -448,15 +471,20 @@ const collectRoundCommits = (runState, roundStart, recordedCommitHashes) => {
     });
 };
 
+// 이번 회차를 돌릴 AI. 신규 개발은 지금 단계의 메인이고, 유지 보수는 실행 에이전트(실행 중 set으로 바뀔 수 있다)다.
+const getRoundRunner = (context, roundOptions) => {
+    return context.runState.mode === MODE_BUILD ? context.runState.phaseAgents.main : roundOptions.runner;
+};
+
 // 이번 회차를 돌릴 에이전트와 그 model·effort. Codex를 쓸 수 없으면(설치·로그인 안 됨) 이번 회차는 Claude로 돌린다.
-const getRoundAgent = async (context, roundOptions) => {
+const getRoundAgent = async (context, roundOptions, runner) => {
     const claude = { runner: PROVIDER_CLAUDE, model: roundOptions.model, effort: roundOptions.effort };
 
-    if (roundOptions.runner !== CODEX_RUNNER) {
+    if (runner !== PROVIDER_CODEX) {
         return claude;
     }
 
-    const ready = await getProviderCheck(context, CODEX_RUNNER);
+    const ready = await getProviderCheck(context, PROVIDER_CODEX);
 
     if (ready.error) {
         context.writeLog(`[설정] Codex를 쓸 수 없어 이번 회차는 Claude로 돌립니다: ${ready.error}`);
@@ -464,12 +492,12 @@ const getRoundAgent = async (context, roundOptions) => {
         return claude;
     }
 
-    return { runner: CODEX_RUNNER, model: roundOptions.codexModel, effort: roundOptions.codexEffort, ready: ready };
+    return { runner: PROVIDER_CODEX, model: roundOptions.codexModel, effort: roundOptions.codexEffort, ready: ready };
 };
 
 // 회차 시작 줄의 실행 값. Claude는 지금까지의 형식 그대로이고, Codex는 앞에 이름을 붙이며 비운 값은 기본값이라고 쓴다(앱 파서가 읽는다).
 const getAgentLabel = (agent) => {
-    if (agent.runner !== CODEX_RUNNER) {
+    if (agent.runner !== PROVIDER_CODEX) {
         return `model ${agent.model}, effort ${agent.effort}`;
     }
 
@@ -484,7 +512,8 @@ const runRound = async (context, loopState, remainingMinutes) => {
     const previousHeads = runState.repos.map((repo) => gitUtil.getHeadHash(repo.runGitCommand));
     const roundDeadline = Math.min(+runState.deadline, Date.now() + runConfig.maxRoundMinutes * MINUTE_MS);
     const sessionStats = { limitHit: false, isError: false };
-    const agent = await getRoundAgent(context, getRoundOptions(context));
+    const roundOptions = getRoundOptions(context);
+    const agent = await getRoundAgent(context, roundOptions, getRoundRunner(context, roundOptions));
     const prompt = promptUtil.getRoundPrompt(runState, round, Math.floor(remainingMinutes), progressCleanupPrompt, runConfig.maxTasks, agent.runner);
 
     writeLog(`[${round}회차] 시작 - 남은 시간 ${Math.floor(remainingMinutes)}분 (${getAgentLabel(agent)})`);
@@ -589,7 +618,23 @@ const waitForRetry = async (context, loopState, round) => {
     return false;
 };
 
-// 다른 AI를 쓸 수 있는지는 한 번만 확인한다. model·effort는 실행 중 set으로 바뀔 수 있어 부를 때마다 지금 값으로 붙인다. 지금 제공자는 Codex뿐이다.
+// Claude를 짧게 부를 때(안 · 검토 · 협의 발언)의 실행 값. model·effort는 실행 중 set으로 바뀔 수 있어 부를 때마다 지금 값으로 읽는다.
+// tools를 비우면 도구 없이, 주면 그 도구만 쓰게 한다.
+const getClaudeCall = (context, { sessionId = null, tools = "" } = {}) => {
+    const { options, command, unsupportedFlags } = context;
+    const roundOptions = getRoundOptions(context);
+
+    return {
+        command: command,
+        baseArgs: options.commandArgs || [],
+        model: roundOptions.model,
+        extraArgs: unsupportedFlags.includes("--effort") ? [] : ["--effort", roundOptions.effort],
+        tools: tools,
+        sessionId: sessionId
+    };
+};
+
+// 다른 AI를 쓸 수 있는지는 한 번만 확인한다. model·effort는 실행 중 set으로 바뀔 수 있어 부를 때마다 지금 값으로 붙인다. Codex만 확인이 필요하다(Claude는 엔진이 이미 쓰는 CLI다).
 const getProviderCheck = async (context, provider) => {
     const { options, env, runState } = context;
 
@@ -605,7 +650,8 @@ const getProviderCheck = async (context, provider) => {
 const askProvider = async (context, loopState, provider, prompt, subject) => {
     const { env, runConfig, runState, writeLog } = context;
     const label = PROVIDER_LABELS[provider];
-    const ready = await getProviderCheck(context, provider);
+    const isClaude = provider === PROVIDER_CLAUDE;
+    const ready = isClaude ? getClaudeCall(context, { tools: READ_ONLY_TOOLS }) : await getProviderCheck(context, provider);
 
     if (ready.error) {
         writeLog(`[브레인스토밍] ${label} ${subject} 건너뜀: ${ready.error}`);
@@ -629,7 +675,7 @@ const askProvider = async (context, loopState, provider, prompt, subject) => {
     let answer;
 
     try {
-        answer = await providerUtil.askProvider(provider, ready, prompt, {
+        const callOptions = {
             cwd: runState.projectDir,
             processEnv: env,
             deadline: deadline,
@@ -640,7 +686,13 @@ const askProvider = async (context, loopState, provider, prompt, subject) => {
             onStderr: (text) => {
                 stderr = text;
             }
-        });
+        };
+
+        answer = isClaude ? await providerUtil.askClaude(ready, prompt, callOptions) : await providerUtil.askProvider(provider, ready, prompt, callOptions);
+
+        if (answer.text) {
+            answer = { ...answer, text: providerUtil.stripCodeFence(answer.text) };
+        }
     } finally {
         clearInterval(heartbeatTimer);
     }
@@ -663,30 +715,56 @@ const writeProposalFile = (projectDir, relPath, text) => {
     fs.writeFileSync(file, `${text}\n`, "utf8");
 };
 
-// 브레인스토밍 단계를 시작할 때 다른 AI의 독립된 안을 받아 docs/autopilot/proposals/에 둔다. 단계마다 한 번만 받는다.
+// 단계를 시작할 때 그 단계의 메인과 보조를 정한다. 메인이 Codex인데 쓸 수 없으면(설치·로그인 안 됨) 그 단계는 Claude가 메인이 되고 보조 없이 진행한다.
+const resolvePhaseAgents = async (context) => {
+    const { runState, writeLog } = context;
+    const phase = runState.phase;
+
+    if (runState.mode !== MODE_BUILD || runState.phaseAgents?.phase === phase) {
+        return;
+    }
+
+    const agents = phaseUtil.getPhaseAgents({ phase: phase, mains: runState.mains, brainstorm: runState.brainstorm, canSend: runState.allow.includes("send") });
+
+    if (agents.main === PROVIDER_CODEX) {
+        const ready = await getProviderCheck(context, PROVIDER_CODEX);
+
+        if (ready.error) {
+            writeLog(`[설정] Codex를 쓸 수 없어 ${PHASE_LABELS[phase]} 단계는 Claude가 메인으로 진행합니다: ${ready.error}`);
+
+            runState.phaseAgents = { ...agents, main: PROVIDER_CLAUDE, assistant: null };
+            runState.proposalReady = {};
+
+            return;
+        }
+    }
+
+    runState.phaseAgents = agents;
+};
+
+// 브레인스토밍 단계를 시작할 때 보조의 독립된 안을 받아 docs/autopilot/proposals/에 둔다. 단계마다 한 번만 받는다.
 const requestProposals = async (context, loopState) => {
     const { runState } = context;
     const phase = runState.phase;
+    const assistant = runState.phaseAgents?.assistant;
 
-    if (runState.mode !== MODE_BUILD || !runState.brainstorm.includes(phase) || runState.proposalPhase === phase) {
+    if (runState.mode !== MODE_BUILD || !assistant || runState.proposalPhase === phase) {
         return;
     }
 
     runState.proposalPhase = phase;
     runState.proposalReady = {};
 
-    for (const provider of runState.brainstormWith) {
-        const relPath = phaseUtil.getProposalPath(phase, provider, phase === "design" && runState.designFormat === "html");
-        const proposal = await askProvider(context, loopState, provider, promptUtil.getProposalPrompt(runState), `${PHASE_LABELS[phase]} 안`);
+    const relPath = phaseUtil.getProposalPath(phase, assistant, phase === "design" && runState.designFormat === "html");
+    const proposal = await askProvider(context, loopState, assistant, promptUtil.getProposalPrompt(runState), `${PHASE_LABELS[phase]} 안`);
 
-        if (proposal) {
-            writeProposalFile(runState.projectDir, relPath, proposal);
-            runState.proposalReady[provider] = relPath;
-        }
+    if (proposal) {
+        writeProposalFile(runState.projectDir, relPath, proposal);
+        runState.proposalReady[assistant] = relPath;
     }
 };
 
-// 협의할 때 Claude에게 보여 줄 Claude의 산출물. 디자인 폴더의 파일은 이름만 알린다.
+// 협의할 때 메인의 산출물. 디자인 폴더의 파일은 이름만 알린다.
 const readPhaseArtefact = (projectDir, phase) => {
     if (phase === "plan") {
         return fileUtil.readTextFile(path.join(projectDir, "docs/autopilot/plan.md"));
@@ -700,23 +778,16 @@ const readPhaseArtefact = (projectDir, phase) => {
         .join("\n\n");
 };
 
-// 협의: Claude와 Codex가 각자 같은 대화를 이어 가며 최대 runState.debateTurns번 주고받는다. 한 번은 Claude가 말하고 Codex가 답하는 것이다.
+// 협의: 메인과 보조(Claude와 Codex)가 각자 같은 대화를 이어 가며 최대 runState.debateTurns번 주고받는다. 한 번은 메인이 말하고 보조가 답하는 것이다.
 // 둘 다 같은 번에 합의(반대도 남은 개선점도 없음)라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
 const runDebate = async (context, loopState) => {
-    const { options, env, runState, writeLog } = context;
+    const { env, runState, writeLog } = context;
     const { phase, projectDir } = runState;
-    const codexFile = runState.proposalReady.codex;
-    const roundOptions = getRoundOptions(context);
-    const claude = {
-        command: context.command,
-        baseArgs: options.commandArgs || [],
-        model: roundOptions.model,
-        extraArgs: context.unsupportedFlags.includes("--effort") ? [] : ["--effort", roundOptions.effort],
-        sessionId: null
-    };
-    const docs = { claudeDoc: readPhaseArtefact(projectDir, phase), codexDoc: fileUtil.readTextFile(path.join(projectDir, codexFile)) };
+    const { main, assistant } = runState.phaseAgents;
+    // 각 AI의 안: 메인은 단계 산출물, 보조는 안 받기로 둔 파일이다.
+    const docs = { [main]: readPhaseArtefact(projectDir, phase), [assistant]: fileUtil.readTextFile(path.join(projectDir, runState.proposalReady[assistant])) };
     const turns = [];
-    let codexSessionId = null;
+    const sessionIds = { [PROVIDER_CLAUDE]: null, [PROVIDER_CODEX]: null };
 
     const skip = (reason) => {
         writeLog(`[협의] 건너뜀: ${reason}`);
@@ -734,7 +805,7 @@ const runDebate = async (context, loopState) => {
         }
     });
 
-    const codexReady = await getProviderCheck(context, "codex");
+    const codexReady = await getProviderCheck(context, PROVIDER_CODEX);
 
     if (codexReady.error) {
         return skip(codexReady.error);
@@ -743,34 +814,29 @@ const runDebate = async (context, loopState) => {
     writeLog(`[협의] ${PHASE_LABELS[phase]} 시작 (최대 ${runState.debateTurns}번)`);
 
     for (let exchange = 1; exchange <= runState.debateTurns; exchange++) {
-        const claudePrompt = exchange === 1 ? promptUtil.getDebateOpeningPrompt(runState, PROVIDER_CLAUDE, docs) : promptUtil.getDebateReplyPrompt(runState, turns.at(-1), exchange);
-        const claudeAnswer = await providerUtil.askClaude(claude, claudePrompt, getCallOptions());
-        const claudeTurn = claudeAnswer.text ? debateUtil.parseTurn(claudeAnswer.text) : null;
+        for (const provider of [main, assistant]) {
+            const previous = turns.at(-1);
+            // 대화가 이어지는 중이면 상대의 말만 전하고, 첫 호출이거나 Codex의 세션 아이디를 못 찾았으면(대화를 이을 수 없다) 지금까지 주고받은 말을 다시 보낸다.
+            const prompt = sessionIds[provider]
+                ? promptUtil.getDebateReplyPrompt(runState, previous, exchange)
+                : promptUtil.getDebateOpeningPrompt(runState, provider, { docs: docs, lastTurn: previous ?? null, transcript: turns.slice(0, -1) });
+            const answer =
+                provider === PROVIDER_CLAUDE
+                    ? await providerUtil.askClaude(getClaudeCall(context, { sessionId: sessionIds[PROVIDER_CLAUDE] }), prompt, getCallOptions())
+                    : await providerUtil.askProvider(PROVIDER_CODEX, codexReady, prompt, getCallOptions(), sessionIds[PROVIDER_CODEX]);
+            const turn = answer.text ? debateUtil.parseTurn(answer.text) : null;
 
-        if (!claudeTurn || !(claudeAnswer.sessionId || claude.sessionId)) {
-            return skip(`Claude 답을 받지 못했어요(${claudeAnswer.error || "형식이 맞지 않아요"})`);
+            // Claude는 세션 아이디가 있어야 같은 대화를 이을 수 있다.
+            if (!turn || (provider === PROVIDER_CLAUDE && !(answer.sessionId || sessionIds[provider]))) {
+                return skip(`${PROVIDER_LABELS[provider]} 답을 받지 못했어요(${answer.error || "형식이 맞지 않아요"})`);
+            }
+
+            sessionIds[provider] = answer.sessionId || sessionIds[provider];
+            turns.push({ provider: provider, ...turn });
+            writeLog(`[협의] ${PROVIDER_LABELS[provider]}: ${turn.message}`);
         }
 
-        claude.sessionId = claudeAnswer.sessionId || claude.sessionId;
-        turns.push({ provider: PROVIDER_CLAUDE, ...claudeTurn });
-        writeLog(`[협의] Claude: ${claudeTurn.message}`);
-
-        // Codex의 세션 아이디를 못 찾으면 대화를 이을 수 없으므로 지금까지 주고받은 말을 다시 보낸다.
-        const codexPrompt = codexSessionId
-            ? promptUtil.getDebateReplyPrompt(runState, turns.at(-1), exchange)
-            : promptUtil.getDebateOpeningPrompt(runState, "codex", { lastTurn: turns.at(-1), transcript: turns.slice(0, -1) });
-        const codexAnswer = await providerUtil.askProvider("codex", codexReady, codexPrompt, getCallOptions(), codexSessionId);
-        const codexTurn = codexAnswer.text ? debateUtil.parseTurn(codexAnswer.text) : null;
-
-        if (!codexTurn) {
-            return skip(`Codex 답을 받지 못했어요(${codexAnswer.error || "형식이 맞지 않아요"})`);
-        }
-
-        codexSessionId = codexAnswer.sessionId || codexSessionId;
-        turns.push({ provider: "codex", ...codexTurn });
-        writeLog(`[협의] Codex: ${codexTurn.message}`);
-
-        if (claudeTurn.consensus && codexTurn.consensus) {
+        if (turns.at(-1).consensus && turns.at(-2).consensus) {
             return { turns: turns, isConsensus: true };
         }
     }
@@ -778,7 +844,7 @@ const runDebate = async (context, loopState) => {
     return { turns: turns, isConsensus: false };
 };
 
-// 협의 단계에서 Claude가 산출물을 마치면 협의를 하고, 다음 회차가 결과를 정리하게 한다. 정리 회차로 넘어가면 true다.
+// 협의 단계에서 메인이 산출물을 마치면 협의를 하고, 다음 회차가 결과를 정리하게 한다. 정리 회차로 넘어가면 true다.
 const startDebate = async (context, loopState) => {
     const { runState, phaseDoneFile } = context;
     const debate = await runDebate(context, loopState);
@@ -804,8 +870,9 @@ const applyPhaseDone = async (context, loopState) => {
     const phase = runState.phase;
     const label = PHASE_LABELS[phase];
     const maxRetries = { qa: runState.maxQaRetries, security: runState.maxSecurityRetries };
-    const readyProviders = runState.brainstorm?.includes(phase) ? Object.keys(runState.proposalReady) : [];
-    const isDebatePhase = Boolean(runState.debate?.includes(phase) && runState.proposalReady?.codex);
+    const { main, assistant } = runState.phaseAgents;
+    const readyProviders = assistant ? Object.keys(runState.proposalReady) : [];
+    const isDebatePhase = Boolean(assistant && runState.debate?.includes(phase) && runState.proposalReady?.[assistant]);
 
     if (isDebatePhase && runState.debateStage !== "synthesis" && (await startDebate(context, loopState))) {
         return false;
@@ -816,7 +883,7 @@ const applyPhaseDone = async (context, loopState) => {
         runState.debateStage === "synthesis"
             ? { phase: phase, disputes: debateUtil.parseDisputes(fileUtil.readTextFile(path.join(runState.projectDir, phaseUtil.getDisputesPath(phase)))), resolved: null }
             : null;
-    const candidates = !debateResult && readyProviders.length ? [PROVIDER_CLAUDE, ...readyProviders] : [];
+    const candidates = !debateResult && readyProviders.length ? [main, ...readyProviders] : [];
     const reviewState = { ...runState };
     const { state, event } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult);
 
@@ -860,7 +927,7 @@ const applyPhaseDone = async (context, loopState) => {
     }
 
     if (event === "await") {
-        // 교차검토: 다른 AI가 Claude의 산출물을 읽고 고칠 점을 낸다. 실패해도 고르는 데는 지장이 없다.
+        // 교차검토: 보조가 메인의 산출물을 읽고 고칠 점을 낸다. 실패해도 고르는 데는 지장이 없다.
         for (const provider of runState.crossReview && !debateResult ? readyProviders : []) {
             const review = await askProvider(context, loopState, provider, promptUtil.getReviewPrompt(reviewState), `${label} 검토`);
 
@@ -937,6 +1004,7 @@ const runRoundLoop = async (context, loopState) => {
     const { runConfig, runState } = context;
 
     while (runState.rounds.length < runConfig.maxRounds) {
+        await resolvePhaseAgents(context);
         await requestProposals(context, loopState);
 
         if (isStopRequested(context, loopState)) {

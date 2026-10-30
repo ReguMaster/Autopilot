@@ -1,4 +1,4 @@
-import { BRAINSTORM_PHASES, BRAINSTORM_PROVIDERS, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
+import { AI_PROVIDERS, BRAINSTORM_PHASES, PROVIDER_LABELS } from "./config.js";
 
 const MAX_MESSAGE_LENGTH = 300;
 const MAX_ITEMS = 10;
@@ -119,8 +119,6 @@ const parseDisputes = (text) => {
         .map((item, index) => ({ id: `d${index + 1}`, ...item }));
 };
 
-const PROVIDERS = [PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS];
-
 const isDispute = (dispute) => {
     return DISPUTE_ID_PATTERN.test(dispute?.id) && ["title", "claude", "codex"].every((key) => typeof dispute[key] === "string" && dispute[key]);
 };
@@ -144,7 +142,7 @@ const isDebateState = (debate) => {
     const ids = disputes.map((dispute) => dispute.id);
     const resolved = debate.resolved;
 
-    return typeof resolved === "object" && Object.keys(resolved).length === ids.length && ids.every((id) => PROVIDERS.includes(resolved[id]));
+    return typeof resolved === "object" && Object.keys(resolved).length === ids.length && ids.every((id) => AI_PROVIDERS.includes(resolved[id]));
 };
 
 // approve --resolve 값(d1=claude,d2=codex). 형식이 틀리거나 같은 쟁점을 두 번 고르면 null이다. 쟁점을 모두 골랐는지는 서비스가 확인한다.
@@ -154,7 +152,7 @@ const parseResolutions = (text) => {
     for (const item of String(text).split(",")) {
         const match = RESOLUTION_PATTERN.exec(item);
 
-        if (!match || !PROVIDERS.includes(match[2]) || Object.hasOwn(resolutions, match[1])) {
+        if (!match || !AI_PROVIDERS.includes(match[2]) || Object.hasOwn(resolutions, match[1])) {
             return null;
         }
 

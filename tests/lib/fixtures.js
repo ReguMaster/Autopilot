@@ -16,6 +16,20 @@ let prompt = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => prompt += chunk);
 process.stdin.on('end', () => {
+  // 보조로서 안·검토를 내는 Claude 호출은 읽기 도구(--tools=Read,Glob,Grep)로 받는다. 코드 블록으로 감싼 안이나 검토 목록을 JSON 결과로 내고 assist-claude.log에 남긴다.
+  // AP_CLAUDE_ASSIST_FAIL=1이면 한도 오류로 끝난다.
+  const toolsArg = process.argv.find(arg => arg.startsWith('--tools='));
+  if (toolsArg && toolsArg !== '--tools=') {
+    fs.appendFileSync('assist-claude.log', '---\n' + process.argv.slice(2).join(' ') + '\n' + prompt + '\n');
+    if (process.env.AP_CLAUDE_ASSIST_FAIL === '1') {
+      console.log(JSON.stringify({ type: 'result', subtype: 'error', is_error: true, session_id: '11111111-2222-3333-4444-555555555555', result: 'usage limit reached' }));
+      process.exitCode = 1;
+      return;
+    }
+    const answer = prompt.includes('검토자') ? '- Claude 검토: 빈자리 하나' : '\x60\x60\x60markdown\n# Claude 기획안\n\n1) 한 줄 요약\n\x60\x60\x60';
+    console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: '11111111-2222-3333-4444-555555555555', result: answer }));
+    return;
+  }
   // 협의의 Claude 발언(도구 없는 짧은 호출)은 회차 세션과 따로 기록하고 JSON 한 줄로 답한다. AP_DEBATE=consensus면 바로 합의한다.
   // AP_DEBATE=improve면 첫 발언은 반대 없이 더 개선할 점을 남기고(합의라고 해도 합의가 아니다) 둘째 발언에서 더 고칠 것이 없다고 한다.
   if (process.argv.includes('--tools=')) {
@@ -137,6 +151,11 @@ process.stdin.on("end", () => {
     fs.appendFileSync("work.txt", "codex\n");
     execFileSync(process.env.AP_GIT, ["add", "--", "work.txt"]);
     execFileSync(process.env.AP_GIT, ["commit", "-m", "[ap] codex"]);
+    // AP_CODEX_ROUND=build면 신규 개발의 한 단계를 마친다: 협의를 정리하는 회차는 쟁점 파일을 쓰고, 단계 완료 신호를 남긴다.
+    if (process.env.AP_CODEX_ROUND === "build") {
+      if (prompt.includes("협의가 끝났다")) fs.writeFileSync("docs/autopilot/proposals/plan-disputes.json", JSON.stringify([{ title: "결제", claude: "이번엔 빼요", codex: "카드 결제를 넣어요" }]));
+      fs.writeFileSync(prompt.match(/파일 \x60(\.autopilot\/progress\/[^\x60]+\/PHASE_DONE)\x60/)[1], "pass\n");
+    }
     emit({ type: "item.completed", item: { id: "item_2", type: "file_change", changes: [{ path: "work.txt", kind: "update" }] } });
     emit({ type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 2 } });
     return;

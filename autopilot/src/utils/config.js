@@ -42,18 +42,20 @@ const ON_FAIL_STOP = "stop";
 const MAX_FAIL_RETRIES = 5;
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
-// 여러 AI 브레인스토밍. 이 단계에서는 Claude와 함께 다른 제공자도 따로 안을 내고 사용자가 고른다. 제공자는 providerUtil에 더한다.
+// 여러 AI 브레인스토밍. 이 단계에서는 그 단계의 메인 AI와 상대 AI(보조)가 각자 안을 내고 사용자가 고른다.
+// 메인은 단계마다 정하고(--main) 보조는 늘 메인의 반대쪽 AI다. 제공자는 providerUtil에 더한다.
 const BRAINSTORM_PHASES = ["plan", "design"];
 const PROVIDER_CLAUDE = "claude";
-const BRAINSTORM_PROVIDERS = ["codex"];
+const PROVIDER_CODEX = "codex";
+const AI_PROVIDERS = [PROVIDER_CLAUDE, PROVIDER_CODEX];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 // Codex에 넘기는 model(Codex가 쓰는 이름, 예: gpt-6.1-sol)과 reasoning effort. 비우면 Codex 설정(~/.codex/config.toml)을 따른다.
 const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 // 인자로는 빈 값을 넘길 수 없어서 Codex 설정을 따르게 되돌릴 때 쓰는 값(--codex-model default). 엔진 안에서는 빈 문자열이다.
 const CODEX_DEFAULT_VALUE = "default";
-// 회차를 실행하는 에이전트(--runner). 실행 중 set으로 다음 회차부터 바꿀 수 있다.
-const RUNNERS = [PROVIDER_CLAUDE, "codex"];
+// 회차를 실행하는 에이전트(--runner). 유지 보수는 실행 중 set으로 다음 회차부터 바꿀 수 있다. 신규 개발은 단계마다 --main이 정하고 --runner는 --main에 없는 단계의 기본값이다.
+const RUNNERS = AI_PROVIDERS;
 const DEFAULT_RUNNER = PROVIDER_CLAUDE;
 const PROPOSALS_DIR = "docs/autopilot/proposals";
 const PROVIDER_TIMEOUT_MINUTES = 30;
@@ -61,7 +63,7 @@ const PROVIDER_TIMEOUT_MINUTES = 30;
 const BRAINSTORM_COMPARE = "compare";
 const BRAINSTORM_DEBATE = "debate";
 const BRAINSTORM_MODES = [BRAINSTORM_COMPARE, BRAINSTORM_DEBATE];
-// 협의에서 주고받는 최대 횟수(--debate-turns). 한 번은 Claude가 말하고 Codex가 답하는 것이다. 둘 다 반대·개선점이 없으면 상한 전에 끝낸다.
+// 협의에서 주고받는 최대 횟수(--debate-turns). 한 번은 메인이 말하고 보조가 답하는 것이다. 둘 다 반대·개선점이 없으면 상한 전에 끝낸다.
 const DEBATE_DEFAULT_TURNS = 8;
 const DEBATE_TURNS_LIMIT = 20;
 const DEBATE_TURN_MINUTES = 10;
@@ -153,7 +155,8 @@ export {
     DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES,
     PROVIDER_CLAUDE,
-    BRAINSTORM_PROVIDERS,
+    PROVIDER_CODEX,
+    AI_PROVIDERS,
     PROVIDER_LABELS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,

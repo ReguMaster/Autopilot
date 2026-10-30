@@ -1,6 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import { BUILD_PHASES, GATE_PHASES, PHASE_DONE, PHASE_FILE_NAME, ON_FAIL_STOP, MAX_FAIL_RETRIES, BRAINSTORM_PHASES, PROVIDER_CLAUDE, BRAINSTORM_PROVIDERS, PROPOSALS_DIR } from "./config.js";
+import {
+    AI_PROVIDERS,
+    BRAINSTORM_PHASES,
+    BUILD_PHASES,
+    DEFAULT_RUNNER,
+    GATE_PHASES,
+    MAX_FAIL_RETRIES,
+    ON_FAIL_STOP,
+    PHASE_DONE,
+    PHASE_FILE_NAME,
+    PROPOSALS_DIR,
+    PROVIDER_CLAUDE,
+    PROVIDER_CODEX
+} from "./config.js";
 import debateUtil from "./debateUtil.js";
 
 const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
@@ -23,14 +36,13 @@ const isProposals = (proposals) => {
         return true;
     }
 
-    const providers = [PROVIDER_CLAUDE, ...BRAINSTORM_PROVIDERS];
     const candidates = proposals?.candidates;
 
     return (
         BRAINSTORM_PHASES.includes(proposals?.phase) &&
         Array.isArray(candidates) &&
         candidates.length > 1 &&
-        candidates.every((candidate) => providers.includes(candidate)) &&
+        candidates.every((candidate) => AI_PROVIDERS.includes(candidate)) &&
         (proposals.picked === null || candidates.includes(proposals.picked))
     );
 };
@@ -113,6 +125,26 @@ const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], d
     return { state: { ...state, phase: nextPhase, awaiting: null }, event: "next" };
 };
 
+// 메인의 반대쪽 AI. 보조는 늘 이 AI다.
+const getOtherProvider = (provider) => {
+    return provider === PROVIDER_CLAUDE ? PROVIDER_CODEX : PROVIDER_CLAUDE;
+};
+
+// 단계마다의 메인 AI(그 단계의 회차를 돌린다). --main에 없는 단계는 기본 실행 에이전트(--runner)다. 신규 개발은 늘 다섯 단계를 모두 채워 쓴다.
+const getPhaseMains = (mains = {}, runner = DEFAULT_RUNNER) => {
+    return Object.fromEntries(BUILD_PHASES.map((phase) => [phase, mains[phase] ?? runner]));
+};
+
+// 단계의 메인과 보조. 보조는 브레인스토밍하는 단계에만 있고 메인의 반대쪽 AI다.
+// Codex를 보조로 쓰려면 프로젝트 내용을 보내야 하므로 보내기를 허용하지 않았으면 보조 없이 메인만 진행한다(isBlocked). 메인이 Codex면 내용이 이미 Codex에 가므로 Claude 보조는 허용과 상관없다.
+const getPhaseAgents = ({ phase, mains, brainstorm = [], canSend = false }) => {
+    const main = mains[phase];
+    const assistant = brainstorm.includes(phase) ? getOtherProvider(main) : null;
+    const isBlocked = assistant === PROVIDER_CODEX && !canSend;
+
+    return { phase: phase, main: main, assistant: isBlocked ? null : assistant, isBlocked: isBlocked };
+};
+
 // 다른 AI의 안과 검토는 저장소의 docs/autopilot/proposals/에 둔다. 디자인을 HTML로 받은 안만 .html이다.
 const getProposalPath = (phase, provider, isHtml = false) => {
     return `${PROPOSALS_DIR}/${phase}-${provider}.${isHtml ? "html" : "md"}`;
@@ -152,6 +184,9 @@ export default {
     writePhase,
     getStartPhase,
     getPhaseTransition,
+    getOtherProvider,
+    getPhaseMains,
+    getPhaseAgents,
     getProposalPath,
     getReviewPath,
     getDebatePath,

@@ -752,6 +752,218 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(phaseUtil.readPhase(getPhaseFile(failDir)).debate, null);
 };
 
+// 하이브리드: 단계마다 메인 AI(그 단계의 회차를 돌린다)를 고르고, 보조는 늘 반대쪽 AI다. Claude가 보조일 때도 안 · 검토 · 협의가 같은 흐름이다.
+const checkHybrid = async (scenarioRunner, context, fakeCliFile) => {
+    const dataDir = scenarioRunner.dataDir;
+    const fakeCodexFile = path.join(context.testDir, "fake-codex-hybrid.mjs");
+    const codexLog = path.join(context.testDir, "codex-hybrid.log");
+
+    fs.writeFileSync(fakeCodexFile, FAKE_CODEX_SOURCE);
+
+    const createProject = (name) => {
+        const projectDir = path.join(context.testDir, name);
+
+        fs.mkdirSync(projectDir, { recursive: true });
+        fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+        commitInitialProject(context, projectDir);
+
+        return projectDir;
+    };
+    const runHybrid = (projectDir, { env = {}, ...options } = {}) => {
+        fs.rmSync(codexLog, { force: true });
+        fs.rmSync(`${codexLog}.turns`, { force: true });
+
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            providerCommands: { codex: { command: process.execPath, args: [fakeCodexFile] } },
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            gates: [],
+            allow: [],
+            tasks: "미용실 예약 웹앱",
+            env: {
+                ...context.testEnv,
+                AP_MODE: "build",
+                AP_CODEX_ROUND: "build",
+                AP_EXPECTED_CWD: projectDir,
+                AP_GIT: context.gitExecutable,
+                AP_PROGRESS_FILE: autopilotUtil.getProgressFile(projectDir, dataDir),
+                AP_CODEX_LOG: codexLog,
+                ...env
+            },
+            limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+    };
+    const readLog = (result) => fs.readFileSync(result.data.logFile, "utf8");
+    const getLines = (result, kinds) => readLog(result).match(new RegExp(`^\\[(${kinds.join("|")})\\] .+$`, "gm"));
+    const getPhaseFile = (projectDir) => phaseUtil.getPhaseFile(autopilotUtil.getProgressFile(projectDir, dataDir));
+    const readProposal = (projectDir, name) => fs.readFileSync(path.join(projectDir, "docs/autopilot/proposals", name), "utf8");
+    const splitCalls = (file) => fs.readFileSync(file, "utf8").split("---\n").slice(1);
+
+    // 단계마다 메인이 다르다: 기획은 Codex, 나머지는 Claude(기본). 회차마다 그 단계의 메인이 돌고 헤더에 단계별 메인이 남는다.
+    const mixedDir = createProject("hybrid mixed 한글");
+    const mixedRun = await runHybrid(mixedDir, { mains: { plan: "codex" }, limits: { minMinutes: 0, maxRounds: 3, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
+
+    assert.equal(mixedRun.status, STATUS_OK, mixedRun.error?.msg);
+    assert.deepEqual(
+        mixedRun.data.rounds.map((round) => round.runner),
+        ["codex", "claude", "claude"]
+    );
+    assert.match(readLog(mixedRun), /^Main : 기획 Codex, 디자인 Claude, 개발 Claude, 테스트\/QA Claude, 보안검토 Claude$/m);
+    assert.match(readLog(mixedRun), /^\[1회차\] 시작 - 남은 시간 \d+분 \(Codex, model 기본값, effort 기본값\)$/m);
+    assert.match(readLog(mixedRun), /^\[2회차\] 시작 - 남은 시간 \d+분 \(model opus, effort high\)$/m);
+    assert.deepEqual(getLines(mixedRun, ["단계"]), [
+        "[단계] 기획 시작",
+        "[단계] 기획 완료",
+        "[단계] 디자인 시작",
+        "[단계] 디자인 완료",
+        "[단계] 개발 시작",
+        "[단계] 개발 완료",
+        "[단계] 테스트/QA 시작"
+    ]);
+
+    const mixedCodexCalls = splitCalls(codexLog);
+
+    assert.equal(mixedCodexCalls.length, 1);
+    assert.match(mixedCodexCalls[0], /^exec --json[\s\S]*\n작업 전에 프로젝트 루트의 `CLAUDE\.md`를 직접 읽어[\s\S]*지금 단계는 \[기획\]/);
+    assert.match(fs.readFileSync(path.join(mixedDir, "prompt.txt"), "utf8"), /지금 단계는 \[개발\]/);
+    checkDesktopLogContract(mixedRun.data);
+
+    // 메인이 Codex이고 보조가 Claude: Claude가 읽기 도구로 안을 내고(코드 블록은 걷는다) 검토도 한다. 보조가 Claude이면 보내기를 허용하지 않아도 된다.
+    const compareDir = createProject("hybrid compare 한글");
+    const compareRun = await runHybrid(compareDir, { mains: { plan: "codex" }, brainstorm: ["plan"], crossReview: true });
+
+    assert.equal(compareRun.status, STATUS_OK, compareRun.error?.msg);
+    assert.equal(compareRun.data.reason, "기획 확인 대기");
+    assert.equal(compareRun.data.rounds[0].runner, "codex");
+    assert.deepEqual(getLines(compareRun, ["단계", "브레인스토밍"]), [
+        "[단계] 기획 시작",
+        "[브레인스토밍] Claude 기획 안 받는 중",
+        "[브레인스토밍] Claude 기획 안 받음",
+        "[단계] 기획 완료",
+        "[브레인스토밍] Claude 기획 검토 받는 중",
+        "[브레인스토밍] Claude 기획 검토 받음",
+        "[단계] 기획 확인 대기"
+    ]);
+    assert.equal(readProposal(compareDir, "plan-claude.md"), "# Claude 기획안\n\n1) 한 줄 요약\n");
+    assert.equal(readProposal(compareDir, "plan-review-claude.md"), "- Claude 검토: 빈자리 하나\n");
+
+    const assistCalls = splitCalls(path.join(compareDir, "assist-claude.log"));
+
+    assert.equal(assistCalls.length, 2);
+    assert.match(assistCalls[0], /--tools=Read,Glob,Grep[\s\S]*\n너는 제품 기획자이자 테크 리드다/);
+    assert.match(assistCalls[1], /검토자다/);
+    assert.match(splitCalls(codexLog)[0], /`docs\/autopilot\/proposals\/plan-claude\.md`\(Claude 안\)를 읽고 `docs\/autopilot\/proposals\/plan-review-codex\.md`[\s\S]*`\[ap\] 기획: Claude 안 보관`/);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(compareDir)).proposals, { phase: "plan", candidates: ["codex", "claude"], picked: null });
+    checkDesktopLogContract(compareRun.data);
+
+    // 후보는 메인이 맨 앞이다. 보조(Claude) 안을 고르면 다음 실행의 첫 회차가 메인(Codex)의 기획서를 proposals/로 옮기고 그 안을 확정한다.
+    assert.equal(requestPhaseApproval({ projectDir: compareDir, dataDir: dataDir }).status, STATUS_FAILED);
+    assert.equal(requestPhaseApproval({ projectDir: compareDir, dataDir: dataDir, pick: "claude" }).status, STATUS_OK);
+
+    const adoptRun = await runHybrid(compareDir, { mains: { plan: "codex" }, brainstorm: ["plan"], crossReview: true });
+
+    assert.equal(adoptRun.status, STATUS_OK, adoptRun.error?.msg);
+    assert.equal(adoptRun.data.rounds[0].runner, "claude");
+    assert.match(
+        fs.readFileSync(path.join(compareDir, "prompt.txt"), "utf8"),
+        /사용자가 \[기획\]에서 Claude 안을 골랐다\. 지금 단계의 일을 하기 전에 먼저 지금 `docs\/autopilot\/plan\.md`\(Codex 안\)를 `docs\/autopilot\/proposals\/plan-codex\.md`로 옮기고[\s\S]*지금 단계는 \[디자인\]/
+    );
+    assert.equal(phaseUtil.readPhase(getPhaseFile(compareDir)).proposals, null);
+
+    // 메인이 Codex이고 보조가 Claude인 협의: Codex가 먼저 말하고 Claude가 답하며, 정리 회차도 메인(Codex)이 돌린다.
+    const debateDir = createProject("hybrid debate 한글");
+    const debateRun = await runHybrid(debateDir, {
+        mains: { plan: "codex" },
+        brainstorm: ["plan"],
+        debate: ["plan"],
+        debateTurns: 2,
+        limits: { minMinutes: 0, maxRounds: 2, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] }
+    });
+
+    assert.equal(debateRun.status, STATUS_OK, debateRun.error?.msg);
+    assert.equal(debateRun.data.reason, "기획 확인 대기");
+    assert.deepEqual(
+        debateRun.data.rounds.map((round) => round.runner),
+        ["codex", "codex"]
+    );
+    assert.deepEqual(getLines(debateRun, ["단계", "협의"]), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 2번)",
+        ...Array(2).fill(["[협의] Codex: 결제는 처음부터 넣는 게 좋아요.", "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요."]).flat(),
+        "[협의] 쟁점 1개를 남기고 끝냈어요",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기"
+    ]);
+
+    const debateClaudeCalls = splitCalls(path.join(debateDir, "debate-claude.log"));
+    // Codex가 회차도 돌리므로 협의 발언만 가린다(회차 프롬프트에도 협의라는 말이 있다).
+    const debateCodexCalls = splitCalls(codexLog).filter((call) => call.includes("협의에 참여한 Codex") || call.startsWith("exec resume"));
+
+    assert.equal(debateClaudeCalls.length, 2);
+    assert.doesNotMatch(debateClaudeCalls[0], /--resume/);
+    assert.match(debateClaudeCalls[0], /너는 \[기획\] 협의에 참여한 Claude다[\s\S]*아래 Codex의 발언에 답한다[\s\S]*<CLAUDE_안>\n# Claude 기획안[\s\S]*<CODEX_안>[\s\S]*Codex의 발언: /);
+    assert.match(debateClaudeCalls[1], /--resume 11111111-2222-3333-4444-555555555555[\s\S]*2\/2번째 주고받기다\. 이번이 마지막 주고받기다/);
+    assert.equal(debateCodexCalls.length, 2);
+    assert.match(debateCodexCalls[0], /^exec -s read-only --color never -\n너는 \[기획\] 협의에 참여한 Codex다[\s\S]*두 안을 읽고 먼저 Claude 안을 네 안과 비교해 의견을 말한다/);
+    assert.match(debateCodexCalls[1], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 -c sandbox_mode=read-only -\nClaude의 답:/);
+    assert.match(splitCalls(codexLog).at(-1), /협의가 끝났다[\s\S]*두 안\(`docs\/autopilot\/plan\.md`, `docs\/autopilot\/proposals\/plan-claude\.md`\)/);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(debateDir)).debate, {
+        phase: "plan",
+        disputes: [{ id: "d1", title: "결제", claude: "이번엔 빼요", codex: "카드 결제를 넣어요" }],
+        resolved: null
+    });
+    assert.match(readProposal(debateDir, "plan-debate.md"), /^# 기획 협의 기록\n\nClaude와 Codex가 2번 주고받았어요\. /);
+    checkDesktopLogContract(debateRun.data);
+
+    // 메인이 Codex인데 쓸 수 없으면 그 단계는 Claude가 메인이고 보조 없이 진행한다(회차 실패로 세지 않는다).
+    const missingDir = createProject("hybrid missing 한글");
+    const missingRun = await runHybrid(missingDir, { mains: { plan: "codex" }, brainstorm: ["plan"], crossReview: true, env: { AP_CODEX_LOGIN: "0" } });
+
+    assert.equal(missingRun.status, STATUS_OK, missingRun.error?.msg);
+    assert.equal(missingRun.data.rounds[0].runner, "claude");
+    assert.deepEqual(getLines(missingRun, ["설정", "단계", "브레인스토밍"]), [
+        "[단계] 기획 시작",
+        "[설정] Codex를 쓸 수 없어 기획 단계는 Claude가 메인으로 진행합니다: Codex 로그인이 필요합니다",
+        "[단계] 기획 완료",
+        "[단계] 디자인 시작"
+    ]);
+    assert.equal(phaseUtil.readPhase(getPhaseFile(missingDir)).proposals, null);
+    checkDesktopLogContract(missingRun.data);
+
+    // 보조 Claude가 실패하면 그 안을 건너뛰고 메인만으로 진행한다.
+    const failDir = createProject("hybrid assist fail 한글");
+    const failRun = await runHybrid(failDir, { mains: { plan: "codex" }, brainstorm: ["plan"], env: { AP_CLAUDE_ASSIST_FAIL: "1" } });
+
+    assert.equal(failRun.status, STATUS_OK, failRun.error?.msg);
+    assert.deepEqual(getLines(failRun, ["단계", "브레인스토밍"]), [
+        "[단계] 기획 시작",
+        "[브레인스토밍] Claude 기획 안 받는 중",
+        "[브레인스토밍] Claude 기획 안 건너뜀: usage limit reached",
+        "[단계] 기획 완료",
+        "[단계] 디자인 시작"
+    ]);
+    assert(!fs.existsSync(path.join(failDir, "docs/autopilot/proposals/plan-claude.md")));
+
+    // 메인이 Claude이고 보조가 Codex이면 보내기를 허용해야 한다. 허용하지 않으면 그 단계는 메인만으로 진행한다(보내기 허용 없이 Codex를 부르지 않는다).
+    const blockedDir = createProject("hybrid blocked 한글");
+    const blockedRun = await runHybrid(blockedDir, { mains: { design: "codex" }, brainstorm: ["plan"] });
+
+    assert.equal(blockedRun.status, STATUS_OK, blockedRun.error?.msg);
+    assert.deepEqual(getLines(blockedRun, ["브레인스토밍", "단계"]), [
+        "[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.",
+        "[단계] 기획 시작",
+        "[단계] 기획 완료",
+        "[단계] 디자인 시작"
+    ]);
+    assert(!fs.existsSync(codexLog), "Codex를 부르지 않는다");
+};
+
 // 지시개선은 처리할 작업이 있어야 시작한다. 잠금은 실패해도 남기지 않는다.
 // --autocompact를 모르는 옛 Claude Code가 PATH에 있어도 그 옵션만 빼고 세션이 돈다(모르는 옵션이면 CLI가 시작하자마자 실패한다).
 const checkUnsupportedFlags = async (scenarioRunner, context) => {
@@ -1386,5 +1598,6 @@ export {
     checkBuildMode,
     checkBrainstorm,
     checkCodexRunner,
-    checkDebate
+    checkDebate,
+    checkHybrid
 };

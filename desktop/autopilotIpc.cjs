@@ -15,7 +15,7 @@ const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
-const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS, BRAINSTORM_PROVIDERS } = require("./engineArgs.cjs");
+const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS, AI_PROVIDERS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
 const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
@@ -1248,7 +1248,7 @@ const handleGetPhase = async (event, requestedDir) => {
 };
 
 // 여러 AI가 안을 낸 단계에서 고를 수 있는 안. 엔진의 approve --pick 값과 같다.
-const PROPOSAL_PICKS = ["claude", ...BRAINSTORM_PROVIDERS];
+const PROPOSAL_PICKS = AI_PROVIDERS;
 
 // 협의한 단계의 쟁점마다 고른 쪽({ d1: "claude" }). 엔진 approve --resolve 값으로 바꾸고, 형식이 틀리면 null이다(빈 값은 고를 쟁점이 없는 승인).
 const DISPUTE_ID_PATTERN = /^d\d{1,2}$/;
