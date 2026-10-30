@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>레일 진행 표시 시안</title>
+<link rel="stylesheet" href="../../../desktop/fonts/pretendard.css">
+<link rel="stylesheet" href="mock.css">
+<style>
+@property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.legend i.w { background: var(--warn-fill); }
+.legend i.s { background: var(--faint); }
+.legend i.n { background: var(--hair-strong); }
+
+/* 앱 창을 흉내 낸 틀: 레일과 오른쪽 열(실행 줄 + 본문) */
+.pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px; padding: 22px; border-radius: var(--r-xl); background: var(--page); box-shadow: inset 0 0 0 1px var(--hair-strong); }
+.win { display: flex; height: 500px; border-radius: var(--r-lg); background: var(--page); box-shadow: var(--shadow); overflow: hidden; }
+.win .col { display: flex; flex-direction: column; width: 420px; min-width: 0; }
+.win.is-strip .col { width: 330px; }
+.tb { display: flex; flex: none; align-items: center; gap: 12px; height: 38px; padding: 0 0 0 20px; box-shadow: 0 1px 0 var(--hair); }
+.dock-runs { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--ink-2); font-size: var(--text-xs); }
+.dock-runs b { font-weight: 650; }
+.dock-run { padding: 1px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+.wc { display: flex; margin-left: auto; }
+.wc i { display: grid; place-items: center; width: 36px; height: 38px; color: var(--muted); }
+.wc svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.main-ph { display: grid; align-content: start; gap: 10px; padding: 22px 20px; }
+.main-ph h3 { margin: 0; font-size: var(--title-sm); font-weight: 700; letter-spacing: -0.015em; }
+.main-ph p { margin: 0; color: var(--faint); font: var(--text-xs) / 1.5 var(--mono); }
+.main-ph .bar { height: 56px; margin-top: 10px; border-radius: var(--r-lg); background: var(--bg); box-shadow: var(--shadow-1); }
+
+/* 레일: shell.css의 값 그대로 */
+.rail { display: flex; flex: none; flex-direction: column; gap: 2px; width: 224px; padding: 12px; background: var(--rail-bg); box-shadow: 1px 0 0 var(--hair); }
+.rail.strip { width: 64px; padding: 12px 8px; }
+.rail-brand { display: flex; flex: none; align-items: center; gap: 9px; height: 32px; margin-bottom: 14px; padding: 0 8px; font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.02em; }
+.rail-brand img { width: 22px; height: 22px; }
+.rail-section { flex: none; margin: 0 0 6px; padding: 0 10px; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+.projects { display: grid; gap: 2px; }
+.proj { --bgc: var(--rail-bg); position: relative; border-radius: var(--r-md); transition: background-color 0.28s var(--ease-out), box-shadow 0.28s var(--ease-out); }
+.proj[data-active] { --bgc: var(--bg); background: var(--bg); box-shadow: var(--shadow-1); }
+.proj-main { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 0 10px; width: 100%; padding: 8px 30px 8px 8px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: default; }
+.proj-mark { position: relative; grid-row: span 2; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: var(--chip); color: var(--muted); font-size: var(--text-xs); font-weight: 700; }
+.proj[data-active] .proj-mark { background: var(--accent-wash); color: var(--accent-ink); }
+.proj[data-tone="warn"] .proj-mark { background: var(--warn-wash); color: var(--warn); }
+.proj-name, .proj-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-name { font-size: var(--text-md); font-weight: 600; }
+.proj[data-active] .proj-name { font-weight: 650; }
+.proj-note { color: var(--muted); font-size: var(--text-xs); }
+.proj[data-tone="warn"] .proj-note { color: var(--warn); }
+.rail-add-group { display: grid; gap: 2px; margin-top: 18px; }
+.rail-add { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-md); color: var(--muted); font-size: var(--text-md); font-weight: 600; }
+.rail-add .icon { width: 14px; height: 14px; }
+.rail.strip .rail-label { display: none; }
+.rail.strip .rail-brand, .rail.strip .rail-add { justify-content: center; padding: 0; }
+.rail.strip .proj-main { grid-template-columns: 24px; justify-content: center; padding: 8px 0; }
+
+/* ───── 현재: 도는 고리가 첫 글자를 대신한다 ───── */
+.v-cur .proj[data-tone="run"] .proj-mark, .v-cur .proj[data-tone="stop"] .proj-mark { background: none; }
+.v-cur .proj[data-tone="stop"] .proj-note { color: var(--muted); }
+
+/* ───── A. 진행 호 마크: 첫 글자는 그대로 두고 둘레에 단계 진행 호를 그린다 ───── */
+.v-a .proj-main { grid-template-columns: 26px minmax(0, 1fr); }
+.v-a .rail.strip .proj-main { grid-template-columns: 26px; }
+.v-a .proj-mark { width: 26px; height: 26px; border-radius: 9px; --arc: var(--accent); --track: color-mix(in srgb, var(--accent) 26%, var(--bgc)); }
+.v-a .proj[data-tone="warn"] .proj-mark { --arc: var(--warn-fill); --track: color-mix(in srgb, var(--warn-fill) 22%, var(--bgc)); }
+.v-a .proj[data-tone="stop"] .proj-mark { --arc: var(--faint); --track: color-mix(in srgb, var(--faint) 22%, var(--bgc)); }
+.v-a .proj[data-tone="run"] .proj-mark { background: var(--accent-wash); color: var(--accent-ink); }
+.v-a .proj-mark::before, .v-a .proj-mark::after { content: ""; position: absolute; inset: -5px; border-radius: 13px; padding: 2.5px; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.v-a .proj[data-tone="idle"] .proj-mark::before, .v-a .proj[data-tone="idle"] .proj-mark::after { display: none; }
+.v-a .proj-mark::before { background: conic-gradient(from -90deg, var(--arc) calc(var(--p) * 1%), var(--track) 0); }
+.v-a .proj[data-tone="run"] .proj-mark::after { background: conic-gradient(from var(--a), transparent 0 70%, color-mix(in srgb, white 70%, var(--accent)) 100%); animation: orbit 2.4s linear infinite; }
+.v-a .proj[data-tone="warn"] .proj-mark::before { animation: breathe 2.6s ease-in-out infinite; }
+.v-a .proj[data-tone="stop"] .proj-mark::before { animation: unwind 2.8s ease-in-out infinite; }
+.v-a .proj[data-tone="run"] .proj-note { color: var(--accent-ink); }
+.v-a .proj-note .num { margin-left: 6px; color: var(--faint); }
+@keyframes orbit { to { --a: 360deg; } }
+@keyframes unwind { 0%, 15% { --p: var(--p0); } 85%, 100% { --p: 0; } }
+
+/* ───── B. 단계 눈금 + 핑 점: 글자 아래 눈금 다섯 칸, 마크 모서리에 숨 쉬는 점 ───── */
+.v-b .badge { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bgc); }
+.v-b .badge::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--accent); animation: ping 1.9s ease-out infinite; }
+.v-b .proj[data-tone="warn"] .badge { background: var(--warn-fill); animation: breathe 2.2s ease-in-out infinite; }
+.v-b .proj[data-tone="warn"] .badge::after, .v-b .proj[data-tone="stop"] .badge::after { display: none; }
+.v-b .proj[data-tone="stop"] .badge { background: var(--faint); }
+@keyframes ping { 0% { opacity: 0.55; scale: 1; } 80%, 100% { opacity: 0; scale: 3; } }
+.ticks { grid-column: 2; display: flex; gap: 2px; max-width: 124px; margin-top: 6px; }
+.ticks i { position: relative; flex: 1; height: 3px; border-radius: 3px; background: var(--hair-strong); overflow: hidden; }
+.ticks i[data-s="done"] { background: var(--add); }
+.ticks i[data-s="active"] { background: var(--accent-line); }
+.ticks i[data-s="active"]::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: 3px; background: var(--accent); animation: sweep 1.6s var(--ease-in-out) infinite; }
+.ticks i[data-s="hold"] { background: var(--warn-fill); animation: breathe 2.2s ease-in-out infinite; }
+.ticks i[data-s="stop"] { background: var(--faint); }
+@keyframes sweep { from { translate: -100% 0; } to { translate: 230% 0; } }
+.rail.strip .ticks { grid-column: 1; width: 26px; margin: 5px auto 0; gap: 1.5px; }
+.v-b .proj[data-tone="run"] .proj-note { color: var(--accent-ink); }
+
+/* ───── C. 오로라 테두리: 실행 중인 줄만 빛이 테두리를 돈다 ───── */
+.v-c .proj[data-tone="run"] { background: var(--bg); box-shadow: 0 0 22px -8px color-mix(in srgb, var(--accent) 55%, transparent), var(--shadow-1); animation: glow 3.2s ease-in-out infinite; }
+.v-c .proj[data-tone="run"]::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; background: conic-gradient(from var(--a), transparent 0 48%, color-mix(in srgb, var(--accent) 35%, white) 66%, var(--accent) 86%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: orbit 2.8s linear infinite; }
+.v-c .proj[data-tone="run"] .proj-mark { background: var(--accent-wash); color: var(--accent-ink); }
+.v-c .proj[data-tone="run"] .proj-note { background: linear-gradient(90deg, var(--muted) 38%, var(--accent-ink) 50%, var(--muted) 62%) 100% 0 / 280% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sheen 2.6s linear infinite; }
+.v-c .proj[data-tone="warn"] { background: var(--warn-wash); box-shadow: inset 0 0 0 1.5px var(--warn-line); }
+.v-c .proj[data-tone="stop"] { box-shadow: inset 0 0 0 1.5px var(--hair-strong); }
+.v-c .proj[data-tone="stop"]::before { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 1.5px dashed var(--faint); opacity: 0.6; pointer-events: none; }
+.v-c .rail.strip .proj[data-tone="run"] .proj-mark { background: none; }
+@keyframes glow { 50% { box-shadow: 0 0 28px -6px color-mix(in srgb, var(--accent) 65%, transparent), var(--shadow-1); } }
+@keyframes sheen { to { background-position: 0 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .v-a .proj[data-tone="run"] .proj-mark::after { animation: none; display: none; }
+    .v-a .proj[data-tone="run"] .proj-mark::before, .v-b .badge::after { animation: breathe 2.4s ease-in-out infinite; }
+    .v-b .badge::after { scale: 1.8; }
+    .ticks i[data-s="active"]::after { animation: breathe 2.2s ease-in-out infinite; width: 100%; }
+    .v-c .proj[data-tone="run"]::before { animation: none; --a: 200deg; }
+    .v-c .proj[data-tone="run"] { animation: none; }
+    .v-c .proj[data-tone="run"] .proj-note { animation: none; color: var(--accent-ink); background: none; }
+}
+</style>
+</head>
+<body>
+<header class="m-top">
+    <h1>레일 진행 표시 시안</h1>
+    <nav class="m-nav" aria-label="시안 바로가기">
+        <a href="#cur">현재</a><a href="#a">A 진행 호 마크</a><a href="#b">B 단계 눈금</a><a href="#c">C 오로라 테두리</a>
+    </nav>
+    <div class="m-tools"><button type="button" id="m-theme" class="m-btn">화면 테마: 시스템</button></div>
+</header>
+
+<main class="m-main">
+    <p class="m-intro">
+        맨 위 실행 줄의 「실행 중 N개」를 없애면 진행 상태를 알려 주는 곳은 왼쪽 프로젝트 목록 하나예요. 그래서 목록 줄이 지금의 도는 고리보다 많은 것을 말하도록 바꿨어요.
+        다른 프로젝트도 단계를 알게 되는 것(기획 확인 대기 등이 「쉬는 중」으로 보이는 문제를 고치는 일)을 전제로 한 시안이고, 각 안은 넓은 레일(224px)과 접힌 아이콘 띠(64px)를 함께 보여요.
+    </p>
+    <div class="legend" aria-label="상태 안내">
+        <span><i></i>실행 중(기획 단계, 개발 2회차)</span>
+        <span><i class="w"></i>확인 대기(주황)</span>
+        <span><i class="n"></i>쉬는 중</span>
+        <span><i class="s"></i>종료 신호를 보낸 중</span>
+    </div>
+
+    <section class="m-sec" id="cur"></section>
+    <section class="m-sec" id="a"></section>
+    <section class="m-sec" id="b"></section>
+    <section class="m-sec" id="c"></section>
+</main>
+
+<script src="mock.js"></script>
+<script>
+const ROWS = [
+    { name: "hanbit-booking", letter: "H", tone: "run", note: "신규 개발, 기획 단계", p: 20, step: "1/5", ticks: ["active", "", "", "", ""], isActive: true },
+    { name: "pocket-ledger", letter: "P", tone: "warn", note: "기획 확인을 기다려요", p: 20, step: "1/5", ticks: ["hold", "", "", "", ""] },
+    { name: "file-sorter", letter: "F", tone: "run", note: "신규 개발, 개발 2회차", p: 60, step: "3/5", ticks: ["done", "done", "active", "", ""] },
+    { name: "sales-api", letter: "S", tone: "idle", note: "쉬는 중" },
+    { name: "team-todo", letter: "T", tone: "stop", note: "종료 신호를 보냈어요", p: 80, step: "4/5", ticks: ["done", "done", "done", "stop", ""] }
+];
+
+const VARIANTS = {
+    cur: { name: "현재: 도는 고리", desc: "실행 중이면 첫 글자 자리에 고리가 돌아요. 어느 단계인지는 글줄을 읽어야 하고, 고리는 실행 중과 종료 신호 중이 똑같이 보여요. 맨 위 실행 줄에도 같은 정보가 한 번 더 있어요.", meas: ["진행 표시 12px 고리", "첫 글자가 사라짐"] },
+    a: { name: "A. 진행 호 마크", desc: "첫 글자 타일은 그대로 두고 둘레에 진행 호를 그려요. 호의 길이가 5단계 중 어디쯤인지이고, 밝은 빛이 호 둘레를 돌며 살아 있다는 걸 알려요. 확인 대기는 주황 호가 숨을 쉬고, 종료 신호 중은 회색 호가 줄어들었다 다시 차요. 접힌 띠에서도 같은 호가 보여요.", meas: ["타일 26px + 진행 호", "단계 위치가 한눈에", "접힌 띠에서도 그대로"] },
+    b: { name: "B. 단계 눈금 + 핑 점", desc: "글줄 아래에 다섯 칸 눈금이 나란히 있어요. 마친 칸은 초록, 지금 칸은 파란 빛이 흐르고, 확인 대기는 주황, 종료 신호 중은 회색이에요. 타일 모서리의 점이 물결처럼 퍼져서 멀리서도 실행 중인 줄이 눈에 띄어요. 실행 중인 줄만 7px 높아져요.", meas: ["눈금 3px × 5칸", "실행 중인 줄 +9px", "접힌 띠에서는 타일 아래 눈금"] },
+    c: { name: "C. 오로라 테두리", desc: "실행 중인 줄만 테두리를 따라 파란 빛이 돌고 은은하게 번져요. 상태 글은 빛이 훑고 지나가는 문구 효과예요. 확인 대기는 주황 면, 종료 신호 중은 점선 테두리라 한눈에 갈려요. 가장 눈에 띄는 대신 단계 위치는 글로만 알려 줘요.", meas: ["테두리 1.5px", "가장 눈에 띔", "단계 위치는 글줄로"] }
+};
+
+const tag = (row, key) => (row.tone === "idle" ? "" : key);
+
+const rowHtml = (row, variant) => {
+    const ring = variant === "cur" && ["run", "stop"].includes(row.tone);
+    const mark = ring ? `<i class="ring"></i>` : row.letter;
+    const badge = variant === "b" && row.tone !== "idle" ? `<i class="badge"></i>` : "";
+    const ticks = variant === "b" && row.ticks ? `<span class="ticks" aria-hidden="true">${row.ticks.map((state) => `<i data-s="${state}"></i>`).join("")}</span>` : "";
+
+    return `<div class="proj" data-tone="${row.tone}" ${row.isActive ? "data-active" : ""} style="--p:${row.p ?? 0};--p0:${row.p ?? 0}">
+        <button type="button" class="proj-main" tabindex="-1" title="${row.name}: ${row.note}"><span class="proj-mark" aria-hidden="true">${mark}${badge}</span><span class="proj-name rail-label">${row.name}</span><span class="proj-note rail-label">${row.note}</span>${ticks}</button>
+    </div>`;
+};
+
+const titlebar = (variant) => {
+    const runs = variant === "cur" ? `<p class="dock-runs"><i class="ring"></i><b>실행 중 2개</b><span class="dock-run">hanbit-booking</span><span class="dock-run">file-sorter</span></p>` : "";
+
+    return `<div class="tb">${runs}<div class="wc"><i><svg viewBox="0 0 12 12"><path d="M2.5 6h7"/></svg></i><i><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5"/></svg></i><i><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></i></div></div>`;
+};
+
+const windowHtml = (variant, isStrip) => `<div class="win ${isStrip ? "is-strip" : ""}" aria-label="${isStrip ? "접힌 레일(64px)" : "넓은 레일(224px)"}">
+    <aside class="rail ${isStrip ? "strip" : ""}">
+        <div class="rail-brand"><img src="../../icon.png" alt=""><span class="rail-label">Autopilot</span></div>
+        <h2 class="rail-section rail-label">프로젝트</h2>
+        <div class="projects">${ROWS.map((row) => rowHtml(row, variant)).join("")}</div>
+        <div class="rail-add-group"><div class="rail-add">${icon("plus")}<span class="rail-label">새 프로젝트</span></div><div class="rail-add">${icon("folder")}<span class="rail-label">프로젝트 열기</span></div></div>
+    </aside>
+    <div class="col">${titlebar(variant)}<div class="main-ph"><h3>hanbit-booking</h3><p>C:\\Users\\me\\Documents\\hanbit-booking</p><div class="bar"></div></div></div>
+</div>`;
+
+document.querySelectorAll(".m-sec").forEach((section) => {
+    const key = section.id;
+    const variant = VARIANTS[key];
+
+    section.innerHTML = `<div class="m-head"><h2>${variant.name}</h2><p class="m-desc">${variant.desc}</p><div class="m-meas">${variant.meas.map((text) => `<span>${text}</span>`).join("")}${key === "cur" ? "" : `<span class="good">최상단 「실행 중 N개」 제거</span>`}</div></div>
+        <div class="pair v-${key}">${windowHtml(key, false)}${windowHtml(key, true)}</div>`;
+});
+</script>
+</body>
+</html>
