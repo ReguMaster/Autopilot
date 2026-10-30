@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { formatClock, formatUsageReset, getUsageTone } from "../../../viewFormat.js";
+import { formatClock, formatUsageReset, getUsagePace, getUsageTone } from "../../../viewFormat.js";
 import { accounts } from "../../actions/accounts.js";
+import { AvatarRing } from "../../components/AvatarRing.jsx";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Panel } from "../../components/Panel.jsx";
@@ -18,6 +19,7 @@ const SKELETON_ITEM_COUNT = 3;
 const SESSION_LIMIT_PREFIX = "5시간";
 // 로그인 정보가 없거나 만료돼 사용량을 읽지 못할 때, 또는 로그인 만료가 가까울 때 다시 로그인이 필요하다.
 const RELOGIN_ERROR_CODES = ["NO_CREDENTIALS", "TOKEN_EXPIRED"];
+const RELOGIN_FALLBACK_TEXT = "다시 로그인이 필요해요.";
 
 const getAvatarLetter = ({ name, email }) => {
     return Array.from(name || email)[0]?.toUpperCase() ?? "";
@@ -57,7 +59,6 @@ const AccountList = ({ isLocked, isIdle }) => {
                 >
                     <span className="initial">{getAvatarLetter({ name: account.label, email: "" })}</span>
                     <span>{account.label}</span>
-                    <Icon symbol="icon-check" className="icon tick" />
                 </button>
             ))}
         </div>
@@ -178,12 +179,10 @@ const LoginBox = () => {
 };
 
 // 아바타 사진은 계정 정보에 없어 이름(없으면 이메일)의 첫 글자를 그린다. 조직 이름은 요금제 표시의 툴팁에 둔다.
-const ProfileCard = ({ profile, isLoading }) => {
+const ProfileCard = ({ profile, isLoading, percent }) => {
     return (
         <section id="profile-card" className="profile-card" aria-busy={isLoading} hidden={!profile && !isLoading}>
-            <span id="profile-avatar" className="profile-avatar" aria-hidden="true">
-                {profile ? getAvatarLetter(profile) : ""}
-            </span>
+            <AvatarRing id="profile-avatar" className="profile-avatar" size="lg" letter={profile ? getAvatarLetter(profile) : ""} percent={percent} aria-hidden="true" />
             <div className="profile-id">
                 <b id="profile-name" className="profile-name">
                     {profile ? profile.name || profile.email : ""}
@@ -199,18 +198,31 @@ const ProfileCard = ({ profile, isLoading }) => {
     );
 };
 
-// 항목 구성이 같으면 막대를 다시 만들지 않아(key가 이름) 값이 바뀔 때만 막대가 움직인다.
+// 항목 구성이 같으면 막대를 다시 만들지 않아(key가 이름) 값이 바뀔 때만 막대가 움직인다. 막대 위 세로 선은 한도 기간이 지난 만큼이다.
 const UsageItem = ({ limit, nowMs }) => {
     const percent = Math.round(limit.percent);
+    const pace = getUsagePace(limit, nowMs);
 
     return (
         <section className="usage-item" data-tone={getUsageTone(limit.percent)} data-session={limit.label.startsWith(SESSION_LIMIT_PREFIX) ? "" : undefined}>
             <h3>{limit.label}</h3>
             <b className="usage-percent num">{`${percent}%`}</b>
-            <div className="usage-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow={String(percent)} aria-label={limit.label} style={{ "--value": String(limit.percent) }}>
+            <div
+                className="usage-meter"
+                role="meter"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={String(percent)}
+                aria-label={limit.label}
+                style={{ "--value": String(limit.percent), "--elapsed": String(pace?.elapsed ?? 0) }}
+            >
                 <i></i>
+                {pace ? <span className="usage-pace" aria-hidden="true"></span> : null}
             </div>
-            <span className="usage-reset">{formatUsageReset(limit.resetsAt, nowMs)}</span>
+            <span className="usage-reset">
+                <span>{formatUsageReset(limit.resetsAt, nowMs)}</span>
+                {pace?.isFast ? <em>시간보다 빨리 쓰고 있어요</em> : null}
+            </span>
         </section>
     );
 };
@@ -240,6 +252,9 @@ const Usage = ({ limits, isLoading }) => {
                     ? Array.from({ length: SKELETON_ITEM_COUNT }, (_, index) => <UsageSkeleton key={index} />)
                     : limits.map((limit) => <UsageItem key={limit.label} limit={limit} nowMs={nowMs} />)}
             </div>
+            <p className="panel-note usage-legend" hidden={isLoading || !limits.some((limit) => getUsagePace(limit, nowMs))}>
+                막대 위 세로 선은 한도 기간이 지난 만큼이에요.
+            </p>
         </section>
     );
 };
@@ -266,40 +281,46 @@ const ProfilePanel = () => {
     const status = getAccountStatus(account, isLoading);
     const expiry = useLoginExpiry();
     const needsRelogin = RELOGIN_ERROR_CODES.includes(account.error?.code) || Boolean(expiry?.isExpiring);
+    const topPercent = account.limits.length > 0 ? Math.max(...account.limits.map((limit) => limit.percent)) : null;
 
     return (
         <Panel id="profile" className="profile-panel" aria-label="프로필" open={open}>
-            <AccountList isLocked={isLocked} isIdle={isIdle} />
-            <div className="account-actions">
-                <Button id="account-add" disabled={isManageLocked || list.length >= MAX_ACCOUNT_COUNT} title={manageTitle} onClick={accounts.openForm}>
-                    <Icon symbol="icon-plus" />
-                    계정 추가
-                </Button>
+            <ProfileCard profile={account.profile} isLoading={isLoading} percent={topPercent} />
+            <div id="login-expiry" className="profile-warn" hidden={!expiry && !needsRelogin} data-tone={needsRelogin ? "warn" : undefined}>
+                <span>{expiry?.text ?? RELOGIN_FALLBACK_TEXT}</span>
                 <Button id="account-login" hidden={!needsRelogin} disabled={isManageLocked} title={manageTitle} onClick={accounts.login}>
                     다시 로그인
                 </Button>
-                <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isManageLocked} title={manageTitle} onClick={accounts.remove}>
-                    제거
-                </Button>
             </div>
-            <p id="account-message" className="panel-note" aria-live="polite" hidden={!message} data-tone={message ? "warn" : undefined}>
-                {message}
-            </p>
-            <AccountForm />
-            <LoginBox />
-            <ProfileCard profile={account.profile} isLoading={isLoading} />
             <Usage limits={account.limits} isLoading={isLoading} />
-            <p id="login-expiry" className="panel-note login-expiry" hidden={!expiry} data-tone={expiry?.isExpiring ? "warn" : undefined}>
-                {expiry?.text}
-            </p>
+            <section className="profile-accounts" aria-label="계정">
+                <h3 className="profile-section">계정</h3>
+                <div className="account-chips">
+                    <AccountList isLocked={isLocked} isIdle={isIdle} />
+                    <Button id="account-add" className="account-add" disabled={isManageLocked || list.length >= MAX_ACCOUNT_COUNT} title={manageTitle} onClick={accounts.openForm}>
+                        <Icon symbol="icon-plus" />
+                        계정 추가
+                    </Button>
+                </div>
+                <p id="account-message" className="panel-note" aria-live="polite" hidden={!message} data-tone={message ? "warn" : undefined}>
+                    {message}
+                </p>
+                <AccountForm />
+                <LoginBox />
+            </section>
             <div className="panel-foot">
                 <p id="usage-status" className="panel-note" aria-live="polite" data-tone={status.tone || undefined}>
                     {status.text}
                 </p>
-                <Button id="usage-refresh" disabled={isRefreshing} onClick={accounts.refresh}>
-                    <Icon symbol="icon-refresh" />
-                    새로 고침
-                </Button>
+                <div className="panel-foot-actions">
+                    <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isManageLocked} title={manageTitle} onClick={accounts.remove}>
+                        이 계정 제거
+                    </Button>
+                    <Button id="usage-refresh" disabled={isRefreshing} onClick={accounts.refresh}>
+                        <Icon symbol="icon-refresh" />
+                        새로 고침
+                    </Button>
+                </div>
             </div>
         </Panel>
     );

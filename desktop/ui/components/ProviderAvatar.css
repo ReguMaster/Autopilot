@@ -1,0 +1,43 @@
+/* 협의 참가자의 프로필. 브랜드 마크의 색이라 토큰이 아니라 이 파일의 변수로 둔다(모델 알약의 --tone처럼 예외) */
+.avatar {
+    --size: 36px;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: var(--av-bg);
+    color: #fff;
+}
+
+.avatar[data-size="sm"] {
+    --size: 26px;
+}
+
+.avatar[data-size="xs"] {
+    --size: 20px;
+}
+
+.avatar[data-provider="claude"] {
+    --av-bg: #d97757;
+}
+
+.avatar[data-provider="codex"] {
+    --av-bg: #172033;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+}
+
+.avatar svg {
+    width: 58%;
+    height: 58%;
+    fill: currentColor;
+}
+
+.avatar-prompt {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}

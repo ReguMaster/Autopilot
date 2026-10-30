@@ -93,6 +93,55 @@ const getDraftPrompt = ({ what, platforms = [] }) => {
         .join("\n");
 };
 
+const MAX_EXAMPLES = 5;
+const EXAMPLE_LIMITS = { label: 14, what: 120, exclude: 24 };
+
+// 새 프로젝트 화면의 "추천 예시 받기". 기본 예시는 그대로 두고 추천만 이 질문으로 새로 받는다. exclude는 이미 보인 예시의 이름이라 겹치지 않게 한다.
+const getExamplesPrompt = ({ exclude = [] } = {}) => {
+    const shown = (Array.isArray(exclude) ? exclude : [])
+        .map((label) => cleanText(label, EXAMPLE_LIMITS.label))
+        .filter(Boolean)
+        .slice(0, EXAMPLE_LIMITS.exclude);
+
+    return [
+        "새 소프트웨어 프로젝트를 막 시작하려는 사람에게 보여 줄 아이디어 예시를 만들어라.",
+        "도구는 쓰지 말고, 설명 없이 JSON 배열 하나만 답하라. 글은 한국어로 쓴다.",
+        "형식:",
+        '[{"label": "짧은 이름", "what": "무엇을 누가 어떻게 쓰는지 한두 문장", "platforms": ["web"]}]',
+        `예시는 ${MAX_EXAMPLES}개다. 서로 다른 분야와 실행 환경으로 섞고, 한두 사람이 몇 주 안에 만들 수 있는 작은 규모로 쓴다.`,
+        `label은 ${EXAMPLE_LIMITS.label}자 안쪽 명사구, what은 ${EXAMPLE_LIMITS.what}자 안쪽 해요체 문장이다.`,
+        `platforms는 ${PLATFORM_KEYS.filter((key) => key !== "unknown").join(", ")} 중에서 1~2개를 고른다.`,
+        shown.length ? `이미 보여 준 예시와 겹치지 않게 하라: ${shown.join(", ")}` : ""
+    ]
+        .filter(Boolean)
+        .join("\n");
+};
+
+// 답에서 JSON 배열을 찾아 예시마다 다듬는다. 읽을 수 없으면 빈 배열이다.
+const parseExamples = (text) => {
+    const source = String(text || "");
+    const start = source.indexOf("[");
+    const end = source.lastIndexOf("]");
+    let raw = null;
+
+    try {
+        raw = start >= 0 && end > start ? JSON.parse(source.slice(start, end + 1)) : null;
+    } catch {
+        raw = null;
+    }
+
+    const seen = new Set();
+
+    return (Array.isArray(raw) ? raw : [])
+        .map((item) => ({
+            label: cleanText(item?.label, EXAMPLE_LIMITS.label),
+            what: cleanText(item?.what, EXAMPLE_LIMITS.what),
+            platforms: (Array.isArray(item?.platforms) ? item.platforms : []).filter((key, index, list) => PLATFORM_KEYS.includes(key) && list.indexOf(key) === index).slice(0, 2)
+        }))
+        .filter((item) => item.label && item.what && !seen.has(item.label) && seen.add(item.label))
+        .slice(0, MAX_EXAMPLES);
+};
+
 // 답에서 JSON 객체를 찾아 읽고 칸마다 다듬는다. 읽을 수 없으면 null이다.
 const parseDraft = (text) => {
     const source = String(text || "");
@@ -198,6 +247,8 @@ module.exports = {
     toFolderName,
     getDraftPrompt,
     parseDraft,
+    getExamplesPrompt,
+    parseExamples,
     buildProjectBrief,
     sanitizeBrief
 };

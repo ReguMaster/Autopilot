@@ -1,4 +1,5 @@
 import { STATUS_OK } from "../lib/constants.js";
+import { useAppStore } from "../stores/appStore.js";
 import { modal } from "../stores/modalStore.js";
 import { useRunsStore } from "../stores/runsStore.js";
 import { ui } from "../stores/uiStore.js";
@@ -9,7 +10,7 @@ const MAX_ARCHIVE_RUNS = 200;
 let recentToken = 0;
 let archiveToken = 0;
 let streakToken = 0;
-let phaseToken = 0;
+const phaseTokens = new Map();
 
 const setNote = (message, tone = "") => useRunsStore.setState({ note: { message: message, tone: tone } });
 
@@ -23,13 +24,23 @@ const loadStreakDays = async () => {
     }
 };
 
-// 신규 개발의 단계 상태({phase, awaiting, qaRetries}, 한 적 없으면 null). 엔진 status로 읽으므로 실패하면 조용히 비운다.
-const loadBuildPhase = async () => {
-    const token = ++phaseToken;
-    const result = await window.autopilot.getPhase();
+// 프로젝트의 단계 상태를 기억해 두고, 보는 프로젝트면 화면이 쓰는 buildPhase도 바꾼다.
+const setBuildPhase = (projectDir, phase) => {
+    const isViewed = projectDir === useAppStore.getState().settings.projectDir;
 
-    if (token === phaseToken) {
-        useRunsStore.setState({ buildPhase: result.status === STATUS_OK ? result.data.phase : null });
+    useRunsStore.setState((store) => ({ phases: { ...store.phases, [projectDir]: phase }, buildPhase: isViewed ? phase : store.buildPhase }));
+};
+
+// 신규 개발의 단계 상태({phase, awaiting, qaRetries}, 한 적 없으면 null). 엔진 status로 읽으므로 실패하면 조용히 비운다. 프로젝트를 주지 않으면 보는 프로젝트다.
+const loadBuildPhase = async (projectDir = useAppStore.getState().settings.projectDir) => {
+    const token = (phaseTokens.get(projectDir) ?? 0) + 1;
+
+    phaseTokens.set(projectDir, token);
+
+    const result = await window.autopilot.getPhase(projectDir || undefined);
+
+    if (phaseTokens.get(projectDir) === token) {
+        setBuildPhase(projectDir, result.status === STATUS_OK ? result.data.phase : null);
     }
 };
 
@@ -133,4 +144,4 @@ const deleteArchiveRun = async () => {
     setNote("기록을 지웠어요.");
 };
 
-export { loadStreakDays, loadBuildPhase, loadProviders, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };
+export { loadStreakDays, loadBuildPhase, setBuildPhase, loadProviders, loadRecentRuns, openArchiveList, openArchiveDetail, openArchiveFile, deleteArchiveRun };

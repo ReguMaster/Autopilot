@@ -1,4 +1,5 @@
-import { BUILD_PHASES, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS } from "./constants.js";
+import { formatEffort } from "../../viewFormat.js";
+import { BUILD_PHASES, CODEX_EFFORT_LEVELS, DEBATE_TURN_CHOICES, DEFAULT_DEBATE_TURNS, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS } from "./constants.js";
 
 // 신규 개발 단계 카드와 시작 전 안내에 쓰는 문구. DOM에 의존하지 않아 tests/checkDesktopUi.js가 그대로 부른다.
 const PHASE_DETAILS = { plan: "만들 것을 정리해요", design: "화면을 그려요", build: "코드를 짜고 커밋해요", qa: "확인하고 고쳐요", security: "약점을 찾아 고쳐요" };
@@ -20,8 +21,25 @@ const ON_FAIL_OPTIONS = [
 const BRAINSTORM_OPTIONS = [
     { value: "claude", label: "Claude만", hint: "Claude 혼자 써요" },
     { value: "compare", label: "나란히 비교", hint: "Claude와 Codex가 따로 안을 내고, 끝나면 나란히 보고 골라요" },
-    { value: "debate", label: "협의", hint: "Claude와 Codex가 최대 3번 주고받고, 못 맞춘 쟁점만 골라요" }
+    { value: "debate", label: "협의", hint: "Claude와 Codex가 더 고칠 것이 없을 때까지 주고받고, 못 맞춘 쟁점만 골라요" }
 ];
+
+// 협의에서 주고받는 최대 횟수. 둘 다 더 고칠 것이 없으면 그 전에 끝난다. 저장된 값이 목록에 없어도(가져온 설정) 고른 값은 그대로 보인다.
+const getDebateTurnOptions = (current) => {
+    const choices = DEBATE_TURN_CHOICES.includes(current) ? DEBATE_TURN_CHOICES : [...DEBATE_TURN_CHOICES, current].sort((a, b) => a - b);
+
+    return choices.map((value) => ({ value: value, label: `최대 ${value}번`, hint: value === DEFAULT_DEBATE_TURNS ? "기본값" : undefined }));
+};
+
+// Codex의 model·effort. 값이 비면 Codex 설정(~/.codex/config.toml)을 따른다. 칸이 좁아 항목 이름과 설명은 짧게 두고 Codex 것임은 칸의 설명 줄이 알린다.
+const CODEX_EFFORT_OPTIONS = [{ value: "", label: "기본 Effort", hint: "Codex 설정" }, ...CODEX_EFFORT_LEVELS.map((level) => ({ value: level, label: formatEffort(level) }))];
+
+// models는 Codex가 알려준 [{ id, label }]이다. 저장된 모델이 목록에 없어도(목록을 못 읽었거나 내려간 모델) 고른 값은 그대로 보인다.
+const getCodexModelOptions = (models, current) => {
+    const extra = current && !models.some((model) => model.id === current) ? [{ value: current, label: current }] : [];
+
+    return [{ value: "", label: "기본 모델", hint: "Codex 설정" }, ...models.map((model) => ({ value: model.id, label: model.label })), ...extra];
+};
 
 // 그 단계를 누가 쓰는지. 협의는 나란히 비교의 한 갈래라 brainstorm과 debate에 함께 든다.
 const getBrainstormMode = ({ brainstorm, debate }, phase) => {
@@ -190,11 +208,32 @@ const getRevisionTasks = (feedback, tasks) => {
     return ["수정 요청:", feedback.trim(), ...(original ? ["", "처음 적은 만들 것:", original] : [])].join("\n");
 };
 
+// 레일 프로젝트 줄의 단계 눈금(다섯 칸). 마친 단계는 done, 지금 단계는 active·hold(확인 대기)·stop(종료 신호), 아직인 단계는 빈 문자열이다.
+// 실행 중이면 step({ phase, status })이, 쉬는 중이면 단계 상태(buildPhase)가 기준이고 신규 개발을 한 적 없거나 알 수 없으면 null이다.
+const getTabTicks = ({ status, mode, step, buildPhase }) => {
+    const isRunning = status !== "idle";
+    const phase = isRunning ? (mode === "build" ? step?.phase : "") : buildPhase?.awaiting || buildPhase?.phase;
+    const index = phase === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(phase ?? "");
+
+    if (index < 0 || (index === 0 && !isRunning && !buildPhase?.awaiting)) {
+        return null;
+    }
+
+    const stepStates = { awaiting: "hold", done: "done", failed: "stop" };
+    const runningState = status === "stopping" ? "stop" : (stepStates[step?.status] ?? "active");
+    const nowState = isRunning ? runningState : buildPhase?.awaiting ? "hold" : "";
+
+    return BUILD_PHASES.map((item, tick) => (tick < index ? "done" : tick === index ? nowState : ""));
+};
+
 export {
     PHASE_DETAILS,
     PHASE_DONE,
     DESIGN_FORMAT_OPTIONS,
     BRAINSTORM_OPTIONS,
+    CODEX_EFFORT_OPTIONS,
+    getDebateTurnOptions,
+    getCodexModelOptions,
     getBrainstormMode,
     ON_FAIL_OPTIONS,
     ON_FAIL_CAPTIONS,
@@ -205,6 +244,7 @@ export {
     getBuildActionLabel,
     getOnFailLabel,
     getRunSteps,
+    getTabTicks,
     getPhaseDocs,
     getRevisionTasks
 };

@@ -20,7 +20,7 @@ const { readJsonFile } = require("./jsonFile.cjs");
 const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 const { askClaude, getCodexStatus } = require("./claudeCli.cjs");
-const { getDraftPrompt, parseDraft, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
+const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
@@ -117,7 +117,7 @@ const isValidRoundOptions = ({ model, effort }) => {
 };
 
 // 작업 모드와 신규 개발 설정. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate"];
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate", "debateTurns", "codexModel", "codexEffort"];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
@@ -232,11 +232,18 @@ const isAnyRunning = () => sessionPool.getAll().some((session) => session.runner
 const isProjectRunning = (projectDir) => Boolean(sessionPool.get(projectDir)?.runner.isRunning());
 
 // 프로젝트(탭)가 고른 계정. 고르지 않았으면 전역 계정을 따른다. 프로젝트가 없으면 전역에 저장한다.
-// 열린 탭과 각 탭의 실행 상태. 화면은 이 요약으로 탭 줄을 그린다(탭 이름은 폴더 이름).
+// 열린 탭과 각 탭의 실행 상태(status), 신규 개발이면 모드와 지금 단계(mode "build"·step "plan" 등, 없으면 빈 문자열). 화면은 이 요약으로 레일의 프로젝트 목록을 그린다(탭 이름은 폴더 이름).
 const getTabsPayload = () => {
     const { tabs, projectDir } = readSettings();
 
-    return { active: projectDir, tabs: tabs.map((dir) => ({ projectDir: dir, name: path.basename(dir), status: sessionPool.get(dir)?.runner.getState().status ?? "idle" })) };
+    return {
+        active: projectDir,
+        tabs: tabs.map((dir) => {
+            const state = sessionPool.get(dir)?.runner.getState();
+
+            return { projectDir: dir, name: path.basename(dir), status: state?.status ?? "idle", mode: state?.mode ?? "", step: state?.step?.phase ?? "" };
+        })
+    };
 };
 
 let lastTabsKey = "";
@@ -719,7 +726,10 @@ const handleSetPreferences = (event, patch) => {
 
     updateSettings(patch);
 
-    applyPreferenceChanges();
+    // 레일 너비는 화면에만 닿는다. 끌 때마다 새 버전 확인(네트워크)을 다시 하지 않는다.
+    if (keys.some((key) => key !== "railWidth")) {
+        applyPreferenceChanges();
+    }
 
     return { status: STATUS_OK, data: getSettingsView() };
 };
@@ -967,6 +977,37 @@ const handleDraftProject = async (event, request = {}) => {
     const draft = parseDraft(result.text);
 
     return draft ? { status: STATUS_OK, data: { draft: draft } } : createFailure("DRAFT_INVALID", "Claude의 초안을 읽지 못했어요.");
+};
+
+// 새 프로젝트 화면의 추천 예시. 기본 예시는 화면이 갖고 있고, 여기서는 haiku로 새 추천만 받는다(도구 없는 최소 호출, 한 번에 하나). 읽지 못하면 빈 목록 대신 실패로 알린다.
+let examplesRequest = null;
+
+const handleSuggestExamples = async (event, request = {}) => {
+    if (examplesRequest) {
+        return createFailure("BUSY", "추천 예시를 받는 중이에요.");
+    }
+
+    const account = await accounts.getDraftAccount();
+
+    if (account.status !== STATUS_OK) {
+        return account;
+    }
+
+    const ask = askClaude(account.data.configDir, getExamplesPrompt({ exclude: request.exclude }), { model: "haiku", timeoutMs: 45000 });
+
+    examplesRequest = ask;
+
+    const result = await ask.promise;
+
+    examplesRequest = null;
+
+    if (result.error) {
+        return createFailure("EXAMPLES_FAILED", `Claude가 예시를 만들지 못했어요. ${result.error}`);
+    }
+
+    const examples = parseExamples(result.text);
+
+    return examples.length ? { status: STATUS_OK, data: { examples: examples } } : createFailure("EXAMPLES_INVALID", "Claude의 예시를 읽지 못했어요.");
 };
 
 // 새 프로젝트를 만들고 새 탭으로 연다. 신규 개발 모드에 brief.md 내용을 만들 것으로 채워 시작 전 화면에서 바로 기획을 시작할 수 있게 한다.
@@ -1550,6 +1591,7 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:pick-create-dir", handlePickCreateDir);
     ipcMain.handle("autopilot:draft-project", handleDraftProject);
     ipcMain.handle("autopilot:cancel-draft", handleCancelDraft);
+    ipcMain.handle("autopilot:suggest-examples", handleSuggestExamples);
     ipcMain.handle("autopilot:create-project", handleCreateProject);
     ipcMain.handle("autopilot:read-phase-doc", handleReadPhaseDoc);
     ipcMain.handle("autopilot:open-phase-doc", handleOpenPhaseDoc);

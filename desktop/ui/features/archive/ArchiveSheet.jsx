@@ -4,6 +4,7 @@ import { deleteArchiveRun, openArchiveDetail, openArchiveFile, openArchiveList }
 import { Button } from "../../components/Button.jsx";
 import { Gains } from "../../components/Gains.jsx";
 import { Icon } from "../../components/Icon.jsx";
+import { ProviderAvatar } from "../../components/ProviderAvatar.jsx";
 import { RunList } from "../../components/RunList.jsx";
 import { Tag } from "../../components/Tag.jsx";
 import { PROVIDER_LABELS } from "../../lib/constants.js";
@@ -88,7 +89,10 @@ const ChatItem = memo(({ item }) => {
     if (item.kind === "chat") {
         return (
             <li className="chat-item debate" data-provider={item.provider}>
-                <b>{PROVIDER_LABELS[item.provider]}</b>
+                <b>
+                    <ProviderAvatar provider={item.provider} size="xs" />
+                    {PROVIDER_LABELS[item.provider]}
+                </b>
                 <span>{item.text}</span>
             </li>
         );

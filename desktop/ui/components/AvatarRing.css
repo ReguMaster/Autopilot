@@ -1,0 +1,49 @@
+.avatar-ring {
+    --size: 26px;
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: calc(var(--size) + 10px);
+    height: calc(var(--size) + 10px);
+    border-radius: 50%;
+    background: conic-gradient(var(--ring, var(--ink)) calc(var(--value) * 1%), var(--chip) 0);
+}
+
+.avatar-ring.lg {
+    --size: 40px;
+}
+
+.avatar-ring::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--bg);
+}
+
+.avatar-ring[data-tone="warn"] {
+    --ring: var(--warn-fill);
+}
+
+.avatar-ring[data-tone="danger"] {
+    --ring: var(--del);
+}
+
+.avatar-letter {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--bg);
+    font-size: var(--text-xs);
+    font-weight: 700;
+}
+
+.avatar-ring.lg .avatar-letter {
+    font-size: var(--text-xl);
+    font-weight: 650;
+}

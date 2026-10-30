@@ -180,7 +180,7 @@ const checkLoginExpiry = ({ describeLoginExpiry }) => {
     }
 };
 
-const checkUsageFormat = ({ formatUsageReset, getUsageTone }) => {
+const checkUsageFormat = ({ formatUsageReset, getUsageTone, getUsagePace }) => {
     const now = new Date(2026, 9, 13, 10, 0).getTime();
     const minutes = (count) => count * 60000;
 
@@ -202,6 +202,19 @@ const checkUsageFormat = ({ formatUsageReset, getUsageTone }) => {
     for (const [percent, tone] of tones) {
         assert.equal(getUsageTone(percent), tone, String(percent));
     }
+
+    // 한도 기간이 지난 만큼: 5시간 한도가 2시간 뒤 리셋이면 60%, 주간 한도가 3일 반 뒤 리셋이면 50%가 지났다.
+    const hours = (count) => count * 3600000;
+    const session = { label: "5시간 한도", percent: 38, resetsAt: now + hours(2) };
+
+    assert.deepEqual(getUsagePace(session, now), { elapsed: 60, isFast: false });
+    assert.deepEqual(getUsagePace({ label: "주간 한도 (Sonnet)", percent: 66, resetsAt: now + hours(84) }, now), { elapsed: 50, isFast: true });
+    assert.equal(getUsagePace({ ...session, percent: 74 }, now).isFast, false, "15%p 차이는 아직 빠르다고 하지 않는다");
+    assert.equal(getUsagePace({ ...session, percent: 75 }, now).isFast, true, "15%p 이상 앞서면 빠르다");
+    assert.equal(getUsagePace({ ...session, resetsAt: now - hours(1) }, now).elapsed, 100, "지난 리셋 시각은 100으로 막는다");
+    assert.equal(getUsagePace({ ...session, resetsAt: now + hours(9) }, now).elapsed, 0, "기간보다 먼 리셋은 0으로 막는다");
+    assert.equal(getUsagePace({ ...session, resetsAt: 0 }, now), null, "리셋 시각을 모르면 표시하지 않는다");
+    assert.equal(getUsagePace({ label: "Opus 한도", percent: 10, resetsAt: now + hours(2) }, now), null, "기간을 모르는 한도는 표시하지 않는다");
 };
 
 const createRound = (round, startedAt, endedAt, commits = [], timesKnown = true) => {
@@ -304,41 +317,6 @@ const checkTrack = ({ getTrack }) => {
     assert.equal(getTrack({ ...state, deadlineAt: new Date(2026, 9, 16, 7, 0).getTime() }, start).endText, "10월 16일 07:00");
     // 끝난 실행은 지금 위치가 없고, 다시 읽은 회차(시각 모름)는 그리지 않는다.
     assert.equal(getTrack({ ...state, status: "idle", endedAt: start + 20 * minute, rounds: [createRound(1, start, start + 10 * minute, [], false)] }, start).segments.length, 0);
-};
-
-// 산출물 미리보기는 제목·목록·문단·코드 블록만 나누고, HTML은 글자 그대로 둔다.
-const checkPreview = ({ parsePreviewBlocks, splitInlineCode }) => {
-    const text = [
-        "# 동네 미용실 **예약** 웹앱 #",
-        "",
-        "손님이 날짜를 고르고",
-        "원장이 예약표를 봐요. <script>x</script>",
-        "---",
-        "## 화면",
-        "- 디자이너 고르기",
-        "2. [x] 예약 확인",
-        "> 인용은 문단",
-        "```",
-        "npm test",
-        "```"
-    ].join("\n");
-
-    assert.deepEqual(parsePreviewBlocks(text), [
-        { type: "heading", level: 1, text: "동네 미용실 예약 웹앱" },
-        { type: "para", text: "손님이 날짜를 고르고 원장이 예약표를 봐요. <script>x</script>" },
-        { type: "heading", level: 2, text: "화면" },
-        { type: "item", text: "디자이너 고르기" },
-        { type: "item", text: "예약 확인" },
-        { type: "para", text: "인용은 문단" },
-        { type: "code", text: "npm test" }
-    ]);
-    assert.equal(parsePreviewBlocks(Array.from({ length: 200 }, (_, index) => `- ${index}`).join("\n")).length, 80);
-    assert.deepEqual(parsePreviewBlocks("```\n닫히지 않은 코드"), [{ type: "code", text: "닫히지 않은 코드" }]);
-    assert.deepEqual(splitInlineCode("`plan.md`를 봐요"), [
-        { text: "", isCode: false },
-        { text: "plan.md", isCode: true },
-        { text: "를 봐요", isCode: false }
-    ]);
 };
 
 const checkStory = ({ parseStoryLine, describeTool, createStory, applyStoryEntry, parseGain, splitFigure }) => {
@@ -706,7 +684,7 @@ const checkShareCard = ({ pickCardSentence, splitCardEmphasis, getCardWhen, buil
 
 // 신규 개발: 단계 줄은 이야기·지난 실행 대화에 한 문장으로 남고, 종료 사유는 확인 대기·모든 단계 완료·QA 실패를 들려준다.
 // 협의: 시작 · 끝 · 건너뜀 줄은 들려주는 문장으로, 발언 줄은 이야기에서 누구 차례인지 한 문장(바뀌어 감)과 지난 실행의 말풍선으로 남는다.
-const checkDebateLines = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, parseDebateTurn, parseDebateTranscript }) => {
+const checkDebateLines = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, parseDebateTurn, parseDebateTranscript, formatChatTime, formatChatDate }) => {
     assert.equal(describeStepLine("[협의] 기획 시작 (최대 3번)"), "Claude와 Codex가 기획을 두고 협의를 시작해요. 최대 3번 주고받아요.");
     assert.equal(describeStepLine("[협의] 합의했어요"), "두 AI가 합의했어요.");
     assert.equal(describeStepLine("[협의] 쟁점 2개를 남기고 끝냈어요"), "못 맞춘 쟁점 2개를 남기고 협의를 마쳤어요.");
@@ -749,7 +727,9 @@ const checkDebateLines = ({ describeStepLine, createStory, applyStoryEntry, buil
         "",
         "결제는 빼요",
         "",
+        "- 동의: 범위 / 일정",
         "- 반대: 결제 (이유: 범위)",
+        "- 바꾼 점: 결제 제외 / 알림 제외",
         "",
         "## 1번째 주고받기 - Codex",
         "",
@@ -757,11 +737,27 @@ const checkDebateLines = ({ describeStepLine, createStory, applyStoryEntry, buil
     ].join("\n");
 
     assert.deepEqual(parseDebateTranscript(record), [
-        { provider: "claude", message: "결제는 빼요", notes: ["반대: 결제 (이유: 범위)"] },
+        {
+            provider: "claude",
+            message: "결제는 빼요",
+            notes: [
+                { kind: "agree", text: "범위" },
+                { kind: "agree", text: "일정" },
+                { kind: "disagree", text: "결제 (이유: 범위)" },
+                { kind: "change", text: "결제 제외" },
+                { kind: "change", text: "알림 제외" }
+            ]
+        },
         { provider: "codex", message: "넣어요", notes: [] }
     ]);
     assert.deepEqual(parseDebateTranscript("## 3번째 주고받기 - Gemini\n\n안녕"), []);
     assert.deepEqual(parseDebateTranscript(undefined), []);
+
+    const at = new Date(2026, 9, 31, 15, 42).getTime();
+
+    assert.equal(formatChatTime(at), "오후 3:42");
+    assert.equal(formatChatDate(at), "2026년 10월 31일 토요일");
+    assert.deepEqual([formatChatTime(0), formatChatDate(0)], ["", ""], "시각을 모르는 발언은 시각을 보이지 않는다");
 };
 
 const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, getReasonText, describeFinish, describePastRun, getLineKind, getRunPhase }) => {
@@ -773,7 +769,9 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
     assert.equal(describeStepLine("    [단계] 기획 시작"), "", "들여 쓴 Claude 출력은 단계 줄이 아니다");
 
     // 여러 AI 브레인스토밍 줄도 이야기와 지난 실행 대화에 한 문장으로 남는다.
-    assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 받는 중"), "Codex에게 기획 안을 따로 받고 있어요.");
+    assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 받는 중"), "Codex가 기획 안을 따로 쓰고 있어요. 끝나면 Claude가 시작해요.");
+    assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 진행 3분째 (최대 30분): 명령 5번 실행"), "", "경과 줄은 카드만 보여 준다");
+    assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 진행 2분째 (최대 30분): 마지막으로 안 받음"), "", "활동 글이 상태 줄을 흉내 내도 경과 줄이다");
     assert.equal(describeStepLine("[브레인스토밍] Codex 디자인 안 건너뜀: usage limit reached"), "Codex의 디자인 안은 건너뛸게요. (usage limit reached)");
     assert.equal(describeStepLine("[브레인스토밍] Codex 기획 검토 받음"), "Codex의 기획 검토를 받았어요.");
     assert.equal(describeStepLine("[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다."), "외부 서비스로 보내기가 꺼져 있어서 다른 AI의 안은 받지 않을게요.");
@@ -841,7 +839,6 @@ const checkViewFormat = () => {
     checkViewAndGreeting(viewFormat);
     checkFinishText(viewFormat);
     checkTrack(viewFormat);
-    checkPreview(viewFormat);
     checkStory(viewFormat);
     checkPastRuns(viewFormat);
 

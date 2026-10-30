@@ -168,6 +168,7 @@ const RunView = () => {
 
         if (view.key !== current.previous.key) {
             current.reveal?.stop();
+            line.scrollTop = 0;
             current.reveal = startReveal(line);
         } else if (view.text !== current.previous.text) {
             current.reveal?.stop();

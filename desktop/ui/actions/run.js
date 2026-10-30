@@ -6,10 +6,9 @@ import { getSettings } from "../stores/appStore.js";
 import { composer, useComposerStore } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { getRunState, useRunStore } from "../stores/runStore.js";
-import { useRunsStore } from "../stores/runsStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { settings } from "./settings.js";
-import { loadBuildPhase } from "./runs.js";
+import { loadBuildPhase, setBuildPhase } from "./runs.js";
 import { applyProjectSwitch, confirmGitInit } from "./tabs.js";
 
 const STOP_CONFIRM_MS = 4000;
@@ -149,7 +148,7 @@ const approvePhase = async (pick, resolutions) => {
     ui.showFailure(result);
 
     if (result.status === STATUS_OK) {
-        useRunsStore.setState({ buildPhase: result.data.phase });
+        setBuildPhase(getSettings().projectDir, result.data.phase);
     }
 
     return result.status === STATUS_OK;

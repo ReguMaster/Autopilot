@@ -20,7 +20,11 @@ const {
     ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
-    BRAINSTORM_PHASES
+    BRAINSTORM_PHASES,
+    CODEX_MODEL_PATTERN,
+    CODEX_EFFORT_LEVELS,
+    DEBATE_DEFAULT_TURNS,
+    DEBATE_TURNS_LIMIT
 } = require("./engineArgs.cjs");
 
 // 저장 형식이 바뀔 때마다 올린다. 버전 키가 없는 옛 파일은 0으로 본다.
@@ -38,6 +42,10 @@ const LOG_RETENTION_CHOICES = [7, 14, 30, 90, 180];
 const SLEEP_BLOCK_CHOICES = ["always", "plugged", "never"];
 // 화면 테마. system은 운영체제 설정을 따른다(메인이 nativeTheme.themeSource로 정한다).
 const THEME_CHOICES = ["system", "light", "dark"];
+// 왼쪽 레일 너비(px). 끌어서 바꾸고 화면 크기에 따라 달라 이 PC에만 남긴다. ui/lib/constants.js의 RAIL_WIDTH와 같다.
+const MIN_RAIL_WIDTH = 200;
+const MAX_RAIL_WIDTH = 360;
+const DEFAULT_RAIL_WIDTH = 224;
 // 저장하는 종료 시각은 HH:mm뿐이다. 날짜를 붙인 값은 다음 시작에 이미 지났을 수 있어 기억하지 않는다(autopilotIpc.launchRun).
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RECOVERY_NOTICES = {
@@ -66,7 +74,10 @@ const OVERRIDABLE_KEYS = [
     "securityOnFail",
     "brainstorm",
     "crossReview",
-    "debate"
+    "debate",
+    "debateTurns",
+    "codexModel",
+    "codexEffort"
 ];
 const SCHEDULES_KEY = "schedules";
 // 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
@@ -76,9 +87,9 @@ const LINKED_REPOS_KEY = "linkedRepos";
 const LOCAL_PROJECT_KEYS = [ACCOUNT_KEY, LINKED_REPOS_KEY];
 const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
-const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme"];
+const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme", "railWidth"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
-const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin", "createParentDir"];
+const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin", "createParentDir", "railWidth"];
 // PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
 const NON_PORTABLE_KEYS = [...MACHINE_KEYS, "postRunAction"];
 const EXPORT_APP = "AutoPilot";
@@ -110,6 +121,11 @@ const DEFAULT_SETTINGS = {
     brainstorm: [],
     crossReview: false,
     debate: [],
+    // 협의에서 주고받는 최대 횟수. 둘 다 더 고칠 것이 없으면 그 전에 끝난다.
+    debateTurns: DEBATE_DEFAULT_TURNS,
+    // Codex가 쓸 model·reasoning effort. 비우면 Codex 설정(~/.codex/config.toml)을 따른다.
+    codexModel: "",
+    codexEffort: "",
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -126,7 +142,8 @@ const DEFAULT_SETTINGS = {
     checkUpdates: true,
     sleepBlock: "always",
     postRunAction: "none",
-    theme: "system"
+    theme: "system",
+    railWidth: DEFAULT_RAIL_WIDTH
 };
 
 // modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
@@ -164,6 +181,9 @@ const SETTING_VALIDATORS = {
     crossReview: (value) => typeof value === "boolean",
     // 협의로 돌릴 단계. brainstorm에 없는 단계는 엔진 인자를 만들 때 빠진다(engineArgs).
     debate: (value) => isChoiceList(value, BRAINSTORM_PHASES),
+    debateTurns: (value) => Number.isInteger(value) && value >= 1 && value <= DEBATE_TURNS_LIMIT,
+    codexModel: (value) => value === "" || (typeof value === "string" && CODEX_MODEL_PATTERN.test(value)),
+    codexEffort: (value) => value === "" || CODEX_EFFORT_LEVELS.includes(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
     claudeDir: (value) => typeof value === "string",
@@ -179,7 +199,8 @@ const SETTING_VALIDATORS = {
     checkUpdates: (value) => typeof value === "boolean",
     sleepBlock: (value) => SLEEP_BLOCK_CHOICES.includes(value),
     postRunAction: (value) => POST_RUN_ACTIONS.includes(value),
-    theme: (value) => THEME_CHOICES.includes(value)
+    theme: (value) => THEME_CHOICES.includes(value),
+    railWidth: (value) => Number.isInteger(value) && value >= MIN_RAIL_WIDTH && value <= MAX_RAIL_WIDTH
 };
 
 // MIGRATIONS[n]은 버전 n의 저장 내용을 n+1 형식으로 바꾼다. 키 이름이나 의미를 바꿀 때 여기에 더한다. context.writeProject는 프로젝트 파일에 쓰는 함수다.
@@ -581,6 +602,9 @@ module.exports = {
     EXPORT_VERSION,
     POLICY_CHOICES,
     SLEEP_BLOCK_CHOICES,
+    MIN_RAIL_WIDTH,
+    MAX_RAIL_WIDTH,
+    DEFAULT_RAIL_WIDTH,
     EXTEND_LIMIT_CHOICES,
     LOG_RETENTION_CHOICES,
     END_TIME_PATTERN,

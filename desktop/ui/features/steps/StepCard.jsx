@@ -1,32 +1,42 @@
-import { Icon } from "../../components/Icon.jsx";
 import { PHASE_LABELS } from "../../lib/constants.js";
-import { cx } from "../../lib/cx.js";
 import "./StepCard.css";
 
-const NODE_SYMBOLS = { done: "icon-check", hold: "icon-pause" };
-
-// 신규 개발 단계 카드. cells는 [{ phase, state: done|active|hold|next|waiting, detail }]이고 위 막대는 마친 단계의 비율이다.
-// settings({ phase: 요소 })를 주면 칸 아래에 그 단계의 설정을 펼친다(시작 전). 실행 중에는 settings 없이 한 줄로 쓴다.
+// 신규 개발 단계 막대. cells는 [{ phase, state: done|active|hold|next|waiting, detail }]이고 단계마다 4px 막대와 한 줄 라벨이다.
+// settings({ phase: 요소 })를 주면 막대 아래에 그 단계의 설정을 단계별 묶음으로 한 줄(넘치면 줄바꿈)에 둔다(시작 전). 실행 중에는 settings 없이 막대만 쓴다.
 const StepCard = ({ id, cells, settings = null, label = "신규 개발 단계" }) => {
-    const doneCount = cells.filter((cell) => cell.state === "done").length;
+    const settingCells = settings ? cells.filter((cell) => settings[cell.phase]) : [];
 
     return (
-        <ol id={id} className={cx("step-card", settings && "expanded")} aria-label={label} style={{ "--step-progress": `${(doneCount / cells.length) * 100}%` }}>
-            {cells.map((cell, index) => (
-                <li key={cell.phase} className="step" data-phase={cell.phase} data-state={cell.state} aria-current={["active", "hold"].includes(cell.state) ? "step" : undefined}>
-                    <div className="step-top">
-                        <span className="step-node" aria-hidden="true">
-                            {NODE_SYMBOLS[cell.state] ? <Icon symbol={NODE_SYMBOLS[cell.state]} /> : index + 1}
+        <div id={id} className="steps">
+            <ol className="step-card" aria-label={label}>
+                {cells.map((cell) => (
+                    <li
+                        key={cell.phase}
+                        className="step"
+                        data-phase={cell.phase}
+                        data-state={cell.state}
+                        aria-current={["active", "hold"].includes(cell.state) ? "step" : undefined}
+                        title={`${PHASE_LABELS[cell.phase]}: ${cell.detail}`}
+                    >
+                        <span className="step-seg" aria-hidden="true"></span>
+                        <span className="step-top">
+                            <b className="step-label">{PHASE_LABELS[cell.phase]}</b>
+                            <span className="step-detail">{cell.detail}</span>
                         </span>
-                        <span className="step-label">{PHASE_LABELS[cell.phase]}</span>
-                    </div>
-                    <p className="step-detail" title={cell.detail}>
-                        {cell.detail}
-                    </p>
-                    {settings?.[cell.phase] ? <div className="step-set">{settings[cell.phase]}</div> : null}
-                </li>
-            ))}
-        </ol>
+                    </li>
+                ))}
+            </ol>
+            {settingCells.length ? (
+                <div className="step-settings" role="group" aria-label="단계 설정">
+                    {settingCells.map((cell) => (
+                        <div key={cell.phase} className="step-group" data-phase={cell.phase}>
+                            <b className="step-group-name">{PHASE_LABELS[cell.phase]}</b>
+                            {settings[cell.phase]}
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+        </div>
     );
 };
 

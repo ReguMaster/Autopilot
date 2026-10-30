@@ -52,6 +52,9 @@ const DEFAULT_SETTINGS = {
     securityOnFail: "retry:3",
     brainstorm: [],
     crossReview: false,
+    debateTurns: 8,
+    codexModel: "",
+    codexEffort: "",
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -77,7 +80,10 @@ const OVERRIDABLE_DEFAULTS = {
     qaOnFail: DEFAULT_SETTINGS.qaOnFail,
     securityOnFail: DEFAULT_SETTINGS.securityOnFail,
     brainstorm: DEFAULT_SETTINGS.brainstorm,
-    crossReview: DEFAULT_SETTINGS.crossReview
+    crossReview: DEFAULT_SETTINGS.crossReview,
+    debateTurns: DEFAULT_SETTINGS.debateTurns,
+    codexModel: DEFAULT_SETTINGS.codexModel,
+    codexEffort: DEFAULT_SETTINGS.codexEffort
 };
 const DEFAULT_ACCOUNTS = {
     accounts: [{ id: "default", label: "기본 계정", shared: false }],
@@ -268,7 +274,7 @@ const api = {
                 : null
         })
     ),
-    getProviders: respond("getProviders", async () => ok(model.providers ?? { codex: { available: true, reason: "" } })),
+    getProviders: respond("getProviders", async () => ok(model.providers ?? { codex: { available: true, reason: "", models: [] } })),
     readPhaseDoc: respond("readPhaseDoc", async (phase) => (model.phaseDocs?.[phase] ? ok(model.phaseDocs[phase]) : fail("NO_DOC", "산출물 문서를 아직 찾지 못했어요."))),
     openPhaseDoc: respond("openPhaseDoc", async () => ok({})),
     initGitRepo: respond("initGitRepo", async () => ok(getSettingsView())),
@@ -288,6 +294,14 @@ const api = {
 
         return ok({});
     }),
+    // 추천 예시는 model.examplesDelay(ms) 뒤에 model.examples를 주거나 model.examplesError로 실패한다.
+    suggestExamples: respond(
+        "suggestExamples",
+        () =>
+            new Promise((resolve) =>
+                setTimeout(() => resolve(model.examplesError ? fail(model.examplesError.code, model.examplesError.msg) : ok({ examples: model.examples ?? [] })), model.examplesDelay ?? 300)
+            )
+    ),
     createProject: respond("createProject", async () => ok({ ...getSettingsView(), tabs: { active: model.settings.projectDir, tabs: model.tabs } })),
     openReport: respond("openReport", async () => ok({})),
     listRuns: respond("listRuns", async (limit) => ok({ runs: model.runs.slice(0, limit) })),

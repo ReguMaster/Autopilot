@@ -1,4 +1,4 @@
-const { PROJECT, runningState } = require("./data.cjs");
+const { ACCOUNTS, PROJECT, runningState } = require("./data.cjs");
 
 const SECOND = "E:/Workspaces/Demo/autopilot-landing";
 const THIRD = "E:/Workspaces/Demo/a-project-with-a-rather-long-folder-name";
@@ -19,6 +19,42 @@ const SCENES = [
             await t.shot("hover-active", "#rail");
             await t.hover(".proj:nth-child(3)");
             await t.shot("hover-idle", "#rail");
+        }
+    },
+    {
+        name: "rail-resize",
+        init: { settings: { projectDir: PROJECT }, tabs: THREE_TABS, accounts: ACCOUNTS },
+        run: async (t) => {
+            const readWidth = () => t.eval(`getComputedStyle(document.getElementById("rail")).width`);
+
+            await t.shot("rail", "#rail");
+            await t.hover("#new-project-toggle");
+            await t.shot("hover-new", "#rail");
+            await t.hover("#tab-add");
+            await t.shot("hover-open", "#rail");
+
+            await t.clearCalls();
+            await t.drag(".rail-resizer", 80);
+            await t.note("dragged", await readWidth());
+            await t.note("saved", JSON.stringify((await t.calls()).filter((call) => call[0] === "setPreferences")));
+            await t.shot("wide", "#rail");
+
+            await t.drag(".rail-resizer", -400);
+            await t.note("clamped-min", await readWidth());
+            await t.drag(".rail-resizer", 400);
+            await t.note("clamped-max", await readWidth());
+
+            await t.focus(".rail-resizer");
+            await t.press("Home");
+            await t.note("home", await readWidth());
+            await t.press("Right");
+            await t.note("right", await readWidth());
+
+            await t.eval(`document.querySelector(".rail-resizer").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))`);
+            await t.note("reset", await readWidth());
+
+            await t.click("#new-project-toggle");
+            await t.shot("creating", "#rail");
         }
     },
     {

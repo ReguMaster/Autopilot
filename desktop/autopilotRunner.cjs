@@ -25,6 +25,7 @@ const STEP_STATUSES = { 시작: "running", 완료: "done", "확인 대기": "awa
 // 여러 AI 브레인스토밍 줄. 제공자 이름은 엔진 config.js의 PROVIDER_LABELS, 후보 키는 PROVIDER_CLAUDE·BRAINSTORM_PROVIDERS와 같다.
 const BRAINSTORM_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) (받는 중|받음|건너뜀)(?:: (.+))?$/;
 const BRAINSTORM_BLOCKED_PATTERN = /^\[브레인스토밍\] 외부 서비스로 보내기를 허용하지 않아/;
+const BRAINSTORM_PROGRESS_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) 진행 (\d+)분째 \(최대 (\d+)분\)(?:: (.+))?$/;
 const BRAINSTORM_STATUSES = { "받는 중": "receiving", 받음: "received", 건너뜀: "skipped" };
 const PROPOSAL_PROVIDERS = ["claude", "codex"];
 // Claude·Codex 협의 줄(엔진 runDebate). 발언은 엔진이 한 줄로 펴서 줄여 쓴다. 실행 화면은 마지막 몇 마디만 보여 준다.
@@ -186,8 +187,8 @@ const applyRound = (state, round, text, isReplay) => {
     state.phase = `${round}회차 ${text}`;
 };
 
-// Claude·Codex 협의의 진행. 시작 줄이 대화를 열고, 발언은 쌓이며, 끝 줄이 합의·쟁점 수를, 건너뜀 줄이 이유를 남긴다. 협의 줄이면 true다.
-const applyDebateLine = (state, line) => {
+// Claude·Codex 협의의 진행. 발언의 at은 받은 시각이고 로그를 다시 읽는 중이면 알 수 없어 0이다. 시작 줄이 대화를 열고, 발언은 쌓이며, 끝 줄이 합의·쟁점 수를, 건너뜀 줄이 이유를 남긴다. 협의 줄이면 true다.
+const applyDebateLine = (state, line, isReplay) => {
     const start = line.match(DEBATE_START_PATTERN);
 
     if (start) {
@@ -199,7 +200,7 @@ const applyDebateLine = (state, line) => {
     const turn = line.match(DEBATE_TURN_PATTERN);
 
     if (turn && state.debate) {
-        state.debate.turns = [...state.debate.turns, { provider: turn[1].toLowerCase(), message: turn[2] }].slice(-MAX_DEBATE_TURNS);
+        state.debate.turns = [...state.debate.turns, { provider: turn[1].toLowerCase(), message: turn[2], at: isReplay ? 0 : Date.now() }].slice(-MAX_DEBATE_TURNS);
 
         return true;
     }
@@ -279,6 +280,24 @@ const parseLine = (state, line, isReplay = false) => {
         return;
     }
 
+    const brainstormProgress = line.match(BRAINSTORM_PROGRESS_PATTERN);
+
+    // 받는 동안 엔진이 주기적으로 남기는 경과 줄. 활동은 Codex 출력이라 표시에만 쓴다.
+    if (brainstormProgress) {
+        state.brainstorm = {
+            provider: brainstormProgress[1],
+            phaseLabel: brainstormProgress[2],
+            kind: brainstormProgress[3] === "안" ? "proposal" : "review",
+            status: "receiving",
+            reason: "",
+            elapsedMinutes: Number(brainstormProgress[4]),
+            limitMinutes: Number(brainstormProgress[5]),
+            activity: brainstormProgress[6] || ""
+        };
+
+        return;
+    }
+
     const brainstorm = line.match(BRAINSTORM_PATTERN);
 
     // 다른 AI의 안 · 검토를 받는 상태. 실행 화면의 카드가 마지막 소식만 보여준다.
@@ -294,7 +313,7 @@ const parseLine = (state, line, isReplay = false) => {
         return;
     }
 
-    if (applyDebateLine(state, line)) {
+    if (applyDebateLine(state, line, isReplay)) {
         return;
     }
 

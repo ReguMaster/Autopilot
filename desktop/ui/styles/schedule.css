@@ -245,7 +245,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    *:not(.caret, .status-dot, .swap, .appear, .modal, .ring),
+    *:not(.caret, .status-dot, .swap, .appear, .modal, .ring, .debate-chat, .debate-turn),
     *::before,
     *::after {
         animation: none !important;

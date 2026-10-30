@@ -135,8 +135,8 @@ const checkModalClosingLayout = () => {
     assert.match(base, /flex-direction:\s*column/, "모달의 세로 쌓기는 .modal 기본 규칙에 있어야 닫히는 동안에도 유지된다");
 };
 
-// 레일의 프로젝트 목록: 보는 프로젝트만 탭 순서에 들고 자세한 상태 줄을 보이며, 실행 중인 프로젝트는 도는 고리가 있고 닫을 수 없다.
-const checkProjectListMarkup = ({ renderProjectList }) => {
+// 레일의 프로젝트 목록: 보는 프로젝트만 탭 순서에 들고 자세한 상태 줄을 보이며, 실행 중이거나 확인을 기다리는 프로젝트는 타일 모서리에 점이 있고 실행 중인 프로젝트는 닫을 수 없다. 단계는 다섯 칸 눈금이다.
+const checkProjectListMarkup = ({ renderProjectList, getTabTicks }) => {
     assert.doesNotMatch(renderProjectList({ tabs: [], active: "" }), /role="tab"/, "열린 프로젝트가 없으면 항목이 없다");
 
     const html = renderProjectList({
@@ -153,7 +153,9 @@ const checkProjectListMarkup = ({ renderProjectList }) => {
     assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
     assert.equal((html.match(/aria-selected="true"/g) ?? []).length, 1, "보는 프로젝트는 하나다");
     assert.equal((html.match(/tabindex="0"/g) ?? []).length, 1, "탭 순서에는 보는 프로젝트만 든다(방향키로 옮긴다)");
-    assert.equal((html.match(/class="ring"/g) ?? []).length, 1, "실행 중인 프로젝트에만 도는 고리가 있다");
+    assert.equal((html.match(/class="proj-badge"/g) ?? []).length, 2, "실행 중인 프로젝트와 확인을 기다리는 프로젝트에 점이 있다");
+    assert.doesNotMatch(html, /class="ring"/);
+    assert.doesNotMatch(html, /proj-ticks/, "신규 개발 단계를 모르면 눈금이 없다");
     assert.match(html, /class="proj-name rail-label">Work\/app</, "폴더 이름이 같으면 상위 폴더까지 보인다");
     assert.match(html, /class="proj-name rail-label">Personal\/app</);
     assert.match(html, /data-tone="warn"[^]*class="proj-note rail-label">기획 확인을 기다려요</, "보는 프로젝트는 받은 상태 줄을 보인다");
@@ -161,9 +163,37 @@ const checkProjectListMarkup = ({ renderProjectList }) => {
     assert.match(html, /aria-label="Personal\/app 닫기"[^>]*disabled/, "실행 중인 프로젝트는 닫기 버튼이 잠긴다");
     assert.equal((html.match(/disabled/g) ?? []).length, 1);
     assert.match(html, /title="E:\/Work\/app"/, "마우스를 올리면 전체 경로가 보인다");
+
+    // 눈금: 실행 중이면 지금 단계, 쉬는 중이면 확인 대기·마친 단계까지. 다른 프로젝트는 탭 요약의 단계와 기억해 둔 단계 상태로 그린다.
+    const ticks = (options) => getTabTicks({ status: "idle", mode: "", step: null, buildPhase: null, ...options });
+
+    assert.deepEqual(ticks({ status: "running", mode: "build", step: { phase: "build", status: "running" } }), ["done", "done", "active", "", ""]);
+    assert.deepEqual(ticks({ status: "running", mode: "build", step: { phase: "plan" } }), ["active", "", "", "", ""]);
+    assert.deepEqual(ticks({ status: "stopping", mode: "build", step: { phase: "qa", status: "running" } }), ["done", "done", "done", "stop", ""]);
+    assert.deepEqual(ticks({ status: "running", mode: "build", step: { phase: "plan", status: "awaiting" } }), ["hold", "", "", "", ""]);
+    assert.deepEqual(ticks({ buildPhase: { phase: "design", awaiting: "plan" } }), ["hold", "", "", "", ""]);
+    assert.deepEqual(ticks({ buildPhase: { phase: "build", awaiting: null } }), ["done", "done", "", "", ""]);
+    assert.deepEqual(ticks({ buildPhase: { phase: "done", awaiting: null } }), ["done", "done", "done", "done", "done"]);
+    assert.equal(ticks({ status: "running", mode: "", step: null }), null, "유지 보수 실행에는 단계 눈금이 없다");
+    assert.equal(ticks({ buildPhase: { phase: "plan", awaiting: null } }), null, "아직 기획도 시작하지 않았다");
+    assert.equal(ticks({}), null);
+
+    const withTicks = renderProjectList({
+        active: "E:/Work/app",
+        activeNote: { text: "신규 개발, 개발 단계", tone: "run" },
+        activeTicks: ["done", "done", "active", "", ""],
+        phases: { "E:/Work/api": { phase: "design", awaiting: "plan", qaRetries: 0 } },
+        tabs: [
+            { projectDir: "E:/Work/app", name: "app", status: "running", mode: "build", step: "build" },
+            { projectDir: "E:/Work/api", name: "api", status: "idle", mode: "", step: "" }
+        ]
+    });
+
+    assert.match(withTicks, /<span class="proj-ticks" aria-hidden="true"><i data-s="done"><\/i><i data-s="done"><\/i><i data-s="active"><\/i><i><\/i><i><\/i><\/span>/);
+    assert.match(withTicks, /기획 확인을 기다려요<\/span><span class="proj-ticks" aria-hidden="true"><i data-s="hold"><\/i><i><\/i><i><\/i><i><\/i><i><\/i>/, "다른 프로젝트도 확인 대기를 알린다");
 };
 
-// 신규 개발 단계 카드: 칸의 상태와 번호·체크·멈춤, 마친 비율의 막대, 펼친 카드의 설정
+// 신규 개발 단계 막대: 단계마다 막대와 라벨, 상태, 막대 아래의 설정 묶음
 const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBuildActionLabel }) => {
     const fresh = getReadySteps(null);
 
@@ -209,17 +239,62 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
 
     const html = renderStepCard({ id: "steps", cells: getReadySteps({ phase: "design", awaiting: "plan", qaRetries: 0 }), settings: { design: "설정" } });
 
-    assert.match(html, /class="step-card expanded"/);
-    assert.match(html, /--step-progress:0%/);
-    assert.match(html, /data-phase="plan" data-state="hold" aria-current="step"[^]*href="#icon-pause"[^]*확인을 기다려요/);
-    assert.match(html, /data-phase="design"[^]*<span class="step-node" aria-hidden="true">2<\/span>[^]*<div class="step-set">설정<\/div>/);
-    assert.equal((html.match(/step-set/g) ?? []).length, 1, "설정은 준 단계에만 펼친다");
+    assert.match(html, /<div id="steps" class="steps"><ol class="step-card" aria-label="신규 개발 단계">/);
+    assert.match(
+        html,
+        /data-phase="plan" data-state="hold" aria-current="step" title="기획: 확인을 기다려요"><span class="step-seg" aria-hidden="true"><\/span><span class="step-top"><b class="step-label">기획<\/b><span class="step-detail">확인을 기다려요<\/span>/
+    );
+    assert.match(html, /data-phase="design" data-state="waiting"/);
+    assert.equal((html.match(/class="step-seg"/g) ?? []).length, 5, "단계마다 막대가 하나다");
+    // 설정은 막대 아래에 준 단계의 묶음으로만 붙는다.
+    assert.match(html, /<\/ol><div class="step-settings" role="group" aria-label="단계 설정"><div class="step-group" data-phase="design"><b class="step-group-name">디자인<\/b>설정<\/div><\/div>/);
+    assert.equal((html.match(/step-group"/g) ?? []).length, 1, "설정은 준 단계에만 둔다");
 
     const compact = renderStepCard({ cells: getReadySteps({ phase: "build", awaiting: null, qaRetries: 0 }) });
 
-    assert.match(compact, /class="step-card"/);
-    assert.match(compact, /--step-progress:40%/);
-    assert.equal((compact.match(/href="#icon-check"/g) ?? []).length, 2);
+    assert.match(compact, /<div class="steps"><ol class="step-card"/);
+    assert.doesNotMatch(compact, /step-settings/);
+    assert.equal((compact.match(/data-state="done"/g) ?? []).length, 2);
+};
+
+// Codex 선택 상자: 값이 비면 Codex 설정을 따르는 기본 항목이 맨 앞에 있고, 저장된 모델이 목록에 없어도 고른 값은 보인다.
+const checkCodexOptions = ({ getCodexModelOptions, CODEX_EFFORT_OPTIONS, getDebateTurnOptions }) => {
+    // 협의 최대 횟수: 자주 쓰는 값이 순서대로 있고, 목록에 없는 저장값(가져온 설정)도 제자리에 보인다.
+    assert.deepEqual(
+        getDebateTurnOptions(8).map((option) => option.value),
+        [3, 5, 8, 10, 15, 20]
+    );
+    assert.deepEqual(
+        getDebateTurnOptions(12).map((option) => option.value),
+        [3, 5, 8, 10, 12, 15, 20]
+    );
+    assert.equal(getDebateTurnOptions(12).find((option) => option.value === 12).label, "최대 12번");
+
+    const models = [
+        { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
+        { id: "gpt-6-luna", label: "GPT-6-Luna" }
+    ];
+
+    assert.deepEqual(
+        getCodexModelOptions(models, "gpt-6-luna").map((option) => option.value),
+        ["", "gpt-6.1-sol", "gpt-6-luna"]
+    );
+    assert.deepEqual(
+        getCodexModelOptions([], "").map((option) => option.value),
+        [""],
+        "목록을 못 읽어도 기본 항목은 있다"
+    );
+    assert.deepEqual(
+        getCodexModelOptions(models, "gpt-9")
+            .map((option) => [option.value, option.label])
+            .at(-1),
+        ["gpt-9", "gpt-9"],
+        "목록에 없는 저장값도 그대로 보인다"
+    );
+    assert.deepEqual(
+        CODEX_EFFORT_OPTIONS.map((option) => option.value),
+        ["", "low", "medium", "high", "xhigh", "max"]
+    );
 };
 
 // 실행 중 단계 카드: [단계] 줄이 지금 단계를 정하고, 오기 전에는 시작할 단계가 지금이다. 확인받기로 둔 지난 단계는 "확인함"이다.
@@ -258,12 +333,58 @@ const checkRunSteps = ({ getRunSteps, getPhaseDocs, getRevisionTasks, renderDocP
     assert.equal(getRevisionTasks("주간 보기", ""), "수정 요청:\n주간 보기");
 
     // 미리보기는 글자로만 그린다. 문서 속 HTML은 태그가 아니라 글자다.
-    const html = renderDocPreview({ doc: { kind: "file", path: "docs/autopilot/plan.md", text: "# 기획\n- `plan.md` 보기\n<img src=x onerror=alert(1)>", isPartial: true } });
+    const html = renderDocPreview({ doc: { kind: "file", path: "docs/autopilot/plan.md", text: "# 기획\n\n- `plan.md` 보기\n\n<img src=x onerror=alert(1)>\n\n[링크](http://x.y)", isPartial: true } });
 
     assert.match(html, /<h3[^>]*>기획<\/h3>/);
     assert.match(html, /<li><code>plan\.md<\/code> 보기<\/li>/);
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
-    assert.doesNotMatch(html, /<img/);
+    assert.doesNotMatch(html, /<img|<a[ >]|href/);
+    assert.match(html, /<span class="md-link">링크<\/span>/);
+    assert.doesNotMatch(html, /doc-fold-all/, "제목이 하나면 접는 칸이 없다");
+
+    // 마크다운: 번호 목록은 번호를, 중첩 목록은 들여쓰기를, 표·인용·체크 목록·굵게·구분선을 그대로 보인다.
+    const plan = [
+        "# 기획서",
+        "",
+        "## 1. 범위",
+        "",
+        "3. **굵은** 항목",
+        "   - 중첩 하나",
+        "   - 중첩 둘",
+        "4. 다음 항목",
+        "",
+        "> 인용은 따로 그려요",
+        "",
+        "| 화면 | 설명 |",
+        "| :-- | --: |",
+        "| 홈 | **첫** 화면 |",
+        "",
+        "- [x] 끝낸 일",
+        "- [ ] 남은 일",
+        "",
+        "---",
+        "",
+        "## 2. 화면",
+        "",
+        "```",
+        "| 코드 | 안 |",
+        "```"
+    ].join("\n");
+    const markdown = renderDocPreview({ doc: { kind: "file", path: "docs/autopilot/plan.md", text: plan } });
+
+    assert.match(markdown, /<ol start="3"><li><strong>굵은<\/strong> 항목<ul><li>중첩 하나<\/li><li>중첩 둘<\/li><\/ul><\/li><li>다음 항목<\/li><\/ol>/);
+    assert.match(markdown, /<blockquote><p>인용은 따로 그려요<\/p><\/blockquote>/);
+    assert.match(markdown, /<th data-align="left">화면<\/th><th data-align="right">설명<\/th>/);
+    assert.match(markdown, /<td data-align="left">홈<\/td><td data-align="right"><strong>첫<\/strong> 화면<\/td>/);
+    assert.match(markdown, /<li class="md-task"><span class="md-check" role="img" aria-label="완료" data-checked=""><\/span>끝낸 일<\/li>/);
+    assert.match(markdown, /<li class="md-task"><span class="md-check" role="img" aria-label="아직"><\/span>남은 일<\/li>/);
+    assert.match(markdown, /<hr\/>/);
+    assert.match(markdown, /<pre><code>\| 코드 \| 안 \|<\/code><\/pre>/);
+    // ## 제목이 둘이라 칸으로 나뉘어 접고 펼 수 있다. 첫 제목 앞의 # 기획서는 머리글이다.
+    assert.equal(markdown.match(/class="doc-section"/g).length, 2);
+    assert.match(markdown, /<button type="button" class="doc-section-head" aria-expanded="true">/);
+    assert.match(markdown, /모두 접기/);
+    assert.match(markdown, /<h3[^>]*>기획서<\/h3>/);
 
     const folder = renderDocPreview({ doc: { kind: "folder", path: "docs/autopilot/design", entries: ["index.html", "screens/"] } });
 
@@ -299,6 +420,7 @@ const checkUi = async () => {
     checkModalMarkup(ui);
     checkProjectListMarkup(ui);
     checkStepCard(ui);
+    checkCodexOptions(ui);
     checkRunSteps(ui);
     checkTagChips(ui);
     checkModalClosingLayout();

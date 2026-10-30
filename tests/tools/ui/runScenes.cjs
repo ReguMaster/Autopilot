@@ -139,6 +139,22 @@ const createTools = (win, scene, sceneDir, report) => {
             win.webContents.sendInputEvent({ type: "mouseUp", x: x, y: y, button: "left", clickCount: 1 });
             await wait(120);
         },
+        // 요소 가운데를 눌러 가로로 dx만큼 끌어다 놓는다(레일 너비 손잡이).
+        drag: async (selector, dx) => {
+            const { x, y } = await tools.point(selector);
+
+            win.webContents.sendInputEvent({ type: "mouseMove", x: x, y: y });
+            win.webContents.sendInputEvent({ type: "mouseDown", x: x, y: y, button: "left", clickCount: 1 });
+            await wait(80);
+
+            for (let step = 1; step <= 8; step++) {
+                win.webContents.sendInputEvent({ type: "mouseMove", x: x + Math.round((dx * step) / 8), y: y, button: "left", modifiers: ["leftButtonDown"] });
+                await wait(40);
+            }
+
+            win.webContents.sendInputEvent({ type: "mouseUp", x: x + dx, y: y, button: "left", clickCount: 1 });
+            await wait(250);
+        },
         // 확인 모달이 떠 있으면 확인을 누른다. 모달이 없는 옛 화면(기준)에서는 아무것도 하지 않아 두 화면이 같은 장면으로 이어진다.
         confirm: async () => {
             const selector = "dialog[open] .modal-foot .button:last-child";

@@ -114,10 +114,16 @@ const RUN_BUILD = { settings: BUILD.settings, tabs: getRunTabs(), state: buildRu
 const NARROW = [820, 700];
 
 // Claude · Codex 협의: 고르는 칸, 실행 중 대화, 합의안과 쟁점 고르기
+// at은 말을 받은 시각이다(말풍선 옆 시각). 마지막 말은 길어서 접혔다가 더 보기로 펴진다.
 const DEBATE_TURNS = [
-    { provider: "claude", message: "Codex 안의 한 화면 예약은 좋아요. 다만 결제를 처음부터 넣으면 범위가 커져서 이번엔 빼는 게 맞다고 봐요." },
-    { provider: "codex", message: "한 화면 예약에 동의해 줘서 고마워요. 노쇼가 많아서 예약금 결제는 처음부터 있어야 원장님이 써요." },
-    { provider: "claude", message: "노쇼 걱정은 맞아요. 결제 대신 전날 확인 문자를 넣으면 범위를 지키면서 노쇼를 줄일 수 있어요." }
+    { provider: "claude", at: new Date(2026, 9, 31, 10, 2).getTime(), message: "Codex 안의 한 화면 예약은 좋아요. 다만 결제를 처음부터 넣으면 범위가 커져서 이번엔 빼는 게 맞다고 봐요." },
+    { provider: "codex", at: new Date(2026, 9, 31, 10, 3).getTime(), message: "한 화면 예약에 동의해 줘서 고마워요. 노쇼가 많아서 예약금 결제는 처음부터 있어야 원장님이 써요." },
+    {
+        provider: "claude",
+        at: new Date(2026, 9, 31, 10, 4).getTime(),
+        message:
+            "노쇼 걱정은 맞아요. 결제 대신 **전날 확인 문자**를 넣으면 범위를 지키면서 노쇼를 줄일 수 있어요. 문자는 `D-1 18시`에 한 번만 보내고, 답장이 없으면 원장님 화면에 표시해서 직접 연락하게 해요. 예약금은 문자를 두 달 써 보고 노쇼가 그대로인지 확인한 뒤에 다시 이야기해요. 결제 연동은 심사와 수수료 때문에 일정이 길어지니 그때 넣어도 늦지 않아요. 지금은 화면 4개와 문자 하나로 끝내요."
+    }
 ];
 const DEBATE_DOC = {
     kind: "file",
@@ -198,6 +204,48 @@ const DEBATE_SCENES = [
         }
     },
     {
+        name: "run-build-debate-long",
+        init: {
+            ...RUN_BUILD,
+            state: buildRunState({
+                step: { phase: "plan", status: "running", qaRetries: 0 },
+                rounds: [round(1, { commits: [commit("5d0c2aa", 182, "[ap] 기획서 초안")] })],
+                round: 1,
+                phase: "1회차 완료",
+                debate: { phaseLabel: "기획", maxTurns: 3, status: "running", turns: DEBATE_TURNS, disputes: 0, reason: "" }
+            }),
+            model: { buildPhase: { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null } }
+        },
+        // 협의가 끝나도 합의안을 고치는 정리 회차가 도는 동안은 협의 대화가 남아, 그 회차의 긴 보고문이 대화와 한 열을 나눠 쓴다.
+        run: async (t) => {
+            const longReport = Array.from({ length: 18 }, (_, index) => `    ${index + 1}. 정해진 절을 채웠고 다른 AI의 안이 있는 docs/autopilot/proposals/는 열지 않고 따로 썼어요.`);
+
+            await t.log([
+                "[앱] 엔진을 시작했어요",
+                "[단계] 기획 시작",
+                "10:00:09 기획서의 기능 목록을 다 썼어요.",
+                "[협의] 기획 시작 (최대 3번)",
+                ...DEBATE_TURNS.map((turn) => `[협의] ${turn.provider === "claude" ? "Claude" : "Codex"}: ${turn.message}`)
+            ]);
+            await t.shot("turns");
+            await t.log(["[2회차] 시작 - 남은 시간 290분 (model opus, effort high)", "10:05:00 개발자님, 기획 단계를 마쳤어요. 기획서는 ai/autopilot 브랜치에 commit했어요(626ae9d).", ...longReport]);
+            await t.shot("synthesis");
+            await t.eval("document.querySelector('.now').scrollTop = 9999");
+            await t.shot("synthesis-scrolled");
+            await t.state({ debate: { phaseLabel: "기획", maxTurns: 3, status: "consensus", turns: DEBATE_TURNS, disputes: 0, reason: "" } });
+            await t.wait(150);
+            t.note(
+                "leaving",
+                await t.eval(
+                    "(() => { const chat = document.querySelector('#debate-chat'); return JSON.stringify({ isLeaving: chat?.classList.contains('is-leaving'), opacity: chat && getComputedStyle(chat).opacity, anim: chat?.getAnimations().map((a) => a.animationName + '/' + a.playState + '/' + Math.round(a.currentTime)) }); })()"
+                )
+            );
+            await t.wait(600);
+            t.note("removed", await t.eval("!document.querySelector('#debate-chat')"));
+            await t.shot("after-debate");
+        }
+    },
+    {
         name: "approval-plan-debate",
         init: {
             ...BUILD,
@@ -210,7 +258,7 @@ const DEBATE_SCENES = [
             await t.shot("approval");
             await t.click('.dispute[data-dispute="d1"] .dispute-option[data-provider="claude"]');
             await t.click('.dispute[data-dispute="d2"] .dispute-option[data-provider="codex"]');
-            await t.click("#debate-log summary");
+            await t.click(".debate-tabs .seg-option:nth-child(2)");
             await t.wait(300);
             await t.shot("chosen");
             await t.click("#approval-approve");
@@ -293,6 +341,31 @@ const BUILD_RUN_SCENES = [
                 "10:00:09 기획서의 기능 목록을 쓰고 있어요."
             ]);
             await t.shot("run");
+            await t.shot("card", "#run-card");
+        }
+    },
+    {
+        name: "run-build-brainstorm-progress",
+        init: {
+            ...RUN_BUILD,
+            state: buildRunState({
+                step: { phase: "plan", status: "running", qaRetries: 0 },
+                phase: "Codex 기획 안 받는 중",
+                brainstorm: {
+                    provider: "Codex",
+                    phaseLabel: "기획",
+                    kind: "proposal",
+                    status: "receiving",
+                    reason: "",
+                    elapsedMinutes: 3,
+                    limitMinutes: 30,
+                    activity: "명령 5번 실행 · 저장소에는 brief와 실행 기록만 있고 구현 코드는 없어요."
+                }
+            }),
+            model: { buildPhase: { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null } }
+        },
+        run: async (t) => {
+            await t.log(["[앱] 엔진을 시작했어요", "[단계] 기획 시작", "[브레인스토밍] Codex 기획 안 받는 중"]);
             await t.shot("card", "#run-card");
         }
     },
@@ -523,6 +596,50 @@ const SCENES = [
             await t.wait(300);
             await t.shot("steps-design", "#build-steps");
             await t.note("modeOptions", await t.eval("JSON.stringify([...document.querySelectorAll('[data-cross-review]')].map((input) => input.dataset.crossReview))"));
+        }
+    },
+    {
+        // Codex를 켠 칸에만 모델·Effort 선택 상자가 보이고, 어느 칸에서 바꿔도 같은 값이다.
+        name: "ready-build-codex-settings",
+        init: {
+            ...BUILD,
+            settings: { ...BUILD.settings, brainstorm: ["plan", "design"], debate: ["plan"], allow: ["deps", "large", "send"] },
+            model: {
+                providers: {
+                    codex: {
+                        available: true,
+                        reason: "",
+                        models: [
+                            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
+                            { id: "gpt-6-astra", label: "GPT-6-Astra" },
+                            { id: "gpt-6-luna", label: "GPT-6-Luna" }
+                        ]
+                    }
+                }
+            }
+        },
+        run: async (t) => {
+            await t.shot("steps", "#build-steps");
+            await t.click('[aria-label="Codex 모델"]');
+            await t.wait(300);
+            await t.shot("model-list");
+            await t.press("Down");
+            await t.press("Down");
+            await t.press("Return");
+            await t.wait(300);
+            await t.click('[aria-label="Codex Effort"]');
+            await t.wait(300);
+            await t.shot("effort-list");
+            await t.press("Down");
+            await t.press("Down");
+            await t.press("Down");
+            await t.press("Return");
+            await t.wait(300);
+            await t.shot("steps-chosen", "#build-steps");
+            await t.note(
+                "codexTriggers",
+                await t.eval("JSON.stringify([...document.querySelectorAll('[aria-label^=\"Codex\"]')].map((el) => `${el.getAttribute('aria-label')}=${el.textContent.trim()}`))")
+            );
         }
     },
     {

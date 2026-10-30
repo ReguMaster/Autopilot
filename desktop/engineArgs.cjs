@@ -22,6 +22,12 @@ const DEFAULT_SECURITY_ON_FAIL = "retry:3";
 // 여러 AI 브레인스토밍을 켤 수 있는 단계와 Claude와 함께 안을 내는 제공자(엔진 config.js의 BRAINSTORM_PHASES·BRAINSTORM_PROVIDERS).
 const BRAINSTORM_PHASES = ["plan", "design"];
 const BRAINSTORM_PROVIDERS = ["codex"];
+// Codex에 넘기는 model(Codex가 쓰는 이름)과 reasoning effort. 엔진 config.js의 CODEX_MODEL_PATTERN·CODEX_EFFORT_LEVELS와 같고, 비우면 Codex 설정을 따른다.
+const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
+const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+// 협의에서 주고받는 최대 횟수(엔진 config.js의 DEBATE_DEFAULT_TURNS·DEBATE_TURNS_LIMIT와 같다). 기본값과 같으면 인자를 생략한다.
+const DEBATE_DEFAULT_TURNS = 8;
+const DEBATE_TURNS_LIMIT = 20;
 // 종료 시각은 HH:mm(다음에 오는 그 시각) 또는 yyyy-MM-dd HH:mm(그 날짜)이다. 날짜는 엔진의 MAX_RUN_DAYS(7일) 뒤까지다.
 const END_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2} )?([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_RUN_DAYS = 7;
@@ -71,7 +77,20 @@ const getEndTimeError = (endTime, now = Date.now()) => {
 };
 
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, brainstorm = [], crossReview = false, debate = [] }) => {
+const getBuildArgs = ({
+    mode,
+    gates = [],
+    allow = [],
+    designFormat,
+    qaOnFail,
+    securityOnFail,
+    brainstorm = [],
+    crossReview = false,
+    debate = [],
+    debateTurns = DEBATE_DEFAULT_TURNS,
+    codexModel = "",
+    codexEffort = ""
+}) => {
     if (mode !== "build") {
         return [];
     }
@@ -100,10 +119,24 @@ const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, se
 
     // 다른 AI에게 프로젝트 내용을 보내므로 보내기를 허용했을 때만 넘긴다. 제공자는 엔진 기본값(codex)이다.
     // 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
+    // Codex의 model·effort는 비어 있으면(Codex 설정을 따름) 생략한다.
     if (brainstorm.length && allow.includes("send")) {
         const hasCompare = brainstorm.some((phase) => !debate.includes(phase));
 
         args.push("--brainstorm", brainstorm.map((phase) => (debate.includes(phase) ? `${phase}:debate` : phase)).join(","), ...(crossReview && hasCompare ? ["--cross-review"] : []));
+
+        if (codexModel) {
+            args.push("--codex-model", codexModel);
+        }
+
+        if (codexEffort) {
+            args.push("--codex-effort", codexEffort);
+        }
+
+        // 엔진은 협의하는 단계가 없을 때의 --debate-turns를 거부하므로 협의 단계가 있을 때만 넘긴다.
+        if (debateTurns !== DEBATE_DEFAULT_TURNS && brainstorm.some((phase) => debate.includes(phase))) {
+            args.push("--debate-turns", String(debateTurns));
+        }
     }
 
     return args;
@@ -184,5 +217,9 @@ module.exports = {
     DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES,
     BRAINSTORM_PROVIDERS,
+    CODEX_MODEL_PATTERN,
+    CODEX_EFFORT_LEVELS,
+    DEBATE_DEFAULT_TURNS,
+    DEBATE_TURNS_LIMIT,
     MAX_RUN_DAYS
 };

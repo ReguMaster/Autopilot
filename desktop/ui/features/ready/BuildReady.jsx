@@ -4,7 +4,18 @@ import { formatEndTimeShort } from "../../../viewFormat.js";
 import { loadProviders } from "../../actions/runs.js";
 import { Select } from "../../components/Select.jsx";
 import { PHASE_LABELS } from "../../lib/constants.js";
-import { BRAINSTORM_OPTIONS, getBrainstormMode, DESIGN_FORMAT_OPTIONS, ON_FAIL_CAPTIONS, ON_FAIL_OPTIONS, getBuildGreeting, getReadySteps } from "../../lib/buildSteps.js";
+import {
+    BRAINSTORM_OPTIONS,
+    CODEX_EFFORT_OPTIONS,
+    getBrainstormMode,
+    getCodexModelOptions,
+    getDebateTurnOptions,
+    DESIGN_FORMAT_OPTIONS,
+    ON_FAIL_CAPTIONS,
+    ON_FAIL_OPTIONS,
+    getBuildGreeting,
+    getReadySteps
+} from "../../lib/buildSteps.js";
 import { useClock } from "../../stores/clock.js";
 import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
@@ -34,6 +45,27 @@ const DesignFormat = () => {
     );
 };
 
+// Codex를 쓰는 단계에서만 보인다. 모델·Effort는 모든 단계의 Codex가 함께 쓰므로 어느 칸에서 바꿔도 같은 값이다.
+const CodexSettings = ({ models }) => {
+    const { codexModel, codexEffort } = useComposerStore(useShallow((store) => ({ codexModel: store.codexModel, codexEffort: store.codexEffort })));
+    const modelOptions = getCodexModelOptions(models, codexModel);
+
+    return (
+        <>
+            <p className="step-none">Codex가 쓸 모델과 Effort</p>
+            <Select value={codexModel} options={modelOptions} onChange={composer.setCodexModel} ariaLabel="Codex 모델" />
+            <Select value={codexEffort} options={CODEX_EFFORT_OPTIONS} onChange={composer.setCodexEffort} ariaLabel="Codex Effort" />
+        </>
+    );
+};
+
+// 협의에서 주고받는 최대 횟수. 모든 협의 단계가 함께 쓰므로 어느 칸에서 바꿔도 같은 값이다.
+const DebateTurns = () => {
+    const debateTurns = useComposerStore((store) => store.debateTurns);
+
+    return <Select value={debateTurns} options={getDebateTurnOptions(debateTurns)} onChange={composer.setDebateTurns} ariaLabel="협의 최대 횟수" />;
+};
+
 // 이 단계를 Claude만 쓸지, Codex와 나란히 비교할지, 협의할지. Codex를 쓰면 외부 서비스로 보내기도 켜진다. Codex를 쓸 수 없으면 이유를 보이고 잠근다.
 const Brainstorm = ({ phase }) => {
     const { brainstormMode, crossReview } = useComposerStore(useShallow((store) => ({ brainstormMode: getBrainstormMode(store, phase), crossReview: store.crossReview })));
@@ -52,6 +84,8 @@ const Brainstorm = ({ phase }) => {
                 ariaLabel={`${PHASE_LABELS[phase]}을 누가 쓸까요`}
             />
             {reason ? <p className="step-note">{reason}</p> : null}
+            {isOn ? <CodexSettings models={codex?.models ?? []} /> : null}
+            {brainstormMode === "debate" ? <DebateTurns /> : null}
             {brainstormMode === "compare" ? (
                 <label className="step-check">
                     <input type="checkbox" data-cross-review={phase} checked={crossReview} onChange={(event) => composer.setCrossReview(event.target.checked)} />
@@ -101,12 +135,11 @@ const SETTINGS = {
             <Brainstorm phase="design" />
         </>
     ),
-    build: <p className="step-none">따로 정할 것이 없어요</p>,
     qa: <OnFail phase="qa" />,
     security: <OnFail phase="security" />
 };
 
-// 신규 개발의 시작 전: 단계 카드(칸마다 그 단계의 설정)와 이어서 할 단계를 알리는 안내. 마친 단계의 설정은 펼치지 않는다.
+// 신규 개발의 시작 전: 단계 막대(아래에 단계별 설정 묶음, 개발은 정할 것이 없어 묶음이 없다)와 이어서 할 단계를 알리는 안내. 마친 단계의 설정은 펼치지 않는다.
 const BuildReady = () => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
     const { endTime, gates } = useComposerStore(useShallow((store) => ({ endTime: store.endTime, gates: store.gates })));

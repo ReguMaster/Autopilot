@@ -91,6 +91,11 @@ const BrainstormState = ({ brainstorm }) => {
                 {isBlocked ? null : <span>{BRAINSTORM_NOTES[brainstorm.status]}</span>}
             </p>
             {brainstorm.status === "skipped" && brainstorm.reason ? <p className="card-empty">{brainstorm.reason}</p> : null}
+            {brainstorm.status === "receiving" && brainstorm.limitMinutes ? (
+                <p id="card-ai-progress" className="card-empty">
+                    {`${brainstorm.elapsedMinutes}분째 (최대 ${brainstorm.limitMinutes}분)${brainstorm.activity ? ` · ${brainstorm.activity}` : ""}`}
+                </p>
+            ) : null}
         </section>
     );
 };

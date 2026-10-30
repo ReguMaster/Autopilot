@@ -4,6 +4,11 @@ const REVEAL_SPEED = 0.36;
 // 지금 문장을 줄 순서대로 부드러운 마스크로 쓸어 드러낸다. 글자 위치는 그대로라 움직임 줄이기 설정에서도 쓴다.
 // 끝나거나 stop을 부르면 마스크를 걷고 done을 푼다. React가 그리는 요소의 inline mask만 건드리므로 style prop을 두지 않는다.
 const startReveal = (line) => {
+    // 넘쳐서 스크롤되는 문장은 마스크가 스크롤바까지 가리고 스크롤한 글자와 어긋나므로 쓸어내지 않고 바로 보여 준다.
+    if (line.scrollHeight > line.clientHeight + 1) {
+        return { done: Promise.resolve(), stop: () => {} };
+    }
+
     const box = line.getBoundingClientRect();
     const lineHeight = parseFloat(getComputedStyle(line).lineHeight);
     const range = document.createRange();

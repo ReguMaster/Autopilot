@@ -141,6 +141,18 @@ const checkNormalize = () => {
     // 협의로 돌릴 단계도 기획 · 디자인만 받는다. 이 키가 없던 옛 설정은 기본값(협의 없음)이다.
     assert.deepEqual(buildDefaults.debate, []);
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan"], debate: ["plan"] }), { brainstorm: ["plan"], debate: ["plan"] });
+    // 협의 최대 횟수: 기본 8, 엔진이 받는 1~20의 정수만 저장한다.
+    assert.equal(buildDefaults.debateTurns, 8);
+    assert.deepEqual(normalizeOverrides({ debateTurns: 12 }), { debateTurns: 12 });
+    assert.deepEqual(normalizeOverrides({ debateTurns: 0 }), {});
+    assert.deepEqual(normalizeOverrides({ debateTurns: 21 }), {});
+    assert.deepEqual(normalizeOverrides({ debateTurns: 3.5 }), {});
+    assert.deepEqual(normalizeOverrides({ debateTurns: "5" }), {});
+    // Codex의 model·effort: 기본은 비어 있어(Codex 설정을 따름) 인자를 넘기지 않고, 엔진이 받는 값만 저장한다.
+    assert.deepEqual([buildDefaults.codexModel, buildDefaults.codexEffort], ["", ""]);
+    assert.deepEqual(normalizeOverrides({ codexModel: "gpt-6.1-sol", codexEffort: "xhigh" }), { codexModel: "gpt-6.1-sol", codexEffort: "xhigh" });
+    assert.deepEqual(normalizeOverrides({ codexModel: "gpt 6; rm", codexEffort: "ultra" }), {});
+    assert.deepEqual(normalizeOverrides({ codexModel: "--model", codexEffort: 3 }), {});
     assert.deepEqual(normalizeOverrides({ debate: ["qa"] }), {});
     assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
     assert.equal(normalizeSettings({}).logRetentionDays, 30);
@@ -155,6 +167,13 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({}).theme, "system");
     assert.equal(normalizeSettings({ theme: "dark" }).theme, "dark");
     assert.equal(normalizeSettings({ theme: "sepia" }).theme, "system", "허용되지 않은 테마는 기본값");
+
+    assert.equal(normalizeSettings({}).railWidth, 224);
+    assert.equal(normalizeSettings({ railWidth: 300 }).railWidth, 300);
+
+    for (const bad of [199, 361, 250.5, "300", null]) {
+        assert.equal(normalizeSettings({ railWidth: bad }).railWidth, 224, `${bad}는 레일 너비로 받지 않는다`);
+    }
     assert.equal(normalizeSettings({ notifyFinish: false }).notifyFinish, false);
     assert.equal(normalizeSettings({ notifyFocused: "yes" }).notifyFocused, false, "불리언이 아니면 기본값");
 
@@ -369,6 +388,7 @@ const checkPorting = () => {
             accountId: "acct-1",
             claudeDir: "/c",
             launchAtLogin: true,
+            railWidth: 300,
             postRunAction: "shutdown",
             keepInTray: true,
             model: "haiku",
@@ -382,7 +402,7 @@ const checkPorting = () => {
 
         assert.deepEqual([exported.app, exported.kind, exported.version], ["AutoPilot", "settings", 1]);
 
-        for (const key of ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin"]) {
+        for (const key of ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin", "railWidth"]) {
             assert.equal(Object.hasOwn(exported.global, key), false, `${key}는 내보내지 않는다`);
         }
 
@@ -432,7 +452,7 @@ const checkPorting = () => {
         assert.equal(target.read().effort, "low", "거부한 파일은 아무것도 바꾸지 않는다");
 
         // 기본값으로 되돌리기: 이 PC의 값과 예약은 두고 나머지는 기본값, 프로젝트가 덮어쓴 값은 지운다.
-        target.update({ launchAtLogin: true, keepInTray: false, claudeDir: "/keep", postRunAction: "sleep" });
+        target.update({ launchAtLogin: true, keepInTray: false, claudeDir: "/keep", postRunAction: "sleep", railWidth: 280 });
         target.resetPreferences();
 
         const reset = target.read();
@@ -443,6 +463,7 @@ const checkPorting = () => {
         assert.equal(reset.claudeDir, "/keep");
         assert.equal(reset.accountId, "mine");
         assert.equal(reset.launchAtLogin, true);
+        assert.equal(reset.railWidth, 280, "레일 너비는 이 PC의 값이라 되돌려도 남긴다");
         assert.equal(reset.keepInTray, true, "로그인 자동 실행이 켜져 있으면 트레이 상주도 켜 둔다");
         assert.equal(reset.postRunAction, "none", "되돌리면 PC 동작은 하지 않음으로 돌아간다");
         assert.equal(reset.schedules.length, 1, "예약은 지우지 않는다");

@@ -1,10 +1,21 @@
 /* Claude · Codex 협의 대화: Claude는 왼쪽 흰 말풍선, Codex는 오른쪽 칩 바탕 말풍선이다. 강조색은 쓰지 않는다 */
 .debate-chat {
     display: flex;
+    flex: 1 1 0;
     flex-direction: column;
     gap: 8px;
     min-height: 0;
     margin: 16px 0 4px;
+}
+
+/* 스크롤바는 숨기고(휠·터치로 넘긴다) 위쪽을 흐려 지난 말이 위로 사라지는 것으로 스크롤 중임을 알린다. 첫 말은 흐림 아래 패딩에서 시작한다 */
+.debate-chat .debate-list {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    padding: 24px 0 6px;
+    mask-image: linear-gradient(to bottom, transparent, #000 24px);
+    scrollbar-width: none;
 }
 
 .debate-head {
@@ -33,23 +44,87 @@
     scroll-behavior: smooth;
 }
 
+.debate-members {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.debate-member {
+    display: flex;
+    border-radius: 50%;
+    transition: box-shadow 0.28s var(--ease-out);
+}
+
+.debate-member + .debate-member {
+    margin-left: -4px;
+}
+
+/* 지금 말할 차례인 참가자에게 고리를 둔다 */
+.debate-member[data-speaking="true"] {
+    box-shadow:
+        0 0 0 2px var(--bg),
+        0 0 0 3.5px var(--ink);
+}
+
 .debate-turn {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    min-width: 0;
+    max-width: 82%;
+}
+
+.debate-body {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 3px;
-    max-width: 78%;
+    min-width: 0;
+}
+
+.debate-chat .debate-turn {
+    animation: debate-in 0.32s var(--ease-out) backwards;
+}
+
+@keyframes debate-in {
+    from {
+        opacity: 0;
+    }
+}
+
+/* 협의가 끝나 대화를 거둘 때: 위로 살짝 떠오르며 흐려진다 */
+.debate-chat.is-leaving {
+    animation: debate-out 0.36s var(--ease-out) forwards;
+    pointer-events: none;
+}
+
+@keyframes debate-out {
+    to {
+        opacity: 0;
+        translate: 0 -8px;
+    }
+}
+
+@keyframes debate-fade-out {
+    to {
+        opacity: 0;
+    }
 }
 
 .debate-turn[data-provider="codex"] {
+    flex-direction: row-reverse;
     align-self: flex-end;
+}
+
+.debate-turn[data-provider="codex"] .debate-body {
     align-items: flex-end;
 }
 
 .debate-who {
     font-size: var(--text-xs);
     font-weight: 600;
-    color: var(--muted);
+    color: var(--ink-2);
 }
 
 .debate-bubble {
@@ -61,6 +136,7 @@
     color: var(--ink);
     font-size: var(--text-md);
     line-height: 1.55;
+    overflow-wrap: anywhere;
     user-select: text;
 }
 
@@ -70,14 +146,147 @@
     box-shadow: none;
 }
 
-.debate-notes {
-    display: grid;
-    gap: 2px;
-    margin: 2px 0 0;
+/* 말풍선 옆 시각. Claude는 오른쪽, Codex는 왼쪽에 붙는다 */
+.debate-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    min-width: 0;
+}
+
+.debate-turn[data-provider="codex"] .debate-line {
+    flex-direction: row-reverse;
+}
+
+.debate-time {
+    flex: none;
+    color: var(--faint);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+/* 긴 말은 몇 줄만 보이고 아래를 흐리게 자른다. 더 보기로 펴고 접기로 다시 접는다 */
+.debate-bubble {
+    min-width: 0;
+}
+
+.debate-text {
+    overflow: hidden;
+}
+
+.debate-text:not([data-open]) {
+    max-height: 5lh;
+}
+
+.debate-text[data-fade] {
+    mask-image: linear-gradient(#000 calc(100% - 1.8lh), transparent);
+}
+
+.debate-text :is(p, ul, ol, blockquote, pre, h3, h4, h5) {
+    margin: 0;
+    font-size: inherit;
+}
+
+.debate-text > * + * {
+    margin-top: 6px;
+}
+
+.debate-text :is(ul, ol) {
+    padding-left: 18px;
+}
+
+.debate-text ul {
+    list-style: disc;
+}
+
+.debate-text ol {
+    list-style: decimal;
+}
+
+.debate-text :is(h3, h4, h5),
+.debate-text strong {
+    font-weight: 650;
+}
+
+.debate-text code {
+    padding: 0 4px;
+    border-radius: 5px;
+    background: var(--chip);
+    font: 0.92em / 1.5 var(--mono);
+}
+
+.debate-turn[data-provider="codex"] .debate-text code {
+    background: var(--bg);
+}
+
+.debate-text .md-link {
+    color: var(--accent-ink);
+}
+
+.debate-more {
+    display: block;
+    margin-top: 6px;
     padding: 0;
-    list-style: none;
+    border: 0;
+    background: none;
+    color: var(--accent-ink);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* 날짜와 주고받기 구분선 */
+.debate-divider {
+    display: flex;
+    justify-content: center;
+}
+
+.debate-divider span {
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: var(--chip);
     color: var(--muted);
     font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+/* 협의 기록의 동의 · 반대 · 바꾼 점 */
+.debate-notes {
+    display: grid;
+    gap: 3px;
+    max-width: 100%;
+    margin: 3px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--ink-2);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+}
+
+.debate-notes li {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.debate-notes b {
+    flex: none;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.debate-notes li[data-kind="agree"] b {
+    background: var(--ok-wash);
+    color: var(--add);
+}
+
+.debate-notes li[data-kind="disagree"] b {
+    background: var(--warn-wash);
+    color: var(--warn);
 }
 
 .is-typing .debate-bubble {
@@ -119,11 +328,23 @@
     .debate-list {
         scroll-behavior: auto;
     }
+
+    .debate-chat.is-leaving {
+        animation-name: debate-fade-out;
+    }
 }
 
-/* 협의하는 동안에는 지난 문장 대신 대화를 보여 준다 */
+/* 협의하는 동안에는 지난 문장 대신 대화를 보여 준다. 합의안을 고치는 정리 회차에도 대화가 남으므로 지금 문장은 작게 줄여 대화 칸을 지킨다 */
 .run-main:has(#debate-chat) #story-past {
     display: none;
+}
+
+.run-main:has(#debate-chat) .now {
+    max-width: 31em;
+    max-height: 4lh;
+    margin-top: 12px;
+    font-size: var(--text-lg);
+    line-height: 1.55;
 }
 
 /* 확인 기다림의 협의 결과: 합의안 · 협의 기록과 쟁점 고르기 */
@@ -132,25 +353,43 @@
     flex-direction: column;
     gap: 12px;
     min-width: 0;
+    min-height: 0;
 }
 
-.debate-log {
+.debate-tabs {
+    flex: none;
+    justify-self: start;
+    align-self: flex-start;
+}
+
+.debate-main > :is(.doc-preview, .debate-room) {
+    flex: 1 1 0;
+}
+
+/* 협의 기록: 합의안과 같은 크기의 채팅방이다. 흰 말풍선(Claude)이 잘 보이도록 바탕을 한 단계 눕힌다 */
+.debate-room {
+    display: flex;
+    min-height: 0;
     border-radius: var(--r-lg);
-    background: var(--surface);
+    background: var(--page);
     box-shadow: inset 0 0 0 1px var(--hair);
 }
 
-.debate-log > summary {
-    padding: 10px 14px;
-    color: var(--ink-2);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    cursor: pointer;
+.debate-room .debate-list {
+    flex: 1;
+    gap: 14px;
+    max-height: none;
+    padding: 16px 18px 20px;
+    /* thin이면 윈도우 기본 막대(위아래 화살표)로 돌아가므로 앱 공통 막대(base.css의 ::-webkit-scrollbar)를 쓴다 */
+    scrollbar-width: auto;
 }
 
-.debate-log .debate-list {
-    max-height: 340px;
-    padding: 0 14px 14px;
+.debate-room .debate-turn[data-provider="codex"] .debate-bubble {
+    background: var(--hair);
+}
+
+.debate-room .debate-turn[data-provider="codex"] .debate-text code {
+    background: var(--chip);
 }
 
 .dispute-title {
@@ -242,6 +481,9 @@
 }
 
 .chat-item.debate b {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     color: var(--muted);
     font-size: var(--text-xs);
     font-weight: 600;

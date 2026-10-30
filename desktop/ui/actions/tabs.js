@@ -3,6 +3,7 @@ import { getSettings } from "../stores/appStore.js";
 import { composer, COMPOSER_KEYS, useComposerStore } from "../stores/composerStore.js";
 import { modal } from "../stores/modalStore.js";
 import { getRunState } from "../stores/runStore.js";
+import { useRunsStore } from "../stores/runsStore.js";
 import { useScheduleStore } from "../stores/scheduleStore.js";
 import { applyTabs, useTabsStore } from "../stores/tabsStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
@@ -73,6 +74,8 @@ const applyProjectSwitch = (data, { dismissFinish = false } = {}) => {
     }
 
     ui.set({ finishDismissed: dismissFinish });
+    // 떠나기 전에 기억해 둔 단계 상태를 바로 보여 이전 프로젝트의 단계가 남지 않게 한다. loadRecentRuns가 새로 읽으면 바뀐다.
+    useRunsStore.setState((store) => ({ buildPhase: store.phases[nextDir] ?? null }));
 
     if (data.state) {
         applySessionSnapshot(data);

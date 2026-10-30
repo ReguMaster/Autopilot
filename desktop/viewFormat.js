@@ -267,6 +267,26 @@ const getUsageTone = (percent) => {
     return percent >= 70 ? "warn" : "ok";
 };
 
+// 한도 이름이 이 접두어로 시작하면 그 기간(ms)을 안다(claudeAccount의 SESSION_LABEL·WEEKLY_LABEL). 모르는 한도는 기간을 알 수 없어 시간 표시를 하지 않는다.
+const USAGE_WINDOWS = [
+    { prefix: "5시간", ms: 5 * 60 * 60 * 1000 },
+    { prefix: "주간", ms: 7 * 24 * 60 * 60 * 1000 }
+];
+const USAGE_FAST_GAP = 15;
+
+// 한도 기간이 지난 만큼(0~100)과, 쓴 비율이 그보다 USAGE_FAST_GAP%p 넘게 앞서는지(isFast). 리셋 시각이나 기간을 모르면 null이다.
+const getUsagePace = (limit, now) => {
+    const window = USAGE_WINDOWS.find(({ prefix }) => limit.label.startsWith(prefix));
+
+    if (!window || !limit.resetsAt) {
+        return null;
+    }
+
+    const elapsed = Math.min(100, Math.max(0, (1 - (limit.resetsAt - now) / window.ms) * 100));
+
+    return { elapsed: elapsed, isFast: limit.percent - elapsed >= USAGE_FAST_GAP };
+};
+
 const getLineKind = ({ stream, text }) => {
     if (stream === "err" || text.startsWith("[stderr]")) {
         return "err";
@@ -665,75 +685,6 @@ const getTrack = (state, nowMs) => {
     };
 };
 
-/* 단계 산출물 미리보기: 마크다운을 제목·목록·문단·코드 블록으로만 나눈다. 화면은 글자로만 그리고 HTML은 해석하지 않는다 */
-
-const PREVIEW_BLOCK_LIMIT = 80;
-const PREVIEW_FENCE_PATTERN = /^\s*(```|~~~)/;
-const PREVIEW_HEADING_PATTERN = /^(#{1,6})\s+(.+?)\s*#*$/;
-const PREVIEW_ITEM_PATTERN = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.+)$/;
-const PREVIEW_RULE_PATTERN = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
-
-const cleanPreviewText = (text) => {
-    return text
-        .replace(/^>\s?/, "")
-        .replace(/\*\*|__/g, "")
-        .trim();
-};
-
-const parsePreviewBlocks = (text) => {
-    const blocks = [];
-    let fence = null;
-    let isParagraphOpen = false;
-
-    for (const line of text.split(/\r?\n/)) {
-        if (blocks.length >= PREVIEW_BLOCK_LIMIT) {
-            break;
-        }
-
-        if (PREVIEW_FENCE_PATTERN.test(line)) {
-            if (fence) {
-                blocks.push({ type: "code", text: fence.join("\n") });
-            }
-
-            fence = fence ? null : [];
-            isParagraphOpen = false;
-            continue;
-        }
-
-        if (fence) {
-            fence.push(line);
-            continue;
-        }
-
-        const heading = line.match(PREVIEW_HEADING_PATTERN);
-        const item = line.match(PREVIEW_ITEM_PATTERN);
-        const isText = Boolean(line.trim()) && !PREVIEW_RULE_PATTERN.test(line);
-
-        if (heading) {
-            blocks.push({ type: "heading", level: Math.min(heading[1].length, 3), text: cleanPreviewText(heading[2]) });
-        } else if (item) {
-            blocks.push({ type: "item", text: cleanPreviewText(item[1]) });
-        } else if (isText && isParagraphOpen) {
-            blocks.at(-1).text += ` ${cleanPreviewText(line)}`;
-        } else if (isText) {
-            blocks.push({ type: "para", text: cleanPreviewText(line) });
-        }
-
-        isParagraphOpen = !heading && !item && isText;
-    }
-
-    if (fence?.length && blocks.length < PREVIEW_BLOCK_LIMIT) {
-        blocks.push({ type: "code", text: fence.join("\n") });
-    }
-
-    return blocks;
-};
-
-// 글 속 `코드`를 나눈다. 홀수 번째 조각이 코드다.
-const splitInlineCode = (text) => {
-    return text.split("`").map((part, index) => ({ text: part, isCode: index % 2 === 1 }));
-};
-
 /* 이야기: 엔진 로그의 Claude 문장과 도구 호출을 읽어, 도구 호출 뒤에 이어지는 문장 단위(beat)로 묶는다 */
 
 const STORY_LIMIT = 10;
@@ -850,9 +801,16 @@ const STEP_LINE_PATTERN = /^\[단계\] (.+?) (시작|완료|확인 대기|실패
 // 여러 AI 브레인스토밍 줄([브레인스토밍] …)을 들려주는 문장으로 바꾼다. 형식은 엔진 로그 계약(루트 CLAUDE.md)과 같다.
 const BRAINSTORM_LINE_PATTERN = /^\[브레인스토밍\] (\S+) (.+?) (안|검토) (받는 중|받음|건너뜀)(?:: (.+))?$/;
 
+// 받는 동안 1분마다 남는 경과 줄은 실행 화면의 카드가 보여 주므로 이야기와 지난 실행 대화에는 넣지 않는다.
+const BRAINSTORM_PROGRESS_LINE_PATTERN = /^\[브레인스토밍\] \S+ .+? (?:안|검토) 진행 \d+분째 \(최대 \d+분\)(?:: .+)?$/;
+
 const describeBrainstormLine = (text) => {
     if (text.startsWith("[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아")) {
         return "외부 서비스로 보내기가 꺼져 있어서 다른 AI의 안은 받지 않을게요.";
+    }
+
+    if (BRAINSTORM_PROGRESS_LINE_PATTERN.test(text)) {
+        return "";
     }
 
     const line = text.match(BRAINSTORM_LINE_PATTERN);
@@ -865,7 +823,11 @@ const describeBrainstormLine = (text) => {
     const why = reason ? ` (${reason})` : "";
     const sentences =
         kind === "안"
-            ? { "받는 중": `${provider}에게 ${label} 안을 따로 받고 있어요.`, 받음: `${provider}의 ${label} 안을 받았어요.`, 건너뜀: `${provider}의 ${label} 안은 건너뛸게요.${why}` }
+            ? {
+                  "받는 중": `${provider}가 ${label} 안을 따로 쓰고 있어요. 끝나면 Claude가 시작해요.`,
+                  받음: `${provider}의 ${label} 안을 받았어요.`,
+                  건너뜀: `${provider}의 ${label} 안은 건너뛸게요.${why}`
+              }
             : { "받는 중": `${provider}가 ${label} 결과를 검토하고 있어요.`, 받음: `${provider}의 ${label} 검토를 받았어요.`, 건너뜀: `${provider}의 ${label} 검토는 건너뛸게요.${why}` };
 
     return sentences[status];
@@ -898,8 +860,11 @@ const describeDebateLine = (text) => {
     return "";
 };
 
-// 엔진이 쓴 협의 기록(proposals/<단계>-debate.md, 엔진 debateUtil.formatTranscript)을 말풍선으로 되읽는다. 발언마다 동의 · 반대 · 바꾼 점은 notes다.
+// 엔진이 쓴 협의 기록(proposals/<단계>-debate.md, 엔진 debateUtil.formatTranscript)을 말풍선으로 되읽는다.
+// 발언마다 동의 · 반대 · 바꾼 점은 notes([{ kind: agree|disagree|change, text }])다. 동의와 바꾼 점은 엔진이 " / "로 이어 쓴 것을 항목마다 나눈다.
 const DEBATE_HEADING_PATTERN = /^## \d+번째 주고받기 - (Claude|Codex)$/;
+const DEBATE_NOTE_PATTERN = /^- (동의|반대|바꾼 점): (.+)$/;
+const DEBATE_NOTE_KINDS = { 동의: "agree", 반대: "disagree", "바꾼 점": "change" };
 const MAX_TRANSCRIPT_TURNS = 20;
 
 const parseDebateTranscript = (text) => {
@@ -907,18 +872,34 @@ const parseDebateTranscript = (text) => {
 
     for (const line of String(text || "").split(/\r?\n/)) {
         const heading = line.trim().match(DEBATE_HEADING_PATTERN);
+        const note = line.trim().match(DEBATE_NOTE_PATTERN);
         const turn = turns.at(-1);
 
         if (heading) {
             turns.push({ provider: heading[1].toLowerCase(), message: "", notes: [] });
-        } else if (turn && line.startsWith("- ")) {
-            turn.notes.push(line.slice(2).trim());
+        } else if (turn && note) {
+            const kind = DEBATE_NOTE_KINDS[note[1]];
+            const items = kind === "disagree" ? [note[2]] : note[2].split(" / ");
+
+            turn.notes.push(...items.map((item) => ({ kind: kind, text: item.trim() })));
         } else if (turn && !turn.message && line.trim()) {
             turn.message = line.trim();
         }
     }
 
     return turns.filter((turn) => turn.message).slice(0, MAX_TRANSCRIPT_TURNS);
+};
+
+// 협의 대화의 시각(오후 3:42)과 날짜 구분선(2026년 10월 31일 토요일). at이 0이면 시각을 모르는 발언이라 빈 문자열이다.
+const CHAT_TIME_FORMAT = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
+const CHAT_DATE_FORMAT = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+
+const formatChatTime = (at) => {
+    return at ? CHAT_TIME_FORMAT.format(at) : "";
+};
+
+const formatChatDate = (at) => {
+    return at ? CHAT_DATE_FORMAT.format(at) : "";
 };
 
 // 단계 줄과 브레인스토밍 · 협의 줄을 함께 다룬다(이야기와 지난 실행 대화가 같은 함수를 쓴다).
@@ -1474,6 +1455,7 @@ export {
     formatUsageReset,
     describeLoginExpiry,
     getUsageTone,
+    getUsagePace,
     getLineKind,
     getRunPhase,
     formatRoundTime,
@@ -1515,8 +1497,8 @@ export {
     describeStepLine,
     parseDebateTurn,
     parseDebateTranscript,
-    parsePreviewBlocks,
-    splitInlineCode,
+    formatChatTime,
+    formatChatDate,
     createStory,
     pushStoryItem,
     applyStoryEntry,

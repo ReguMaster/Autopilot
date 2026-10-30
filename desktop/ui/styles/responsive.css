@@ -47,7 +47,7 @@
         font-size: 40px;
     }
 
-    .now {
-        margin-top: 14px;
+    .story {
+        --story-gap: 20px;
     }
 }

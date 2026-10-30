@@ -431,9 +431,31 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         securityOnFail: "stop",
         brainstorm: [],
         crossReview: false,
-        debate: []
+        debate: [],
+        debateTurns: 8,
+        codexModel: "",
+        codexEffort: ""
     });
     composer.setSecurityOnFail("retry:3");
+
+    // 협의 최대 횟수는 협의를 끄거나 보내기를 꺼도 고른 값을 남긴다.
+    composer.setDebateTurns(12);
+    assert.equal(composer.getModeOptions().debateTurns, 12);
+    composer.toggleAllow("send");
+    composer.toggleAllow("send");
+    assert.equal(useComposerStore.getState().debateTurns, 12);
+    composer.loadSettings({ debateTurns: 8 }, ["debateTurns"]);
+    assert.equal(useComposerStore.getState().debateTurns, 8);
+
+    // Codex의 model·effort는 보내기를 끄거나 Codex를 꺼도 고른 값을 남긴다.
+    composer.setCodexModel("gpt-6.1-sol");
+    composer.setCodexEffort("high");
+    assert.deepEqual([composer.getModeOptions().codexModel, composer.getModeOptions().codexEffort], ["gpt-6.1-sol", "high"]);
+    composer.toggleAllow("send");
+    composer.toggleAllow("send");
+    assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["gpt-6.1-sol", "high"]);
+    composer.loadSettings({ codexModel: "", codexEffort: "" }, ["codexModel", "codexEffort"]);
+    assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["", ""]);
 
     // 단계에 Codex를 켜면(나란히 비교 · 협의) 보내기도 켜지고, 보내기를 끄면 브레인스토밍 · 협의 · 교차검토가 함께 꺼진다.
     const getBrainstormState = () => {

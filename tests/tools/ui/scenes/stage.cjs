@@ -100,6 +100,16 @@ const SCENES = [
         }
     },
     {
+        name: "stage-run-rhythm",
+        init: { ...withProject, state: runningState({ phase: "시작 중", gains: [] }) },
+        run: async (t) => {
+            await t.log(["[앱] 엔진을 시작했어요", "[단계] 기획 시작", "[브레인스토밍] Codex 기획 안 받는 중"]);
+            await t.shot("waiting", ".story");
+            await t.state({ gains: [{ round: 3, text: "테스트 통과 41 → 58" }] });
+            await t.shot("with-outcome", ".story");
+        }
+    },
+    {
         name: "stage-run-work",
         init: { ...withProject, state: runningState() },
         run: async (t) => {

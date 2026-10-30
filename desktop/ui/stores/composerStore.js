@@ -4,6 +4,7 @@ import {
     ALLOW_KEYS,
     BRAINSTORM_PHASES,
     DEFAULT_ALLOW,
+    DEFAULT_DEBATE_TURNS,
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_EFFORT_LEVEL,
     DEFAULT_GATES,
@@ -37,7 +38,10 @@ const useComposerStore = create(() => ({
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
     brainstorm: [],
     crossReview: false,
-    debate: []
+    debate: [],
+    debateTurns: DEFAULT_DEBATE_TURNS,
+    codexModel: "",
+    codexEffort: ""
 }));
 
 // 체크를 바꾼 목록. 순서는 고를 수 있는 값의 순서로 맞춰 저장 값이 흔들리지 않게 한다.
@@ -98,13 +102,45 @@ const handleOptionChange = () => {
     }
 };
 
-const COMPOSER_KEYS = ["tasks", "endTime", "policy", "extendOnLimit", "model", "effort", "mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate"];
+const COMPOSER_KEYS = [
+    "tasks",
+    "endTime",
+    "policy",
+    "extendOnLimit",
+    "model",
+    "effort",
+    "mode",
+    "gates",
+    "allow",
+    "designFormat",
+    "qaOnFail",
+    "securityOnFail",
+    "brainstorm",
+    "crossReview",
+    "debate",
+    "debateTurns",
+    "codexModel",
+    "codexEffort"
+];
 
 // 시작·예약 저장 때 엔진에 넘길 작업 모드와 신규 개발 설정
 const getModeOptions = () => {
-    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, brainstorm, crossReview, debate } = useComposerStore.getState();
+    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } = useComposerStore.getState();
 
-    return { mode: mode, gates: gates, allow: allow, designFormat: designFormat, qaOnFail: qaOnFail, securityOnFail: securityOnFail, brainstorm: brainstorm, crossReview: crossReview, debate: debate };
+    return {
+        mode: mode,
+        gates: gates,
+        allow: allow,
+        designFormat: designFormat,
+        qaOnFail: qaOnFail,
+        securityOnFail: securityOnFail,
+        brainstorm: brainstorm,
+        crossReview: crossReview,
+        debate: debate,
+        debateTurns: debateTurns,
+        codexModel: codexModel,
+        codexEffort: codexEffort
+    };
 };
 
 // 저장된 설정으로 컴포저의 값을 채운다. keys를 주면 그 키만 바꿔, 설정 패널에서 한 값을 바꿨다고 쓰던 작업 문구까지 되돌리지 않는다.
@@ -164,6 +200,9 @@ const composer = {
             };
         }),
     setCrossReview: (isOn) => useComposerStore.setState({ crossReview: isOn }),
+    setDebateTurns: (debateTurns) => useComposerStore.setState({ debateTurns: debateTurns }),
+    setCodexModel: (codexModel) => useComposerStore.setState({ codexModel: codexModel }),
+    setCodexEffort: (codexEffort) => useComposerStore.setState({ codexEffort: codexEffort }),
     setDesignFormat: (designFormat) => useComposerStore.setState({ designFormat: designFormat }),
     setQaOnFail: (qaOnFail) => useComposerStore.setState({ qaOnFail: qaOnFail }),
     setSecurityOnFail: (securityOnFail) => useComposerStore.setState({ securityOnFail: securityOnFail }),

@@ -2,13 +2,13 @@ import { STATUS_OK } from "./lib/constants.js";
 import { applyLogin, applyPayload } from "./actions/accounts.js";
 import { handleLogEvent, handleStateEvent } from "./actions/events.js";
 import { settings as settingsActions } from "./actions/settings.js";
-import { loadRecentRuns } from "./actions/runs.js";
+import { loadBuildPhase, loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
 import { setAccountSnapshot } from "./stores/accountStore.js";
 import { useAppStore } from "./stores/appStore.js";
 import { composer } from "./stores/composerStore.js";
 import { applyRunState, appendEntries, flushNow, getRunState, useRunStore } from "./stores/runStore.js";
-import { applyTabs } from "./stores/tabsStore.js";
+import { applyTabs, useTabsStore } from "./stores/tabsStore.js";
 import { applySchedulePayload } from "./stores/scheduleStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
 
@@ -31,6 +31,17 @@ const followRunState = (state, previous) => {
     }
 };
 
+// 레일이 다른 탭의 확인 대기·단계도 알리도록, 처음 보는 탭과 실행을 마친 탭의 단계 상태를 읽어 둔다. 보는 탭은 loadRecentRuns가 읽는다.
+const refreshTabPhases = (previousTabs, { tabs, active }) => {
+    for (const tab of tabs) {
+        const previous = previousTabs.find((item) => item.projectDir === tab.projectDir);
+
+        if (tab.projectDir !== active && (!previous || (previous.status !== "idle" && tab.status === "idle"))) {
+            loadBuildPhase(tab.projectDir);
+        }
+    }
+};
+
 // 첫 상태를 모두 받아 스토어를 채운 뒤에 화면을 그리도록 기다린다. 이후 변경은 메인이 보내는 이벤트로 받는다.
 const boot = async () => {
     const snapshot = await window.autopilot.getState();
@@ -50,6 +61,7 @@ const boot = async () => {
     });
     composer.loadSettings(settings);
     applyTabs(snapshot.tabs);
+    refreshTabPhases([], snapshot.tabs);
     applyRunState(snapshot.state);
     composer.syncFromRun(snapshot.state);
     appendEntries(snapshot.logs);
@@ -79,7 +91,12 @@ const boot = async () => {
         }
     });
 
-    window.autopilot.onTabs(applyTabs);
+    window.autopilot.onTabs((payload) => {
+        const previousTabs = useTabsStore.getState().tabs;
+
+        applyTabs(payload);
+        refreshTabPhases(previousTabs, payload);
+    });
     window.autopilot.onState(handleStateEvent);
     window.autopilot.onLog(handleLogEvent);
     window.autopilot.onUpdate((update) => useAppStore.setState({ update: update }));

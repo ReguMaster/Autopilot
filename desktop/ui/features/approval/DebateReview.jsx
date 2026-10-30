@@ -3,8 +3,9 @@ import { parseDebateTranscript } from "../../../viewFormat.js";
 import { approveAndStart, openPhaseDoc } from "../../actions/run.js";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
+import { Seg } from "../../components/Seg.jsx";
 import { PHASE_LABELS, PROVIDER_LABELS } from "../../lib/constants.js";
-import { DebateBubbles } from "../debate/DebateChat.jsx";
+import { DebateTranscript } from "../debate/DebateChat.jsx";
 import { DocPreview } from "./DocPreview.jsx";
 import { usePhaseDoc } from "./usePhaseDoc.js";
 
@@ -30,21 +31,27 @@ const Dispute = ({ dispute, chosen, onChoose }) => {
 const DebateReview = ({ phase, debate, nextPhase, doc, docName, isStarting, feedbackArea }) => {
     const transcript = usePhaseDoc(`${phase}-debate`);
     const [choices, setChoices] = useState({});
+    const [tab, setTab] = useState("plan");
     const turns = parseDebateTranscript(transcript.data?.text);
     const isReady = debate.disputes.every((dispute) => choices[dispute.id]);
 
     return (
         <div className="approval-grid approval-debate">
             <div className="debate-main">
-                <DocPreview doc={doc.data} isLoading={doc.isLoading} />
                 {turns.length ? (
-                    <details id="debate-log" className="debate-log">
-                        <summary>{`협의 기록 보기 (${turns.length}마디)`}</summary>
-                        <ol className="debate-list">
-                            <DebateBubbles turns={turns} />
-                        </ol>
-                    </details>
+                    <Seg
+                        name="debate-tab"
+                        label="볼 내용"
+                        className="mode-seg debate-tabs"
+                        options={[
+                            { value: "plan", label: docName },
+                            { value: "log", label: `협의 기록 ${turns.length}마디` }
+                        ]}
+                        value={tab}
+                        onChange={setTab}
+                    />
                 ) : null}
+                {tab === "log" && turns.length ? <DebateTranscript turns={turns} /> : <DocPreview doc={doc.data} isLoading={doc.isLoading} />}
             </div>
             <div className="approval-card">
                 <h2 id="dispute-title" className="dispute-title">

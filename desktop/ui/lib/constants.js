@@ -28,6 +28,15 @@ const DEFAULT_SECURITY_ON_FAIL = "retry:3";
 const BRAINSTORM_PHASES = ["plan", "design"];
 const BRAINSTORM_PROVIDERS = ["codex"];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
+// Codex에 넘기는 reasoning effort(엔진 config.js의 CODEX_EFFORT_LEVELS). 비우면 Codex 설정을 따른다.
+const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+// 협의에서 주고받는 최대 횟수(엔진 config.js의 DEBATE_DEFAULT_TURNS·DEBATE_TURNS_LIMIT). 선택 상자에는 자주 쓰는 값만 둔다.
+const DEFAULT_DEBATE_TURNS = 8;
+const DEBATE_TURNS_LIMIT = 20;
+const DEBATE_TURN_CHOICES = [3, 5, 8, 10, 15, 20];
+
+// 왼쪽 레일 너비(px). settingsStore.cjs의 MIN·MAX·DEFAULT_RAIL_WIDTH와 같다.
+const RAIL_WIDTH = { min: 200, max: 360, default: 224 };
 
 const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·Effort를 바꿀 수 없어요";
 
@@ -63,6 +72,11 @@ export {
     BRAINSTORM_PHASES,
     BRAINSTORM_PROVIDERS,
     PROVIDER_LABELS,
+    CODEX_EFFORT_LEVELS,
+    DEFAULT_DEBATE_TURNS,
+    DEBATE_TURNS_LIMIT,
+    DEBATE_TURN_CHOICES,
+    RAIL_WIDTH,
     OPTIONS_LOCKED_TITLE,
     MAIN_ACTIONS
 };

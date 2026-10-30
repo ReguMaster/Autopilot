@@ -5,7 +5,10 @@ import { openArchiveList } from "../../actions/runs.js";
 import { schedules } from "../../actions/schedules.js";
 import { activateTab, closeTab, openTab } from "../../actions/tabs.js";
 import { openNewProject } from "../../actions/newProject.js";
+import { AvatarRing } from "../../components/AvatarRing.jsx";
+import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
+import { getTabTicks } from "../../lib/buildSteps.js";
 import { PHASE_LABELS } from "../../lib/constants.js";
 import { getTabLabels } from "../../lib/projectName.js";
 import { EMPTY_ACCOUNT, useAccountStore } from "../../stores/accountStore.js";
@@ -14,24 +17,29 @@ import { useRunStore } from "../../stores/runStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
 import { useTabsStore } from "../../stores/tabsStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
+import { RailResizer } from "./RailResizer.jsx";
 
 const IDLE_NOTES = { running: "실행 중", stopping: "종료 신호를 보냈어요", idle: "쉬는 중" };
-const WEEKLY_LABEL_PREFIX = "주간";
 
 const getRunningTitle = (label) => `${label} · 실행 중에는 닫을 수 없어요`;
 
-// 보는 프로젝트는 모드와 신규 개발 단계까지 한 줄로 알린다. 다른 프로젝트는 실행 상태만 안다.
-const getActiveNote = ({ status, mode, step, buildPhase, composerMode }) => {
+// 프로젝트 한 줄 상태. 모드와 신규 개발 단계, 확인을 기다리는 단계까지 알린다.
+// composerMode는 보는 프로젝트만 안다(컴포저가 고른 작업 모드). 다른 프로젝트는 쉬는 중이면 확인 대기만 알리고 실행 중 문구는 runningText를 쓴다.
+const getTabNote = ({ status, mode, step, buildPhase, composerMode, runningText = "유지 보수, 실행 중" }) => {
     if (status !== "idle") {
         if (mode === "build" && step) {
             return { text: `신규 개발, ${PHASE_LABELS[step.phase]} 단계`, tone: "run" };
         }
 
-        return { text: status === "stopping" ? IDLE_NOTES.stopping : "유지 보수, 실행 중", tone: "run" };
+        return { text: status === "stopping" ? IDLE_NOTES.stopping : runningText, tone: "run" };
     }
 
     if (buildPhase?.awaiting) {
         return { text: `${PHASE_LABELS[buildPhase.awaiting]} 확인을 기다려요`, tone: "warn" };
+    }
+
+    if (composerMode === undefined) {
+        return { text: IDLE_NOTES.idle, tone: "" };
     }
 
     if (composerMode !== "build") {
@@ -61,8 +69,8 @@ const moveFocus = (event) => {
     buttons[next]?.focus();
 };
 
-// 받은 프로젝트(탭) 목록을 그린다. 보는 프로젝트만 activeNote로 자세한 상태를 보인다.
-const ProjectList = ({ tabs, active, activeNote = null }) => {
+// 받은 프로젝트(탭) 목록을 그린다. 보는 프로젝트는 activeNote(실시간 상태), 다른 프로젝트는 탭 요약과 단계 상태 기억(phases)으로 한 줄 상태를 보인다.
+const ProjectList = ({ tabs, active, activeNote = null, activeTicks = null, phases = {} }) => {
     const listRef = useRef(null);
     const labels = getTabLabels(tabs);
     // 새 프로젝트 화면처럼 고른 탭이 없을 때도 Tab 키로 목록에 들어올 수 있게 첫 탭을 포커스 자리로 둔다.
@@ -77,7 +85,10 @@ const ProjectList = ({ tabs, active, activeNote = null }) => {
             {tabs.map((tab, index) => {
                 const isActive = tab.projectDir === active;
                 const isRunning = tab.status !== "idle";
-                const note = isActive && activeNote ? activeNote : { text: IDLE_NOTES[tab.status] ?? IDLE_NOTES.idle, tone: isRunning ? "run" : "" };
+                const stepOf = tab.step ? { phase: tab.step } : null;
+                const ticks = isActive && activeNote ? activeTicks : getTabTicks({ status: tab.status, mode: tab.mode, step: stepOf, buildPhase: phases[tab.projectDir] ?? null });
+                const note =
+                    isActive && activeNote ? activeNote : getTabNote({ status: tab.status, mode: tab.mode, step: stepOf, buildPhase: phases[tab.projectDir] ?? null, runningText: IDLE_NOTES.running });
 
                 return (
                     <div key={tab.projectDir} className="proj" data-active={isActive ? "" : undefined} data-status={tab.status} data-tone={note.tone || undefined}>
@@ -91,10 +102,18 @@ const ProjectList = ({ tabs, active, activeNote = null }) => {
                             onClick={() => activateTab(tab.projectDir)}
                         >
                             <span className="proj-mark" aria-hidden="true">
-                                {note.tone === "run" ? <span className="ring" /> : Array.from(labels[index])[0]?.toUpperCase()}
+                                {Array.from(labels[index])[0]?.toUpperCase()}
+                                {isRunning || note.tone === "warn" ? <i className="proj-badge" /> : null}
                             </span>
                             <span className="proj-name rail-label">{labels[index]}</span>
                             <span className="proj-note rail-label">{note.text}</span>
+                            {ticks ? (
+                                <span className="proj-ticks" aria-hidden="true">
+                                    {ticks.map((state, tick) => (
+                                        <i key={tick} data-s={state || undefined} />
+                                    ))}
+                                </span>
+                            ) : null}
                         </button>
                         <button
                             type="button"
@@ -113,10 +132,13 @@ const ProjectList = ({ tabs, active, activeNote = null }) => {
     );
 };
 
-// 주간 한도가 있으면 그것을, 없으면 가장 많이 쓴 한도를 보인다.
-const getWeeklyLimit = (limits) => {
-    return limits.find((limit) => limit.label.startsWith(WEEKLY_LABEL_PREFIX)) ?? limits.toSorted((first, second) => second.percent - first.percent)[0] ?? null;
+// 가장 많이 쓴 한도를 보인다.
+const getTopLimit = (limits) => {
+    return limits.reduce((top, limit) => (!top || limit.percent > top.percent ? limit : top), null);
 };
+
+// "5시간 한도"는 "5시간", "주간 한도 (전체)"는 "주간"으로 줄인다.
+const getShortLimitName = (label) => label.replace(" 한도", "").replace(" (전체)", "");
 
 const AccountCard = () => {
     const isOpen = useUiStore((store) => store.panel === "profile");
@@ -127,21 +149,21 @@ const AccountCard = () => {
         }))
     );
     const name = account.profile?.name || account.profile?.email || label || "Claude 계정";
-    const limit = getWeeklyLimit(account.limits);
+    const limit = getTopLimit(account.limits);
     const percent = limit ? Math.round(limit.percent) : null;
 
     return (
         <button type="button" id="profile-toggle" className="rail-account" aria-label="프로필" title={name} aria-expanded={isOpen} aria-controls="profile" onClick={() => ui.togglePanel("profile")}>
-            <span className="rail-avatar" aria-hidden="true">
-                {Array.from(name)[0]?.toUpperCase()}
-            </span>
+            <AvatarRing letter={Array.from(name)[0]?.toUpperCase()} percent={percent} aria-hidden="true" />
             <span className="rail-account-body rail-label">
-                <span className="rail-account-top">
-                    <b className="rail-account-name">{name}</b>
-                    {percent === null ? null : <span className="num">{`주간 ${percent}%`}</span>}
-                </span>
-                {percent === null ? null : <i className="rail-meter" data-tone={getUsageTone(percent)} style={{ "--value": String(percent) }} />}
+                <b className="rail-account-name">{name}</b>
+                {limit ? (
+                    <span className="rail-account-use" data-tone={getUsageTone(percent)}>
+                        {`${getShortLimitName(limit.label)} ${percent}%`}
+                    </span>
+                ) : null}
             </span>
+            <Icon symbol="icon-chevron" className="icon rail-chevron rail-label" />
         </button>
     );
 };
@@ -151,9 +173,12 @@ const Rail = () => {
     const { tabs, active } = useTabsStore(useShallow((store) => ({ tabs: store.tabs, active: store.active })));
     const { status, mode, step } = useRunStore(useShallow((store) => ({ status: store.state.status, mode: store.state.mode, step: store.state.step })));
     const buildPhase = useRunsStore((store) => store.buildPhase);
+    const phases = useRunsStore((store) => store.phases);
     const composerMode = useComposerStore((store) => store.mode);
     const { panel, archive, schedule, isCreating } = useUiStore(useShallow((store) => ({ panel: store.panel, archive: store.archive, schedule: store.schedule, isCreating: store.newProject })));
-    const activeNote = getActiveNote({ status: status, mode: mode, step: step, buildPhase: buildPhase, composerMode: composerMode });
+    const activeNote = getTabNote({ status: status, mode: mode, step: step, buildPhase: buildPhase, composerMode: composerMode });
+    // 쉬는 중인 보는 프로젝트는 유지 보수로 둔 동안에는 눈금을 그리지 않는다.
+    const activeTicks = status !== "idle" || buildPhase?.awaiting || composerMode === "build" ? getTabTicks({ status: status, mode: mode, step: step, buildPhase: buildPhase }) : null;
 
     return (
         <aside id="rail" className="rail" aria-label="프로젝트와 메뉴">
@@ -163,23 +188,17 @@ const Rail = () => {
             </div>
             <h2 className="rail-section rail-label">프로젝트</h2>
             <nav id="tabbar" className="rail-projects" aria-label="열린 프로젝트">
-                <ProjectList tabs={tabs} active={isCreating ? "" : active} activeNote={activeNote} />
-                <button
-                    type="button"
-                    id="new-project-toggle"
-                    className="rail-item"
-                    aria-label="새 프로젝트"
-                    title="새 프로젝트"
-                    aria-current={isCreating ? "page" : undefined}
-                    onClick={openNewProject}
-                >
-                    <Icon symbol="icon-plus" />
-                    <span className="rail-label">새 프로젝트</span>
-                </button>
-                <button type="button" id="tab-add" className="rail-item" aria-label="프로젝트 열기" title="프로젝트 열기" onClick={openTab}>
-                    <Icon symbol="icon-folder" />
-                    <span className="rail-label">프로젝트 열기</span>
-                </button>
+                <ProjectList tabs={tabs} active={isCreating ? "" : active} activeNote={activeNote} activeTicks={activeTicks} phases={phases} />
+                <div className="rail-add-group">
+                    <Button id="new-project-toggle" size="" className="rail-add" aria-label="새 프로젝트" title="새 프로젝트" aria-current={isCreating ? "page" : undefined} onClick={openNewProject}>
+                        <Icon symbol="icon-plus" />
+                        <span className="rail-label">새 프로젝트</span>
+                    </Button>
+                    <Button id="tab-add" size="" className="rail-add" aria-label="프로젝트 열기" title="프로젝트 열기" onClick={openTab}>
+                        <Icon symbol="icon-folder" />
+                        <span className="rail-label">프로젝트 열기</span>
+                    </Button>
+                </div>
             </nav>
             <div className="rail-foot">
                 <button
@@ -232,8 +251,9 @@ const Rail = () => {
                 </button>
                 <AccountCard />
             </div>
+            <RailResizer />
         </aside>
     );
 };
 
-export { Rail, ProjectList, getActiveNote };
+export { Rail, ProjectList, getTabNote };

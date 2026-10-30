@@ -44,7 +44,7 @@ const writeWhat = async (t) => {
 const draft = async (t) => {
     await writeWhat(t);
     await t.click("#new-project-draft");
-    await t.wait(700);
+    await t.wait(4200);
 };
 
 // 새 프로젝트: 한두 줄 적기, 초안을 쓰는 중, 초안 다듬기, 작성자 칸, 초안 실패
@@ -68,6 +68,19 @@ const SCENES = [
             await t.click("#new-project-cancel");
             await t.wait(300);
             await t.note("after-cancel", await t.eval("document.querySelector('#new-project-what').value.length > 0 && Boolean(document.querySelector('#new-project-write'))"));
+        }
+    },
+    {
+        name: "new-project-reveal",
+        init: { ...BASE, model: { draft: DRAFT, draftDelay: 1200 } },
+        run: async (t) => {
+            await writeWhat(t);
+            await t.click("#new-project-draft");
+            await t.wait(500);
+            await t.shot("waiting");
+            await t.wait(4800);
+            await t.shot("filled");
+            await t.note("done", await t.eval("!document.querySelector('#new-project-refine').hasAttribute('data-mode')"));
         }
     },
     {

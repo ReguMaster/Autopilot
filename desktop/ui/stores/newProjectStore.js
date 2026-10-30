@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 // 새 프로젝트 화면의 입력. 다른 탭을 봐도 만들거나 처음부터 다시 쓸 때까지 남는다.
+// suggestions는 Claude(haiku)가 새로 추천한 예시([{ label, what, platforms }])다. 기본 예시는 화면이 따로 갖는다.
+// isDrafting은 Claude가 초안을 쓰는 중(다듬기 틀에 자리 표시), isRevealing은 응답이 온 뒤 칸이 차례로 채워지는 몇 초다.
 // step: write(한두 줄 적기) → refine(초안 다듬기). 칸 목록은 [{ label, picked }]이고 picked가 거짓이면 추천(회색)이다.
 const createDraft = (patch = {}) => {
     return { name: "", summary: "", users: [], features: [], exclusions: [], stack: { choice: "later", items: [], reason: "", custom: [] }, refs: [], ...patch };
@@ -13,8 +15,13 @@ const INITIAL_STATE = {
     draft: createDraft(),
     isDrafted: false,
     isDrafting: false,
+    isRevealing: false,
     isCreating: false,
     isRefsOpen: false,
+    isMoreOpen: false,
+    suggestions: [],
+    isSuggesting: false,
+    suggestError: "",
     notice: "",
     info: { parentDir: "", author: null, isLoaded: false },
     author: { name: "", email: "" }
@@ -62,7 +69,15 @@ const newProject = {
     removeItem: (field, index) => useNewProjectStore.setState((state) => ({ draft: { ...state.draft, [field]: state.draft[field].filter((item, itemIndex) => itemIndex !== index) } })),
 
     // 처음부터 다시: 적은 한두 줄과 실행 환경은 남기고 초안만 비운다.
-    restart: () => useNewProjectStore.setState((state) => ({ ...structuredClone(INITIAL_STATE), what: state.what, platforms: state.platforms, info: state.info, author: state.author })),
+    restart: () =>
+        useNewProjectStore.setState((state) => ({
+            ...structuredClone(INITIAL_STATE),
+            what: state.what,
+            platforms: state.platforms,
+            info: state.info,
+            author: state.author,
+            suggestions: state.suggestions
+        })),
     clear: () => useNewProjectStore.setState((state) => ({ ...structuredClone(INITIAL_STATE), info: state.info }))
 };
 

@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
+const { CODEX_MODEL_PATTERN } = require("./engineArgs.cjs");
 
 const IS_WINDOWS = process.platform === "win32";
 const WINDOWS_SCRIPT_PATTERN = /\.(cmd|bat)$/i;
@@ -339,7 +340,24 @@ const startLogin = (configDir, handlers, options = {}) => {
     };
 };
 
-// 여러 AI 브레인스토밍에 쓸 Codex가 설치 · 로그인돼 있는지(`codex login status`의 종료 코드). launch는 검증용 가짜 실행 파일이다.
+const MAX_CODEX_MODELS = 30;
+
+// Codex가 목록에 보이는 모델로 캐시해 둔 것(~/.codex/models_cache.json의 visibility가 list인 항목). 비공식 형식이라 읽지 못하면 빈 목록이고, 화면은 기본값만 보인다.
+const readCodexModels = (processEnv) => {
+    try {
+        const codexHome = processEnv.CODEX_HOME || path.join(os.homedir(), ".codex");
+        const { models } = JSON.parse(fs.readFileSync(path.join(codexHome, "models_cache.json"), "utf8"));
+
+        return models
+            .filter((model) => model.visibility === "list" && CODEX_MODEL_PATTERN.test(model.slug))
+            .slice(0, MAX_CODEX_MODELS)
+            .map((model) => ({ id: model.slug, label: String(model.display_name || model.slug).slice(0, 40) }));
+    } catch {
+        return [];
+    }
+};
+
+// 여러 AI 브레인스토밍에 쓸 Codex가 설치 · 로그인돼 있는지(`codex login status`의 종료 코드). 쓸 수 있으면 고를 수 있는 모델도 함께 준다. launch는 검증용 가짜 실행 파일이다.
 const getCodexStatus = (launch = null, processEnv = process.env) => {
     const command = launch?.command || findExecutable("codex", processEnv);
 
@@ -369,7 +387,7 @@ const getCodexStatus = (launch = null, processEnv = process.env) => {
         });
         child.once("exit", (code) => {
             clearTimeout(timer);
-            resolve(code === 0 ? { available: true, reason: "" } : { available: false, reason: "Codex 로그인이 필요해요" });
+            resolve(code === 0 ? { available: true, reason: "", models: readCodexModels(processEnv) } : { available: false, reason: "Codex 로그인이 필요해요" });
         });
     });
 };

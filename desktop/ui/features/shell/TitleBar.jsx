@@ -1,38 +1,15 @@
-import { useShallow } from "zustand/react/shallow";
 import { openUpdate } from "../../actions/run.js";
-import { getTabLabels } from "../../lib/projectName.js";
 import { useAppStore } from "../../stores/appStore.js";
-import { useRunStore } from "../../stores/runStore.js";
-import { useTabsStore } from "../../stores/tabsStore.js";
 
-// 모든 탭에서 실행 중인 프로젝트 이름. 보는 탭은 탭 목록보다 먼저 바뀌는 엔진 상태를 따른다.
-const useRunningNames = () => {
-    const { tabs, active } = useTabsStore(useShallow((store) => ({ tabs: store.tabs, active: store.active })));
-    const viewedStatus = useRunStore((store) => store.state.status);
-    const labels = getTabLabels(tabs);
-
-    return tabs.filter((tab) => (tab.projectDir === active ? viewedStatus : tab.status) !== "idle").map((tab) => labels[tabs.indexOf(tab)]);
-};
-
-// 본문 위 한 줄. 창 프레임을 대신하는 끌기 영역이고 버튼만 뺀다(styles/shell.css). 왼쪽에 모든 탭의 실행 중인 프로젝트, 오른쪽에 새 버전 알림과 창 버튼을 둔다.
+// 본문 위 한 줄. 창 프레임을 대신하는 끌기 영역이고 버튼만 뺀다(styles/shell.css). 오른쪽에 새 버전 알림과 창 버튼을 둔다. 프로젝트별 진행 상태는 레일이 알린다.
 const TitleBar = () => {
     const update = useAppStore((store) => store.update);
     const version = useAppStore((store) => store.version);
     const maximized = useAppStore((store) => store.maximized);
-    const runningNames = useRunningNames();
     const maximizeLabel = maximized ? "이전 크기로" : "최대화";
 
     return (
         <header id="titlebar" className="titlebar" data-maximized={maximized ? "" : undefined}>
-            <p className="dock-runs" hidden={runningNames.length === 0} aria-live="polite">
-                <span className="ring" aria-hidden="true" />
-                <b>{`실행 중 ${runningNames.length}개`}</b>
-                {runningNames.map((name) => (
-                    <span key={name} className="dock-run">
-                        {name}
-                    </span>
-                ))}
-            </p>
             <div className="window-controls">
                 <button
                     type="button"

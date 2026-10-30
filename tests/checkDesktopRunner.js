@@ -27,7 +27,12 @@ import {
     DEFAULT_SECURITY_ON_FAIL as UI_DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES as UI_BRAINSTORM_PHASES,
     BRAINSTORM_PROVIDERS as UI_BRAINSTORM_PROVIDERS,
-    PROVIDER_LABELS as UI_PROVIDER_LABELS
+    PROVIDER_LABELS as UI_PROVIDER_LABELS,
+    CODEX_EFFORT_LEVELS as UI_CODEX_EFFORT_LEVELS,
+    DEFAULT_DEBATE_TURNS as UI_DEFAULT_DEBATE_TURNS,
+    DEBATE_TURNS_LIMIT as UI_DEBATE_TURNS_LIMIT,
+    DEBATE_TURN_CHOICES as UI_DEBATE_TURN_CHOICES,
+    RAIL_WIDTH as UI_RAIL_WIDTH
 } from "../desktop/ui/lib/constants.js";
 import {
     MODEL_CHOICES as ENGINE_MODELS,
@@ -53,7 +58,11 @@ import {
     MAX_RUN_DAYS as ENGINE_MAX_RUN_DAYS,
     BRAINSTORM_PHASES as ENGINE_BRAINSTORM_PHASES,
     BRAINSTORM_PROVIDERS as ENGINE_BRAINSTORM_PROVIDERS,
-    PROVIDER_LABELS as ENGINE_PROVIDER_LABELS
+    PROVIDER_LABELS as ENGINE_PROVIDER_LABELS,
+    CODEX_MODEL_PATTERN as ENGINE_CODEX_MODEL_PATTERN,
+    CODEX_EFFORT_LEVELS as ENGINE_CODEX_EFFORT_LEVELS,
+    DEBATE_DEFAULT_TURNS as ENGINE_DEBATE_DEFAULT_TURNS,
+    DEBATE_TURNS_LIMIT as ENGINE_DEBATE_TURNS_LIMIT
 } from "../autopilot/src/utils/config.js";
 import engineUtil from "../autopilot/src/utils/util.js";
 import phaseUtil from "../autopilot/src/utils/phaseUtil.js";
@@ -73,8 +82,8 @@ const {
     STATUS_FAILED
 } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, canInitGitRepo, initGitRepo, getGitAuthor, createProject, isProjectReportFile, getPhaseDoc, readPhaseDoc, MAX_PHASE_DOC_BYTES } = require("../desktop/projectFiles.cjs");
-const { getProjectNameError, toFolderName, getDraftPrompt, parseDraft, buildProjectBrief, sanitizeBrief, DRAFT_LIMITS } = require("../desktop/projectDraft.cjs");
-const { DEFAULT_SETTINGS } = require("../desktop/settingsStore.cjs");
+const { getProjectNameError, toFolderName, getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, buildProjectBrief, sanitizeBrief, DRAFT_LIMITS } = require("../desktop/projectDraft.cjs");
+const { DEFAULT_SETTINGS, MIN_RAIL_WIDTH, MAX_RAIL_WIDTH, DEFAULT_RAIL_WIDTH } = require("../desktop/settingsStore.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
 const {
@@ -96,6 +105,10 @@ const {
     DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES,
     BRAINSTORM_PROVIDERS,
+    CODEX_MODEL_PATTERN,
+    CODEX_EFFORT_LEVELS,
+    DEBATE_DEFAULT_TURNS,
+    DEBATE_TURNS_LIMIT,
     MAX_RUN_DAYS
 } = require("../desktop/engineArgs.cjs");
 
@@ -1026,6 +1039,25 @@ const checkCliArgs = () => {
     ]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan"], debate: ["plan", "design"], crossReview: true }).slice(-2), ["--brainstorm", "plan:debate"]);
 
+    // 협의 최대 횟수는 기본값과 다르고 협의하는 단계가 있을 때만 넘긴다(엔진이 협의 없는 --debate-turns를 거부한다).
+    const debateBase = { ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["plan"] };
+
+    assert.deepEqual(getCliArgs({ ...debateBase, debateTurns: 12 }).slice(-4), ["--brainstorm", "plan:debate,design", "--debate-turns", "12"]);
+    assert.deepEqual(getCliArgs({ ...debateBase, debateTurns: DEBATE_DEFAULT_TURNS }), getCliArgs(debateBase));
+    assert.deepEqual(getCliArgs({ ...debateBase, debate: [], debateTurns: 12 }), getCliArgs({ ...debateBase, debate: [] }));
+    assert.deepEqual(getCliArgs({ ...debateBase, brainstorm: ["design"], debateTurns: 12 }), getCliArgs({ ...debateBase, brainstorm: ["design"] }));
+    assert.deepEqual(getCliArgs({ ...debateBase, allow: [], debateTurns: 12 }), getCliArgs({ ...debateBase, allow: [] }));
+
+    // Codex의 model·effort는 값이 있을 때만, 보내기를 허용해 브레인스토밍을 켰을 때만 넘긴다(비면 Codex 설정을 따른다).
+    const codexBase = { ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan"] };
+
+    assert.deepEqual(getCliArgs({ ...codexBase, codexModel: "gpt-6.1-sol", codexEffort: "high" }).slice(-6), ["--brainstorm", "plan", "--codex-model", "gpt-6.1-sol", "--codex-effort", "high"]);
+    assert.deepEqual(getCliArgs({ ...codexBase, codexEffort: "xhigh" }).slice(-4), ["--brainstorm", "plan", "--codex-effort", "xhigh"]);
+    assert.deepEqual(getCliArgs({ ...codexBase, codexModel: "", codexEffort: "" }), getCliArgs(codexBase));
+    assert.deepEqual(getCliArgs({ ...codexBase, allow: [], codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs({ ...codexBase, allow: [] }));
+    assert.deepEqual(getCliArgs({ ...codexBase, brainstorm: [], codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs({ ...codexBase, brainstorm: [] }));
+    assert.deepEqual(getCliArgs({ ...codexBase, mode: "maintain", codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs(base));
+
     // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
     const now = new Date(2026, 9, 30, 22, 10).getTime();
 
@@ -1099,6 +1131,18 @@ const checkBuildLogs = () => {
     // 브레인스토밍 줄은 다른 AI의 안 · 검토를 받는 마지막 소식으로 읽는다.
     for (const [line, expected] of [
         ["[브레인스토밍] Codex 기획 안 받는 중", { provider: "Codex", phaseLabel: "기획", kind: "proposal", status: "receiving", reason: "" }],
+        [
+            "[브레인스토밍] Codex 기획 안 진행 3분째 (최대 30분): 명령 5번 실행 · 파일을 읽고 있어요",
+            { provider: "Codex", phaseLabel: "기획", kind: "proposal", status: "receiving", reason: "", elapsedMinutes: 3, limitMinutes: 30, activity: "명령 5번 실행 · 파일을 읽고 있어요" }
+        ],
+        [
+            "[브레인스토밍] Codex 디자인 검토 진행 1분째 (최대 30분)",
+            { provider: "Codex", phaseLabel: "디자인", kind: "review", status: "receiving", reason: "", elapsedMinutes: 1, limitMinutes: 30, activity: "" }
+        ],
+        [
+            "[브레인스토밍] Codex 기획 안 진행 2분째 (최대 30분): 마지막으로 안 받음",
+            { provider: "Codex", phaseLabel: "기획", kind: "proposal", status: "receiving", reason: "", elapsedMinutes: 2, limitMinutes: 30, activity: "마지막으로 안 받음" }
+        ],
         ["[브레인스토밍] Codex 디자인 검토 건너뜀: usage limit reached", { provider: "Codex", phaseLabel: "디자인", kind: "review", status: "skipped", reason: "usage limit reached" }],
         ["[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.", { provider: "", phaseLabel: "", kind: "proposal", status: "blocked", reason: "" }]
     ]) {
@@ -1117,17 +1161,16 @@ const checkBuildLogs = () => {
         parseLine(debateState, line);
     }
 
-    assert.deepEqual(debateState.debate, {
-        phaseLabel: "기획",
-        maxTurns: 3,
-        status: "running",
-        turns: [
-            { provider: "claude", message: "결제는 빼요" },
-            { provider: "codex", message: "넣어요" }
-        ],
-        disputes: 0,
-        reason: ""
-    });
+    assert.deepEqual(
+        debateState.debate.turns.map((turn) => [turn.provider, turn.message, turn.at > 0]),
+        [
+            ["claude", "결제는 빼요", true],
+            ["codex", "넣어요", true]
+        ]
+    );
+    assert.deepEqual({ ...debateState.debate, turns: [] }, { phaseLabel: "기획", maxTurns: 3, status: "running", turns: [], disputes: 0, reason: "" });
+    parseLine(debateState, "[협의] Claude: 다시 읽은 말", true);
+    assert.equal(debateState.debate.turns.at(-1).at, 0, "로그를 다시 읽은 발언은 시각을 알 수 없다");
     parseLine(debateState, "[협의] 쟁점 2개를 남기고 끝냈어요");
     assert.deepEqual([debateState.debate.status, debateState.debate.disputes], ["disputes", 2]);
     parseLine(debateState, "[협의] 합의했어요");
@@ -1245,6 +1288,27 @@ const checkProjectDraftRules = () => {
 
     assert.match(prompt, /<설명>\n미용실 예약\n<\/설명>/);
     assert.match(prompt, /사용자가 고른 실행 환경: 웹/);
+
+    // 추천 예시: 이미 보인 이름은 겹치지 않게 부탁하고, 답은 JSON 배열에서 이름·설명·실행 환경을 다듬어 5개까지 받는다.
+    assert.match(getExamplesPrompt({ exclude: ["가게 예약 웹앱", ""] }), /겹치지 않게 하라: 가게 예약 웹앱$/);
+    assert.doesNotMatch(getExamplesPrompt(), /겹치지 않게/);
+
+    const examples = parseExamples(
+        `예시예요 ${JSON.stringify([
+            { label: "  동네 서점 재고 ", what: "서점 주인이 재고를\n한눈에 봐요", platforms: ["web", "web", "tv", "mobile", "cli"] },
+            { label: "동네 서점 재고", what: "겹치는 이름" },
+            { label: "빈 설명", what: "" },
+            ...Array.from({ length: 8 }, (item, index) => ({ label: `예시 ${index}`, what: "설명" }))
+        ])}`
+    );
+
+    assert.deepEqual(examples[0], { label: "동네 서점 재고", what: "서점 주인이 재고를 한눈에 봐요", platforms: ["web", "mobile"] });
+    assert.equal(examples.length, 5);
+    assert.ok(examples.every((example) => example.label && example.what));
+
+    for (const bad of ["", "그냥 글", "[깨진", "{}", "[1, 2]"]) {
+        assert.deepEqual(parseExamples(bad), [], bad);
+    }
 
     const brief = buildProjectBrief({
         name: "hanbit-booking",
@@ -1462,11 +1526,23 @@ const checkChoiceSync = () => {
         [RUNNER_PHASE_LABELS, UI_PHASE_LABELS, ENGINE_PHASE_LABELS],
         [BRAINSTORM_PHASES, UI_BRAINSTORM_PHASES, ENGINE_BRAINSTORM_PHASES],
         [BRAINSTORM_PROVIDERS, UI_BRAINSTORM_PROVIDERS, ENGINE_BRAINSTORM_PROVIDERS],
-        [ENGINE_PROVIDER_LABELS, UI_PROVIDER_LABELS, ENGINE_PROVIDER_LABELS]
+        [ENGINE_PROVIDER_LABELS, UI_PROVIDER_LABELS, ENGINE_PROVIDER_LABELS],
+        [CODEX_EFFORT_LEVELS, UI_CODEX_EFFORT_LEVELS, ENGINE_CODEX_EFFORT_LEVELS],
+        [DEBATE_DEFAULT_TURNS, UI_DEFAULT_DEBATE_TURNS, ENGINE_DEBATE_DEFAULT_TURNS],
+        [DEBATE_TURNS_LIMIT, UI_DEBATE_TURNS_LIMIT, ENGINE_DEBATE_TURNS_LIMIT]
     ]) {
         assert.deepEqual(appValue, engineValue);
         assert.deepEqual(uiValue, engineValue);
     }
+
+    assert(UI_DEBATE_TURN_CHOICES.every((value) => Number.isInteger(value) && value >= 1 && value <= ENGINE_DEBATE_TURNS_LIMIT));
+    assert(UI_DEBATE_TURN_CHOICES.includes(ENGINE_DEBATE_DEFAULT_TURNS));
+    assert.equal(DEFAULT_SETTINGS.debateTurns, ENGINE_DEBATE_DEFAULT_TURNS);
+
+    assert.equal(CODEX_MODEL_PATTERN.source, ENGINE_CODEX_MODEL_PATTERN.source);
+
+    assert.deepEqual(UI_RAIL_WIDTH, { min: MIN_RAIL_WIDTH, max: MAX_RAIL_WIDTH, default: DEFAULT_RAIL_WIDTH });
+    assert.equal(DEFAULT_SETTINGS.railWidth, DEFAULT_RAIL_WIDTH);
 
     assert.equal(MAX_RUN_DAYS, ENGINE_MAX_RUN_DAYS);
     assert.equal(UI_DEFAULT_MODE, ENGINE_MODES[0]);
