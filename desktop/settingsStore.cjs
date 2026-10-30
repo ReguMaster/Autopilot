@@ -21,6 +21,7 @@ const {
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
     BRAINSTORM_PHASES,
+    isMains,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
     RUNNERS,
@@ -75,6 +76,7 @@ const OVERRIDABLE_KEYS = [
     "designFormat",
     "qaOnFail",
     "securityOnFail",
+    "mains",
     "brainstorm",
     "crossReview",
     "debate",
@@ -122,7 +124,9 @@ const DEFAULT_SETTINGS = {
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
-    // 여러 AI 브레인스토밍을 켠 단계(Claude와 함께 Codex도 안을 낸다)와 서로 검토하기. 기본은 Claude만이다.
+    // 신규 개발에서 단계마다 그 단계의 회차를 돌리는 메인 AI(없는 단계는 claude). 기본은 모두 Claude다.
+    mains: {},
+    // 여러 AI 브레인스토밍을 켠 단계(메인의 반대쪽 AI가 보조로 따로 안을 낸다)와 서로 검토하기. 기본은 메인만이다.
     brainstorm: [],
     crossReview: false,
     debate: [],
@@ -183,6 +187,7 @@ const SETTING_VALIDATORS = {
     designFormat: (value) => DESIGN_FORMATS.includes(value),
     qaOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
     securityOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
+    mains: isMains,
     brainstorm: (value) => isChoiceList(value, BRAINSTORM_PHASES),
     crossReview: (value) => typeof value === "boolean",
     // 협의로 돌릴 단계. brainstorm에 없는 단계는 엔진 인자를 만들 때 빠진다(engineArgs).

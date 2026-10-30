@@ -124,7 +124,7 @@ const isValidAgentOptions = (options) => {
 };
 
 // 작업 모드·신규 개발 설정과 실행 에이전트. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate", "debateTurns", ...AGENT_KEYS];
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "crossReview", "debate", "debateTurns", ...AGENT_KEYS];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));

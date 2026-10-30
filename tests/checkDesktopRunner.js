@@ -93,6 +93,10 @@ const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claude
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
 const {
     getCliArgs,
+    getMains,
+    getOtherProvider,
+    getAssistedPhases,
+    isMains,
     getEndTimeError,
     isValidCommitPrefix,
     isValidWorkBranch,
@@ -1088,7 +1092,63 @@ const checkCliArgs = () => {
     ]);
     assert.deepEqual(getCliArgs({ ...base, runner: "codex", codexModel: "", codexEffort: "" }).slice(-2), ["--runner", "codex"]);
     assert.deepEqual(getCliArgs({ ...base, runner: "claude" }), getCliArgs(base));
-    assert.deepEqual(getCliArgs({ ...codexBase, runner: "codex", codexModel: "gpt-6.1-sol" }).slice(-6), ["--brainstorm", "plan", "--runner", "codex", "--codex-model", "gpt-6.1-sol"]);
+
+    // 단계마다 메인(없으면 claude)과 보조(반대쪽 AI): Codex 보조는 보내기를 허용해야 하고 Claude 보조는 허용과 상관없다(엔진 phaseUtil과 같다).
+    assert.deepEqual(getMains(), { plan: "claude", design: "claude", build: "claude", qa: "claude", security: "claude" });
+    assert.deepEqual(getMains({ plan: "codex" }).plan, "codex");
+    assert.equal(getOtherProvider("claude"), "codex");
+    assert.equal(getOtherProvider("codex"), "claude");
+    assert(isMains({}) && isMains({ qa: "codex" }) && !isMains({ qa: "gemini" }) && !isMains({ ship: "codex" }) && !isMains(null) && !isMains([]));
+    assert.deepEqual(getAssistedPhases({ mode: "build", mains: { plan: "codex" }, brainstorm: ["plan", "design"], allow: [] }), ["plan"]);
+    assert.deepEqual(getAssistedPhases({ mode: "build", mains: { plan: "codex" }, brainstorm: ["plan", "design"], allow: ["send"] }), ["plan", "design"]);
+    assert.deepEqual(getAssistedPhases({ mode: "maintain", mains: {}, brainstorm: ["plan"], allow: ["send"] }), []);
+
+    // 신규 개발은 --runner를 보내지 않는다(저장된 실행 에이전트가 새어 들지 않게). 단계마다 메인은 --main이 정하고, 기본(claude)이 아닌 단계만 넘긴다.
+    assert.deepEqual(getCliArgs({ ...codexBase, runner: "codex", codexModel: "gpt-6.1-sol" }).slice(-4), ["--brainstorm", "plan", "--codex-model", "gpt-6.1-sol"]);
+    assert(!getCliArgs({ ...buildBase, runner: "codex" }).includes("--runner"));
+    assert.deepEqual(
+        getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "claude", build: "claude" } }),
+        getCliArgs({ ...buildBase, gates: [], allow: [] }),
+        "모두 기본이면 --main을 보내지 않는다"
+    );
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex", security: "codex" } }).slice(-4), ["--mode", "build", "--main", "plan=codex,security=codex"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain", mains: { plan: "codex" } }), getCliArgs(base), "유지 보수에는 --main이 없다");
+
+    // 메인이 Codex이면 보조는 Claude라서 보내기를 허용하지 않아도 브레인스토밍한다. Codex가 메인이므로 Codex의 model·effort도 넘긴다.
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan"], crossReview: true, codexModel: "gpt-6.1-sol" }).slice(-9), [
+        "--mode",
+        "build",
+        "--main",
+        "plan=codex",
+        "--brainstorm",
+        "plan",
+        "--cross-review",
+        "--codex-model",
+        "gpt-6.1-sol"
+    ]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan"], debate: ["plan"], debateTurns: 5 }).slice(-6), [
+        "--main",
+        "plan=codex",
+        "--brainstorm",
+        "plan:debate",
+        "--debate-turns",
+        "5"
+    ]);
+
+    // 메인이 Claude이면 보조는 Codex라서 보내기가 필요하다. 허용하지 않은 단계는 브레인스토밍에서 빠지고, 남은 단계가 없으면 관련 인자도 없다.
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan", "design"], crossReview: true }).slice(-5), [
+        "--main",
+        "plan=codex",
+        "--brainstorm",
+        "plan",
+        "--cross-review"
+    ]);
+    assert(!getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["design"], crossReview: true, codexModel: "gpt-6.1-sol" }).includes("--brainstorm"));
+    assert(
+        getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["design"], codexModel: "gpt-6.1-sol" }).includes("--codex-model"),
+        "Codex가 메인이면 보조가 없어도 model을 넘긴다"
+    );
+    assert(!getCliArgs({ ...buildBase, gates: [], allow: [], brainstorm: ["design"], codexModel: "gpt-6.1-sol" }).includes("--codex-model"), "Codex가 관여하지 않으면 넘기지 않는다");
 
     // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
     const now = new Date(2026, 9, 30, 22, 10).getTime();

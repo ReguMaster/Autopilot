@@ -138,6 +138,13 @@ const checkNormalize = () => {
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "design"], crossReview: true }), { brainstorm: ["plan", "design"], crossReview: true });
     assert.deepEqual(normalizeOverrides({ brainstorm: ["build"], crossReview: "yes" }), {});
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "plan"] }), {});
+    // 단계마다 메인 AI: 기본은 비어 있어(모두 Claude) --main을 넘기지 않고, 다섯 단계 이름과 claude·codex만 저장한다.
+    assert.deepEqual(buildDefaults.mains, {});
+    assert.deepEqual(normalizeOverrides({ mains: { plan: "codex", security: "codex" } }), { mains: { plan: "codex", security: "codex" } });
+    assert.deepEqual(normalizeOverrides({ mains: { plan: "gemini" } }), {});
+    assert.deepEqual(normalizeOverrides({ mains: { deploy: "codex" } }), {});
+    assert.deepEqual(normalizeOverrides({ mains: ["codex"] }), {});
+    assert.deepEqual(normalizeOverrides({ mains: "plan=codex" }), {});
     // 협의로 돌릴 단계도 기획 · 디자인만 받는다. 이 키가 없던 옛 설정은 기본값(협의 없음)이다.
     assert.deepEqual(buildDefaults.debate, []);
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan"], debate: ["plan"] }), { brainstorm: ["plan"], debate: ["plan"] });

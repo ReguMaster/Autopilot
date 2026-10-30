@@ -11,6 +11,7 @@ const MAX_WORK_BRANCH_LENGTH = 100;
 const PROTECTED_BRANCHES = ["main", "master", "head"];
 // 작업 모드와 신규 개발 인자. 값은 엔진 config.js(MODES·GATE_PHASES·ALLOW_KEYS·DESIGN_FORMATS·DEFAULT_*·MAX_FAIL_RETRIES)와 같다.
 const MODES = ["maintain", "build"];
+const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
 const GATE_PHASES = ["plan", "design"];
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
@@ -81,15 +82,37 @@ const getEndTimeError = (endTime, now = Date.now()) => {
     return deadline.getTime() - now > MAX_RUN_DAYS * DAY_MS ? `종료 시각은 ${MAX_RUN_DAYS}일 뒤까지 정할 수 있어요.` : "";
 };
 
-const isBrainstorming = ({ mode, brainstorm = [], allow = [] }) => {
-    return mode === "build" && brainstorm.length > 0 && allow.includes("send");
+// 단계마다 그 단계의 회차를 돌리는 메인 AI(엔진 phaseUtil.getPhaseMains와 같다). 없는 단계는 기본 실행 에이전트(claude)다.
+const getMains = (mains = {}) => {
+    return Object.fromEntries(BUILD_PHASES.map((phase) => [phase, mains[phase] ?? DEFAULT_RUNNER]));
 };
 
-// Codex를 쓰는 실행(회차를 돌리거나 브레인스토밍)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다). 비어 있으면 Codex 설정을 따르므로 생략한다.
-const getCodexArgs = ({ runner = DEFAULT_RUNNER, codexModel = "", codexEffort = "", ...buildOptions }) => {
-    const args = runner === DEFAULT_RUNNER ? [] : ["--runner", runner];
+const isMains = (value) => {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(([phase, provider]) => BUILD_PHASES.includes(phase) && AI_PROVIDERS.includes(provider));
+};
 
-    if (runner === "codex" || isBrainstorming(buildOptions)) {
+// 메인의 반대쪽 AI가 그 단계의 보조다.
+const getOtherProvider = (provider) => {
+    return provider === "claude" ? "codex" : "claude";
+};
+
+// 보조를 쓸 수 있는 브레인스토밍 단계(엔진 phaseUtil.getPhaseAgents와 같다). Codex를 보조로 쓰려면 프로젝트 내용을 보내야 하므로 보내기를 허용해야 하고, Claude 보조는 허용과 상관없다.
+const getAssistedPhases = ({ mode, mains, brainstorm = [], allow = [] }) => {
+    const mainMap = getMains(mains);
+
+    return mode === "build" ? brainstorm.filter((phase) => getOtherProvider(mainMap[phase]) === "claude" || allow.includes("send")) : [];
+};
+
+// Codex가 관여하는 실행(회차를 돌리거나 보조로 안을 냄)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다). 비어 있으면 Codex 설정을 따르므로 생략한다.
+// 유지 보수는 --runner로 회차를 돌릴 AI를 고르고, 신규 개발은 단계마다 --main이 정하므로 --runner를 보내지 않는다(저장된 실행 에이전트가 새어 들지 않게).
+const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", codexEffort = "", brainstorm, allow }) => {
+    const isBuild = mode === "build";
+    const args = !isBuild && runner !== DEFAULT_RUNNER ? ["--runner", runner] : [];
+    const usesCodex = isBuild
+        ? Object.values(getMains(mains)).includes("codex") || getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm, allow: allow }).length > 0
+        : runner === "codex";
+
+    if (usesCodex) {
         args.push(...(codexModel ? ["--codex-model", codexModel] : []), ...(codexEffort ? ["--codex-effort", codexEffort] : []));
     }
 
@@ -97,12 +120,18 @@ const getCodexArgs = ({ runner = DEFAULT_RUNNER, codexModel = "", codexEffort = 
 };
 
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, brainstorm = [], crossReview = false, debate = [], debateTurns = DEBATE_DEFAULT_TURNS }) => {
+const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, mains, brainstorm = [], crossReview = false, debate = [], debateTurns = DEBATE_DEFAULT_TURNS }) => {
     if (mode !== "build") {
         return [];
     }
 
     const args = ["--mode", "build"];
+    const mainMap = getMains(mains);
+    const mainEntries = BUILD_PHASES.filter((phase) => mainMap[phase] !== DEFAULT_RUNNER).map((phase) => `${phase}=${mainMap[phase]}`);
+
+    if (mainEntries.length) {
+        args.push("--main", mainEntries.join(","));
+    }
 
     if (gates.length) {
         args.push("--gate", gates.join(","));
@@ -124,15 +153,16 @@ const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, se
         args.push("--security-on-fail", securityOnFail);
     }
 
-    // 다른 AI에게 프로젝트 내용을 보내므로 보내기를 허용했을 때만 넘긴다. 제공자는 엔진 기본값(codex)이다.
-    // 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
-    if (isBrainstorming({ mode: mode, brainstorm: brainstorm, allow: allow })) {
-        const hasCompare = brainstorm.some((phase) => !debate.includes(phase));
+    // 보조(메인의 반대쪽 AI)를 쓸 수 있는 단계만 넘긴다. 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
+    const assisted = getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm, allow: allow });
 
-        args.push("--brainstorm", brainstorm.map((phase) => (debate.includes(phase) ? `${phase}:debate` : phase)).join(","), ...(crossReview && hasCompare ? ["--cross-review"] : []));
+    if (assisted.length) {
+        const hasCompare = assisted.some((phase) => !debate.includes(phase));
+
+        args.push("--brainstorm", assisted.map((phase) => (debate.includes(phase) ? `${phase}:debate` : phase)).join(","), ...(crossReview && hasCompare ? ["--cross-review"] : []));
 
         // 엔진은 협의하는 단계가 없을 때의 --debate-turns를 거부하므로 협의 단계가 있을 때만 넘긴다.
-        if (debateTurns !== DEBATE_DEFAULT_TURNS && brainstorm.some((phase) => debate.includes(phase))) {
+        if (debateTurns !== DEBATE_DEFAULT_TURNS && assisted.some((phase) => debate.includes(phase))) {
             args.push("--debate-turns", String(debateTurns));
         }
     }
@@ -198,6 +228,10 @@ const getCliArgs = ({
 
 module.exports = {
     getCliArgs,
+    getMains,
+    getOtherProvider,
+    getAssistedPhases,
+    isMains,
     getEndTimeError,
     isValidCommitPrefix,
     isValidWorkBranch,
@@ -206,6 +240,7 @@ module.exports = {
     DEFAULT_LOG_RETENTION_DAYS,
     MAX_LINKED_REPOS,
     MODES,
+    BUILD_PHASES,
     GATE_PHASES,
     ALLOW_KEYS,
     DESIGN_FORMATS,
