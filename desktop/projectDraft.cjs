@@ -10,7 +10,6 @@ const PLATFORMS = [
     { key: "unknown", label: "아직 몰라요" }
 ];
 const PLATFORM_KEYS = PLATFORMS.map((platform) => platform.key);
-const STACK_CHOICES = ["recommended", "later", "custom"];
 const MAX_PROJECT_NAME_LENGTH = 64;
 const MAX_DRAFT_NAME_LENGTH = 40;
 const MAX_WHAT_LENGTH = 2000;
@@ -238,7 +237,6 @@ const sanitizeBrief = (text) => {
 module.exports = {
     PLATFORMS,
     PLATFORM_KEYS,
-    STACK_CHOICES,
     DRAFT_LIMITS,
     MAX_PROJECT_NAME_LENGTH,
     MAX_WHAT_LENGTH,

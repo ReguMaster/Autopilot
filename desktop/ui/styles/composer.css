@@ -286,26 +286,15 @@ body[data-view="run"] #policy-chip {
     transition: d 0.3s var(--ease-out);
 }
 
-/* 숫자·이름이 바뀌면 바뀐 방향에서 미끄러져 들어온다 */
+/* 이름이 바뀌면 아래에서 미끄러져 들어온다 */
 .tick-up {
     animation: tick-up 0.3s var(--ease-out);
-}
-
-.tick-down {
-    animation: tick-down 0.3s var(--ease-out);
 }
 
 @keyframes tick-up {
     from {
         opacity: 0.6;
         translate: 0 5px;
-    }
-}
-
-@keyframes tick-down {
-    from {
-        opacity: 0.6;
-        translate: 0 -5px;
     }
 }
 

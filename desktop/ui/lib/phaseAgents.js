@@ -1,4 +1,4 @@
-import { BUILD_PHASES, DEFAULT_RUNNER, PROVIDER_LABELS } from "./constants.js";
+import { BUILD_PHASES, DEFAULT_RUNNER } from "./constants.js";
 
 // AI 제공자 로고(Symbols의 심볼). Claude는 브랜드 색 스파크, OpenAI(Codex)는 글자색 매듭이다.
 const PROVIDER_LOGOS = { claude: "logo-claude", codex: "logo-openai" };
@@ -22,8 +22,4 @@ const getMainPhases = (mains, provider, labels) => {
     return BUILD_PHASES.filter((phase) => getMain(mains, phase) === provider).map((phase) => labels[phase]);
 };
 
-// 이 AI의 이름에 "가"를 붙인 말(Claude가 · Codex가)과 "와"를 붙인 말. 두 이름 모두 받침이 없는 소리로 끝나 같은 조사를 쓴다.
-const getSubjectText = (provider) => `${PROVIDER_LABELS[provider]}가`;
-const getWithText = (provider) => `${PROVIDER_LABELS[provider]}와`;
-
-export { PROVIDER_LOGOS, getOtherProvider, getMain, getAssistant, getMainPhases, getSubjectText, getWithText };
+export { PROVIDER_LOGOS, getOtherProvider, getMain, getAssistant, getMainPhases };

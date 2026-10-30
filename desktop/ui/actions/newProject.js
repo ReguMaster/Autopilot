@@ -41,10 +41,6 @@ const openNewProject = () => {
     loadCreateInfo();
 };
 
-const closeNewProject = () => {
-    ui.set({ newProject: false });
-};
-
 const pickParentDir = async () => {
     const result = await window.autopilot.pickCreateDir();
 
@@ -147,4 +143,4 @@ const createProject = async () => {
     ui.showNotice(`${state.draft.name} 프로젝트를 만들었어요. 단계 설정을 확인하고 기획을 시작해 주세요.`);
 };
 
-export { EXAMPLES, openNewProject, closeNewProject, pickParentDir, applyExample, suggestExamples, writeManually, requestDraft, cancelDraft, getBrief, createProject };
+export { EXAMPLES, openNewProject, pickParentDir, applyExample, suggestExamples, writeManually, requestDraft, cancelDraft, getBrief, createProject };
