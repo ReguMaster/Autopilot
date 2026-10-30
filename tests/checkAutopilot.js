@@ -64,7 +64,7 @@ const checkAutopilot = async () => {
         checkProgressArchive(context);
         checkStreamEvent();
         checkCommitLineCounts();
-        checkPhaseRules();
+        checkPhaseRules(context);
         checkRunFilePrune(context);
         checkProgressEnsure(context);
         checkProgressReset(context);

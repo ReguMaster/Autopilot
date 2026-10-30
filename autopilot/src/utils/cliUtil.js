@@ -1,10 +1,10 @@
-import { ALLOW_KEYS, DESIGN_FORMATS, EFFORT_LEVELS, GATE_PHASES, MAX_EXTEND_MINUTES, MAX_LINKED_REPOS, MAX_LOG_RETENTION_DAYS, MAX_QA_RETRIES, MODE_BUILD, MODES, MODEL_CHOICES } from "./config.js";
+import { ALLOW_KEYS, DESIGN_FORMATS, EFFORT_LEVELS, GATE_PHASES, MAX_EXTEND_MINUTES, MAX_LINKED_REPOS, MAX_LOG_RETENTION_DAYS, MAX_FAIL_RETRIES, MODE_BUILD, MODES, MODEL_CHOICES } from "./config.js";
 import phaseUtil from "./phaseUtil.js";
 import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress|approve --project <dir>"
 ].join("\n");
@@ -25,10 +25,16 @@ const RUN_OPTION_KEYS = {
     "--gate": "gates",
     "--allow": "allow",
     "--design-format": "designFormat",
-    "--qa-on-fail": "qaOnFail"
+    "--qa-on-fail": "qaOnFail",
+    "--security-on-fail": "securityOnFail"
 };
 // 신규 개발에서만 뜻이 있는 인자
-const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail"];
+const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail"];
+// 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
+const ON_FAIL_OPTIONS = [
+    ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
+    ["--security-on-fail", "securityOnFail", "maxSecurityRetries"]
+];
 const LINK_PROJECT_OPTION = "--link-project";
 const RUN_FLAGS = ["--no-open", "--extend-on-limit"];
 
@@ -113,7 +119,7 @@ const parseModeOptions = (options) => {
     }
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
-        throw new Error("--gate · --allow · --design-format · --qa-on-fail 은 --mode build 에서만 쓸 수 있습니다.");
+        throw new Error("--gate · --allow · --design-format · --qa-on-fail · --security-on-fail 은 --mode build 에서만 쓸 수 있습니다.");
     }
 
     if (options.gates !== undefined) {
@@ -128,15 +134,19 @@ const parseModeOptions = (options) => {
         throw new Error(`--design-format 값은 ${DESIGN_FORMATS.join(" | ")} 중 하나여야 합니다.`);
     }
 
-    if (options.qaOnFail !== undefined) {
-        const maxQaRetries = phaseUtil.parseQaOnFail(options.qaOnFail);
-
-        if (maxQaRetries === null) {
-            throw new Error(`--qa-on-fail 값은 stop 또는 retry:1~${MAX_QA_RETRIES} 이어야 합니다.`);
+    for (const [optionName, key, retriesKey] of ON_FAIL_OPTIONS) {
+        if (options[key] === undefined) {
+            continue;
         }
 
-        delete options.qaOnFail;
-        options.maxQaRetries = maxQaRetries;
+        const maxRetries = phaseUtil.parseOnFail(options[key]);
+
+        if (maxRetries === null) {
+            throw new Error(`${optionName} 값은 stop 또는 retry:1~${MAX_FAIL_RETRIES} 이어야 합니다.`);
+        }
+
+        delete options[key];
+        options[retriesKey] = maxRetries;
     }
 };
 

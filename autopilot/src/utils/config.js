@@ -24,22 +24,24 @@ const POLICY_ALIASES = {
     [POLICY_TODO]: POLICY_TODO
 };
 
-// 작업 모드. 유지 보수는 기존 회차 실행이고, 신규 개발은 기획→디자인→개발→테스트/QA 단계를 차례로 밟는다.
+// 작업 모드. 유지 보수는 기존 회차 실행이고, 신규 개발은 기획→디자인→개발→테스트/QA→보안검토 단계를 차례로 밟는다.
 const MODE_MAINTAIN = "maintain";
 const MODE_BUILD = "build";
 const MODES = [MODE_MAINTAIN, MODE_BUILD];
-const BUILD_PHASES = ["plan", "design", "build", "qa"];
+const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
 const PHASE_DONE = "done";
-const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA" };
+const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
 // 끝나면 멈추고 사용자 확인을 받을 수 있는 단계
 const GATE_PHASES = ["plan", "design"];
 // 신규 개발에서 실행마다 켜는 정책 완화. deps 새 dependency, large 큰 구조 만들기, external-api 외부 API 호출 코드, send 외부 서비스로 코드 보내기
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
 const DEFAULT_DESIGN_FORMAT = "html";
-const QA_ON_FAIL_STOP = "stop";
-const MAX_QA_RETRIES = 5;
+// 테스트/QA·보안검토가 fail이면 개발로 되돌리는 횟수(stop은 되돌리지 않고 멈춤). 단계마다 따로 센다.
+const ON_FAIL_STOP = "stop";
+const MAX_FAIL_RETRIES = 5;
 const DEFAULT_QA_ON_FAIL = "retry:3";
+const DEFAULT_SECURITY_ON_FAIL = "retry:3";
 
 const DEFAULT_END_TIME = "07:00";
 const DEFAULT_MODEL = "opus";
@@ -121,9 +123,10 @@ export {
     ALLOW_KEYS,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,
-    QA_ON_FAIL_STOP,
-    MAX_QA_RETRIES,
+    ON_FAIL_STOP,
+    MAX_FAIL_RETRIES,
     DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL,
     DEFAULT_END_TIME,
     DEFAULT_MODEL,
     FALLBACK_MODEL,

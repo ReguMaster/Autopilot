@@ -1,4 +1,4 @@
-import { MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
+import { BUILD_PHASES, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
 import dateUtil from "./dateUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "./guideText.js";
 
@@ -15,45 +15,126 @@ const getPolicyPrompt = (policy, todoDoneRelPath) => {
     return "이번 실행의 개선 정책은 [자율개선]이다. 예약 작업을 모두 마친 뒤에도 AUTOPILOT.md의 작업 탐색과 선택 기준으로 스스로 개선 작업을 찾아 종료 예정 시각까지 계속 진행하라.";
 };
 
+// 디자인 산출물 형식마다 더하는 지시. 형식과 상관없이 design.md는 늘 쓴다(디자인 단계의 산출물 참고).
 const DESIGN_PROMPTS = {
-    md: "`docs/autopilot/design.md`에 화면마다 구성 · 흐름 · 상태(빈 상태 · 오류 포함)를 글과 ASCII 와이어프레임으로 정리한다.",
+    md: "화면마다 ASCII 와이어프레임을 `docs/autopilot/design.md`의 그 화면 절에 함께 그린다.",
     html: "`docs/autopilot/design/`에 화면마다 정적 HTML 와이어프레임 파일을 만들고 `index.html`에서 모든 화면을 열 수 있게 한다. 외부 리소스 없이 파일만으로 열려야 한다.",
-    figma: "Figma MCP 도구로 화면을 그리고 `docs/autopilot/design.md`에 Figma 링크와 화면 설명을 남긴다. Figma 도구를 쓸 수 없으면 HTML 와이어프레임(`docs/autopilot/design/`)으로 대신하고 그 사실을 design.md에 적는다.",
-    image: "`codex exec`의 이미지 생성으로 화면 시안 이미지를 만들어 `docs/autopilot/design/`에 저장하고 `docs/autopilot/design.md`에 설명을 남긴다. Codex가 없거나 실패하면 그 이미지는 건너뛰고 HTML 와이어프레임으로 대신한다(실패를 회차 실패로 만들지 않는다)."
+    figma: "Figma MCP 도구로 화면을 그리고 `docs/autopilot/design.md`에 Figma 링크를 남긴다. Figma 도구를 쓸 수 없으면 HTML 와이어프레임(`docs/autopilot/design/`)으로 대신하고 그 사실을 design.md에 적는다.",
+    image: "`codex exec`의 이미지 생성으로 화면 시안 이미지를 만들어 `docs/autopilot/design/`에 저장한다. Codex가 없거나 실패하면 그 이미지는 건너뛰고 HTML 와이어프레임으로 대신한다(실패를 회차 실패로 만들지 않는다)."
 };
+const PASS_SIGNAL = "첫 줄에 `pass`를 쓴";
 
-const getPhaseWorkPrompt = (runState) => {
+// 단계마다 같은 틀(관점 · 읽을 것 · 산출물 · 회차당 작업 · 완료 기준 · 하지 않을 것 · 완료 신호)로 무엇을 어디까지 할지 정한다.
+const getPhaseBrief = (runState) => {
     if (runState.phase === "plan") {
-        return "<TASKS>의 만들 것을 바탕으로 기획서 `docs/autopilot/plan.md`를 쓴다. 목표, 사용자, 화면(또는 기능) 목록, 기술 선택과 이유, 데이터 구조, 이번에 하지 않는 것, 개발 순서를 담는다. 이 단계에서는 제품 코드를 쓰지 않는다.";
+        return {
+            role: "제품 기획자이자 테크 리드다. 개발자가 이 문서 하나만 보고 순서대로 만들 수 있게 쓴다.",
+            read: "`docs/autopilot/brief.md`(있으면 가장 먼저 읽는다), <TASKS>의 만들 것, 저장소에 이미 있는 파일.",
+            output: "`docs/autopilot/plan.md`를 다음 목차 그대로 쓴다. 1) 한 줄 요약 2) 목표와 측정 가능한 성공 기준 3) 사용자와 주요 시나리오 4) 기능 목록(필수 · 있으면 좋음으로 나누고 기능마다 완료 조건) 5) 화면(또는 명령 · API) 목록 6) 데이터 구조 7) 기술 선택과 이유(새 dependency · 큰 구조 · 외부 API는 AUTOPILOT_POLICY.md가 허용한 범위 안에서) 8) 이번에 하지 않는 것 9) 개발 순서(작은 단위로 나누고 단위마다 검증 방법) 10) 위험과 가정.",
+            perRound: "한 회차에 초안 전체를 쓴다. 돌려보낸 단계면 수정 요청한 부분을 고치고 나머지 절과 어긋나지 않게 맞춘다.",
+            criteria: [
+                "목차의 모든 절이 채워져 있다.",
+                "필수 기능마다 확인할 수 있는 완료 조건이 있다.",
+                "개발 순서가 필수 기능을 모두 덮고 단위마다 검증 방법이 있다.",
+                "정해지지 않은 것은 묻지 않고(무인 실행이다) 합리적으로 정한 뒤 `가정`이라고 표시했다."
+            ],
+            avoid: "제품 코드 작성, 패키지 설치, 프로젝트 뼈대 생성."
+        };
     }
 
     if (runState.phase === "design") {
-        return `\`docs/autopilot/plan.md\`를 따라 화면을 설계한다. ${DESIGN_PROMPTS[runState.designFormat]} 이 단계에서는 제품 코드를 쓰지 않는다.`;
+        return {
+            role: "프로덕트 디자이너다. 개발자가 화면마다 무엇을 어떻게 만들지 헷갈리지 않게 설계한다.",
+            read: "`docs/autopilot/plan.md`의 사용자 시나리오 · 화면 목록 · 기술 선택.",
+            output: `${DESIGN_PROMPTS[runState.designFormat]} 형식과 상관없이 \`docs/autopilot/design.md\`에 화면마다 목적 · 구성 요소 · 주요 동작 · 상태(빈 상태 · 로딩 · 오류 · 권한 없음), 화면 흐름, 공통 규칙(색 · 글자 · 간격 · 컴포넌트)을 정리한다.`,
+            perRound: "화면 2~4개씩 설계한다. 모든 화면을 마친 회차에 화면 흐름과 공통 규칙을 점검해 맞춘다.",
+            criteria: [
+                "plan.md의 화면이 모두 있다.",
+                "화면마다 빈 상태 · 로딩 · 오류 상태가 있다.",
+                "화면 흐름이 plan.md의 주요 시나리오와 맞다.",
+                "공통 규칙(색 · 글자 · 간격 · 컴포넌트)이 정해져 있다."
+            ],
+            avoid: "제품 코드 작성, plan.md에 없는 화면 추가(필요하면 plan.md를 먼저 고치고 이유를 적는다)."
+        };
     }
 
     if (runState.phase === "build") {
-        const qaPrompt = runState.qaRetries > 0 ? " 테스트/QA에서 돌아온 단계이므로 `docs/autopilot/qa.md`에 남은 실패 항목부터 고친다." : "";
+        const isReturned = runState.qaRetries > 0 || runState.securityRetries > 0;
 
-        return `\`docs/autopilot/plan.md\`의 개발 순서와 디자인 산출물(\`docs/autopilot/design*\`)을 따라 코드를 짠다. 작업 단위로 검증하고 commit한다.${qaPrompt} 기획서의 모든 항목을 구현하고 검증했을 때만 단계를 마친다.`;
+        return {
+            role: "시니어 개발자다. 기획서의 개발 순서를 작은 단위로 하나씩 실제로 동작하게 만든다.",
+            read: "`docs/autopilot/plan.md`의 개발 순서와 완료 조건, 디자인 산출물(`docs/autopilot/design.md` · `docs/autopilot/design/`), 진행 기록, 있으면 `docs/autopilot/qa.md` · `docs/autopilot/security.md`의 실패 항목.",
+            output: "동작하는 코드와 자동 테스트. 저장소에 빌드 · 테스트 · 실행 방법이 아직 없으면 첫 회차에 프로젝트 뼈대와 함께 `CLAUDE.md`(실행 · 검증 명령, 폴더 구조, 코드 규칙. 개발이 끝난 뒤 유지 보수 모드가 이 파일을 지침으로 쓴다)와 `README.md`(설치 · 실행 방법)를 만든다.",
+            perRound: `개발 순서에서 아직 끝나지 않은 다음 단위 1~2개. 단위마다 구현 → 테스트 → 실제 실행으로 확인 → commit → 진행 기록 갱신 순서를 지킨다.${
+                isReturned ? " 이번 개발은 테스트/QA · 보안검토가 되돌린 것이다. 새 단위보다 `qa.md`의 실패 항목과 `security.md`의 고치지 못한 심각 · 높음 항목을 먼저 고친다." : ""
+            }`,
+            criteria: ["개발 순서의 모든 단위가 끝났다.", "빌드와 전체 테스트가 통과한다.", "필수 기능의 완료 조건을 실제로 실행해 확인했다.", "`README.md` · `CLAUDE.md`가 지금 코드와 맞다."],
+            avoid: "plan.md에 없는 기능 추가(필요하면 plan.md를 먼저 고치고 이유를 적는다), 디자인과 다른 화면으로 임의 변경, 검증하지 않은 코드 commit."
+        };
     }
 
-    return "기획서의 기능을 하나씩 실제로 실행 · 테스트해 확인하고 결과를 `docs/autopilot/qa.md`에 남긴다(확인한 항목, 통과 · 실패, 재현 방법). 테스트가 없으면 만든다. 작은 문제는 바로 고치고 commit한다.";
+    if (runState.phase === "qa") {
+        return {
+            role: "QA 엔지니어다. 사용자가 실제로 쓰는 방식대로 기능을 확인하고 깨지는 곳을 찾는다.",
+            read: "`docs/autopilot/plan.md`의 기능별 완료 조건과 주요 시나리오, 디자인 산출물, `README.md`의 실행 방법.",
+            output: "`docs/autopilot/qa.md`에 기능마다 확인 방법 · 결과(통과 · 실패) · 실패면 재현 절차를 표로 남긴다. 확인한 시나리오는 자동 테스트로 추가한다.",
+            perRound: "기능 묶음 하나를 확인한다. 작은 문제는 바로 고치고 다시 확인한 뒤 commit한다.",
+            criteria: ["필수 기능을 모두 확인했다.", "주요 시나리오가 처음부터 끝까지 통과한다.", "빈 입력 · 잘못된 입력 · 오류 상황을 확인했다.", "전체 테스트가 통과한다."],
+            avoid: "새 기능 추가, 큰 리팩터링, 실패를 숨기려고 테스트를 지우거나 느슨하게 고치기.",
+            signal: "첫 줄에 필수 기능과 주요 시나리오가 모두 통과했으면 `pass`, 고치지 못한 실패가 남았으면 `fail`을 쓴"
+        };
+    }
+
+    return {
+        role: "보안 엔지니어다. 공격자와 실수의 눈으로 배포 전의 코드와 설정을 점검한다.",
+        read: "저장소의 코드 · 설정 · 커밋 이력, `docs/autopilot/plan.md`의 기술 선택과 데이터 구조.",
+        output: "`docs/autopilot/security.md`에 발견 사항을 표로 남긴다(심각도: 심각 · 높음 · 중간 · 낮음, 위치, 설명, 조치: 고침 · 남김). 고칠 수 있는 문제는 바로 고치고 검증한 뒤 commit한다. 남긴 문제는 이유와 권장 조치를 적는다.",
+        perRound: "아래 점검 목록을 차례로 확인하고, 한 회차에 확인한 만큼 기록과 수정을 마친다.",
+        checks: [
+            "비밀값: 코드 · 설정 파일 · `git log -p` 이력의 키 · 토큰 · 비밀번호",
+            "dependency 취약점: 프로젝트의 audit 명령(예: `npm audit`). 네트워크를 쓸 수 없으면 lockfile 검토로 대신하고 그 사실을 적는다",
+            "입력 검증과 인젝션: SQL · 명령 · 경로 · XSS",
+            "인증 · 권한 · 세션",
+            "파일 업로드와 경로 처리",
+            "오류 메시지 · 로그에 드러나는 민감정보",
+            "웹이면 CORS와 보안 헤더",
+            "기본 계정 · 디버그 설정 · 개발용 설정이 남았는지"
+        ],
+        criteria: ["점검 목록을 모두 확인하고 결과를 security.md에 적었다.", "고친 문제는 테스트나 실행으로 확인했다.", "남긴 문제마다 이유와 권장 조치가 있다."],
+        avoid: "비밀값을 문서 · 로그 · commit 메시지에 옮겨 적기(위치만 적는다), 외부 서비스로 보내기를 허용받지 않은 채 외부 스캐너 · 서비스에 코드 보내기, 점검과 상관없는 기능 변경.",
+        signal: "첫 줄에 고치지 못한 심각 · 높음 문제가 남았으면 `fail`, 없으면 `pass`(중간 · 낮음은 security.md에 기록만 하고 `pass`)를 쓴"
+    };
 };
 
-// 신규 개발은 개선 정책 대신 지금 단계의 일과 단계 완료 신호를 알려준다.
+// 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
 const getPhasePrompt = (runState) => {
     const label = PHASE_LABELS[runState.phase];
-    const resultPrompt = runState.phase === "qa" ? "첫 줄에 확인한 기능이 모두 통과했으면 `pass`, 고치지 못한 실패가 남았으면 `fail`을 쓴" : "첫 줄에 `pass`를 쓴";
 
     return [
-        `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 기획 → 디자인 → 개발 → 테스트/QA 순서이며, 이 세션은 지금 단계의 일만 한다.`,
-        runState.isRevision ? `이 단계는 사용자가 산출물을 확인하고 다시 하라고 돌려보낸 것이다. <TASKS>의 수정 요청을 반영해 ${label} 산출물을 고친다.` : "",
-        getPhaseWorkPrompt(runState),
-        `이 단계의 일을 모두 마치고 산출물을 commit하고 진행 기록을 갱신했으면 ${resultPrompt} 파일 \`${runState.phaseDoneRelPath}\` 를 만들고 세션을 끝내라.`,
-        "단계의 일이 남아 있으면 이 파일을 만들지 마라. 만드는 순간 다음 단계로 넘어간다."
+        `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 ${BUILD_PHASES.map((phase) => PHASE_LABELS[phase]).join(" → ")} 순서이며, 이 세션은 지금 단계의 일만 하고 아래 <PHASE>의 틀을 따른다.`,
+        runState.isRevision ? `이 단계는 사용자가 산출물을 확인하고 다시 하라고 돌려보낸 것이다. <TASKS>의 수정 요청을 반영해 ${label} 산출물을 고친다.` : ""
     ]
         .filter(Boolean)
         .join(" ");
+};
+
+const getPhaseBlock = (runState) => {
+    const brief = getPhaseBrief(runState);
+
+    return [
+        "<PHASE>",
+        `단계: ${PHASE_LABELS[runState.phase]} (${BUILD_PHASES.indexOf(runState.phase) + 1}/${BUILD_PHASES.length})`,
+        `관점: ${brief.role}`,
+        `읽을 것: ${brief.read}`,
+        `산출물: ${brief.output}`,
+        `회차당 작업: ${brief.perRound}`,
+        ...(brief.checks || []).map((check) => `- ${check}`),
+        "완료 기준:",
+        ...brief.criteria.map((criterion) => `- ${criterion}`),
+        `하지 않을 것: ${brief.avoid}`,
+        `완료 신호: 이 단계의 일을 모두 마치고 산출물을 commit하고 진행 기록을 갱신했으면 ${brief.signal || PASS_SIGNAL} 파일 \`${runState.phaseDoneRelPath}\` 를 만들고 세션을 끝낸다. 단계의 일이 남아 있으면 이 파일을 만들지 않는다. 만드는 순간 다음 단계로 넘어간다.`,
+        "</PHASE>"
+    ].join("\n");
 };
 
 const getTasksPrompt = (tasks, mode) => {
@@ -107,7 +188,7 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
         runState.mode === MODE_BUILD ? getPhasePrompt(runState) : getPolicyPrompt(runState.policy, runState.todoDoneRelPath),
         progressCleanupPrompt,
         `이 세션은 AutoPilot ${round}회차이고 전체 종료 예정 시각은 ${dateUtil.getDatetimeString(runState.deadline)}, 남은 시간은 약 ${remainingMinutes}분이다.`,
-        `작업은 최대 ${maxTasks}건, 규모가 크면 1건만 처리하라.`,
+        runState.mode === MODE_BUILD ? "" : `작업은 최대 ${maxTasks}건, 규모가 크면 1건만 처리하라.`,
         `작업을 완료·검증·commit 하고 \`${runState.progressFile}\` 를 갱신한 뒤 세션을 끝내라.`,
         "AutoPilot 앱이 새 컨텍스트로 다음 회차를 자동 실행하므로 남은 작업이 있다는 이유로 세션을 붙잡지 마라.",
         "남은 시간이 한 작업을 안전하게 마치기에 부족하면 새 작업을 시작하지 말고 진행 중인 것만 정리·기록하고 즉시 종료하라."
@@ -115,8 +196,9 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
         .filter(Boolean)
         .join(" ");
     const tasksBlock = runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>\n\n` : "";
+    const phaseBlock = runState.mode === MODE_BUILD ? `${getPhaseBlock(runState)}\n\n` : "";
 
-    return `${roundPrompt}\n\n${tasksBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch, runState.mode === MODE_BUILD ? runState.allow : null)}\n</AUTOPILOT_POLICY.md>`;
+    return `${roundPrompt}\n\n${tasksBlock}${phaseBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix, runState.mode)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch, runState.mode === MODE_BUILD ? runState.allow : null)}\n</AUTOPILOT_POLICY.md>`;
 };
 
 export default { getProgressCleanupPrompt, getRoundPrompt };

@@ -11,7 +11,8 @@ import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
 import gitUtil from "../../autopilot/src/utils/gitUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
 import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
-import { getAutopilotPolicy } from "../../autopilot/src/utils/guideText.js";
+import { getAutopilotGuide, getAutopilotPolicy } from "../../autopilot/src/utils/guideText.js";
+import promptUtil from "../../autopilot/src/utils/promptUtil.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -153,16 +154,21 @@ const checkCommandArgs = () => {
         assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
     }
 
-    // 신규 개발 인자: 목록은 쉼표로 고르고, 테스트/QA 실패 처리는 되돌릴 횟수(stop은 0)로 바꾼다. 유지 보수 모드에는 줄 수 없다.
-    assert.deepEqual(parseRunArgs([...project, "--mode", "build", "--gate", "plan,design", "--allow", "deps,send", "--design-format", "figma", "--qa-on-fail", "retry:2"]), {
-        projectDir: "C:\\work\\demo project",
-        mode: "build",
-        gates: ["plan", "design"],
-        allow: ["deps", "send"],
-        designFormat: "figma",
-        maxQaRetries: 2
-    });
+    // 신규 개발 인자: 목록은 쉼표로 고르고, 테스트/QA·보안검토 실패 처리는 되돌릴 횟수(stop은 0)로 바꾼다. 유지 보수 모드에는 줄 수 없다.
+    assert.deepEqual(
+        parseRunArgs([...project, "--mode", "build", "--gate", "plan,design", "--allow", "deps,send", "--design-format", "figma", "--qa-on-fail", "retry:2", "--security-on-fail", "retry:4"]),
+        {
+            projectDir: "C:\\work\\demo project",
+            mode: "build",
+            gates: ["plan", "design"],
+            allow: ["deps", "send"],
+            designFormat: "figma",
+            maxQaRetries: 2,
+            maxSecurityRetries: 4
+        }
+    );
     assert.equal(parseRunArgs([...project, "--mode", "build", "--qa-on-fail", "stop"]).maxQaRetries, 0);
+    assert.equal(parseRunArgs([...project, "--mode", "build", "--security-on-fail", "stop"]).maxSecurityRetries, 0);
     assert.equal(parseRunArgs([...project, "--mode", "maintain"]).mode, "maintain");
 
     for (const invalidArgs of [
@@ -175,7 +181,11 @@ const checkCommandArgs = () => {
         ["--mode", "build", "--design-format", "pdf"],
         ["--mode", "build", "--qa-on-fail", "retry:0"],
         ["--mode", "build", "--qa-on-fail", "retry:6"],
-        ["--mode", "build", "--qa-on-fail", "again"]
+        ["--mode", "build", "--qa-on-fail", "again"],
+        ["--security-on-fail", "retry:1"],
+        ["--mode", "maintain", "--security-on-fail", "stop"],
+        ["--mode", "build", "--security-on-fail", "retry:6"],
+        ["--mode", "build", "--security-on-fail"]
     ]) {
         assert.throws(() => parseRunArgs([...project, ...invalidArgs]), undefined, invalidArgs.join(" "));
     }
@@ -183,29 +193,46 @@ const checkCommandArgs = () => {
     assert.deepEqual(parseProjectArgs(project), { projectDir: "C:\\work\\demo project" });
 };
 
-// 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA 실패는 정한 횟수까지 개발로 되돌린다.
-const checkPhaseRules = () => {
+// 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA·보안검토 실패는 단계마다 정한 횟수까지 개발로 되돌린다.
+const checkPhaseRules = (context) => {
     const { getPhaseTransition, getStartPhase, readPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0 };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0 };
+    const limits = { qa: 3, security: 2 };
 
-    assert.deepEqual(getPhaseTransition(plan, "pass", [], 3), { state: { phase: "design", awaiting: null, qaRetries: 0 }, event: "next" });
-    assert.deepEqual(getPhaseTransition(plan, "", ["plan"], 3), { state: { phase: "design", awaiting: "plan", qaRetries: 0 }, event: "await" });
-    assert.equal(getPhaseTransition({ phase: "build", awaiting: null, qaRetries: 0 }, "fail", ["plan", "design"], 3).event, "next");
-    assert.deepEqual(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 1 }, "fail", [], 3), { state: { phase: "build", awaiting: null, qaRetries: 2 }, event: "retry" });
-    assert.equal(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 3 }, "fail", [], 3).event, "qa-failed");
-    assert.equal(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 0 }, "fail", [], 0).event, "qa-failed");
-    assert.deepEqual(getPhaseTransition({ phase: "qa", awaiting: null, qaRetries: 2 }, "pass", [], 3), { state: { phase: "done", awaiting: null, qaRetries: 2 }, event: "done" });
+    assert.deepEqual(getPhaseTransition(plan, "pass", [], limits), { state: { ...plan, phase: "design" }, event: "next" });
+    assert.deepEqual(getPhaseTransition(plan, "", ["plan"], limits), { state: { ...plan, phase: "design", awaiting: "plan" }, event: "await" });
+    assert.equal(getPhaseTransition({ ...plan, phase: "build" }, "fail", ["plan", "design"], limits).event, "next");
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "qa", qaRetries: 1 }, "fail", [], limits), { state: { ...plan, phase: "build", qaRetries: 2 }, event: "retry" });
+    assert.equal(getPhaseTransition({ ...plan, phase: "qa", qaRetries: 3 }, "fail", [], limits).event, "failed");
+    assert.equal(getPhaseTransition({ ...plan, phase: "qa" }, "fail", [], { qa: 0, security: 3 }).event, "failed");
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "qa", qaRetries: 2 }, "pass", [], limits), { state: { ...plan, phase: "security", qaRetries: 2 }, event: "next" });
+
+    // 보안검토는 테스트/QA와 따로 센다. 테스트/QA를 다 써도 보안검토는 자기 횟수만큼 되돌린다.
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "security", qaRetries: 3 }, "fail", [], limits), { state: { ...plan, phase: "build", qaRetries: 3, securityRetries: 1 }, event: "retry" });
+    assert.equal(getPhaseTransition({ ...plan, phase: "security", securityRetries: 2 }, "fail", [], limits).event, "failed");
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "security", securityRetries: 1 }, "pass", [], limits), { state: { ...plan, phase: "done", securityRetries: 1 }, event: "done" });
 
     // 승인 없이 다시 시작하면 확인을 기다리던 단계를 다시 한다.
-    assert.deepEqual(getStartPhase({ phase: "design", awaiting: "plan", qaRetries: 0 }), { state: { phase: "plan", awaiting: null, qaRetries: 0 }, isRevision: true });
+    assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan" }), { state: plan, isRevision: true });
     assert.deepEqual(getStartPhase(plan), { state: plan, isRevision: false });
 
-    assert.equal(phaseUtil.parseQaOnFail("retry:5"), 5);
-    assert.equal(phaseUtil.parseQaOnFail("retry:05"), 5);
-    assert.equal(phaseUtil.parseQaOnFail("Retry:1"), null);
-    assert(!isPhaseState({ phase: "plan", awaiting: "qa", qaRetries: 0 }));
-    assert(!isPhaseState({ phase: "plan", awaiting: null, qaRetries: -1 }));
+    assert.equal(phaseUtil.parseOnFail("retry:5"), 5);
+    assert.equal(phaseUtil.parseOnFail("retry:05"), 5);
+    assert.equal(phaseUtil.parseOnFail("stop"), 0);
+    assert.equal(phaseUtil.parseOnFail("Retry:1"), null);
+    assert(!isPhaseState({ ...plan, awaiting: "qa" }));
+    assert(!isPhaseState({ ...plan, qaRetries: -1 }));
+    assert(!isPhaseState({ ...plan, securityRetries: 1.5 }));
     assert.deepEqual(readPhase(path.join(path.sep, "missing", "PHASE.json")), plan);
+
+    // 보안검토가 생기기 전에 쓴 PHASE.json(securityRetries 없음)도 그대로 이어받는다.
+    const oldPhaseFile = path.join(context.testDir, "old-phase", "PHASE.json");
+
+    fs.mkdirSync(path.dirname(oldPhaseFile), { recursive: true });
+    fs.writeFileSync(oldPhaseFile, JSON.stringify({ phase: "qa", awaiting: null, qaRetries: 2 }));
+    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0 });
+    fs.writeFileSync(oldPhaseFile, "null");
+    assert.deepEqual(readPhase(oldPhaseFile), plan);
 
     // 신규 개발의 허용 체크만 정책에 덧붙는다. 보내기를 켜지 않았으면 외부 도구 금지를 덧붙인다.
     assert.equal(getAutopilotPolicy("ai/autopilot"), getAutopilotPolicy("ai/autopilot", null));
@@ -213,6 +240,64 @@ const checkPhaseRules = () => {
     assert.match(getAutopilotPolicy("ai/autopilot", ["deps"]), /새 dependency 추가를 허용한다[\s\S]*외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(getAutopilotPolicy("ai/autopilot", ["send"]), /외부 도구\(Codex, MCP 서버/);
     assert.match(getAutopilotPolicy("ai/autopilot", []), /완화한 정책이 없다/);
+
+    // 단계마다 같은 틀과 그 단계의 산출물이 <PHASE>로 들어가고, 신규 개발에는 유지 보수용 작업 수 · 작업 탐색 · 개선 정책이 없다.
+    const buildState = {
+        mode: "build",
+        phase: "plan",
+        qaRetries: 0,
+        securityRetries: 0,
+        isRevision: false,
+        designFormat: "html",
+        allow: [],
+        tasks: "만들 것",
+        policy: "자율개선",
+        projectDir: context.testDir,
+        repos: [],
+        progressFile: "progress.md",
+        deadline: new Date(2026, 10, 2, 7, 0),
+        commitPrefix: "[ap]",
+        workBranch: "ai/autopilot",
+        phaseDoneRelPath: ".autopilot/progress/2026-10-30/PHASE_DONE"
+    };
+    const phaseArtifacts = { plan: "docs/autopilot/brief.md", design: "docs/autopilot/design.md", build: "CLAUDE.md", qa: "docs/autopilot/qa.md", security: "docs/autopilot/security.md" };
+
+    for (const [phase, artifact] of Object.entries(phaseArtifacts)) {
+        const prompt = promptUtil.getRoundPrompt({ ...buildState, phase: phase }, 1, 60, "", 2);
+        const phaseBlock = /<PHASE>\n([\s\S]*?)\n<\/PHASE>/.exec(prompt)[1];
+
+        for (const heading of ["단계:", "관점:", "읽을 것:", "산출물:", "회차당 작업:", "완료 기준:", "하지 않을 것:", "완료 신호:"]) {
+            assert.match(phaseBlock, new RegExp(`^${heading}`, "m"), `${phase} ${heading}`);
+        }
+
+        assert(phaseBlock.includes(artifact), `${phase} ${artifact}`);
+        assert(phaseBlock.includes("파일 `.autopilot/progress/2026-10-30/PHASE_DONE`"));
+        assert.equal(phaseBlock.includes("`fail`"), ["qa", "security"].includes(phase), phase);
+        assert.doesNotMatch(prompt, /작업은 최대|작업 탐색과 선택|개선 정책/, phase);
+    }
+
+    assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "build", securityRetries: 1 }, 1, 60, "", 2), /테스트\/QA · 보안검토가 되돌린 것이다/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "build" }, 1, 60, "", 2), /되돌린 것이다/);
+
+    const maintainPrompt = promptUtil.getRoundPrompt({ ...buildState, mode: "maintain" }, 1, 60, "", 2);
+
+    assert.match(maintainPrompt, /작업은 최대 2건/);
+    assert(maintainPrompt.includes(getAutopilotGuide("[ap]")));
+    assert(!maintainPrompt.includes("<PHASE>"));
+
+    // 신규 개발 지침은 유지 보수용 절만 바꾸고 나머지 절은 글자 하나 다르지 않다.
+    const getSections = (guide) => new Map(guide.split(/\n(?=## )/).map((section) => [section.split("\n")[0], section.trimEnd()]));
+    const maintainSections = getSections(getAutopilotGuide("[ap]"));
+    const buildSections = getSections(getAutopilotGuide("[ap]", "build"));
+
+    assert.equal(getAutopilotGuide("[ap]"), getAutopilotGuide("[ap]", "maintain"));
+
+    for (const heading of ["## 완전 무인 실행", "## 회차 실행", "## 작업 진행 기록", "## 진행 문장", "## 구현", "## 검증", "## Commit", "## 작업 중단", "## Token Limit"]) {
+        assert.equal(buildSections.get(heading), maintainSections.get(heading), heading);
+    }
+
+    assert(buildSections.has("## 신규 개발 단계") && buildSections.has("## 단계 안에서 일 고르기") && !buildSections.has("## 개선 정책"));
+    assert.match(buildSections.get("## 작업 시작"), /소유자가 적은 만들 것/);
 };
 
 const checkClaudeArgs = async () => {

@@ -20,6 +20,7 @@ import {
     PHASE_LABELS,
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL,
     WORK_DIR_NAME,
     PROGRESS_DIR_NAME,
     TODO_COMPLETE_FILE_NAME,
@@ -101,12 +102,14 @@ const getModeSettings = (options, progressFile, tasks) => {
         phaseFile: phaseFile,
         phase: state.phase,
         qaRetries: state.qaRetries,
+        securityRetries: state.securityRetries,
         isRevision: isRevision,
         gates: options.gates || [],
         allow: allow,
         designFormat: isBlockedDesign ? "html" : requestedDesignFormat,
         requestedDesignFormat: requestedDesignFormat,
-        maxQaRetries: options.maxQaRetries ?? phaseUtil.parseQaOnFail(DEFAULT_QA_ON_FAIL)
+        maxQaRetries: options.maxQaRetries ?? phaseUtil.parseOnFail(DEFAULT_QA_ON_FAIL),
+        maxSecurityRetries: options.maxSecurityRetries ?? phaseUtil.parseOnFail(DEFAULT_SECURITY_ON_FAIL)
     };
 };
 
@@ -151,7 +154,7 @@ const prepareRun = (options) => {
 
     // 돌려보낸 단계를 다시 시작했으면 확인 대기를 바로 지워 다음 실행이 같은 상태를 보게 한다.
     if (modeSettings.isRevision) {
-        phaseUtil.writePhase(modeSettings.phaseFile, { phase: modeSettings.phase, awaiting: null, qaRetries: modeSettings.qaRetries });
+        phaseUtil.writePhase(modeSettings.phaseFile, { phase: modeSettings.phase, awaiting: null, qaRetries: modeSettings.qaRetries, securityRetries: modeSettings.securityRetries });
     }
 
     const runState = {
@@ -465,20 +468,24 @@ const waitForRetry = async (context, loopState, round) => {
     return false;
 };
 
-// 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA 실패로 실행을 끝내야 하면 true를 반환한다.
+// 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA·보안검토 실패로 실행을 끝내야 하면 true를 반환한다.
 const applyPhaseDone = (context, loopState) => {
     const { runState, phaseDoneFile, writeLog } = context;
     const result = fileUtil.readTextFile(phaseDoneFile).trim().split(/\r?\n/)[0].trim().toLowerCase();
-    const label = PHASE_LABELS[runState.phase];
-    const { state, event } = phaseUtil.getPhaseTransition({ phase: runState.phase, awaiting: null, qaRetries: runState.qaRetries }, result, runState.gates, runState.maxQaRetries);
+    const phase = runState.phase;
+    const label = PHASE_LABELS[phase];
+    const maxRetries = { qa: runState.maxQaRetries, security: runState.maxSecurityRetries };
+    const currentState = { phase: phase, awaiting: null, qaRetries: runState.qaRetries, securityRetries: runState.securityRetries };
+    const { state, event } = phaseUtil.getPhaseTransition(currentState, result, runState.gates, maxRetries);
 
     fileUtil.removeFiles([phaseDoneFile]);
     phaseUtil.writePhase(runState.phaseFile, state);
     runState.phase = state.phase;
     runState.qaRetries = state.qaRetries;
+    runState.securityRetries = state.securityRetries;
     runState.isRevision = false;
 
-    if (event === "qa-failed") {
+    if (event === "failed") {
         writeLog(`[단계] ${label} 실패`);
         loopState.reason = `${label} 실패`;
 
@@ -489,7 +496,7 @@ const applyPhaseDone = (context, loopState) => {
     loopState.idleCount = 0;
 
     if (event === "retry") {
-        writeLog(`[단계] ${label} 실패 - 개발로 되돌림 (${state.qaRetries}/${runState.maxQaRetries})`);
+        writeLog(`[단계] ${label} 실패 - 개발로 되돌림 (${state[phaseUtil.RETRY_KEYS[phase]]}/${maxRetries[phase]})`);
         writeLog(`[단계] ${PHASE_LABELS[state.phase]} 시작`);
 
         return false;

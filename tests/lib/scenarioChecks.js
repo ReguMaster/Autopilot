@@ -245,8 +245,8 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
             mode: "build",
             gates: ["design"],
             tasks: "미용실 예약 웹앱",
-            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile, AP_QA_FAILS: "1" },
-            limits: { minMinutes: 0, maxRounds: 8, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile, AP_QA_FAILS: "1", AP_SECURITY_FAILS: "1" },
+            limits: { minMinutes: 0, maxRounds: 10, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
             ...options
         });
     };
@@ -264,12 +264,12 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(getPhaseLines(firstRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
     assert.match(readLog(firstRun), /^\[설정\] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다\.$/m);
     assert.match(readLog(firstRun), /^Mode : 신규 개발 \(기획 단계부터\)$/m);
-    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0 });
+    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0 });
     assert.match(readPrompt(), /지금 단계는 \[디자인\]/);
     assert.match(readPrompt(), /정적 HTML 와이어프레임/);
     assert.match(readPrompt(), /외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(readPrompt(), /개선 정책은/);
-    assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, { running: false, phase: { phase: "build", awaiting: "design", qaRetries: 0 } });
+    assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, { running: false, phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0 } });
     checkDesktopLogContract(firstRun.data);
 
     // 승인 없이 다시 시작하면 돌려보낸 디자인을 수정 요청으로 다시 한다.
@@ -279,7 +279,7 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(getPhaseLines(revisionRun), ["[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
     assert.match(readPrompt(), /돌려보낸 것이다/);
 
-    // 승인하면 개발부터 하고, 테스트/QA 실패는 한 번 개발로 되돌린 뒤 통과해 끝난다. 확인 대기가 없으면 승인은 거부한다.
+    // 승인하면 개발부터 하고, 테스트/QA와 보안검토는 각각 한 번씩 실패해 개발로 되돌린 뒤 통과해 끝난다. 확인 대기가 없으면 승인은 거부한다.
     assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
     assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_FAILED);
 
@@ -295,9 +295,18 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
         "[단계] 개발 시작",
         "[단계] 개발 완료",
         "[단계] 테스트/QA 시작",
-        "[단계] 테스트/QA 완료"
+        "[단계] 테스트/QA 완료",
+        "[단계] 보안검토 시작",
+        "[단계] 보안검토 실패 - 개발로 되돌림 (1/3)",
+        "[단계] 개발 시작",
+        "[단계] 개발 완료",
+        "[단계] 테스트/QA 시작",
+        "[단계] 테스트/QA 완료",
+        "[단계] 보안검토 시작",
+        "[단계] 보안검토 완료"
     ]);
-    assert.equal(phaseUtil.readPhase(phaseFile).phase, "done");
+    assert.match(readPrompt(), /지금 단계는 \[보안검토\][\s\S]*<PHASE>\n단계: 보안검토 \(5\/5\)/);
+    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1 });
     assert.equal((await runBuild({})).status, STATUS_FAILED);
 
     // 진행 기록 초기화는 단계도 처음(기획)으로 돌린다.

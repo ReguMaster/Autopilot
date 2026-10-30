@@ -1,7 +1,7 @@
-import { DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
+import { DEFAULT_COMMIT_PREFIX, DEFAULT_WORK_BRANCH, MODE_BUILD, MODE_MAINTAIN, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "./config.js";
 
 // 회차 프롬프트 끝에 그대로 들어가는 작업 지침과 안전 정책 본문. 커밋 접두어와 작업 브랜치는 실행 인자로 바뀐다.
-const getAutopilotGuide = (commitPrefix = DEFAULT_COMMIT_PREFIX) => `# AutoPilot
+const getMaintainGuide = (commitPrefix) => `# AutoPilot
 
 AutoPilot은 프로젝트를 분석하고 스스로 개선 작업을 수행하는 자율 개발 모드다.
 안전 정책은 \`AUTOPILOT_POLICY.md\`에 있으며 이 문서의 모든 절차보다 우선한다.
@@ -153,6 +153,61 @@ ${commitPrefix} refactor: 구조 정리
 
 AutoPilot의 목표는 많은 코드를 변경하는 것이 아니다.
 **프로젝트를 더 안정적이고 완성도 높게 만드는 의미 있는 변경을 안전하게 축적하는 것**이다.`;
+
+const BUILD_INTRO = `# AutoPilot
+
+AutoPilot 신규 개발은 소유자가 적은 만들 것을 기획부터 보안검토까지 단계를 밟아 실제로 동작하는 제품으로 만드는 자율 개발 모드다.
+안전 정책은 \`AUTOPILOT_POLICY.md\`에 있으며 이 문서의 모든 절차보다 우선한다.`;
+
+const MAINTAIN_TASKS_STEP = "4. 프롬프트의 `<TASKS>`로 소유자가 예약한 우선 작업을 확인한다(없으면 예약 작업이 없는 것이다).";
+const BUILD_TASKS_STEP = "4. 프롬프트의 `<TASKS>`로 소유자가 적은 만들 것(또는 돌려보낸 단계의 수정 요청)을, `<PHASE>`로 지금 단계의 틀을 확인한다.";
+
+// 유지 보수에만 맞는 절(개선 정책 · 사용자 지정 작업 · 작업 탐색과 선택 · 궁극적 목표)을 대신하는 신규 개발의 절. 제목이 키다.
+const BUILD_SECTIONS = {
+    "개선 정책": `## 신규 개발 단계
+
+이 실행은 기획 → 디자인 → 개발 → 테스트/QA → 보안검토 다섯 단계를 차례로 밟는다.
+지금 단계는 앱이 회차 프롬프트의 \`<PHASE>\`로 알려주며, 한 세션은 지금 단계의 일만 한다. 다음 단계의 일을 앞당겨 하지 않는다.
+단계마다 산출물(\`docs/autopilot/\` 아래 문서와 코드)을 저장소에 commit하므로 다음 회차와 다음 단계는 이 산출물을 읽고 이어간다.
+
+단계의 일을 모두 마치면 \`<PHASE>\`의 완료 신호대로 \`.autopilot/progress/<실행 시작 날짜>/PHASE_DONE\`을 만들고 세션을 끝낸다.
+앱은 이 파일을 보고 다음 단계로 넘어간다. **단계의 일이 남아 있으면 만들지 않는다** - 만드는 순간 다음 단계로 넘어간다.
+테스트/QA와 보안검토는 고치지 못한 실패가 남으면 \`fail\`을 써서 개발 단계로 되돌린다.
+소유자가 확인받기로 둔 단계(기획 · 디자인)가 끝나면 앱이 실행을 멈추고 소유자의 확인을 기다린다.`,
+    "사용자 지정 작업": `## 만들 것과 수정 요청
+
+프롬프트의 \`<TASKS>\`는 소유자가 적은 만들 것이다. 모든 단계는 이 내용과 \`docs/autopilot/brief.md\`(있으면)를 기준으로 한다.
+소유자가 단계를 돌려보냈으면 \`<TASKS>\`에는 그 단계 산출물에 대한 수정 요청이 함께 있으며, 요청한 부분을 고친다.
+만들 것의 목적이나 요구사항을 임의로 바꾸지 않는다. 정해지지 않은 부분은 묻지 말고 합리적으로 정한 뒤 기획서에 가정이라고 적는다.`,
+    "작업 탐색과 선택": `## 단계 안에서 일 고르기
+
+할 일은 지금 단계의 \`<PHASE>\`와 앞 단계의 산출물이 정한다. 기획서에 없는 개선 작업을 스스로 찾지 않는다.
+
+- 기획 · 디자인: \`<PHASE>\`가 정한 산출물 목차를 채운다.
+- 개발: \`docs/autopilot/plan.md\`의 개발 순서에서 아직 끝나지 않은 다음 단위를 고른다. 테스트/QA · 보안검토가 되돌렸으면 \`qa.md\` · \`security.md\`의 실패 항목부터 고친다.
+- 테스트/QA · 보안검토: \`<PHASE>\`의 확인 · 점검 목록을 차례로 확인한다.
+
+한 번에 하나의 단위에 집중하고 \`구현 → 검증 → commit → 기록\` 순서로 이어간다.
+진행 기록으로 이미 끝낸 단위를 확인해 같은 일을 반복하지 않는다.
+새 commit 없이 끝난 회차가 연속 2회면 앱이 전체 실행을 끝낸다.`,
+    "궁극적 목표": `## 궁극적 목표
+
+신규 개발의 목표는 코드를 많이 쓰는 것이 아니다.
+**기획서와 디자인대로 실제로 동작하고 검증된 제품을, 작고 검증된 단계를 쌓아 만드는 것**이다.`
+};
+
+// 신규 개발 지침은 유지 보수 지침의 절을 그대로 쓰되 유지 보수에만 맞는 절과 첫머리만 바꾼다.
+const getBuildGuide = (commitPrefix) => {
+    return getMaintainGuide(commitPrefix)
+        .split(/\n(?=## )/)
+        .map((section, index) => (index === 0 ? BUILD_INTRO : (BUILD_SECTIONS[/^## (.+)/.exec(section)[1]] ?? section).trimEnd()))
+        .join("\n\n")
+        .replace(MAINTAIN_TASKS_STEP, BUILD_TASKS_STEP);
+};
+
+const getAutopilotGuide = (commitPrefix = DEFAULT_COMMIT_PREFIX, mode = MODE_MAINTAIN) => {
+    return mode === MODE_BUILD ? getBuildGuide(commitPrefix) : getMaintainGuide(commitPrefix);
+};
 
 const ALLOWED_LINES = {
     deps: "- 새 dependency 추가를 허용한다. 위 `Dependency`와 `외부 통신` 정책의 dependency 제한 대신 필요한 dependency를 추가하되, 고른 이유를 기획서와 commit 메시지에 남긴다. 기존 dependency를 제거하거나 교체하지는 않는다.",
