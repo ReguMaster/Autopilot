@@ -283,7 +283,11 @@ const getPhaseDocs = ({ step, buildPhase, gates, designFormat }) => {
                 return { ...doc, note: "고칠 항목" };
             }
 
-            return { ...doc, note: isWriting ? "쓰는 중" : gates.includes(doc.phase) ? "확인함" : "마침" };
+            if (isWriting) {
+                return { ...doc, note: "쓰는 중" };
+            }
+
+            return { ...doc, note: gates.includes(doc.phase) ? "확인함" : "마침" };
         });
 };
 
@@ -296,20 +300,45 @@ const getRevisionTasks = (feedback, tasks) => {
 
 // 레일 프로젝트 줄의 단계 눈금(다섯 칸). 마친 단계는 done, 지금 단계는 active·hold(확인 대기)·stop(종료 신호), 아직인 단계는 빈 문자열이다.
 // 실행 중이면 step({ phase, status })이, 쉬는 중이면 단계 상태(buildPhase)가 기준이고 신규 개발을 한 적 없거나 알 수 없으면 null이다.
-const getTabTicks = ({ status, mode, step, buildPhase }) => {
-    const isRunning = status !== "idle";
-    const phase = isRunning ? (mode === "build" ? step?.phase : "") : buildPhase?.awaiting || buildPhase?.phase;
+const getTickPhase = ({ status, mode, step, buildPhase }) => {
+    if (status === "idle") {
+        return buildPhase?.awaiting || buildPhase?.phase;
+    }
+
+    return mode === "build" ? step?.phase : "";
+};
+
+const getNowTick = ({ status, step, buildPhase }) => {
+    const stepStates = { awaiting: "hold", done: "done", failed: "stop" };
+
+    if (status === "idle") {
+        return buildPhase?.awaiting ? "hold" : "";
+    }
+
+    if (status === "stopping") {
+        return "stop";
+    }
+
+    return stepStates[step?.status] ?? "active";
+};
+
+const getTabTicks = (tab) => {
+    const phase = getTickPhase(tab);
     const index = phase === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(phase ?? "");
 
-    if (index < 0 || (index === 0 && !isRunning && !buildPhase?.awaiting)) {
+    if (index < 0 || (index === 0 && tab.status === "idle" && !tab.buildPhase?.awaiting)) {
         return null;
     }
 
-    const stepStates = { awaiting: "hold", done: "done", failed: "stop" };
-    const runningState = status === "stopping" ? "stop" : (stepStates[step?.status] ?? "active");
-    const nowState = isRunning ? runningState : buildPhase?.awaiting ? "hold" : "";
+    const nowTick = getNowTick(tab);
 
-    return BUILD_PHASES.map((item, tick) => (tick < index ? "done" : tick === index ? nowState : ""));
+    return BUILD_PHASES.map((item, tick) => {
+        if (tick === index) {
+            return nowTick;
+        }
+
+        return tick < index ? "done" : "";
+    });
 };
 
 export {

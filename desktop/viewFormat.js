@@ -1140,9 +1140,11 @@ const formatPastMeta = (run) => {
     return parts.join(" · ");
 };
 
+const formatPastDuration = (ms) => (ms < 60000 ? "1분 미만" : formatRemaining(ms));
+
 const describePastRun = (run, nowMs) => {
     const hasDuration = run.endedAt > run.startedAt && !run.isActive;
-    const duration = hasDuration ? (run.endedAt - run.startedAt < 60000 ? "1분 미만" : formatRemaining(run.endedAt - run.startedAt)) : "";
+    const duration = hasDuration ? formatPastDuration(run.endedAt - run.startedAt) : "";
 
     return {
         day: formatPastDay(run.startedAt, nowMs),

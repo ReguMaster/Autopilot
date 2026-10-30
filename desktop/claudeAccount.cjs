@@ -152,7 +152,8 @@ const createAccountReader = (options = {}) => {
     const fetchImpl = options.fetchImpl || fetch;
     const now = options.now || Date.now;
     const onChange = options.onChange || (() => {});
-    const readKeychain = options.readKeychain === undefined ? (process.platform === "darwin" ? readKeychainOAuth : null) : options.readKeychain;
+    const defaultKeychain = process.platform === "darwin" ? readKeychainOAuth : null;
+    const readKeychain = options.readKeychain === undefined ? defaultKeychain : options.readKeychain;
     let account = createEmptyAccount();
     let lastAttemptAt = 0;
     let lastRenewAt = 0;
