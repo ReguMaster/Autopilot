@@ -654,7 +654,7 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.match(readPrompt(consensusDir), /사용자가 \[기획\] 협의의 합의안을 확인했다[\s\S]*지금 단계는 \[디자인\]/);
     assert.equal(phaseUtil.readPhase(getPhaseFile(consensusDir)).debate, null);
 
-    // 반대가 없어도 더 개선할 점이 남았으면(합의라고 해도) 이어 가고, 둘 다 더 고칠 것이 없다고 하면 상한 전에 끝낸다.
+    // 반대가 없어도 더 개선할 점이 남았으면(합의라고 해도) 이어 가고, Codex가 받아들인 것을 Claude가 더 고칠 것이 없다고 확인하면 Codex의 다음 답을 기다리지 않고 끝낸다.
     const improveDir = createProject("debate improve 한글");
     const improveRun = await runDebate(improveDir, { env: { AP_DEBATE: "improve" } });
 
@@ -665,7 +665,6 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
         "[협의] Claude: 결제 흐름을 더 보강하면 좋겠어요.",
         "[협의] Codex: 좋아요, 결제 흐름을 반영할게요.",
         "[협의] Claude: 이제 더 고칠 것이 없어요.",
-        "[협의] Codex: 저도 더 고칠 것이 없어요.",
         "[협의] 합의했어요",
         "[단계] 기획 완료",
         "[단계] 기획 확인 대기"

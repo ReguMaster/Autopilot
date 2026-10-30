@@ -177,7 +177,7 @@ process.stdin.on("end", () => {
     console.log(JSON.stringify(process.env.AP_DEBATE === "consensus"
       ? { message: "저도 같은 생각이에요.", agree: ["범위: 맞아요"], disagree: [], changes: [], consensus: true }
       : process.env.AP_DEBATE === "improve"
-        ? { message: turn === 1 ? "좋아요, 결제 흐름을 반영할게요." : "저도 더 고칠 것이 없어요.", agree: ["결제 흐름: 필요해요"], disagree: [], improve: [], changes: turn === 1 ? ["결제 흐름 보강"] : [], consensus: true }
+        ? { message: "좋아요, 결제 흐름을 반영할게요.", agree: ["결제 흐름: 필요해요"], disagree: [], improve: [], changes: ["결제 흐름 보강"], consensus: true }
       : { message: "결제는 처음부터 넣는 게 좋아요.", agree: [], disagree: [{ point: "결제 빼기", reason: "노쇼를 막아요" }], changes: [], consensus: false }));
     return;
   }

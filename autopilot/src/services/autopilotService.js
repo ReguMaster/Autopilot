@@ -787,7 +787,7 @@ const readPhaseArtefact = (projectDir, phase) => {
 };
 
 // 협의: 메인과 보조(Claude와 Codex)가 각자 같은 대화를 이어 가며 최대 runState.debateTurns번 주고받는다. 한 번은 메인이 말하고 보조가 답하는 것이다.
-// 둘 다 같은 번에 합의(반대도 남은 개선점도 없음)라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
+// 연달아 둘 다 합의(반대도 남은 개선점도 없음)라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
 const runDebate = async (context, loopState) => {
     const { env, runState, writeLog } = context;
     const { phase, projectDir } = runState;
@@ -842,10 +842,11 @@ const runDebate = async (context, loopState) => {
             sessionIds[provider] = answer.sessionId || sessionIds[provider];
             turns.push({ provider: provider, ...turn });
             writeLog(`[협의] ${PROVIDER_LABELS[provider]}: ${turn.message}`);
-        }
 
-        if (turns.at(-1).consensus && turns.at(-2).consensus) {
-            return { turns: turns, isConsensus: true };
+            // 보조가 받아들인 것을 메인이 확인한 경우처럼 번이 끝나지 않았어도 연달아 합의하면 끝낸다.
+            if (turn.consensus && turns.at(-2)?.consensus) {
+                return { turns: turns, isConsensus: true };
+            }
         }
     }
 
