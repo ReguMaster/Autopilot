@@ -386,17 +386,24 @@
     color: var(--ink);
 }
 
-.rail-item[aria-expanded="true"] {
+.rail-item[aria-expanded="true"],
+.rail-item[aria-current="page"] {
     background: var(--bg);
     box-shadow: var(--shadow-1);
     color: var(--ink);
 }
 
-.rail-item[aria-expanded="true"] .icon {
+.rail-item[aria-current="page"] {
+    font-weight: 650;
+}
+
+.rail-item[aria-expanded="true"] .icon,
+.rail-item[aria-current="page"] .icon {
     color: var(--accent-ink);
 }
 
-#tab-add {
+#tab-add,
+#new-project-toggle:not([aria-current]) {
     color: var(--muted);
     font-size: var(--text-sm);
 }

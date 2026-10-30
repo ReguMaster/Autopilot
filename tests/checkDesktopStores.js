@@ -29,6 +29,8 @@ const loadModules = async () => {
         export * as appStore from "./stores/appStore.js";
         export * as scheduleStore from "./stores/scheduleStore.js";
         export * as storyModel from "./features/run/storyModel.js";
+        export * as newProjectStore from "./stores/newProjectStore.js";
+        export * as newProjectActions from "./actions/newProject.js";
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -995,6 +997,131 @@ const checkStoryView = ({ storyModel }) => {
     assert.equal(storyModel.isSameView(view, { ...copy, pastItems: [{ key: "1:0:앞" }, { key: "2:2:뒤" }] }), false, "지난 문장의 도구 수가 바뀌면 다시 그린다");
 };
 
+// 새 프로젝트: 한두 줄 → 초안 → 칩으로 다듬기 → 만들기. 초안이 실패해도 적은 내용을 잃지 않고, 그만둔 뒤 늦게 온 답은 버린다.
+const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, tabs, tabsStore }) => {
+    const { newProject, useNewProjectStore } = newProjectStore;
+    const { useUiStore } = uiStore;
+    const read = () => useNewProjectStore.getState();
+    const draft = {
+        name: "hanbit-booking",
+        summary: "미용실 예약 웹앱",
+        users: [{ label: "손님", picked: true }],
+        platforms: ["web"],
+        features: [
+            { label: "예약", picked: true },
+            { label: "알림 문자", picked: false }
+        ],
+        exclusions: [{ label: "결제", picked: true }],
+        stack: { items: ["Next.js"], reason: "작아서" }
+    };
+    const requests = [];
+    let pendingDraft = null;
+
+    window.autopilot = {
+        getCreateInfo: async () => OK({ parentDir: "D:\\work", author: { name: "한빛", email: "a@b.c" } }),
+        draftProject: (request) => {
+            requests.push(["draft", request]);
+
+            return new Promise((resolve) => {
+                pendingDraft = resolve;
+            });
+        },
+        cancelDraft: async () => OK({}),
+        createProject: async (request) => {
+            requests.push(["create", request]);
+
+            return OK({
+                settings: { projectDir: "D:\\work\\hanbit-booking", mode: "build", tasks: request.brief },
+                overridden: [],
+                globals: {},
+                notice: "",
+                tabs: { active: "D:\\work\\hanbit-booking", tabs: [{ projectDir: "D:\\work\\hanbit-booking", name: "hanbit-booking", status: "idle" }] },
+                state: createState({ status: "idle" }),
+                logs: []
+            });
+        },
+        activateTab: async () => OK({ settings: { projectDir: "/a" }, overridden: [], globals: {}, notice: "", tabs: { active: "/a", tabs: [] }, state: createState(), logs: [] }),
+        listRuns: async () => OK({ runs: [] }),
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
+    };
+
+    newProjectActions.openNewProject();
+    await wait(0);
+    assert.equal(useUiStore.getState().newProject, true);
+    assert.equal(read().info.parentDir, "D:\\work");
+
+    // 아직 몰라요는 다른 실행 환경과 함께 고르지 않는다.
+    newProject.togglePlatform("web");
+    newProject.togglePlatform("unknown");
+    assert.deepEqual(read().platforms, ["unknown"]);
+    newProject.togglePlatform("cli");
+    assert.deepEqual(read().platforms, ["cli"]);
+    newProject.togglePlatform("cli");
+
+    // 그만둔 뒤 늦게 온 초안은 버린다.
+    newProject.set({ what: "미용실 예약" });
+    const canceled = newProjectActions.requestDraft();
+
+    newProjectActions.cancelDraft();
+    pendingDraft(OK({ draft: draft }));
+    await canceled;
+    assert.equal(read().step, "write");
+    assert.equal(read().isDrafting, false);
+
+    // 고른 실행 환경이 없으면 초안의 것을 쓰고, 추천 스택이 있으면 추천대로가 기본이다.
+    const drafted = newProjectActions.requestDraft();
+
+    pendingDraft(OK({ draft: draft }));
+    await drafted;
+    assert.deepEqual(requests.at(-1), ["draft", { what: "미용실 예약", platforms: [] }]);
+    assert.equal(read().step, "refine");
+    assert.deepEqual(read().platforms, ["web"]);
+    assert.equal(read().draft.stack.choice, "recommended");
+
+    // 더한 것은 넣은 상태이고, 이미 있는 추천을 더하면 넣은 상태로 바뀐다.
+    newProject.addItems("features", ["알림 문자", "후기"]);
+    assert.deepEqual(read().draft.features, [
+        { label: "예약", picked: true },
+        { label: "알림 문자", picked: true },
+        { label: "후기", picked: true }
+    ]);
+    newProject.toggleItem("features", 0);
+    assert.equal(read().draft.features[0].picked, false);
+
+    // 만들면 brief.md를 보내고(작성자는 git에 있으면 보내지 않음) 새 탭으로 옮긴다. 입력은 비운다.
+    await newProjectActions.createProject();
+
+    const createRequest = requests.at(-1)[1];
+
+    assert.equal(createRequest.name, "hanbit-booking");
+    assert.equal(createRequest.author, null);
+    assert.match(createRequest.brief, /^# hanbit-booking\n/);
+    assert.match(createRequest.brief, /- 알림 문자/);
+    assert.doesNotMatch(createRequest.brief, /- 예약\n/, "뺀 기능은 brief에 넣지 않는다");
+    assert.equal(useUiStore.getState().newProject, false);
+    assert.equal(tabsStore.useTabsStore.getState().active, "D:\\work\\hanbit-booking");
+    assert.equal(read().what, "");
+
+    // 초안이 실패하면 적은 내용을 한 줄 요약으로 두고 이유를 알린다.
+    newProject.set({ what: "가계부 앱" });
+    const failed = newProjectActions.requestDraft();
+
+    pendingDraft({ status: "FAILED", error: { code: "LOGIN_REQUIRED", msg: "로그인되어 있지 않아요." } });
+    await failed;
+    assert.equal(read().step, "refine");
+    assert.equal(read().draft.summary, "가계부 앱");
+    assert.match(read().notice, /로그인되어 있지 않아요\. 적어 주신 내용으로 직접 채워 주세요\./);
+
+    // 처음부터 다시 쓰면 적은 한두 줄은 남기고 초안만 비운다. 탭을 고르면 새 프로젝트 화면을 닫는다.
+    newProject.restart();
+    assert.equal(read().step, "write");
+    assert.equal(read().what, "가계부 앱");
+    newProjectActions.openNewProject();
+    await tabs.activateTab("D:\\work\\hanbit-booking");
+    assert.equal(useUiStore.getState().newProject, false, "같은 탭을 눌러도 새 프로젝트 화면은 닫힌다");
+};
+
 const checkStores = async () => {
     const modules = await loadModules();
 
@@ -1013,6 +1140,7 @@ const checkStores = async () => {
     await checkModal(modules);
     await checkProjectEvents(modules);
     await checkTabs(modules);
+    await checkNewProject(modules);
     checkStoryView(modules);
 
     console.log("Desktop store checks passed.");

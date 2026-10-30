@@ -9,6 +9,8 @@ const useUiStore = create(() => ({
     archive: false,
     schedule: false,
     tasksOpen: false,
+    // 새 프로젝트 화면이 본문을 차지하는지
+    newProject: false,
     stopArmed: false,
     isStarting: false,
     finishDismissed: false,

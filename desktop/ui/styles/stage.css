@@ -71,6 +71,13 @@ body[data-view="done"] .view-done {
     margin-bottom: 18px;
 }
 
+/* 좁은 창에서 단계 카드가 두 줄로 늘면 안내가 컴포저 밑으로 들어가므로 본문 안에서 스크롤한다 */
+.greet[data-mode="build"] {
+    padding-bottom: 16px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
 /* 작업 모드: 이어 붙은 알약 두 개, 고른 것은 잉크색으로 채운다 */
 .mode-seg {
     flex: none;

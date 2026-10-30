@@ -119,11 +119,15 @@ const openTab = async () => {
     ui.showFailure(result);
 
     if (result.status === STATUS_OK && !result.data.canceled) {
+        ui.set({ newProject: false });
         applyProjectSwitch(result.data);
     }
 };
 
+// 새 프로젝트 화면을 보고 있었으면 닫고 그 탭을 보인다.
 const activateTab = async (projectDir) => {
+    ui.set({ newProject: false });
+
     if (projectDir === useTabsStore.getState().active) {
         return;
     }

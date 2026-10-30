@@ -4,6 +4,7 @@ import { getUsageTone } from "../../../viewFormat.js";
 import { openArchiveList } from "../../actions/runs.js";
 import { schedules } from "../../actions/schedules.js";
 import { activateTab, closeTab, openTab } from "../../actions/tabs.js";
+import { openNewProject } from "../../actions/newProject.js";
 import { Icon } from "../../components/Icon.jsx";
 import { PHASE_LABELS } from "../../lib/constants.js";
 import { getTabLabels } from "../../lib/projectName.js";
@@ -64,6 +65,8 @@ const moveFocus = (event) => {
 const ProjectList = ({ tabs, active, activeNote = null }) => {
     const listRef = useRef(null);
     const labels = getTabLabels(tabs);
+    // 새 프로젝트 화면처럼 고른 탭이 없을 때도 Tab 키로 목록에 들어올 수 있게 첫 탭을 포커스 자리로 둔다.
+    const hasActive = tabs.some((tab) => tab.projectDir === active);
 
     useEffect(() => {
         listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
@@ -78,7 +81,15 @@ const ProjectList = ({ tabs, active, activeNote = null }) => {
 
                 return (
                     <div key={tab.projectDir} className="proj" data-active={isActive ? "" : undefined} data-status={tab.status} data-tone={note.tone || undefined}>
-                        <button type="button" role="tab" className="proj-main" aria-selected={isActive} tabIndex={isActive ? 0 : -1} title={tab.projectDir} onClick={() => activateTab(tab.projectDir)}>
+                        <button
+                            type="button"
+                            role="tab"
+                            className="proj-main"
+                            aria-selected={isActive}
+                            tabIndex={isActive || (!hasActive && index === 0) ? 0 : -1}
+                            title={tab.projectDir}
+                            onClick={() => activateTab(tab.projectDir)}
+                        >
                             <span className="proj-mark" aria-hidden="true">
                                 {note.tone === "run" ? <span className="ring" /> : Array.from(labels[index])[0]?.toUpperCase()}
                             </span>
@@ -141,7 +152,7 @@ const Rail = () => {
     const { status, mode, step } = useRunStore(useShallow((store) => ({ status: store.state.status, mode: store.state.mode, step: store.state.step })));
     const buildPhase = useRunsStore((store) => store.buildPhase);
     const composerMode = useComposerStore((store) => store.mode);
-    const { panel, archive, schedule } = useUiStore(useShallow((store) => ({ panel: store.panel, archive: store.archive, schedule: store.schedule })));
+    const { panel, archive, schedule, isCreating } = useUiStore(useShallow((store) => ({ panel: store.panel, archive: store.archive, schedule: store.schedule, isCreating: store.newProject })));
     const activeNote = getActiveNote({ status: status, mode: mode, step: step, buildPhase: buildPhase, composerMode: composerMode });
 
     return (
@@ -152,9 +163,21 @@ const Rail = () => {
             </div>
             <h2 className="rail-section rail-label">프로젝트</h2>
             <nav id="tabbar" className="rail-projects" aria-label="열린 프로젝트">
-                <ProjectList tabs={tabs} active={active} activeNote={activeNote} />
-                <button type="button" id="tab-add" className="rail-item" aria-label="프로젝트 열기" title="프로젝트 열기" onClick={openTab}>
+                <ProjectList tabs={tabs} active={isCreating ? "" : active} activeNote={activeNote} />
+                <button
+                    type="button"
+                    id="new-project-toggle"
+                    className="rail-item"
+                    aria-label="새 프로젝트"
+                    title="새 프로젝트"
+                    aria-current={isCreating ? "page" : undefined}
+                    onClick={openNewProject}
+                >
                     <Icon symbol="icon-plus" />
+                    <span className="rail-label">새 프로젝트</span>
+                </button>
+                <button type="button" id="tab-add" className="rail-item" aria-label="프로젝트 열기" title="프로젝트 열기" onClick={openTab}>
+                    <Icon symbol="icon-folder" />
                     <span className="rail-label">프로젝트 열기</span>
                 </button>
             </nav>

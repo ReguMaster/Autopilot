@@ -255,6 +255,23 @@ const api = {
     readPhaseDoc: respond("readPhaseDoc", async (phase) => (model.phaseDocs?.[phase] ? ok(model.phaseDocs[phase]) : fail("NO_DOC", "산출물 문서를 아직 찾지 못했어요."))),
     openPhaseDoc: respond("openPhaseDoc", async () => ok({})),
     initGitRepo: respond("initGitRepo", async () => ok(getSettingsView())),
+    getCreateInfo: respond("getCreateInfo", async () => ok(model.createInfo ?? { parentDir: "D:\\work", author: { name: "한빛", email: "hanbit@example.com" } })),
+    pickCreateDir: respond("pickCreateDir", async () => ok({ parentDir: "D:\\projects", canceled: false })),
+    // 초안은 model.draftDelay(ms) 뒤에 model.draft를 주거나 model.draftError로 실패한다. 그만두기를 누르면 바로 CANCELED다.
+    draftProject: respond(
+        "draftProject",
+        () =>
+            new Promise((resolve) => {
+                model.cancelDraft = () => resolve(fail("CANCELED", "초안 만들기를 그만뒀어요."));
+                setTimeout(() => resolve(model.draftError ? fail(model.draftError.code, model.draftError.msg) : ok({ draft: model.draft })), model.draftDelay ?? 300);
+            })
+    ),
+    cancelDraft: respond("cancelDraft", async () => {
+        model.cancelDraft?.();
+
+        return ok({});
+    }),
+    createProject: respond("createProject", async () => ok({ ...getSettingsView(), tabs: { active: model.settings.projectDir, tabs: model.tabs } })),
     openReport: respond("openReport", async () => ok({})),
     listRuns: respond("listRuns", async (limit) => ok({ runs: model.runs.slice(0, limit) })),
     readRun: respond("readRun", async (id) => (model.runDetails[id] ? ok(model.runDetails[id]) : fail("READ_RUN_FAILED", "기록을 읽지 못했어요."))),

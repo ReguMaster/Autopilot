@@ -17,6 +17,7 @@ const loadUi = async () => {
         import { ProjectList } from "./features/shell/Rail.jsx";
         import { StepCard } from "./features/steps/StepCard.jsx";
         import { DocPreview } from "./features/approval/DocPreview.jsx";
+        import { TagChips } from "./features/create/TagChips.jsx";
         export * from "./selectKeys.js";
         export * from "./lib/buildSteps.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
@@ -24,6 +25,7 @@ const loadUi = async () => {
         export const renderProjectList = (props) => renderToStaticMarkup(createElement(ProjectList, props));
         export const renderStepCard = (props) => renderToStaticMarkup(createElement(StepCard, props));
         export const renderDocPreview = (props) => renderToStaticMarkup(createElement(DocPreview, props));
+        export const renderTagChips = (props) => renderToStaticMarkup(createElement(TagChips, props));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -269,6 +271,26 @@ const checkRunSteps = ({ getRunSteps, getPhaseDocs, getRevisionTasks, renderDocP
     assert.match(renderDocPreview({ doc: null }), /아직 찾지 못했어요/);
 };
 
+// 새 프로젝트의 칩: 넣은 것은 체크·data-picked, 추천은 +이고 눌린 상태를 aria-pressed로 알린다. 더하기 칸은 이름표가 있다.
+const checkTagChips = ({ renderTagChips }) => {
+    const html = renderTagChips({
+        label: "꼭 있어야 할 기능",
+        items: [
+            { label: "예약", picked: true },
+            { label: "알림", picked: false }
+        ],
+        onToggle: () => {},
+        onAdd: () => {},
+        addLabel: "기능 추가"
+    });
+
+    assert.match(html, /<div class="tags" role="group" aria-label="꼭 있어야 할 기능">/);
+    assert.match(html, /data-picked="" aria-pressed="true"><svg[^>]*><use href="#icon-check"><\/use><\/svg>예약<\/button>/);
+    assert.match(html, /aria-pressed="false"><svg[^>]*><use href="#icon-plus"><\/use><\/svg>알림<\/button>/);
+    assert.match(html, /<input[^>]*placeholder="기능 추가" aria-label="기능 추가"/);
+    assert.doesNotMatch(renderTagChips({ label: "어디서", items: [], onToggle: () => {} }), /<input/, "더할 수 없는 묶음에는 입력 칸이 없다");
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
@@ -278,6 +300,7 @@ const checkUi = async () => {
     checkProjectListMarkup(ui);
     checkStepCard(ui);
     checkRunSteps(ui);
+    checkTagChips(ui);
     checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");

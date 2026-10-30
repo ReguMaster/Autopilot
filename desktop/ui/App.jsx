@@ -4,6 +4,7 @@ import { Scrim } from "./components/Scrim.jsx";
 import { Symbols } from "./components/Symbols.jsx";
 import { ArchiveSheet } from "./features/archive/ArchiveSheet.jsx";
 import { Composer } from "./features/composer/Composer.jsx";
+import { NewProjectView } from "./features/create/NewProjectView.jsx";
 import { FinishView } from "./features/done/FinishView.jsx";
 import { HistorySheet } from "./features/history/HistorySheet.jsx";
 import { ProfilePanel } from "./features/profile/ProfilePanel.jsx";
@@ -25,10 +26,10 @@ import { ui, useUiStore } from "./stores/uiStore.js";
 const App = () => {
     const view = useView();
     const status = useRunStore((store) => store.state.status);
-    const { panel, history, archive, schedule, tasksOpen } = useUiStore();
+    const { panel, history, archive, schedule, tasksOpen, newProject } = useUiStore();
     const approval = useApproval();
 
-    useBodyFlags({ view: view, status: status, isTasksOpen: tasksOpen, isApproval: Boolean(approval), panel: panel, history: history, archive: archive, schedule: schedule });
+    useBodyFlags({ view: view, status: status, isTasksOpen: tasksOpen, isApproval: Boolean(approval), isCreating: newProject, panel: panel, history: history, archive: archive, schedule: schedule });
     useRevealWhenReady();
     useNativeFeel();
     useOverlayDismiss();
@@ -46,13 +47,17 @@ const App = () => {
             <div className="main-column">
                 <TitleBar />
                 <div className="content">
-                    <main className="stage">
-                        <ReadyView />
-                        <RunView />
-                        <FinishView />
-                    </main>
+                    {newProject ? (
+                        <NewProjectView />
+                    ) : (
+                        <main className="stage">
+                            <ReadyView />
+                            <RunView />
+                            <FinishView />
+                        </main>
+                    )}
                     <Notices />
-                    <Composer />
+                    {newProject ? null : <Composer />}
                 </div>
             </div>
             <Symbols />

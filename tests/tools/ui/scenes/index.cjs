@@ -6,7 +6,8 @@ const tabs = require("./tabs.cjs");
 const perf = require("./perf.cjs");
 const readme = require("./readme.cjs");
 const build = require("./build.cjs");
+const create = require("./create.cjs");
 
-const SCENES = [...shell.SCENES, ...stage.SCENES, ...composer.SCENES, ...overlays.SCENES, ...tabs.SCENES, ...perf.SCENES, ...readme.SCENES, ...build.SCENES];
+const SCENES = [...shell.SCENES, ...stage.SCENES, ...composer.SCENES, ...overlays.SCENES, ...tabs.SCENES, ...perf.SCENES, ...readme.SCENES, ...build.SCENES, ...create.SCENES];
 
 module.exports = { SCENES };
