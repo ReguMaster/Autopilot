@@ -149,12 +149,11 @@ const getAdoptionPrompt = (runState) => {
         return `사용자가 [${label}]에서 ${mainLabel} 안을 골랐다. 지금 단계의 일을 하기 전에 아직 commit하지 않은 \`${PROPOSALS_DIR}/\` 파일이 있으면 commit한다(${commitMessage}).`;
     }
 
+    const designTarget = file.endsWith(".html") ? "`docs/autopilot/design/index.html`로 옮기고 `docs/autopilot/design.md`는 그 화면에 맞게 다시 쓴다" : "`docs/autopilot/design.md`로 옮긴다";
     const adoption =
         phase === "plan"
             ? `지금 \`docs/autopilot/plan.md\`(${mainLabel} 안)를 \`${phaseUtil.getProposalPath("plan", main)}\`로 옮기고 \`${file}\`의 내용을 \`docs/autopilot/plan.md\`로 확정한다`
-            : `지금 ${mainLabel}의 디자인 산출물(\`docs/autopilot/design.md\`와 \`docs/autopilot/design/\`)을 \`${PROPOSALS_DIR}/design-${main}/\`로 옮기고 \`${file}\`를 정식 디자인으로 확정한다(${
-                  file.endsWith(".html") ? "`docs/autopilot/design/index.html`로 옮기고 `docs/autopilot/design.md`는 그 화면에 맞게 다시 쓴다" : "`docs/autopilot/design.md`로 옮긴다"
-              })`;
+            : `지금 ${mainLabel}의 디자인 산출물(\`docs/autopilot/design.md\`와 \`docs/autopilot/design/\`)을 \`${PROPOSALS_DIR}/design-${main}/\`로 옮기고 \`${file}\`를 정식 디자인으로 확정한다(${designTarget})`;
 
     return `사용자가 [${label}]에서 ${providerLabel} 안을 골랐다. 지금 단계의 일을 하기 전에 먼저 ${adoption}. 남은 제안 · 검토 파일과 함께 commit한다(${commitMessage}). 이후 단계는 확정한 안을 따른다.`;
 };
@@ -273,15 +272,20 @@ const getPhasePrompt = (runState) => {
         .join(" ");
 };
 
+// 디자인 안은 파일 하나로 받으므로 HTML이 아니면 마크다운으로 낸다.
+const getProposalFormatPrompt = (runState) => {
+    if (runState.phase !== "design") {
+        return "";
+    }
+
+    return runState.designFormat === "html"
+        ? "디자인은 모든 화면을 담은 HTML 문서 하나(외부 리소스 없이 파일 하나로 열리는)로 낸다. design.md에 쓸 화면 설명도 그 HTML 안에 함께 넣는다."
+        : "디자인은 마크다운 문서 하나로 내고 화면마다 ASCII 와이어프레임을 넣는다.";
+};
+
 // 다른 AI에게 같은 단계의 독립된 안을 받는다. 읽기 전용으로 돌리므로 파일 대신 최종 답변으로 받는다.
 const getProposalPrompt = (runState) => {
     const brief = getPhaseBrief(runState);
-    const formatPrompt =
-        runState.phase === "design"
-            ? runState.designFormat === "html"
-                ? "디자인은 모든 화면을 담은 HTML 문서 하나(외부 리소스 없이 파일 하나로 열리는)로 낸다. design.md에 쓸 화면 설명도 그 HTML 안에 함께 넣는다."
-                : "디자인은 마크다운 문서 하나로 내고 화면마다 ASCII 와이어프레임을 넣는다."
-            : "";
 
     return [
         `너는 ${brief.role}`,
@@ -292,7 +296,7 @@ const getProposalPrompt = (runState) => {
             ? `기획서는 \`docs/autopilot/plan.md\` 대신 사용자가 고른 \`${runState.adoption.file}\`를 따른다.`
             : "",
         `산출물: ${brief.output} 단, 파일에 쓰지 말고 그 문서 전체를 최종 답변으로 출력한다.`,
-        formatPrompt,
+        getProposalFormatPrompt(runState),
         "완료 기준:",
         ...brief.criteria.map((criterion) => `- ${criterion}`),
         "인사 · 설명 · 코드 블록 표시 없이 문서 내용만 출력한다.",

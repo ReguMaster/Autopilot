@@ -563,6 +563,14 @@ const runRound = async (context, loopState, remainingMinutes) => {
     return { round: round, isFailed: isFailed, isRateLimited: isRateLimited, resetAt: sessionStats.resetAt };
 };
 
+const getRateLimitStopReason = (isCapped, extensionMs) => {
+    if (isCapped) {
+        return "사용량 한도 연장 상한 도달";
+    }
+
+    return extensionMs ? "사용량 한도 대기 전 남은 시간 부족" : "사용량 한도 리셋이 종료 시각 이후";
+};
+
 // 중단해야 하면 true를 반환한다. 한도 리셋이 종료 시각 이후면 기다리지 않고 끝낸다.
 // extendOnLimit이면 기다린 만큼 종료 시각을 늦춰 대기 전 남은 시간이 그대로 남는다. 로그 시각이 초 단위라 연장분은 올림한다.
 // maxExtendMinutes가 있으면 한 실행에서 늘릴 수 있는 총량이 그만큼으로 묶이고, 남은 상한보다 더 필요하면 남은 만큼만 늘린다.
@@ -575,7 +583,7 @@ const waitForRateLimitReset = async (context, loopState, resetAt) => {
     const isCapped = extensionMs < wantedMs;
 
     if (+runState.deadline + extensionMs - resumeAt < runConfig.minMinutes * MINUTE_MS) {
-        loopState.reason = isCapped ? "사용량 한도 연장 상한 도달" : extensionMs ? "사용량 한도 대기 전 남은 시간 부족" : "사용량 한도 리셋이 종료 시각 이후";
+        loopState.reason = getRateLimitStopReason(isCapped, extensionMs);
 
         return true;
     }
