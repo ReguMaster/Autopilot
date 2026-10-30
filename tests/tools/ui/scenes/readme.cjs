@@ -10,7 +10,8 @@ const getTabs = (status) => [
 ];
 
 // README에 싣는 화면(docs/screenshots). 가짜 데이터로 같은 장면을 다시 찍을 수 있게 장면으로 둔다.
-// electron tests/tools/ui/runScenes.cjs -- --root . --out <폴더> --scenes readme-ready,readme-running,readme-done,readme-settings,readme-history
+// 지금 README의 ready.png는 ready-build, running.png는 run-build(scenes/build.cjs), done.png는 readme-done이다. --root는 절대 경로로 준다.
+// electron tests/tools/ui/runScenes.cjs -- --root <저장소 절대 경로> --out <폴더> --scenes ready-build,run-build,readme-done,readme-settings,readme-history
 const SCENES = [
     {
         name: "readme-ready",
