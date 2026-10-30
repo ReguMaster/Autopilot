@@ -249,12 +249,23 @@ const getDebateOpeningPrompt = (runState, provider, { docs = {}, lastTurn = null
     ];
 
     if (provider === PROVIDER_CLAUDE) {
-        return [intro, task, DEBATE_RULES, runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : "", getDebateDoc("CLAUDE_안", docs.claude), getDebateDoc("CODEX_안", docs.codex), ...history]
+        return [
+            intro,
+            task,
+            DEBATE_RULES,
+            getProposalScopePrompt(runState),
+            runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : "",
+            getDebateDoc("CLAUDE_안", docs.claude),
+            getDebateDoc("CODEX_안", docs.codex),
+            ...history
+        ]
             .filter(Boolean)
             .join("\n\n");
     }
 
-    return [intro, `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 않는다. 두 안을 읽고 ${task}`, DEBATE_RULES, ...history].filter(Boolean).join("\n\n");
+    return [intro, `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 않는다. 두 안을 읽고 ${task}`, DEBATE_RULES, getProposalScopePrompt(runState), ...history]
+        .filter(Boolean)
+        .join("\n\n");
 };
 
 // 이어지는 발언. 상대의 마지막 발언을 전하고 몇 번째인지 알린다.
@@ -294,7 +305,7 @@ const getProposalFormatPrompt = (runState) => {
 
 const ALLOW_SCOPES = { deps: "새 라이브러리(패키지) 추가", large: "새 폴더 구조 · Framework 선택 같은 큰 구조", "external-api": "외부 API 호출" };
 
-// 다른 AI는 정책 문서를 받지 않으므로 기획서의 기술 선택이 기댈 허용 범위를 직접 알린다.
+// 안을 내거나 협의하는 AI는 정책 문서를 받지 않으므로 기획서의 기술 선택이 기댈 허용 범위를 직접 알린다.
 const getProposalScopePrompt = (runState) => {
     if (runState.phase !== "plan") {
         return "";
