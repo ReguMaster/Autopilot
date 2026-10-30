@@ -15,10 +15,13 @@ const loadUi = async () => {
         import { Select } from "./components/Select.jsx";
         import { Modal } from "./components/Modal.jsx";
         import { ProjectList } from "./features/shell/Rail.jsx";
+        import { StepCard } from "./features/steps/StepCard.jsx";
         export * from "./selectKeys.js";
+        export * from "./lib/buildSteps.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
         export const renderModal = (props, children) => renderToStaticMarkup(createElement(Modal, props, children));
         export const renderProjectList = (props) => renderToStaticMarkup(createElement(ProjectList, props));
+        export const renderStepCard = (props) => renderToStaticMarkup(createElement(StepCard, props));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -156,6 +159,57 @@ const checkProjectListMarkup = ({ renderProjectList }) => {
     assert.match(html, /title="E:\/Work\/app"/, "마우스를 올리면 전체 경로가 보인다");
 };
 
+// 신규 개발 단계 카드: 칸의 상태와 번호·체크·멈춤, 마친 비율의 막대, 펼친 카드의 설정
+const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBuildActionLabel }) => {
+    const fresh = getReadySteps(null);
+
+    assert.deepEqual(
+        fresh.map((cell) => cell.state),
+        ["waiting", "waiting", "waiting", "waiting"]
+    );
+    assert.deepEqual(
+        getReadySteps({ phase: "build", awaiting: null, qaRetries: 0 }).map((cell) => cell.state),
+        ["done", "done", "next", "waiting"]
+    );
+    assert.deepEqual(
+        getReadySteps({ phase: "design", awaiting: "plan", qaRetries: 0 }).map((cell) => cell.state),
+        ["hold", "waiting", "waiting", "waiting"],
+        "확인을 기다리던 단계는 승인 없이 시작하면 다시 하므로 그 칸이 멈춤이다"
+    );
+    assert.deepEqual(
+        getReadySteps({ phase: "done", awaiting: null, qaRetries: 1 }).map((cell) => cell.state),
+        ["done", "done", "done", "done"]
+    );
+
+    assert.equal(getBuildActionLabel(null), "기획 시작");
+    assert.equal(getBuildActionLabel({ phase: "build", awaiting: "design", qaRetries: 0 }), "디자인 다시 하기");
+    assert.equal(getBuildActionLabel({ phase: "qa", awaiting: null, qaRetries: 0 }), "테스트/QA 시작");
+    assert.equal(
+        getBuildGreeting({ buildPhase: null, endLabel: "07:00", gates: ["plan"] }).lead,
+        "적어 주신 내용으로 기획부터 시작해서 07:00까지 이어 갈게요. 기획 단계가 끝나면 멈추고 확인을 기다려요."
+    );
+    assert.doesNotMatch(
+        getBuildGreeting({ buildPhase: { phase: "build", awaiting: null, qaRetries: 0 }, endLabel: "월요일 07:00", gates: ["plan", "design"] }).lead,
+        /멈추고/,
+        "지난 단계의 확인받기는 알리지 않는다"
+    );
+    assert.equal(getBuildGreeting({ buildPhase: { phase: "done", awaiting: null, qaRetries: 0 }, endLabel: "", gates: [] }).title, "모든 단계를 마쳤어요");
+
+    const html = renderStepCard({ id: "steps", cells: getReadySteps({ phase: "design", awaiting: "plan", qaRetries: 0 }), settings: { design: "설정" } });
+
+    assert.match(html, /class="step-card expanded"/);
+    assert.match(html, /--step-progress:0%/);
+    assert.match(html, /data-phase="plan" data-state="hold" aria-current="step"[^]*href="#icon-pause"[^]*확인을 기다려요/);
+    assert.match(html, /data-phase="design"[^]*<span class="step-node" aria-hidden="true">2<\/span>[^]*<div class="step-set">설정<\/div>/);
+    assert.equal((html.match(/step-set/g) ?? []).length, 1, "설정은 준 단계에만 펼친다");
+
+    const compact = renderStepCard({ cells: getReadySteps({ phase: "build", awaiting: null, qaRetries: 0 }) });
+
+    assert.match(compact, /class="step-card"/);
+    assert.match(compact, /--step-progress:50%/);
+    assert.equal((compact.match(/href="#icon-check"/g) ?? []).length, 2);
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
@@ -163,6 +217,7 @@ const checkUi = async () => {
     checkSelectMarkup(ui);
     checkModalMarkup(ui);
     checkProjectListMarkup(ui);
+    checkStepCard(ui);
     checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");

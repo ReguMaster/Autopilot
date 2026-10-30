@@ -35,6 +35,9 @@ const Symbols = () => {
             <symbol id="icon-check" viewBox="0 0 16 16">
                 <path d="M3.5 8.5l3 3 6-6.5" />
             </symbol>
+            <symbol id="icon-pause" viewBox="0 0 16 16">
+                <path d="M6 4.5v7M10 4.5v7" />
+            </symbol>
             <symbol id="icon-lines" viewBox="0 0 16 16">
                 <path d="M3 4.5h10M3 8h10M3 11.5h6" />
             </symbol>

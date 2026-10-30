@@ -30,9 +30,95 @@ body[data-view="done"] .view-done {
     text-wrap: pretty;
 }
 
-/* 시작 전: 인사 한 줄과 할 일 안내 */
+/* 시작 전: 맨 위에 프로젝트 이름과 작업 모드, 그 아래에 인사(유지 보수)나 단계 카드와 안내(신규 개발) */
 .greet {
-    padding-top: 68px !important;
+    padding-top: 22px !important;
+}
+
+.project-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 34px;
+}
+
+.project-head-name {
+    min-width: 0;
+}
+
+.project-title {
+    overflow: hidden;
+    font-size: var(--title-md);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-path {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--faint);
+    font: var(--text-xs) / 1.5 var(--mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: text;
+}
+
+.greet[data-mode="build"] .project-head {
+    margin-bottom: 18px;
+}
+
+/* 작업 모드: 이어 붙은 알약 두 개, 고른 것은 잉크색으로 채운다 */
+.mode-seg {
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 0;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--chip);
+}
+
+.mode-seg .seg-option span {
+    height: 30px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: none;
+    box-shadow: none;
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.mode-seg .seg-option input:checked + span {
+    background: var(--ink);
+    color: var(--bg);
+}
+
+.mode-seg .seg-option input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.mode-seg .seg-option input:disabled {
+    cursor: not-allowed;
+}
+
+.build-lead {
+    margin-top: 26px;
+}
+
+.build-lead h1 {
+    font-size: var(--title-lg);
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+}
+
+.build-lead .lead {
+    margin-top: 8px;
+    max-width: 36em;
 }
 
 .greet h1:has(.project-name) {

@@ -1,0 +1,187 @@
+/* 신규 개발 단계 카드: 이어 붙은 네 칸. 위 2px 막대는 마친 단계의 비율, 지금 단계는 파란 바탕과 아래 3px 선, 확인을 기다리는 단계는 주황이다 */
+.step-card {
+    position: relative;
+    display: grid;
+    flex: none;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: var(--r-lg);
+    background: var(--bg);
+    box-shadow: var(--shadow-1);
+    list-style: none;
+}
+
+.step-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 1;
+    height: 2px;
+    background: linear-gradient(to right, var(--add) var(--step-progress, 0%), var(--hair) 0);
+}
+
+.step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 13px 14px 14px;
+    box-shadow: inset 1px 0 0 var(--hair);
+}
+
+.step:first-child {
+    box-shadow: none;
+}
+
+.step-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: var(--text-md);
+    font-weight: 600;
+}
+
+.step-node {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--chip);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.step-node .icon {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.step-detail {
+    padding-left: 28px;
+    overflow: hidden;
+    color: var(--faint);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.step[data-state="done"] .step-top {
+    color: var(--ink);
+}
+
+.step[data-state="done"] .step-node {
+    background: var(--ok-wash);
+    color: var(--add);
+}
+
+.step[data-state="active"] {
+    background: var(--accent-wash);
+}
+
+.step[data-state="active"] :is(.step-top, .step-detail) {
+    color: var(--accent-ink);
+}
+
+.step[data-state="active"] .step-node {
+    background: var(--accent);
+    color: #fff;
+}
+
+.step:is([data-state="active"], [data-state="hold"])::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 3px;
+    background: var(--accent);
+}
+
+.step[data-state="hold"] {
+    background: var(--warn-wash);
+}
+
+.step[data-state="hold"]::after {
+    background: var(--warn-fill);
+}
+
+.step[data-state="hold"] :is(.step-top, .step-detail) {
+    color: var(--warn);
+}
+
+.step[data-state="hold"] .step-node {
+    background: var(--warn-fill);
+    color: #fff;
+}
+
+.step[data-state="waiting"] .step-node {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+    color: var(--faint);
+}
+
+.step[data-state="next"] .step-top {
+    color: var(--ink);
+}
+
+.step[data-state="next"] .step-node {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+    color: var(--accent-ink);
+}
+
+.step[data-state="next"] .step-detail {
+    color: var(--accent-ink);
+}
+
+/* 펼친 카드(시작 전): 칸 아래에 그 단계의 설정 */
+.step-set {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.step-set .select {
+    flex: none;
+    width: 100%;
+    max-width: 220px;
+}
+
+.step-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.step-check input {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: inherit;
+}
+
+.step-none,
+.step-note {
+    color: var(--faint);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+}
+
+.step-note {
+    color: var(--warn);
+}

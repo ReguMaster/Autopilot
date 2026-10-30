@@ -44,6 +44,11 @@ const DEFAULT_SETTINGS = {
     model: "opus",
     modelVersions: {},
     effort: "high",
+    mode: "maintain",
+    gates: ["plan", "design"],
+    allow: ["deps", "large"],
+    designFormat: "html",
+    qaOnFail: "retry:3",
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -61,7 +66,12 @@ const OVERRIDABLE_DEFAULTS = {
     logRetentionDays: DEFAULT_SETTINGS.logRetentionDays,
     model: DEFAULT_SETTINGS.model,
     modelVersions: DEFAULT_SETTINGS.modelVersions,
-    effort: DEFAULT_SETTINGS.effort
+    effort: DEFAULT_SETTINGS.effort,
+    mode: DEFAULT_SETTINGS.mode,
+    gates: DEFAULT_SETTINGS.gates,
+    allow: DEFAULT_SETTINGS.allow,
+    designFormat: DEFAULT_SETTINGS.designFormat,
+    qaOnFail: DEFAULT_SETTINGS.qaOnFail
 };
 const DEFAULT_ACCOUNTS = {
     accounts: [{ id: "default", label: "기본 계정", shared: false }],
