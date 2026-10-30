@@ -27,6 +27,9 @@ const PASS_SIGNAL = "첫 줄에 `pass`를 쓴";
 
 // 단계마다 같은 틀(관점 · 읽을 것 · 산출물 · 회차당 작업 · 완료 기준 · 하지 않을 것 · 완료 신호)로 무엇을 어디까지 할지 정한다.
 const getPhaseBrief = (runState) => {
+    // 테스트/QA · 보안검토가 개발로 되돌린 뒤의 개발 · 테스트/QA는 앞선 결과 문서가 있으므로 실패 항목부터 본다.
+    const isReturned = runState.qaRetries > 0 || runState.securityRetries > 0;
+
     if (runState.phase === "plan") {
         return {
             role: "제품 기획자이자 테크 리드다. 개발자가 이 문서 하나만 보고 순서대로 만들 수 있게 쓴다.",
@@ -60,8 +63,6 @@ const getPhaseBrief = (runState) => {
     }
 
     if (runState.phase === "build") {
-        const isReturned = runState.qaRetries > 0 || runState.securityRetries > 0;
-
         return {
             role: "시니어 개발자다. 기획서의 개발 순서를 작은 단위로 하나씩 실제로 동작하게 만든다.",
             read: "`docs/autopilot/plan.md`의 개발 순서와 완료 조건, 디자인 산출물(`docs/autopilot/design.md` · `docs/autopilot/design/`), 진행 기록, 있으면 `docs/autopilot/qa.md` · `docs/autopilot/security.md`의 실패 항목.",
@@ -79,7 +80,11 @@ const getPhaseBrief = (runState) => {
             role: "QA 엔지니어다. 사용자가 실제로 쓰는 방식대로 기능을 확인하고 깨지는 곳을 찾는다.",
             read: "`docs/autopilot/plan.md`의 기능별 완료 조건과 주요 시나리오, 디자인 산출물, `README.md`의 실행 방법.",
             output: "`docs/autopilot/qa.md`에 기능마다 확인 방법 · 결과(통과 · 실패) · 실패면 재현 절차를 표로 남긴다. 확인한 시나리오는 자동 테스트로 추가한다.",
-            perRound: "기능 묶음 하나를 확인한다. 작은 문제는 바로 고치고 다시 확인한 뒤 commit한다.",
+            perRound: `기능 묶음 하나를 확인한다. 작은 문제는 바로 고치고 다시 확인한 뒤 commit한다.${
+                isReturned
+                    ? " 이번 테스트/QA는 개발로 되돌려 고친 뒤 다시 하는 것이다. 처음부터 묶음별로 다시 하지 말고 `qa.md`의 실패 항목과 그 수정이 닿은 기능을 먼저 다시 확인한다. 이미 통과한 나머지 기능은 전체 테스트와 주요 시나리오를 한 번 실행해 확인하고, `qa.md`의 결과를 지금 상태로 고친다."
+                    : ""
+            }`,
             criteria: ["필수 기능을 모두 확인했다.", "주요 시나리오가 처음부터 끝까지 통과한다.", "빈 입력 · 잘못된 입력 · 오류 상황을 확인했다.", "전체 테스트가 통과한다."],
             avoid: "새 기능 추가, 큰 리팩터링, 실패를 숨기려고 테스트를 지우거나 느슨하게 고치기.",
             signal: "첫 줄에 필수 기능과 주요 시나리오가 모두 통과했으면 `pass`, 고치지 못한 실패가 남았으면 `fail`을 쓴"
@@ -90,7 +95,11 @@ const getPhaseBrief = (runState) => {
         role: "보안 엔지니어다. 공격자와 실수의 눈으로 배포 전의 코드와 설정을 점검한다.",
         read: "저장소의 코드 · 설정 · 커밋 이력, `docs/autopilot/plan.md`의 기술 선택과 데이터 구조.",
         output: "`docs/autopilot/security.md`에 발견 사항을 표로 남긴다(심각도: 심각 · 높음 · 중간 · 낮음, 위치, 설명, 조치: 고침 · 남김). 고칠 수 있는 문제는 바로 고치고 검증한 뒤 commit한다. 남긴 문제는 이유와 권장 조치를 적는다.",
-        perRound: "아래 점검 목록을 차례로 확인하고, 한 회차에 확인한 만큼 기록과 수정을 마친다.",
+        perRound: `아래 점검 목록을 차례로 확인하고, 한 회차에 확인한 만큼 기록과 수정을 마친다.${
+            runState.securityRetries > 0
+                ? " 이번 보안검토는 개발로 되돌려 고친 뒤 다시 하는 것이다. `security.md`에서 `남김`으로 둔 심각 · 높음 항목이 고쳐졌는지 먼저 확인하고 조치를 고친다. 이어서 지난 보안검토 뒤에 바뀐 코드(`git log`로 확인)만 점검 목록으로 다시 보고, 바뀌지 않은 곳의 기록은 그대로 둔다."
+                : ""
+        }`,
         checks: [
             "비밀값: 코드 · 설정 파일 · `git log -p` 이력의 키 · 토큰 · 비밀번호",
             "라이브러리(패키지) 취약점: 프로젝트의 audit 명령(예: `npm audit`). 네트워크를 쓸 수 없으면 lockfile 검토로 대신하고 그 사실을 적는다",

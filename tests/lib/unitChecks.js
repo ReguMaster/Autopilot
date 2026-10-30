@@ -710,6 +710,12 @@ const checkPhaseRules = (context) => {
     assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "build", securityRetries: 1 }, 1, 60, "", 2), /테스트\/QA · 보안검토가 되돌린 것이다/);
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "build" }, 1, 60, "", 2), /되돌린 것이다/);
 
+    // 되돌린 뒤 다시 하는 테스트/QA · 보안검토는 앞선 실패 항목부터 본다. 보안검토는 자기가 되돌렸을 때만 앞선 결과가 있다.
+    assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "qa", securityRetries: 1 }, 1, 60, "", 2), /`qa\.md`의 실패 항목과 그 수정이 닿은 기능을 먼저/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "qa" }, 1, 60, "", 2), /다시 하는 것이다/);
+    assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "security", securityRetries: 1 }, 1, 60, "", 2), /`남김`으로 둔 심각 · 높음 항목이 고쳐졌는지 먼저/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "security", qaRetries: 2 }, 1, 60, "", 2), /다시 하는 것이다/);
+
     const maintainPrompt = promptUtil.getRoundPrompt({ ...buildState, mode: "maintain" }, 1, 60, "", 2);
 
     assert.match(maintainPrompt, /작업은 최대 2건/);
