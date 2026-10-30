@@ -18,8 +18,9 @@ const { createTray, showWindow, watchPower } = require("./systemIntegration.cjs"
 const { checkCardRender } = require("./shareCard.cjs");
 const { applyLoginShellPath } = require("./loginShellPath.cjs");
 
-const WINDOW_SIZE = { width: 600, height: 800 };
-const WINDOW_MIN_SIZE = { width: 480, height: 640 };
+// 왼쪽 레일과 본문이 나란히 놓이는 가로형 창. 960px보다 좁으면 레일이 아이콘 띠로 접힌다.
+const WINDOW_SIZE = { width: 1160, height: 800 };
+const WINDOW_MIN_SIZE = { width: 760, height: 620 };
 const WINDOW_SCREEN_MARGIN = 40;
 const SMOKE_TEST_TIMEOUT_MS = 15000;
 
@@ -107,7 +108,7 @@ const registerWindowControls = () => {
     });
 };
 
-// 세로형 창. 작은 화면(예: 768px 노트북)에서는 작업 영역 안에 들어오도록 줄인다.
+// 작은 화면(예: 768px 노트북)에서는 작업 영역 안에 들어오도록 줄인다.
 const getWindowSize = () => {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 

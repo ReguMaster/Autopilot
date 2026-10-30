@@ -1,20 +1,38 @@
+import { useShallow } from "zustand/react/shallow";
 import { openUpdate } from "../../actions/run.js";
-import { schedules } from "../../actions/schedules.js";
+import { getTabLabels } from "../../lib/projectName.js";
 import { useAppStore } from "../../stores/appStore.js";
-import { ui, useUiStore } from "../../stores/uiStore.js";
+import { useRunStore } from "../../stores/runStore.js";
+import { useTabsStore } from "../../stores/tabsStore.js";
 
-// 헤더는 창 프레임을 대신해 직접 그린다. 전체가 끌기 영역이고 버튼만 뺀다(styles/shell.css).
+// 모든 탭에서 실행 중인 프로젝트 이름. 보는 탭은 탭 목록보다 먼저 바뀌는 엔진 상태를 따른다.
+const useRunningNames = () => {
+    const { tabs, active } = useTabsStore(useShallow((store) => ({ tabs: store.tabs, active: store.active })));
+    const viewedStatus = useRunStore((store) => store.state.status);
+    const labels = getTabLabels(tabs);
+
+    return tabs.filter((tab) => (tab.projectDir === active ? viewedStatus : tab.status) !== "idle").map((tab) => labels[tabs.indexOf(tab)]);
+};
+
+// 본문 위 한 줄. 창 프레임을 대신하는 끌기 영역이고 버튼만 뺀다(styles/shell.css). 왼쪽에 모든 탭의 실행 중인 프로젝트, 오른쪽에 새 버전 알림과 창 버튼을 둔다.
 const TitleBar = () => {
     const update = useAppStore((store) => store.update);
     const version = useAppStore((store) => store.version);
     const maximized = useAppStore((store) => store.maximized);
-    const panel = useUiStore((store) => store.panel);
-    const isScheduleOpen = useUiStore((store) => store.schedule);
+    const runningNames = useRunningNames();
     const maximizeLabel = maximized ? "이전 크기로" : "최대화";
 
     return (
         <header id="titlebar" className="titlebar" data-maximized={maximized ? "" : undefined}>
-            <img className="brand" src="../docs/logo.png" alt="AutoPilot" />
+            <p className="dock-runs" hidden={runningNames.length === 0} aria-live="polite">
+                <span className="ring" aria-hidden="true" />
+                <b>{`실행 중 ${runningNames.length}개`}</b>
+                {runningNames.map((name) => (
+                    <span key={name} className="dock-run">
+                        {name}
+                    </span>
+                ))}
+            </p>
             <div className="window-controls">
                 <button
                     type="button"
@@ -32,52 +50,6 @@ const TitleBar = () => {
                         {update ? `v${update.version}` : ""}
                     </span>
                 </button>
-                <button
-                    type="button"
-                    id="schedule-toggle"
-                    className="window-control"
-                    aria-label="예약"
-                    title="예약"
-                    aria-expanded={isScheduleOpen}
-                    aria-controls="schedule"
-                    onClick={() => (isScheduleOpen ? schedules.close() : schedules.open())}
-                >
-                    <svg viewBox="0 0 12 12" aria-hidden="true">
-                        <circle cx="6" cy="6" r="4.4" />
-                        <path d="M6 3.6V6l1.7 1.1" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    id="profile-toggle"
-                    className="window-control"
-                    aria-label="프로필"
-                    title="프로필"
-                    aria-expanded={panel === "profile"}
-                    aria-controls="profile"
-                    onClick={() => ui.togglePanel("profile")}
-                >
-                    <svg viewBox="0 0 12 12" aria-hidden="true">
-                        <circle cx="6" cy="4.2" r="2.1" />
-                        <path d="M2 10.4c.5-2.1 2.1-3.1 4-3.1s3.5 1 4 3.1" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    id="settings-toggle"
-                    className="window-control"
-                    aria-label="설정"
-                    title="설정"
-                    aria-expanded={panel === "settings"}
-                    aria-controls="settings"
-                    onClick={() => ui.togglePanel("settings")}
-                >
-                    <svg viewBox="0 0 12 12" aria-hidden="true">
-                        <path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" />
-                        <circle cx="6" cy="6" r="1.6" />
-                    </svg>
-                </button>
-                <span className="window-separator" aria-hidden="true"></span>
                 <button type="button" id="window-minimize" className="window-control" aria-label="최소화" title="최소화" onClick={() => window.appWindow.minimize()}>
                     <svg viewBox="0 0 12 12" aria-hidden="true">
                         <path d="M2.5 6h7" />

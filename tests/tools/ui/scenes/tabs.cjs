@@ -7,32 +7,33 @@ const tab = (projectDir, status = "idle") => ({ projectDir: projectDir, name: pr
 
 const THREE_TABS = [tab(PROJECT), tab(SECOND, "running"), tab(THIRD)];
 
-// 프로젝트 탭 줄: 실행 중인 탭의 점, 활성 탭, 긴 이름, 이름이 같은 탭, 좁은 창. 탭을 주지 않은 다른 장면에는 탭 줄이 없다.
+// 레일의 프로젝트 목록: 실행 중인 프로젝트의 고리, 보는 프로젝트, 긴 이름, 이름이 같은 프로젝트, 좁은 창(아이콘 띠). 탭을 주지 않은 다른 장면에는 목록이 비어 있다.
 const SCENES = [
     {
         name: "tabs-ready",
         init: { settings: { projectDir: PROJECT }, tabs: THREE_TABS },
         run: async (t) => {
-            await t.shot("tabbar", ".tabbar");
+            await t.shot("rail", "#rail");
             await t.shot("page");
-            await t.hover(".tab[data-active]");
-            await t.shot("hover-active", ".tabbar");
-            await t.hover(".tab:nth-child(3)");
-            await t.shot("hover-idle", ".tabbar");
+            await t.hover(".proj[data-active]");
+            await t.shot("hover-active", "#rail");
+            await t.hover(".proj:nth-child(3)");
+            await t.shot("hover-idle", "#rail");
         }
     },
     {
         name: "tabs-running",
         init: { settings: { projectDir: SECOND }, state: runningState(), tabs: THREE_TABS },
         run: async (t) => {
-            await t.shot("tabbar", ".tabbar");
+            await t.shot("rail", "#rail");
             await t.shot("page");
-            await t.note("close-disabled", await t.eval(`JSON.stringify([...document.querySelectorAll(".tab-close")].map((button) => button.disabled))`));
+            await t.note("close-disabled", await t.eval(`JSON.stringify([...document.querySelectorAll(".proj-close")].map((button) => button.disabled))`));
             await t.clearCalls();
-            await t.click(".tab:nth-child(1) .tab-main");
-            await t.click(".tab:nth-child(3) .tab-close");
+            await t.click(".proj:nth-child(1) .proj-main");
+            await t.hover(".proj:nth-child(3)");
+            await t.click(".proj:nth-child(3) .proj-close");
             await t.note("calls", JSON.stringify((await t.calls()).map((call) => call.join(":"))));
-            await t.shot("after-close", ".tabbar");
+            await t.shot("after-close", "#rail");
         }
     },
     {
@@ -42,22 +43,22 @@ const SCENES = [
             tabs: [tab("E:/Work/app"), tab("E:/Personal/app"), tab("E:/Work/api")]
         },
         run: async (t) => {
-            await t.shot("tabbar", ".tabbar");
-            await t.note("labels", await t.eval(`JSON.stringify([...document.querySelectorAll(".tab-name")].map((node) => node.textContent))`));
+            await t.shot("rail", "#rail");
+            await t.note("labels", await t.eval(`JSON.stringify([...document.querySelectorAll(".proj-name")].map((node) => node.textContent))`));
         }
     },
     {
         name: "tabs-narrow",
-        size: [480, 640],
+        size: [800, 640],
         init: {
             settings: { projectDir: PROJECT },
             tabs: [tab(PROJECT), tab(SECOND, "running"), tab(THIRD), tab("E:/Workspaces/Demo/one"), tab("E:/Workspaces/Demo/two"), tab("E:/Workspaces/Demo/three")]
         },
         run: async (t) => {
             await t.shot("titlebar", ".titlebar");
-            await t.shot("tabbar", ".tabbar");
+            await t.shot("rail", "#rail");
             await t.shot("page");
-            await t.note("overflow", await t.eval(`(() => { const el = document.querySelector(".tabs"); return JSON.stringify([el.scrollWidth, el.clientWidth]); })()`));
+            await t.note("overflow", await t.eval(`(() => { const el = document.querySelector(".rail-projects"); return JSON.stringify([el.scrollHeight, el.clientHeight]); })()`));
         }
     }
 ];

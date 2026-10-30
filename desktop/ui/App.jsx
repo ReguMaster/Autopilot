@@ -13,7 +13,7 @@ import { ScheduleSheet } from "./features/schedule/ScheduleSheet.jsx";
 import { SettingsPanel } from "./features/settings/SettingsPanel.jsx";
 import { Course } from "./features/shell/Course.jsx";
 import { Notices } from "./features/shell/Notices.jsx";
-import { TabBar } from "./features/shell/TabBar.jsx";
+import { Rail } from "./features/shell/Rail.jsx";
 import { TitleBar } from "./features/shell/TitleBar.jsx";
 import { useBodyFlags, useNativeFeel, useRevealWhenReady } from "./hooks/useBodyFlags.js";
 import { useOverlayDismiss } from "./hooks/useOverlayDismiss.js";
@@ -21,7 +21,7 @@ import { useView } from "./hooks/useView.js";
 import { useRunStore } from "./stores/runStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
 
-// 화면은 사이드바 없이 한 장이다. 위에서부터 헤더, 상태 줄, 본문, 안내 문구, 컴포저를 쌓고 패널·시트가 그 위에 뜬다.
+// 왼쪽에 프로젝트 레일, 오른쪽 열에 위에서부터 실행 줄(창 끌기 영역), 상태 줄, 본문, 안내 문구, 컴포저를 쌓고 패널·시트가 그 위에 뜬다.
 const App = () => {
     const view = useView();
     const status = useRunStore((store) => store.state.status);
@@ -41,17 +41,19 @@ const App = () => {
 
     return (
         <>
-            <TitleBar />
-            <TabBar />
-            <div className="content">
-                <Course />
-                <main className="stage">
-                    <ReadyView />
-                    <RunView />
-                    <FinishView />
-                </main>
-                <Notices />
-                <Composer />
+            <Rail />
+            <div className="main-column">
+                <TitleBar />
+                <div className="content">
+                    <Course />
+                    <main className="stage">
+                        <ReadyView />
+                        <RunView />
+                        <FinishView />
+                    </main>
+                    <Notices />
+                    <Composer />
+                </div>
             </div>
             <Symbols />
             <Scrim />

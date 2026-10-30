@@ -1,7 +1,7 @@
-/* 패널·기록이 열리면 헤더 아래 화면을 옅게 덮는다. 누르면 닫힌다 */
+/* 패널·기록이 열리면 레일 오른쪽, 실행 줄 아래 화면을 옅게 덮는다. 누르면 닫힌다 */
 .scrim {
     position: fixed;
-    inset: 48px 0 0;
+    inset: var(--dock-h) 0 0 var(--rail-w);
     z-index: 5;
     background: var(--scrim);
     opacity: 0;
@@ -11,7 +11,7 @@
         visibility 0s linear 0.3s;
 }
 
-/* 스크림은 헤더 아래만 덮는다. 헤더에 덧씌우면 끌기 영역이 버튼 클릭을 가로채므로 배경색으로 맞춘다 */
+/* 스크림은 실행 줄 아래만 덮는다. 실행 줄에 덧씌우면 끌기 영역이 버튼 클릭을 가로채므로 배경색으로 맞춘다. 레일은 덮지 않아 메뉴를 바로 바꿀 수 있다 */
 body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .titlebar {
     background: var(--scrim);
 }
@@ -22,7 +22,7 @@ body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-o
     transition-delay: 0s;
 }
 
-/* 설정·프로필: 흰 카드가 버튼 아래에 떠서 열린다. 열 때 감속, 닫을 때 가속한다 */
+/* 설정·프로필: 흰 카드가 레일의 버튼 옆에 떠서 열린다. 열 때 감속, 닫을 때 가속한다 */
 .panel {
     position: fixed;
     z-index: 10;
@@ -65,11 +65,11 @@ body.profile-open #profile {
 }
 
 .settings-panel {
-    top: 54px;
-    right: 12px;
+    top: calc(var(--dock-h) + 8px);
     bottom: 12px;
-    width: min(420px, calc(100vw - 24px));
-    translate: 36px 0;
+    left: calc(var(--rail-w) + 8px);
+    width: min(420px, calc(100vw - var(--rail-w) - 20px));
+    translate: -24px 0;
 }
 
 .settings-panel .panel-scroll {
@@ -77,11 +77,11 @@ body.profile-open #profile {
 }
 
 .profile-panel {
-    top: 54px;
-    right: max(12px, min(174px, calc(100vw - 376px)));
-    width: min(364px, calc(100vw - 24px));
-    max-height: calc(100vh - 58px);
-    translate: 0 -8px;
+    bottom: 12px;
+    left: calc(var(--rail-w) + 8px);
+    width: min(364px, calc(100vw - var(--rail-w) - 20px));
+    max-height: calc(100vh - var(--dock-h) - 20px);
+    translate: 0 8px;
 }
 
 .profile-panel .panel-scroll {

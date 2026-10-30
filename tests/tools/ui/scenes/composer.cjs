@@ -243,7 +243,7 @@ const SCENES = [
     },
     {
         name: "composer-narrow",
-        size: [480, 640],
+        size: [760, 620],
         init: { ...withProject },
         run: async (t) => {
             await t.shot("composer", ".composer");

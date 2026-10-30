@@ -53,7 +53,7 @@ const SCENES = [
             await t.shot("maximized", ".titlebar");
             await t.click("#window-maximize");
             await t.hover("#settings-toggle");
-            await t.shot("hover-settings", ".titlebar");
+            await t.shot("hover-settings", "#rail");
             await t.clearCalls();
             await t.click("#update-chip");
             await t.note("calls", (await t.calls()).map((call) => call[0]).join(","));

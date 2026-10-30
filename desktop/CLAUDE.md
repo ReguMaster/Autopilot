@@ -116,12 +116,12 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 설정의 새 버전 확인(checkUpdates, 기본 켬)을 끄면 확인하지 않고 알고 있던 안내를 거둔다(updateCheck의 isEnabled). 바꾸는 즉시 autopilot:set-preferences가 check()를 불러 켜면 바로 확인하고 끄면 칩을 숨긴다.
 - 메인 프로세스의 updateCheck.cjs가 앱을 켤 때(스모크 테스트 제외)와 6시간마다 GitHub `releases/latest`(공개 저장소, 토큰 없음)의 태그를 app.getVersion()과 숫자로 비교한다. 더 높으면 {version, url}을 보관하고 바뀔 때만 autopilot:update로 화면에 보낸다. 조회 실패는 조용히 넘어가고 이전 값을 유지한다.
 - 열 주소는 `^v?\d+\.\d+\.\d+$`를 통과한 태그로 직접 만든다(응답의 URL은 쓰지 않는다). 렌더러는 주소를 보내지 않고 autopilot:open-update만 요청한다.
-- 헤더 버튼 줄 맨 앞의 #update-chip(회색 칩, 파랑은 진행 중 표시 전용)이 누르면 그 릴리스 페이지를 연다. 자동 설치는 하지 않는다.
+- 실행 줄(#titlebar) 오른쪽 창 버튼 앞의 #update-chip(회색 칩, 파랑은 진행 중 표시 전용)이 누르면 그 릴리스 페이지를 연다. 자동 설치는 하지 않는다.
 - tests/checkDesktopRunner.js가 가짜 fetch로 검증한다.
 
 ## 예약
 
-- 헤더의 시계 버튼(#schedule-toggle)이나 시작 화면의 한 줄(#schedule-peek)이 예약 시트(#schedule)를 연다. 시트는 지난 실행 시트와 같은 자리·같은 규칙이고(전체 기록·지난 실행·패널과 한 번에 하나만 열림, 스크림·Esc로 닫음) 목록과 폼을 번갈아 보여준다. 모달은 쓰지 않는다.
+- 레일의 예약 버튼(#schedule-toggle)이나 시작 화면의 한 줄(#schedule-peek)이 예약 시트(#schedule)를 연다. 시트는 지난 실행 시트와 같은 자리·같은 규칙이고(전체 기록·지난 실행·패널과 한 번에 하나만 열림, 스크림·Esc로 닫음) 목록과 폼을 번갈아 보여준다. 모달은 쓰지 않는다.
 - 규칙은 scheduleRules.cjs(순수 함수, 시계·사용량을 인자로 받음), 주기 판단·상태 보관은 scheduler.cjs, IPC·실행 연결은 autopilotIpc.cjs다. 예약 목록은 전역 settings.json의 schedules와 프로젝트 파일의 schedules(합쳐 최대 8개, 읽을 때 normalizeSchedules가 올바르지 않은 항목을 버림)에, 판단 상태(마지막 시작·기억한 한도 리셋 시각·무장 여부)는 userData/schedule-state.json에 둔다.
 - 시작 조건은 두 가지다. 정해진 시각(time)은 요일과 시각이 오면 시작하고 TIME_GRACE_MS(2시간) 안에서는 놓친 예약도 이어서 시작한다(앱이 늦게 켜졌거나 PC가 잠들었다 깬 경우). 한도 리셋(reset)은 5시간 또는 주간 한도가 리셋되면 한 번 시작하고 다음 리셋까지 기다린다. 리셋은 기억해 둔 resetsAt이 지났거나, 쓰인 한도가 다시 새 한도(응답에 항목이 없거나 resetsAt이 지났거나 사용률 1% 미만)로 읽힐 때 알아채고, 처음 본 한도가 이미 새 한도면 바로 무장한다. 리셋 시각이 지난 직후에는 사용량을 다시 읽어 남은 한도 조건을 판단한다.
 - 공통 조건은 요일, 남은 한도(minRemaining, 5시간·주간 중 적게 남은 쪽이 N% 이상일 때만, 읽지 못하면 검사하지 않음), 실행 시간(duration)이다. minRemaining은 0~100의 정수(0은 검사 안 함), duration은 MIN_DURATION(30분, MIN_RUN_MS와 같다)~MAX_DURATION(23시간 59분, 종료 시각을 HH:mm로만 넘기므로 하루 안)의 정수 분이고 parseSchedule이 검증한다. 폼(ScheduleForm)의 알약은 자주 쓰는 값의 바로가기일 뿐이고 숫자 칸에 직접 입력한 값이 그대로 저장된다(입력 한계는 폼과 scheduleRules가 따로 갖는다). 리셋 예약에는 시작할 수 있는 시간대(from~to, 자정을 넘길 수 있고 요일은 시간대가 시작하는 날 기준)를 둘 수 있고, 종료 시각은 시간대가 닫히는 시각을 넘지 않게 맞추며 남은 시간이 MIN_RUN_MS(30분)보다 짧으면 시작하지 않는다.
@@ -139,7 +139,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
     - main.jsx는 메인이 보관한 첫 상태를 모두 받은 뒤(boot.js) App.jsx를 그린다. boot.js는 첫 상태 적재, 메인 이벤트 구독, 실행 상태가 바뀔 때 다른 스토어가 따라야 하는 규칙(옛 renderState가 한꺼번에 하던 일)을 맡는다.
     - stores/는 zustand 스토어다. runStore(엔진 상태와 로그 3000줄. 로그는 50ms 단위로 모아 반영하고 shareStructure로 바뀌지 않은 조각의 참조를 유지한다), appStore(앱 정보·저장된 설정·창), uiStore(패널·시트 전환 규칙·안내·시작 중 잠금), modalStore(확인 모달 요청), composerStore(모델·Effort·정책·종료 시각·작업·한도 연장, 실행 중 엔진 값 따라가기, 옵션 전달 큐), accountStore, scheduleStore, runsStore, tabsStore(열린 탭과 각 탭의 실행 상태·보는 탭), clock(초 단위 틱 하나를 모두가 나눠 쓰고 useClock은 읽은 값이 바뀔 때만 다시 그린다)이다.
     - actions/는 IPC를 부르는 일(run·runs·accounts·schedules·tabs)과 메인 이벤트를 반영하는 일(events)이다. 보는 프로젝트가 바뀌는 모든 길(프로젝트 고르기·탭 열기·전환·닫기)은 actions/tabs의 applyProjectSwitch가 받는다. 보는 프로젝트가 바뀌면 컴포저를 그 프로젝트의 저장된 값으로 채우고 상태·로그를 응답의 스냅샷으로 바꾸며(이야기도 resetLogs로 다시 짠다), 떠난 탭에서 저장하지 않은 컴포저 값(저장된 값과 다른 키만, 실행 중이던 탭은 제외)은 기억해 두었다가 돌아오면 저장된 값 위에 얹는다. 보는 프로젝트가 그대로면(다른 탭을 닫았을 때) 탭 목록과 설정만 바꾸고 컴포저·이야기는 건드리지 않는다. 컴포넌트는 window.autopilot을 직접 부르지 않고 액션을 부른다.
-    - features/는 화면 단위(shell·ready·run·done·composer·profile·settings·history·archive·schedule)다. shell의 TabBar(스토어를 읽는 껍데기)와 TabList(받은 목록을 그린다. 서버 렌더에서 zustand는 초기 상태만 읽으므로 마크업 검증은 TabList로 한다)가 탭 줄을 그린다. 각 화면은 스토어를 선택자 단위로 구독하고, 객체를 고를 때는 useShallow를 쓴다.
+    - features/는 화면 단위(shell·ready·run·done·composer·profile·settings·history·archive·schedule)다. shell의 Rail(스토어를 읽는 껍데기)과 ProjectList(받은 탭 목록과 보는 프로젝트의 상태 줄을 그린다. 서버 렌더에서 zustand는 초기 상태만 읽으므로 마크업 검증은 ProjectList로 한다)가 레일의 프로젝트 목록을 그리고, TitleBar가 실행 줄을 그린다. 각 화면은 스토어를 선택자 단위로 구독하고, 객체를 고를 때는 useShallow를 쓴다.
     - components/는 공통 컴포넌트다(Icon·Button·Chip·Tag·SwapText·TickText·Popover·Select·Panel·Scrim·Modal·ModalHost·SettingsGroup·Gains·RunList·Symbols). 그 컴포넌트에만 쓰는 CSS(Select.css·Modal.css)는 같은 이름의 .css로 옆에 두고, 토큰은 styles/base.css의 :root를 쓴다.
     - hooks/(useReplay·useWidthTween·useMergedRef·useView·useBodyFlags·useOverlayDismiss·useAnyRunning), lib/(constants: 허용 값·MAIN_ACTIONS, shareStructure, runText, cx)가 받친다. 허용 값(constants.js)은 엔진 config.js·autopilotRunner.cjs와 함께 바꾸고 tests/checkDesktopRunner.js가 대조한다.
 - CSS가 body의 data-view·data-status·data-tasks-open·클래스(ready·*-open)에 기대므로 useBodyFlags가 화면 상태를 그 한 곳에 반영한다. #root는 display: contents라 body의 flex 배치에 끼지 않는다.
@@ -155,7 +155,9 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ## 화면 구조
 
-- 화면은 사이드바 없이 한 장이고 스크롤하지 않는다. 창 높이에 맞춰 본문이 줄어든다(헤더가 밀려나면 창을 끌 곳이 없다). 위에서부터 헤더(#titlebar), 탭 줄(#tabbar, 열린 탭이 있을 때만. 창 최소 폭 480px에서는 헤더 버튼이 줄을 거의 다 써서 같은 줄에 둘 수 없다), 상태 줄(.course, 아래에 회차 진행선 #track), 본문(.stage), 안내 문구(.notices: #notice·#login-banner·#project-banner, 비면 자리를 차지하지 않는다), 컴포저(#run-form.composer)를 쌓는다.
+- 화면은 왼쪽 레일(#rail, features/shell/Rail.jsx)과 오른쪽 열(.main-column)이고 스크롤하지 않는다. 창 높이에 맞춰 본문이 줄어든다(실행 줄이 밀려나면 창을 끌 곳이 없다).
+    - 레일(--rail-w 224px, 960px보다 좁은 창은 64px 아이콘 띠로 접혀 이름은 title로 보인다)은 위에서부터 로고, 프로젝트 목록(#tabbar 안의 #tabs, role=tablist 세로. 열린 탭마다 첫 글자 표시·이름·상태 한 줄. 보는 프로젝트는 그림자로 뜬 흰 알약이고 상태 줄에 모드와 신규 개발 단계(runStore의 mode·step, runsStore.buildPhase, 컴포저 mode로 Rail.getActiveNote가 정한다), 확인을 기다리면 주황, 실행 중이면 첫 글자 자리에 도는 고리(.ring). 다른 탭은 실행 상태만 안다. ↑↓·Home·End는 포커스만 옮기고 Enter·Space가 연다. 닫기 ×는 마우스를 올리면 보이고 실행 중이면 잠긴다), 프로젝트 열기(#tab-add), 아래쪽에 지난 실행(#archive-toggle)·예약(#schedule-toggle)·설정(#settings-toggle)과 계정 카드(#profile-toggle, 이름과 주간 한도 막대)다. 레일의 빈 곳은 창 끌기 영역이다.
+    - 오른쪽 열은 위에서부터 실행 줄(#titlebar, --dock-h 38px), 상태 줄(.course, 아래에 회차 진행선 #track), 본문(.stage), 안내 문구(.notices: #notice·#login-banner·#project-banner, 비면 자리를 차지하지 않는다), 컴포저(#run-form.composer)를 쌓는다.
 - 본문은 body[data-view]의 ready·run·done 중 하나만 보인다(viewFormat.getView). ready는 시작 전 인사(.greet)이고 상태 줄(.course)을 숨긴다. run은 이야기(.story)다. done은 실행을 마친 뒤의 정리(.finish)로, 실행이 끝난 상태가 남아 있는 동안 보이고 다른 프로젝트를 고르면 ready로 돌아간다(isFinishDismissed).
 - 이야기는 storyModel(features/run)이 로그 묶음마다 viewFormat.applyStoryEntry로 Claude의 문장(시각 + 본문 줄, 여러 줄 메시지의 4칸 들여 쓴 줄은 앞 문장에 잇는다)과 도구 줄(`HH:MM:SS   > 이름 인자`)을 묶음(beat)으로 만든다. 앱이 엔진을 시작·연결하는 [앱] 줄이 오면 이야기를 비운다.
 - 문장 앞에는 그 전에 부른 도구가 칩으로 붙는다. 도구만 온 동안에는 describeTool이 지은 문장을 보여주다가 Claude의 문장이 오면 바꾼다. 사용량 한도·재시도 대기·종료 신호 뒤에는 getWaitSentence의 기다리는 이유가 지금 문장(#now-text)을 대신한다.
@@ -172,7 +174,7 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 설정 패널의 "설정 범위"(ScopeGroup, uiStore의 settingsScope)는 패널에서 바꾸는 값을 전역과 이 프로젝트 중 어디에 저장할지 고른다. 프로젝트를 고르지 않았으면 이 프로젝트 범위는 막히고 전역으로 본다(actions/settings.getScope). 범위가 있는 줄(RunDefaults·모델 버전·사용량 한도 연장)은 이 프로젝트 범위에서 ScopeNote로 "전역 값을 따라가요" 또는 "이 프로젝트 값"과 되돌리기를 보이고, 되돌리기는 덮어쓴 값을 지운다(autopilot:reset-settings). 패널에서 바꾼 값은 바로 저장되고(autopilot:update-settings, 이 프로젝트 범위는 전역과 같아도 덮어쓴 값으로 고정) 컴포저는 바뀐 키만 따라가며(composer.loadSettings), 프로젝트를 바꾸면 컴포저를 새 프로젝트 값으로 다시 채운다. 실행 중에는 범위가 있는 줄을 잠그고 메인도 거부한다.
 - 실행 중에는 정책·종료 시각 알약을 숨긴다(종료 시각과 남은 시간은 상태 줄·진행선에, 정책은 작업 요약의 문구에 이미 있다). 알약 줄은 줄바꿈 없이 한 줄에 들어가야 하므로 좁은 창(560px 이하)에서는 남은 시간과 화살표를 숨긴다.
 - 팝오버는 native popover와 anchor 위치를 쓰고 컴포저가 아래에 있어 위로 열린다. display는 :popover-open에만 준다(닫힌 팝오버에 display를 주면 보이지 않는 목록이 남아 클릭으로 값이 바뀐다). 모델 라디오(name="model")는 팝오버 안에 있지만 form="run-form"으로 폼에 속하고, 마크·아이콘은 svg.symbols의 symbol을 use로 쓴다.
-- 프로필 패널(#profile, #profile-toggle)과 설정 패널(#settings, #settings-toggle)은 헤더 아래에 뜨는 같은 .panel 컴포넌트이며 한 번에 하나만 열린다(uiStore의 setPanel·togglePanel). 설정 패널은 닫혀 있으면 inert이고 열 때 ease-out·닫을 때 ease-in이며, 뒤에 헤더 아래만 덮는 .scrim을 깐다. 프로필 패널의 계정 목록은 #account-select 안에 AccountList가 role=radio 버튼 줄로 그린다.
+- 프로필 패널(#profile, #profile-toggle)과 설정 패널(#settings, #settings-toggle)은 레일 오른쪽에 뜨는 같은 .panel 컴포넌트이며(설정은 실행 줄 아래부터 세로로 길게, 프로필은 계정 카드 옆 아래쪽) 한 번에 하나만 열린다(uiStore의 setPanel·togglePanel). 설정 패널은 닫혀 있으면 inert이고 열 때 ease-out·닫을 때 ease-in이며, 뒤에 레일 오른쪽·실행 줄 아래만 덮는 .scrim을 깐다(레일은 덮지 않아 다른 메뉴로 바로 바꿀 수 있고, 실행 줄은 끌기 영역이라 배경색만 맞춘다). 시트(전체 기록·지난 실행·예약)도 레일 오른쪽에서 올라온다. 프로필 패널의 계정 목록은 #account-select 안에 AccountList가 role=radio 버튼 줄로 그린다.
 - 진행 기록 초기화(설정 패널)는 확인 모달을 거쳐 reset-progress를 실행하고 실행 중에는 막는다. 버튼은 공통 .button(primary·danger·small 조합)을 쓴다.
 
 ## 시각 규칙
@@ -188,8 +190,8 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ## 창과 시스템 연동
 
-- 창은 세로형 600×800(최소 480×640, 작업 영역보다 크면 줄인다)이고 frame 없이 흰 바탕(main.cjs의 WINDOW_BACKGROUND)으로 첫 화면이 그려진 뒤(ready-to-show) 띄운다.
-- 헤더(#titlebar)는 features/shell/TitleBar.jsx에서 직접 그린다. 왼쪽에 로고, 오른쪽에 프로필·설정·최소화·최대화·닫기 버튼을 둔다(맨 앞에 #update-chip). 헤더 전체가 끌기 영역(-webkit-app-region: drag)이고 버튼만 뺀다.
+- 창은 가로형 1160×800(최소 760×620, 작업 영역보다 크면 줄인다. 960px보다 좁으면 레일이 아이콘 띠로 접힌다)이고 frame 없이 테마에 맞는 바탕(autopilotIpc.getWindowBackground, 화면의 --page와 같은 색)으로 첫 화면이 그려진 뒤(ready-to-show) 띄운다.
+- 실행 줄(#titlebar)은 features/shell/TitleBar.jsx에서 직접 그린다. 왼쪽에 모든 탭에서 실행 중인 프로젝트(`실행 중 N개`와 이름들, 보는 탭은 탭 목록보다 먼저 바뀌는 엔진 상태를 따른다. 없으면 비운다), 오른쪽에 #update-chip과 최소화·최대화·닫기 버튼을 둔다. 줄 전체가 끌기 영역(-webkit-app-region: drag)이고 버튼만 뺀다. 프로필·설정·예약·지난 실행 버튼은 레일에 있다.
 - 최소화·최대화·닫기는 preload의 window.appWindow가 main.cjs의 window:* IPC로 요청한 창에만 적용한다. 닫기는 일반 close라 실행 중 확인을 그대로 거친다. 최대화 상태는 window:state로 받아 아이콘을 바꾼다.
 - 앱은 단일 인스턴스이며 두 번째 실행은 종료하고 기존 창을 앞으로 가져온다(--smoke-test는 실행 중인 앱과 무관하게 검증하도록 잠금에서 제외한다).
 - 앱이 시작한 엔진이 실행 중이거나 설정의 "닫아도 트레이에서 계속 켜 두기"(settings.json의 keepInTray)가 켜져 있으면 창을 닫을 때 트레이로 숨기기만 한다(main.cjs의 close 처리, isOwnedEngineRunning·isTrayResident). 종료는 트레이 메뉴의 종료로 하며 창을 띄워 confirmClose의 확인 후 강제 종료한다. 그 밖에는(실행 중이 아니고 트레이 상주도 꺼져 있거나 연결한 엔진이면) 닫을 때 앱이 종료된다. 트레이에서 종료할 때는 window closed에서 app.quit()을 불러 macOS에서도 끝낸다.

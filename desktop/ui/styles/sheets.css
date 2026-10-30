@@ -3,10 +3,10 @@
 .archive,
 .schedule {
     position: fixed;
-    top: 64px;
+    top: calc(var(--dock-h) + 16px);
     right: 10px;
     bottom: 0;
-    left: 10px;
+    left: calc(var(--rail-w) + 10px);
     z-index: 8;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
