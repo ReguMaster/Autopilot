@@ -1,4 +1,4 @@
-const { PROJECT, runningState, withProject } = require("./data.cjs");
+const { MODELS, PROJECT, runningState, withProject } = require("./data.cjs");
 
 const CHIPS = [
     ["model", "#model-chip"],
@@ -53,7 +53,7 @@ const SCENES = [
     },
     {
         name: "composer-model-popover",
-        init: { ...withProject },
+        init: { ...withProject, models: MODELS },
         run: async (t) => {
             await t.click("#model-chip");
             await t.shot("popover-open", "#model-popover");
@@ -67,9 +67,28 @@ const SCENES = [
         }
     },
     {
+        // 계열 아래의 버전을 고르면 그 계열이 그 버전으로 고정되고, 알약이 버전 이름으로 바뀐다. 최신 버전 줄을 고르면 고정이 풀린다.
+        name: "composer-model-version",
+        init: { ...withProject, models: MODELS },
+        run: async (t) => {
+            await t.click("#model-chip");
+            await t.wait(300);
+            await t.click('#model-popover label:has(input[value="opus@claude-opus-4-7"])');
+            await t.wait(600);
+            await t.shot("chip-pinned", "#model-chip");
+            await noteCalls(t);
+            await t.click("#model-chip");
+            await t.wait(300);
+            await t.shot("popover-pinned", "#model-popover");
+            await t.click('#model-popover label:has(input[value="opus"])');
+            await t.wait(600);
+            await t.shot("chip-latest", "#model-chip");
+        }
+    },
+    {
         // Codex 모델을 고르면 알약이 Codex 마크와 모델 이름으로 바뀌고, Effort 목록은 Codex 설정을 따르는 기본을 맨 앞에 둔다.
         name: "composer-model-codex",
-        init: { ...withProject, model: { providers: CODEX_PROVIDERS } },
+        init: { ...withProject, models: MODELS, model: { providers: CODEX_PROVIDERS } },
         run: async (t) => {
             await t.click("#model-chip");
             await t.wait(300);
@@ -110,12 +129,12 @@ const SCENES = [
         run: async (t) => {
             await t.click("#effort-control");
             await t.shot("popover-open", "#effort-popover");
-            await t.click("#effort-popover button:nth-child(5)");
+            await t.click("#effort-popover button:nth-of-type(5)");
             await t.wait(500);
             await t.shot("chip-max", "#effort-control");
             await t.click("#effort-control");
             await t.shot("popover-max", "#effort-popover");
-            await t.click("#effort-popover button:nth-child(1)");
+            await t.click("#effort-popover button:nth-of-type(1)");
             await t.wait(500);
             await t.shot("chip-low", "#effort-control");
         }
@@ -216,7 +235,7 @@ const SCENES = [
             await t.click(SONNET_OPTION);
             await t.wait(500);
             await t.click("#effort-control");
-            await t.click("#effort-popover button:nth-child(1)");
+            await t.click("#effort-popover button:nth-of-type(1)");
             await t.wait(500);
             await noteCalls(t, "options-calls");
             await t.shot("apply-note", ".now-meta");

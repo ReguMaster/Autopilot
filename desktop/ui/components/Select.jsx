@@ -1,11 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { cx } from "../lib/cx.js";
 import { findByTypeahead, getNextIndex, TYPEAHEAD_RESET_MS } from "../selectKeys.js";
 import "./Select.css";
 
 const toAnchorName = (id) => `--select-${id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
 // options는 [{ value, label, hint }]이다. 목록은 native popover라 패널의 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙어 자리가 모자라면 위로 뒤집힌다.
-const Select = ({ value, options, onChange, disabled = false, disabledReason = "", labelId = "", ariaLabel = "" }) => {
+// inline이면 문장 속에 끼는 알약 모양이다. 트리거는 글자만큼 줄어들고, 목록은 설명이 잘리지 않게 트리거보다 넓게 열린다.
+const Select = ({ value, options, onChange, disabled = false, disabledReason = "", labelId = "", ariaLabel = "", inline = false }) => {
     const id = useId();
     const listId = `${id}-list`;
     const anchorName = toAnchorName(id);
@@ -120,7 +122,7 @@ const Select = ({ value, options, onChange, disabled = false, disabledReason = "
     const selected = options[selectedIndex];
 
     return (
-        <span className="select">
+        <span className={cx("select", inline && "select-inline")}>
             <button
                 ref={triggerRef}
                 type="button"

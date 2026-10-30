@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import * as viewFormat from "../desktop/viewFormat.js";
 
-const checkFormatting = ({ formatDuration, formatBytes, formatClock, formatDeadline, formatOptions, getModelFamily, formatModelName }) => {
+const checkFormatting = ({ formatDuration, formatBytes, formatClock, formatDeadline, formatOptions, formatEffort, EFFORT_TERMS, getModelFamily, formatModelName }) => {
     assert.equal(formatDuration(0), "00:00:00");
     assert.equal(formatDuration(3661000), "01:01:01");
     assert.equal(formatDuration(59999), "00:00:59");
@@ -16,7 +16,11 @@ const checkFormatting = ({ formatDuration, formatBytes, formatClock, formatDeadl
     assert.equal(formatDeadline(morning), "10월 10일 07:05");
 
     assert.equal(formatOptions("opus", "high"), "Opus · High");
-    assert.equal(formatOptions("sonnet", "xhigh"), "Sonnet · XHigh");
+    assert.equal(formatOptions("sonnet", "xhigh"), "Sonnet · Extra High");
+    assert.equal(formatEffort("xhigh", "codex"), "Extra High");
+    assert.equal(formatEffort("max"), "Max", "AI를 안 정하면 Claude 이름이다");
+    assert.equal(formatEffort("", "codex"), "");
+    assert.deepEqual(EFFORT_TERMS, { claude: "Effort", codex: "Reasoning" });
     assert.equal(formatOptions("unknown-model", "low"), "unknown-model · Low");
     assert.equal(formatOptions("", "high"), "-");
 

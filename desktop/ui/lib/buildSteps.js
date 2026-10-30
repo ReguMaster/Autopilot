@@ -1,5 +1,5 @@
 import { formatEffort } from "../../viewFormat.js";
-import { BUILD_PHASES, CODEX_EFFORT_LEVELS, DEBATE_TURN_CHOICES, DEFAULT_DEBATE_TURNS, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS } from "./constants.js";
+import { BUILD_PHASES, CODEX_EFFORT_LEVELS, CODEX_RUNNER, DEBATE_TURN_CHOICES, DEFAULT_DEBATE_TURNS, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS } from "./constants.js";
 
 // 신규 개발 단계 카드와 시작 전 안내에 쓰는 문구. DOM에 의존하지 않아 tests/checkDesktopUi.js가 그대로 부른다.
 const PHASE_DETAILS = { plan: "만들 것을 정리해요", design: "화면을 그려요", build: "코드를 짜고 커밋해요", qa: "확인하고 고쳐요", security: "약점을 찾아 고쳐요" };
@@ -12,16 +12,23 @@ const DESIGN_FORMAT_OPTIONS = [
     { value: "image", label: "이미지(Codex)", hint: "codex exec로 시안 이미지를 만들어요. 외부 서비스 보내기가 필요해요" }
 ];
 
-// 테스트/QA·보안검토가 실패하면 개발로 되돌리는 횟수. 칸이 좁아 선택 상자에는 짧은 이름만 쓰고 뜻은 칸의 설명이 맡는다.
-const ON_FAIL_OPTIONS = [
-    ...ON_FAIL_CHOICES.filter((value) => value !== "stop").map((value) => ({ value: value, label: `${value.split(":")[1]}번까지` })),
-    { value: "stop", label: "되돌리지 않기", hint: "결과만 남기고 멈춰요" }
-];
-// 기획 · 디자인 칸의 누가 쓸까요. Codex를 고르면 Claude와 따로 안을 내고, 나란히 비교면 두 안 중에서, 협의면 못 맞춘 쟁점만 골라요.
+// 단계 설정은 문장으로 읽힌다(BuildReady). 선택 상자의 label은 문장 속에서 이어 읽히는 말이고, 목록에서는 hint가 그 뜻을 풀어 준다.
+// 기획 · 디자인: "[Claude만 써서] 진행하고". Codex를 고르면 Claude와 따로 안을 내고, 나란히 비교면 두 안 중에서, 협의면 못 맞춘 쟁점만 골라요.
 const BRAINSTORM_OPTIONS = [
-    { value: "claude", label: "Claude만", hint: "Claude 혼자 써요" },
-    { value: "compare", label: "나란히 비교", hint: "Claude와 Codex가 따로 안을 내고, 끝나면 나란히 보고 골라요" },
-    { value: "debate", label: "협의", hint: "Claude와 Codex가 더 고칠 것이 없을 때까지 주고받고, 못 맞춘 쟁점만 골라요" }
+    { value: "claude", label: "Claude만 써서", hint: "Claude 혼자 안을 써요" },
+    { value: "compare", label: "Claude와 Codex가 따로 안을 내서", hint: "끝나면 두 안을 나란히 보고 하나를 골라요" },
+    { value: "debate", label: "Claude와 Codex가 협의해서", hint: "더 고칠 것이 없을 때까지 주고받고, 못 맞춘 쟁점만 골라요" }
+];
+// 기획 · 디자인이 끝났을 때: "끝나면 [멈추고 확인 받을게요]". 두 AI가 쓴 단계는 늘 멈추므로 이 선택은 잠긴다.
+const GATE_OPTIONS = [
+    { value: "stop", label: "멈추고 확인 받을게요", hint: "산출물을 직접 보고 승인해야 다음 단계로 가요" },
+    { value: "go", label: "바로 다음 단계로 갈게요", hint: "확인 없이 이어서 진행해요" }
+];
+// 두 AI가 쓴 단계가 끝나고 멈춰서 하는 일
+const BRAINSTORM_AFTER = { compare: "두 안 중에서 고를게요", debate: "못 맞춘 쟁점만 고를게요" };
+const CROSS_REVIEW_OPTIONS = [
+    { value: "on", label: "서로 검토도 해요", hint: "상대가 쓴 안을 읽고 검토를 남겨요" },
+    { value: "off", label: "검토는 건너뛰어요", hint: "두 안만 받아서 나란히 보여 줘요" }
 ];
 
 // 협의에서 주고받는 최대 횟수. 둘 다 더 고칠 것이 없으면 그 전에 끝난다. 저장된 값이 목록에 없어도(가져온 설정) 고른 값은 그대로 보인다.
@@ -32,7 +39,7 @@ const getDebateTurnOptions = (current) => {
 };
 
 // Codex의 model·effort. 값이 비면 Codex 설정(~/.codex/config.toml)을 따른다. 칸이 좁아 항목 이름과 설명은 짧게 두고 Codex 것임은 칸의 설명 줄이 알린다.
-const CODEX_EFFORT_OPTIONS = [{ value: "", label: "기본 Effort", hint: "Codex 설정" }, ...CODEX_EFFORT_LEVELS.map((level) => ({ value: level, label: formatEffort(level) }))];
+const CODEX_EFFORT_OPTIONS = [{ value: "", label: "기본", hint: "Codex 설정" }, ...CODEX_EFFORT_LEVELS.map((level) => ({ value: level, label: formatEffort(level, CODEX_RUNNER) }))];
 
 // models는 Codex가 알려준 [{ id, label }]이다. 저장된 모델이 목록에 없어도(목록을 못 읽었거나 내려간 모델) 고른 값은 그대로 보인다.
 const getCodexModelOptions = (models, current) => {
@@ -62,15 +69,68 @@ const getBrainstormMode = ({ brainstorm, debate }, phase) => {
 
     return debate.includes(phase) ? "debate" : "compare";
 };
-const ON_FAIL_CAPTIONS = { qa: "실패하면 개발로 되돌려요", security: "심각하면 개발로 되돌려요" };
 const ON_FAIL_SUBJECTS = { qa: "실패하면", security: "심각하면" };
+// 단계 설정 문장의 첫머리
+const ON_FAIL_WHEN = { qa: "테스트/QA에서 실패하면", security: "보안검토에서 심각한 문제가 남으면" };
 
+// 허용 항목. 위험도가 낮은 것부터 늘어놓고, desc는 허용하면 무엇을 하는지, risk는 위험한 정도와 이유(riskNote), keeps는 허용해도 지키는 선이다(엔진 guideText의 ALLOWED_LINES와 같은 뜻).
+const ALLOW_RISKS = { low: "낮음", mid: "보통", high: "높음" };
 const ALLOW_OPTIONS = [
-    { key: "deps", label: "새 라이브러리 추가", desc: "패키지를 새로 설치해요. 고른 이유는 기획서와 커밋에 남겨요" },
-    { key: "large", label: "큰 구조 만들기", desc: "폴더 구조와 프레임워크를 처음부터 정해요" },
-    { key: "external-api", label: "외부 API 호출 코드", desc: "결제, 지도처럼 바깥 서버를 부르는 코드" },
-    { key: "send", label: "외부 서비스로 코드 보내기", desc: "Codex, Figma, 이미지 생성 도구에 프로젝트 내용을 보내요" }
+    {
+        key: "large",
+        label: "큰 구조 만들기",
+        desc: "폴더 구조와 프레임워크를 처음부터 정해요",
+        risk: "low",
+        riskNote: "새로 만드는 부분에만 적용돼요",
+        keeps: "이미 있는 코드를 지우거나 갈아엎지는 않아요"
+    },
+    {
+        key: "deps",
+        label: "새 라이브러리 추가",
+        desc: "필요한 패키지를 새로 설치해요",
+        risk: "mid",
+        riskNote: "의존성이 늘고 패키지 보안과 라이선스를 따져 봐야 해요",
+        keeps: "기존 라이브러리는 지우거나 바꾸지 않고, 고른 이유를 기획서와 커밋에 남겨요"
+    },
+    {
+        key: "external-api",
+        label: "외부 API 호출 코드",
+        desc: "결제, 지도처럼 바깥 서버를 부르는 코드를 짜요",
+        risk: "mid",
+        riskNote: "실제로 호출하면 비용이나 개인정보 문제가 생길 수 있어요",
+        keeps: "키와 토큰은 코드에 넣지 않고 환경 변수 자리만 만들어요. telemetry도 넣지 않아요"
+    },
+    {
+        key: "send",
+        label: "외부 서비스로 코드 보내기",
+        desc: "Codex, Figma, 이미지 생성 도구에 프로젝트 내용을 보내요",
+        risk: "high",
+        riskNote: "프로젝트 내용이 이 PC 밖으로 나가요",
+        keeps: "인증정보, .env, 사용자 데이터는 보내지 않아요"
+    }
 ];
+// 풀 수 없는 규칙. 어떤 허용을 켜도 그대로 지킨다.
+const ALLOW_FIXED_RULES = ["비밀값", "운영 환경", "Git 보호", "파일 삭제"];
+
+// 고른 허용 중 가장 높은 위험도(low·mid·high). 고른 것이 없으면 빈 문자열이다.
+const getAllowRisk = (allow) => {
+    const levels = Object.keys(ALLOW_RISKS);
+    const picked = ALLOW_OPTIONS.filter((option) => allow.includes(option.key)).map((option) => levels.indexOf(option.risk));
+
+    return picked.length ? levels[Math.max(...picked)] : "";
+};
+
+// 지금 설정이 이 허용에 기대고 있다면 그 사실을 알린다. 보내기를 끄면 Codex 브레인스토밍은 Claude만으로, Figma·이미지 시안은 HTML로 바뀐다.
+const getAllowUsage = (key, { brainstorm, designFormat }) => {
+    if (key !== "send") {
+        return [];
+    }
+
+    return [
+        ...(brainstorm.length ? ["Codex와 함께 쓰는 단계가 있어요. 끄면 Claude만 써요."] : []),
+        ...(["figma", "image"].includes(designFormat) ? ["Figma·이미지 시안에 필요해요. 끄면 HTML로 만들어요."] : [])
+    ];
+};
 
 // 다음 실행이 시작할 단계. 확인을 기다리던 단계를 승인 없이 시작하면 그 단계를 다시 한다(엔진의 getStartPhase). 모두 마쳤으면 done이다.
 const getBuildStartPhase = (buildPhase) => {
@@ -147,6 +207,12 @@ const getOnFailLabel = (phase, value) => {
 
 const getMaxRetries = (value) => {
     return value === "stop" ? 0 : Number(String(value).split(":")[1] || 0);
+};
+
+// 테스트/QA·보안검토가 실패하면 개발로 되돌리는 횟수. 화면은 횟수(0~MAX_ON_FAIL_RETRIES)로 정하고, 저장하는 값은 stop(0번)이거나 retry:N이다.
+const MAX_ON_FAIL_RETRIES = Math.max(...ON_FAIL_CHOICES.map(getMaxRetries));
+const toOnFailValue = (count) => {
+    return count > 0 ? `retry:${count}` : "stop";
 };
 
 // 되돌아온 개발 칸의 설명. 테스트/QA와 보안검토가 되돌린 횟수를 따로 보여준다(예: 다시 개발 QA 1/3, 둘 다면 QA 1/3, 보안 1/3).
@@ -244,14 +310,23 @@ export {
     PHASE_DONE,
     DESIGN_FORMAT_OPTIONS,
     BRAINSTORM_OPTIONS,
+    BRAINSTORM_AFTER,
+    GATE_OPTIONS,
+    CROSS_REVIEW_OPTIONS,
     CODEX_EFFORT_OPTIONS,
     getDebateTurnOptions,
     getCodexModelOptions,
     getCodexDefaults,
     getBrainstormMode,
-    ON_FAIL_OPTIONS,
-    ON_FAIL_CAPTIONS,
+    MAX_ON_FAIL_RETRIES,
+    getMaxRetries,
+    toOnFailValue,
+    ON_FAIL_WHEN,
     ALLOW_OPTIONS,
+    ALLOW_RISKS,
+    ALLOW_FIXED_RULES,
+    getAllowRisk,
+    getAllowUsage,
     getBuildStartPhase,
     getReadySteps,
     getBuildGreeting,

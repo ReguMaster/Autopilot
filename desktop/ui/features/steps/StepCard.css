@@ -125,85 +125,70 @@
     color: var(--warn);
 }
 
-/* 시작 전 단계 설정: 단계별 묶음이 막대 아래에 이어지고 넘치면 줄바꿈한다. 확인받기는 알약 토글, 나머지는 선택 상자다 */
+/* 시작 전 단계 설정: 단계마다 한 줄 문장이다("기획은 [Claude만 써서] 진행하고, 끝나면 [멈추고 확인 받을게요]."). 알약 모양 선택 상자가 문장 속에 끼고, 문장이 길면 줄을 바꾼다 */
 .step-settings {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 8px 18px;
+    display: grid;
     margin-top: 10px;
-    padding: 0 4px;
+    padding: 2px 14px;
+    border-radius: var(--r-lg);
+    background: var(--bg);
+    box-shadow: var(--shadow-1);
 }
 
 .step-group {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 8px;
+    display: grid;
+    grid-template-columns: 4.6em minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: start;
     min-width: 0;
+    padding: 13px 0;
+}
+
+.step-group + .step-group {
+    box-shadow: 0 -1px 0 var(--hair);
 }
 
 .step-group-name {
-    margin-right: 2px;
+    padding-top: 3px;
     color: var(--muted);
     font-size: var(--text-xs);
     font-weight: 700;
+    line-height: 28px;
 }
 
-.step-settings .select {
-    flex: 0 1 auto;
-    width: 148px;
+.step-group > :not(.step-group-name) {
+    grid-column: 2;
 }
 
-.step-settings .select-trigger {
-    height: 28px;
-    padding: 0 10px 0 12px;
-    border-radius: 999px;
-    font-size: var(--text-xs);
-    font-weight: 600;
-}
-
-.step-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    height: 28px;
-    padding: 0 11px;
-    border-radius: 999px;
-    background: var(--chip);
-    color: var(--muted);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.step-check:has(input:checked) {
-    background: var(--bg);
-    box-shadow:
-        var(--shadow-1),
-        inset 0 0 0 1px var(--hair-strong);
+.step-sentence {
     color: var(--ink);
+    font-size: var(--text-sm);
+    line-height: 32px;
+    text-wrap: pretty;
 }
 
-.step-check input {
-    flex: none;
-    width: 14px;
-    height: 14px;
-    margin: 0;
-    accent-color: var(--accent);
-    cursor: inherit;
+.step-sentence-sub {
+    margin-top: 2px;
+    color: var(--ink-2);
 }
 
-.step-none,
-.step-note {
-    color: var(--faint);
+.step-note,
+.step-hint {
+    margin-top: 4px;
+    color: var(--warn);
     font-size: var(--text-xs);
     line-height: 1.5;
 }
 
-.step-note {
-    flex-basis: 100%;
-    color: var(--warn);
+.step-hint {
+    color: var(--muted);
+}
+
+/* 여러 단계가 함께 쓰는 값의 줄은 단계 줄과 구별되게 옅은 바탕을 깐다 */
+.step-group[data-phase="shared"] {
+    margin: 0 -14px;
+    padding-inline: 14px;
+    background: var(--surface);
 }
 
 /* 좁은 창에서는 마친 단계의 설명도 접어 막대와 이름만 남긴다 */

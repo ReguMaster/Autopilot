@@ -112,6 +112,78 @@ body[data-view="done"] .view-done {
     cursor: not-allowed;
 }
 
+/* 미끄러지는 알약: 칸을 같은 너비로 깔고 알약이 칸 하나 너비만큼씩 옮겨 간다. 살짝 넘쳤다 자리를 잡고, 글자색은 알약이 닿는 때에 맞춰 바뀐다 */
+.mode-seg.seg-slide {
+    position: relative;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    isolation: isolate;
+}
+
+.seg-thumb {
+    position: absolute;
+    inset: 3px auto 3px 3px;
+    z-index: -1;
+    width: calc((100% - 6px) / var(--seg-count));
+    border-radius: 999px;
+    background: var(--ink);
+    box-shadow:
+        0 1px 2px rgb(23 32 51 / 0.22),
+        0 6px 14px -6px rgb(23 32 51 / 0.5);
+    translate: calc(var(--seg-index) * 100%) 0;
+    transition:
+        translate 0.45s cubic-bezier(0.34, 1.36, 0.5, 1),
+        background-color 0.3s var(--ease-out);
+}
+
+.mode-seg.seg-slide .seg-option span {
+    justify-content: center;
+    gap: 7px;
+    transition: color 0.3s var(--ease-out);
+}
+
+.mode-seg.seg-slide .seg-option:hover input:not(:checked, :disabled) + span {
+    background: none;
+    box-shadow: none;
+    color: var(--ink);
+}
+
+.mode-seg.seg-slide .seg-option input:checked + span {
+    background: none;
+}
+
+/* 고른 칸의 아이콘은 알약이 닿는 순간 한 번 톡 튄다 */
+.mode-seg.seg-slide .seg-option input:checked + span .icon {
+    animation: seg-icon-pop 0.5s 0.12s var(--ease-out) backwards;
+}
+
+@keyframes seg-icon-pop {
+    from {
+        rotate: -25deg;
+        scale: 0.5;
+    }
+
+    60% {
+        scale: 1.18;
+    }
+}
+
+/* 실행 중에는 알약이 회색으로 가라앉는다 */
+.mode-seg.seg-slide:has(input:disabled) .seg-thumb {
+    background: var(--faint);
+    box-shadow: none;
+}
+
+.mode-seg.seg-slide .seg-option input:disabled + span {
+    opacity: 1;
+    color: var(--faint);
+}
+
+.mode-seg.seg-slide .seg-option input:disabled:checked + span {
+    color: var(--bg);
+}
+
 .build-lead {
     margin-top: 26px;
 }

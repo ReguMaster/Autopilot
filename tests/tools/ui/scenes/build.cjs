@@ -571,6 +571,30 @@ const SCENES = [
         }
     },
     {
+        // 되돌리는 횟수는 − + 로 정한다. 0이 되면 되돌리지 않고 멈춘다는 문장으로 바뀌고, 끝 값에서는 그쪽 단추가 잠긴다.
+        name: "ready-build-onfail-stepper",
+        init: BUILD,
+        run: async (t) => {
+            const qa = '[aria-label="테스트/QA 실패 처리"]';
+            const readQa = "document.querySelector('[data-phase=\"qa\"] .step-sentence').textContent.replace(/\s+/g, ' ')";
+
+            for (let count = 0; count < 3; count += 1) {
+                await t.click(`${qa} [aria-label="줄이기"]`);
+            }
+
+            await t.wait(200);
+            await t.shot("zero", "#build-steps");
+            await t.note("zero", await t.eval(readQa));
+            await t.note("minusDisabled", await t.eval(`document.querySelector('${qa} [aria-label="줄이기"]').disabled`));
+
+            await t.click(`${qa} [aria-label="늘리기"]`);
+            await t.wait(200);
+            await t.note("one", await t.eval(readQa));
+            await t.press("Right");
+            await t.note("afterKey", await t.eval(readQa));
+        }
+    },
+    {
         name: "ready-build-endtime-popover",
         init: BUILD,
         run: async (t) => {
@@ -584,7 +608,7 @@ const SCENES = [
     },
     {
         name: "ready-build-brainstorm",
-        init: { ...BUILD, settings: { ...BUILD.settings, brainstorm: ["plan"], crossReview: true, allow: ["deps", "large", "send"] } },
+        init: { ...BUILD, settings: { ...BUILD.settings, brainstorm: ["plan"], debate: [], crossReview: true, allow: ["deps", "large", "send"] } },
         run: async (t) => {
             await t.shot("ready");
             await t.shot("steps", "#build-steps");
@@ -595,7 +619,7 @@ const SCENES = [
             await t.press("Return");
             await t.wait(300);
             await t.shot("steps-design", "#build-steps");
-            await t.note("modeOptions", await t.eval("JSON.stringify([...document.querySelectorAll('[data-cross-review]')].map((input) => input.dataset.crossReview))"));
+            await t.note("modeOptions", await t.eval("JSON.stringify([...document.querySelectorAll('[aria-label$=\"교차검토\"]')].map((el) => el.getAttribute('aria-label')))"));
         }
     },
     {

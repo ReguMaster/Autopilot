@@ -578,7 +578,7 @@ body[data-view="run"] #policy-chip {
 
 #effort-popover {
     position-anchor: --effort-chip;
-    width: min(220px, calc(100vw - 32px));
+    width: min(248px, calc(100vw - 32px));
 }
 
 #policy-popover {
@@ -657,34 +657,22 @@ body[data-view="run"] #policy-chip {
     --level-color: var(--del);
 }
 
-/* Claude 모델은 2×2 카드로 보여준다 */
-#model-popover .choice-option {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    min-height: 0;
-    padding: 12px;
-    box-shadow: inset 0 0 0 1px var(--hair);
-}
-
-#model-popover .choice-option .mark {
-    align-self: flex-start;
-    width: 28px;
-    height: 28px;
-    margin-bottom: 6px;
-}
-
-#model-popover .choice-option:has(input:checked) {
-    box-shadow: inset 0 0 0 1.5px var(--ink);
-}
-
-/* 모델 팝오버: 위에 회차를 돌릴 AI 탭, 아래에 그 AI의 모델. 탭을 바꿔도 높이가 출렁이지 않게 목록 칸의 최소 높이를 Claude 카드에 맞춘다 */
+/* 모델 팝오버: 위에 회차를 돌릴 AI 탭(제공자 로고), 아래에 그 AI의 모델 목록. 탭을 바꿔도 높이가 출렁이지 않게 목록 칸의 높이를 같게 둔다 */
 #model-popover {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
-    width: min(296px, calc(100vw - 32px));
+    width: min(304px, calc(100vw - 32px));
     padding: 8px;
+}
+
+/* 제공자 로고는 선이 아니라 채운 모양이다. Claude 로고는 브랜드 색이고, 잠긴 알약에서는 다른 마크처럼 회색으로 가라앉는다 */
+.mark.logo {
+    fill: currentColor;
+    stroke: none;
+}
+
+.chip:disabled .mark.logo {
+    --logo-fill: currentColor;
 }
 
 .runner-tabs {
@@ -741,56 +729,63 @@ body[data-view="run"] #policy-chip {
 }
 
 #model-popover [role="radiogroup"] {
-    min-height: 196px;
+    height: 292px;
 }
 
-.model-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
-}
-
-.codex-list {
+/* 모델 목록: Claude(계열 아래에 버전이 이어짐)와 Codex가 같은 줄 모양을 쓴다 */
+.model-list {
     display: grid;
     align-content: start;
     gap: 2px;
-    max-height: 264px;
+    max-height: 100%;
     overflow-y: auto;
     scrollbar-width: thin;
 }
 
-.codex-row {
+.model-group {
+    display: grid;
+    gap: 1px;
+}
+
+.model-group + .model-group {
+    margin-top: 5px;
+    padding-top: 5px;
+    box-shadow: 0 -1px 0 var(--hair);
+}
+
+.model-row {
     position: relative;
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 40px;
-    padding: 7px 12px;
+    min-height: 44px;
+    padding: 6px 12px;
     border-radius: 10px;
     color: var(--ink-2);
     cursor: pointer;
     transition: background-color 0.2s var(--ease-out);
 }
 
-.codex-row:hover {
+.model-row:hover {
     background: var(--surface);
 }
 
-.codex-row:has(input:checked) {
+.model-row:has(input:checked) {
     background: var(--chip);
     color: var(--ink);
 }
 
-.codex-row:has(input:focus-visible) {
+.model-row:has(input:focus-visible) {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
 }
 
-.codex-row:has(input:disabled) {
+.model-row:has(input:disabled) {
     cursor: not-allowed;
+    opacity: 0.5;
 }
 
-.codex-row input {
+.model-row input {
     position: absolute;
     inset: 0;
     margin: 0;
@@ -798,13 +793,24 @@ body[data-view="run"] #policy-chip {
     cursor: inherit;
 }
 
-.codex-row-text {
+.model-row .mark {
+    width: 20px;
+    height: 20px;
+}
+
+/* 버전 줄은 계열 줄보다 작고 안쪽으로 들어가 계열에 딸린 것으로 읽힌다 */
+.model-row[data-version] {
+    min-height: 32px;
+    padding-left: 42px;
+}
+
+.model-row-text {
     display: grid;
     flex: 1;
     min-width: 0;
 }
 
-.codex-row-text b {
+.model-row-text b {
     overflow: hidden;
     font-weight: 600;
     line-height: 1.35;
@@ -812,13 +818,18 @@ body[data-view="run"] #policy-chip {
     white-space: nowrap;
 }
 
-.codex-row-text small {
+.model-row[data-version] .model-row-text b {
+    font-size: var(--text-sm);
+    font-weight: 500;
+}
+
+.model-row-text small {
     color: var(--muted);
     font-size: var(--text-xs);
     line-height: 1.4;
 }
 
-.codex-row-check {
+.model-row-check {
     flex: none;
     width: 16px;
     height: 16px;
@@ -832,34 +843,41 @@ body[data-view="run"] #policy-chip {
     transition: opacity 0.2s var(--ease-out);
 }
 
-.codex-row:has(input:checked) .codex-row-check {
+.model-row:has(input:checked) .model-row-check {
     opacity: 1;
 }
 
-.codex-empty {
+.model-note {
+    padding: 8px 12px 4px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+}
+
+.model-empty {
     display: grid;
     align-content: center;
     justify-items: center;
     gap: 4px;
-    min-height: 196px;
+    height: 100%;
     padding: 12px;
     text-align: center;
 }
 
-.codex-empty .mark {
-    width: 24px;
-    height: 24px;
+.model-empty .mark {
+    width: 26px;
+    height: 26px;
     margin-bottom: 6px;
     color: var(--faint);
 }
 
-.codex-empty b {
+.model-empty b {
     color: var(--ink-2);
     font-size: var(--text-sm);
     font-weight: 600;
 }
 
-.codex-empty small {
+.model-empty small {
     color: var(--muted);
     font-size: var(--text-xs);
 }
@@ -873,6 +891,39 @@ body[data-view="run"] #policy-chip {
     height: 1px;
     margin: 3px 8px;
     background: var(--hair);
+}
+
+/* Effort 팝오버 머리: 어느 AI의 무엇을 고르는지 제공자 로고와 그 AI가 부르는 이름으로 알린다 */
+.choice-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+    padding: 8px 10px 10px;
+    box-shadow: 0 1px 0 var(--hair);
+}
+
+.choice-head .mark {
+    width: 20px;
+    height: 20px;
+}
+
+.choice-head-text {
+    display: grid;
+    min-width: 0;
+}
+
+.choice-head-text b {
+    color: var(--ink);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.choice-head-text small {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
 }
 
 .time-popover-title {
@@ -1034,8 +1085,7 @@ body[data-view="run"] #policy-chip {
     font-size: var(--text-md);
 }
 
-.time-foot,
-.allow-foot {
+.time-foot {
     display: flex;
     gap: 8px;
     margin: 12px -14px 0;
@@ -1046,8 +1096,7 @@ body[data-view="run"] #policy-chip {
     line-height: 1.5;
 }
 
-.time-foot .icon,
-.allow-foot .icon {
+.time-foot .icon {
     flex: none;
     width: 13px;
     height: 13px;
@@ -1068,7 +1117,25 @@ body[data-view="run"] #policy-chip {
     color: var(--ink);
 }
 
-/* 신규 개발 허용: 체크박스 네 줄과 풀 수 없는 정책 안내 */
+/* 신규 개발 허용: 항목마다 위험도(세 칸 막대와 이름), 가리킨 항목의 위험한 이유와 지키는 선, 풀 수 없는 규칙. 위험도 색은 낮음 초록·보통 주황·높음 빨강이다 */
+[data-risk="low"] {
+    --risk: var(--add);
+    --risk-fill: var(--add);
+    --risk-wash: var(--ok-wash);
+}
+
+[data-risk="mid"] {
+    --risk: var(--warn);
+    --risk-fill: var(--warn-fill);
+    --risk-wash: var(--warn-wash);
+}
+
+[data-risk="high"] {
+    --risk: var(--del);
+    --risk-fill: var(--del);
+    --risk-wash: color-mix(in srgb, var(--del) 9%, var(--bg));
+}
+
 #allow-chip {
     anchor-name: --allow-chip;
 }
@@ -1078,52 +1145,268 @@ body[data-view="run"] #policy-chip {
     font-weight: 500;
 }
 
+/* 고른 허용 중 가장 높은 위험도가 알약 끝에 점으로 보인다 */
+.allow-dot {
+    display: none;
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--risk-fill);
+}
+
+#allow-chip[data-risk] .allow-dot {
+    display: block;
+}
+
+#allow-chip:disabled .allow-dot {
+    opacity: 0.45;
+}
+
 .allow-popover {
     position-anchor: --allow-chip;
-    width: min(360px, calc(100vw - 32px));
-    padding: 6px 14px 4px;
+    width: min(400px, calc(100vw - 32px));
+    max-height: calc(100vh - 190px);
+    padding: 6px 8px 8px;
+    overflow-y: auto;
+    scrollbar-width: thin;
 }
 
 .allow-popover:popover-open {
     display: grid;
 }
 
+.allow-head {
+    padding: 8px 8px 8px;
+}
+
 .allow-title {
-    padding: 8px 0 4px;
     font-size: var(--text-md);
     font-weight: 600;
 }
 
-.allow-option {
+.allow-summary {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    transition: color 0.25s var(--ease-out);
+}
+
+.allow-summary[data-risk] {
+    color: var(--risk);
+    font-weight: 600;
+}
+
+.allow-list {
     display: grid;
-    grid-template-columns: 16px minmax(0, 1fr);
-    gap: 1px 10px;
-    margin: 0 -8px;
-    padding: 8px;
-    border-radius: var(--r-sm);
+    gap: 2px;
+}
+
+.allow-option {
+    position: relative;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 9px 10px;
+    border-radius: var(--r-md);
     cursor: pointer;
-    transition: background-color 0.2s var(--ease-out);
+    transition: background-color 0.25s var(--ease-out);
 }
 
 .allow-option:hover {
     background: var(--surface);
 }
 
+.allow-option:has(input:checked) {
+    background: var(--risk-wash);
+}
+
+.allow-option:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
 .allow-option input {
-    width: 16px;
-    height: 16px;
-    margin: 2px 0 0;
-    accent-color: var(--accent);
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
     cursor: inherit;
 }
 
-.allow-option b {
+/* 고르면 위험도 색으로 채워지고 체크가 톡 맺힌다 */
+.allow-box {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+    border-radius: 7px;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1.5px var(--hair-strong);
+    color: var(--bg);
+    transition:
+        background-color 0.2s var(--ease-out),
+        box-shadow 0.2s var(--ease-out);
+}
+
+.allow-box .icon {
+    width: 13px;
+    height: 13px;
+    stroke-width: 2.2;
+    opacity: 0;
+    scale: 0.4;
+    transition:
+        opacity 0.15s var(--ease-out),
+        scale 0.3s var(--ease-out);
+}
+
+.allow-option:has(input:checked) .allow-box {
+    background: var(--risk-fill);
+    box-shadow: none;
+}
+
+.allow-option:has(input:checked) .allow-box .icon {
+    opacity: 1;
+    scale: 1;
+}
+
+.allow-body {
+    display: grid;
+    min-width: 0;
+}
+
+.allow-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.allow-line b {
+    color: var(--ink);
     font-size: var(--text-md);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.allow-desc {
+    display: block;
+    margin-top: 1px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+}
+
+.risk-meter {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    color: var(--risk);
+    font-size: var(--text-xs);
     font-weight: 600;
 }
 
-.allow-option small {
-    grid-column: 2;
+.risk-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.risk-bars i {
+    width: 4px;
+    height: 6px;
+    border-radius: 2px;
+    background: var(--hair-strong);
+    transition: background-color 0.25s var(--ease-out);
+}
+
+.risk-bars i:nth-child(2) {
+    height: 9px;
+}
+
+.risk-bars i:nth-child(3) {
+    height: 12px;
+}
+
+.risk-bars i[data-on] {
+    background: var(--risk-fill);
+}
+
+/* 가리킨 항목의 설명 칸. 높이를 고정해 가리키는 항목이 바뀌어도 팝오버가 흔들리지 않는다 */
+.allow-detail {
+    display: grid;
+    align-content: start;
+    gap: 7px;
+    min-height: 112px;
+    margin: 6px 2px 0;
+    padding: 12px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: var(--text-xs);
+    line-height: 1.55;
+}
+
+.allow-detail p {
+    display: grid;
+    grid-template-columns: 4.9em minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.allow-tag {
+    justify-self: start;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--ink-2);
+    font-weight: 700;
+    line-height: 20px;
+    white-space: nowrap;
+}
+
+.allow-tag[data-kind="risk"] {
+    background: var(--risk-wash);
+    color: var(--risk);
+}
+
+.allow-foot {
+    margin: 8px 2px 0;
+    padding: 10px 10px 2px;
+    box-shadow: 0 -1px 0 var(--hair);
+}
+
+.allow-foot p {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     color: var(--muted);
     font-size: var(--text-xs);
+}
+
+.allow-foot .icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+}
+
+.allow-foot ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.allow-foot li {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--ink-2);
+    font-size: var(--text-xs);
+    font-weight: 600;
 }

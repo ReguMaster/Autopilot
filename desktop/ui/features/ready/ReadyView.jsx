@@ -82,16 +82,16 @@ const RecentRuns = () => {
 };
 
 const MODE_OPTIONS = [
-    { value: "maintain", label: "유지 보수" },
-    { value: "build", label: "신규 개발" }
+    { value: "maintain", label: "유지 보수", icon: "icon-policy-auto" },
+    { value: "build", label: "신규 개발", icon: "icon-spark" }
 ];
 
-// 작업 모드 전환. 실행 중에는 바꿀 수 없다.
+// 작업 모드 전환. 고른 칸 뒤로 알약이 미끄러져 옮겨 가고, 실행 중에는 바꿀 수 없다.
 const ModeSeg = () => {
     const mode = useComposerStore((store) => store.mode);
     const isIdle = useRunStore((store) => store.state.status === "idle");
 
-    return <Seg name="mode" label="작업 모드" className="mode-seg" options={MODE_OPTIONS.map((option) => ({ ...option, disabled: !isIdle }))} value={mode} onChange={composer.setMode} />;
+    return <Seg name="mode" label="작업 모드" className="mode-seg" slide options={MODE_OPTIONS.map((option) => ({ ...option, disabled: !isIdle }))} value={mode} onChange={composer.setMode} />;
 };
 
 // 시작 전: 프로젝트 이름과 작업 모드, 그 아래에 유지 보수는 인사와 지난 실행, 신규 개발은 단계 카드와 안내를 둔다.

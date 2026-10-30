@@ -178,10 +178,15 @@ const getEndTimeShortcuts = (nowMs) => {
     ];
 };
 
-const EFFORT_LABELS = { low: "Low", medium: "Medium", high: "High", xhigh: "XHigh", max: "Max" };
+// Effort는 AI마다 부르는 이름이 다르다. Claude는 Effort, Codex는 Reasoning(추론 강도)이다. 단계 이름은 둘 다 xhigh를 Extra High라고 쓴다.
+const EFFORT_LABELS = {
+    claude: { low: "Low", medium: "Medium", high: "High", xhigh: "Extra High", max: "Max" },
+    codex: { low: "Low", medium: "Medium", high: "High", xhigh: "Extra High", max: "Max" }
+};
+const EFFORT_TERMS = { claude: "Effort", codex: "Reasoning" };
 
-const formatEffort = (effort) => {
-    return EFFORT_LABELS[effort] || effort;
+const formatEffort = (effort, runner = "claude") => {
+    return EFFORT_LABELS[runner]?.[effort] || effort;
 };
 
 // 별칭(opus)이나 모델 ID(claude-opus-4-8)가 속한 계열. 모르면 빈 문자열이다.
@@ -218,7 +223,7 @@ const formatAgentOptions = (runner, model, effort) => {
         return formatOptions(model, effort);
     }
 
-    return `Codex ${model ? formatModelName(model) : "기본"} · ${effort ? formatEffort(effort) : "기본"}`;
+    return `Codex ${model ? formatModelName(model) : "기본"} · ${effort ? formatEffort(effort, runner) : "기본"}`;
 };
 
 const formatRemaining = (ms) => {
@@ -1457,6 +1462,7 @@ export {
     getEndTimeShortcuts,
     EFFORT_LABELS,
     formatEffort,
+    EFFORT_TERMS,
     getModelFamily,
     formatModelName,
     formatOptions,

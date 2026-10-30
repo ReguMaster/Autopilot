@@ -13,6 +13,8 @@ const loadUi = async () => {
         import { createElement } from "react";
         import { renderToStaticMarkup } from "react-dom/server";
         import { Select } from "./components/Select.jsx";
+        import { Seg } from "./components/Seg.jsx";
+        import { Stepper } from "./components/Stepper.jsx";
         import { Modal } from "./components/Modal.jsx";
         import { ProjectList } from "./features/shell/Rail.jsx";
         import { StepCard } from "./features/steps/StepCard.jsx";
@@ -20,7 +22,10 @@ const loadUi = async () => {
         import { TagChips } from "./features/create/TagChips.jsx";
         export * from "./selectKeys.js";
         export * from "./lib/buildSteps.js";
+        export { ALLOW_KEYS, ON_FAIL_CHOICES } from "./lib/constants.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
+        export const renderStepper = (props) => renderToStaticMarkup(createElement(Stepper, props));
+        export const renderSeg = (props) => renderToStaticMarkup(createElement(Seg, props));
         export const renderModal = (props, children) => renderToStaticMarkup(createElement(Modal, props, children));
         export const renderProjectList = (props) => renderToStaticMarkup(createElement(ProjectList, props));
         export const renderStepCard = (props) => renderToStaticMarkup(createElement(StepCard, props));
@@ -297,7 +302,83 @@ const checkCodexOptions = ({ getCodexModelOptions, CODEX_EFFORT_OPTIONS, getDeba
     );
 };
 
+// 허용 항목: 위험도 순으로 늘어서고, 고른 것 중 가장 높은 위험도를 알려 준다. 보내기가 기대는 설정이 있으면 그 사실도 알린다.
+const checkAllowOptions = ({ ALLOW_OPTIONS, ALLOW_RISKS, getAllowRisk, getAllowUsage }, ALLOW_KEYS) => {
+    const levels = Object.keys(ALLOW_RISKS);
+
+    assert.deepEqual([...ALLOW_OPTIONS.map((option) => option.key)].sort(), [...ALLOW_KEYS].sort(), "허용 항목은 엔진이 받는 값과 같다");
+    assert.deepEqual(
+        ALLOW_OPTIONS.map((option) => levels.indexOf(option.risk)),
+        [...ALLOW_OPTIONS.map((option) => levels.indexOf(option.risk))].sort(),
+        "위험도가 낮은 것부터 늘어선다"
+    );
+    assert.ok(
+        ALLOW_OPTIONS.every((option) => option.desc && option.riskNote && option.keeps),
+        "항목마다 설명·위험한 이유·지키는 선이 있다"
+    );
+    assert.equal(getAllowRisk([]), "");
+    assert.equal(getAllowRisk(["large"]), "low");
+    assert.equal(getAllowRisk(["large", "deps"]), "mid");
+    assert.equal(getAllowRisk(["send", "large"]), "high");
+    assert.deepEqual(getAllowUsage("deps", { brainstorm: ["plan"], designFormat: "figma" }), []);
+    assert.equal(getAllowUsage("send", { brainstorm: ["plan"], designFormat: "figma" }).length, 2);
+    assert.equal(getAllowUsage("send", { brainstorm: [], designFormat: "html" }).length, 0);
+};
+
+// 단계 설정 문장의 선택지: 두 AI가 쓰는 단계는 늘 멈춘다는 말이 따로 있고, 실패 처리는 횟수와 되돌리지 않음을 고른다.
+const checkSentenceOptions = ({ BRAINSTORM_OPTIONS, BRAINSTORM_AFTER, GATE_OPTIONS, ON_FAIL_CHOICES, MAX_ON_FAIL_RETRIES, getMaxRetries, toOnFailValue, ON_FAIL_WHEN }) => {
+    assert.deepEqual(
+        BRAINSTORM_OPTIONS.map((option) => option.value),
+        ["claude", "compare", "debate"]
+    );
+    assert.deepEqual(Object.keys(BRAINSTORM_AFTER), ["compare", "debate"], "Claude만 쓰는 단계만 끝난 뒤 멈출지 고른다");
+    assert.deepEqual(
+        GATE_OPTIONS.map((option) => option.value),
+        ["stop", "go"]
+    );
+    assert.ok(
+        [...BRAINSTORM_OPTIONS, ...GATE_OPTIONS].every((option) => option.label && option.hint),
+        "문장 속 선택은 목록에서 뜻을 풀어 준다"
+    );
+    // 되돌리는 횟수: 0~최대(엔진 허용 값 stop·retry:1~5)를 횟수로 다루고, 저장 값으로 되돌려도 같아야 한다.
+    assert.equal(MAX_ON_FAIL_RETRIES, 5);
+    assert.deepEqual([0, 1, 5].map(toOnFailValue), ["stop", "retry:1", "retry:5"]);
+    assert.ok(
+        ON_FAIL_CHOICES.every((value) => toOnFailValue(getMaxRetries(value)) === value),
+        "저장 값 ↔ 횟수가 서로 되돌려진다"
+    );
+    assert.deepEqual(Object.keys(ON_FAIL_WHEN), ["qa", "security"]);
+};
+
 // 실행 중 단계 카드: [단계] 줄이 지금 단계를 정하고, 오기 전에는 시작할 단계가 지금이다. 확인받기로 둔 지난 단계는 "확인함"이다.
+// 문장 속 선택 상자는 inline 클래스를 달고, 미끄러지는 스위치는 고른 칸의 순서와 칸 수를 변수로 알린다.
+const checkInlineControls = ({ renderSelect, renderSeg, renderStepper }) => {
+    const zero = renderStepper({ value: 0, max: 5, onChange: () => {}, ariaLabel: "횟수" });
+    const full = renderStepper({ value: 5, max: 5, onChange: () => {}, ariaLabel: "횟수" });
+
+    assert.match(zero, /role="spinbutton"[^>]*aria-label="횟수"[^>]*aria-valuenow="0"/);
+    assert.match(zero, /aria-label="줄이기" disabled=""/, "0에서는 줄일 수 없다");
+    assert.doesNotMatch(zero, /aria-label="늘리기" disabled/);
+    assert.match(full, /aria-label="늘리기" disabled=""/, "최대에서는 늘릴 수 없다");
+    assert.match(full, /<output>5<\/output>/);
+
+    const options = [
+        { value: "a", label: "가" },
+        { value: "b", label: "나" }
+    ];
+
+    assert.match(renderSelect({ value: "a", options: options, onChange: () => {}, ariaLabel: "x", inline: true }), /class="select select-inline"/);
+    assert.doesNotMatch(renderSelect({ value: "a", options: options, onChange: () => {}, ariaLabel: "x" }), /select-inline/);
+
+    const slid = renderSeg({ name: "m", label: "모드", options: options, value: "b", onChange: () => {}, slide: true });
+
+    assert.match(slid, /class="seg seg-slide"/);
+    assert.match(slid, /--seg-index:1/);
+    assert.match(slid, /--seg-count:2/);
+    assert.match(slid, /<i class="seg-thumb"/);
+    assert.doesNotMatch(renderSeg({ name: "m", label: "모드", options: options, value: "b", onChange: () => {} }), /seg-thumb/);
+};
+
 const checkRunSteps = ({ getRunSteps, getPhaseDocs, getRevisionTasks, renderDocPreview }) => {
     const base = { buildPhase: { phase: "build", awaiting: null, qaRetries: 0, securityRetries: 0 }, gates: ["plan"], qaOnFail: "retry:3", securityOnFail: "retry:2", round: 4 };
     const getCells = (options) => getRunSteps({ ...base, ...options }).map((cell) => `${cell.state}:${cell.detail}`);
@@ -421,6 +502,9 @@ const checkUi = async () => {
     checkProjectListMarkup(ui);
     checkStepCard(ui);
     checkCodexOptions(ui);
+    checkAllowOptions(ui, ui.ALLOW_KEYS);
+    checkSentenceOptions(ui);
+    checkInlineControls(ui);
     checkRunSteps(ui);
     checkTagChips(ui);
     checkModalClosingLayout();
