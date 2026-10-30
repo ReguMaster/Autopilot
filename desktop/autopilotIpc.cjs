@@ -3,7 +3,7 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, parseBuildPhase, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
-const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, isProjectLogFile } = require("./projectFiles.cjs");
+const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, isProjectLogFile, getPhaseDoc, readPhaseDoc } = require("./projectFiles.cjs");
 const { createStreakStore } = require("./streakStore.cjs");
 const { sanitizeCardContent, getCardFileName, renderCardPng } = require("./shareCard.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
@@ -433,7 +433,7 @@ const getStartError = (settings, options) => {
 };
 
 // 수동 시작과 예약 시작이 함께 쓰는 시작 절차. remember가 참이면 쓴 값을 다음 시작의 기본값으로 저장한다(날짜를 붙인 종료 시각은 빼고).
-const launchRun = async (session, settings, startOptions, { remember, isScheduled = false }) => {
+const launchRun = async (session, settings, startOptions, { remember, keepTasks = false, isScheduled = false }) => {
     if (!session) {
         return createNoSessionFailure();
     }
@@ -473,10 +473,11 @@ const launchRun = async (session, settings, startOptions, { remember, isSchedule
         fs.mkdirSync(app.getPath("userData"), { recursive: true });
         fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
 
+        // 날짜를 붙인 종료 시각과 단계 수정 요청(keepTasks, 작업 칸의 만들 것을 지키려고)은 다음 시작의 기본값으로 저장하지 않는다.
         if (remember) {
-            const { endTime, ...undatedOptions } = startOptions;
+            const { endTime, tasks, ...otherOptions } = startOptions;
 
-            settingsStore.remember(settings.projectDir, endTime.includes(" ") ? undatedOptions : startOptions);
+            settingsStore.remember(settings.projectDir, { ...otherOptions, ...(!endTime.includes(" ") && { endTime: endTime }), ...(!keepTasks && { tasks: tasks }) });
         }
 
         const model = resolveModel(startOptions.model, settings.modelVersions);
@@ -518,7 +519,7 @@ const handleStart = async (event, options = {}) => {
             effort: options.effort,
             ...pickModeOptions(options, readEffective(session?.projectDir))
         },
-        { remember: true }
+        { remember: true, keepTasks: options.keepTasks === true }
     );
 };
 
@@ -1123,6 +1124,41 @@ const handleApprovePhase = async (event, requestedDir) => {
     });
 };
 
+// 확인을 기다리는 단계의 산출물 미리보기. 렌더러는 단계 이름만 보내고 경로는 projectFiles가 정해진 위치로만 정한다.
+const handleReadPhaseDoc = async (event, phase, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    try {
+        const doc = readPhaseDoc(session.projectDir, phase);
+
+        return doc ? { status: STATUS_OK, data: doc } : createFailure("NO_DOC", "산출물 문서를 아직 찾지 못했어요.");
+    } catch (error) {
+        return createFailure("READ_FAILED", error.message);
+    }
+};
+
+const handleOpenPhaseDoc = async (event, phase, requestedDir) => {
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const doc = getPhaseDoc(session.projectDir, phase);
+
+    if (!doc) {
+        return createFailure("NO_DOC", "산출물 문서를 아직 찾지 못했어요.");
+    }
+
+    const openError = await shell.openPath(doc.realPath);
+
+    return openError ? createFailure("OPEN_FAILED", openError) : { status: STATUS_OK };
+};
+
 const handleOpenReport = async (event, requestedDir) => {
     const session = sessionPool.get(requestedDir);
 
@@ -1359,6 +1395,8 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:get-phase", handleGetPhase);
     ipcMain.handle("autopilot:approve-phase", handleApprovePhase);
     ipcMain.handle("autopilot:init-git-repo", handleInitGitRepo);
+    ipcMain.handle("autopilot:read-phase-doc", handleReadPhaseDoc);
+    ipcMain.handle("autopilot:open-phase-doc", handleOpenPhaseDoc);
     ipcMain.handle("autopilot:open-report", handleOpenReport);
     ipcMain.handle("autopilot:list-runs", handleListRuns);
     ipcMain.handle("autopilot:read-run", handleReadRun);

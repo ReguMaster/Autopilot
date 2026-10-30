@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld("autopilot", {
     getPhase: (projectDir) => ipcRenderer.invoke("autopilot:get-phase", projectDir),
     approvePhase: (projectDir) => ipcRenderer.invoke("autopilot:approve-phase", projectDir),
     initGitRepo: () => ipcRenderer.invoke("autopilot:init-git-repo"),
+    readPhaseDoc: (phase, projectDir) => ipcRenderer.invoke("autopilot:read-phase-doc", phase, projectDir),
+    openPhaseDoc: (phase, projectDir) => ipcRenderer.invoke("autopilot:open-phase-doc", phase, projectDir),
     openReport: (projectDir) => ipcRenderer.invoke("autopilot:open-report", projectDir),
     listRuns: (limit, projectDir) => ipcRenderer.invoke("autopilot:list-runs", limit, projectDir),
     readRun: (id, projectDir) => ipcRenderer.invoke("autopilot:read-run", id, projectDir),

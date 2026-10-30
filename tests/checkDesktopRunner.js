@@ -64,7 +64,7 @@ const {
     STATUS_OK,
     STATUS_FAILED
 } = require("../desktop/autopilotRunner.cjs");
-const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile } = require("../desktop/projectFiles.cjs");
+const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, getPhaseDoc, readPhaseDoc, MAX_PHASE_DOC_BYTES } = require("../desktop/projectFiles.cjs");
 const { DEFAULT_SETTINGS } = require("../desktop/settingsStore.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
@@ -1057,6 +1057,43 @@ const checkGitInit = async (testDir) => {
     assert.notEqual(await initGitRepo(path.join(testDir, "missing"), { env: env }), "", "실패하면 git이 알려준 이유를 돌려준다");
 };
 
+// 단계 산출물은 정해진 위치만 읽는다. 디자인은 design.md가 없으면 design/ 폴더 목록이고, 링크로 프로젝트 밖을 가리키면 읽지 않는다.
+const checkPhaseDocs = (testDir) => {
+    const projectDir = path.join(testDir, "phase docs 한글");
+    const docsDir = path.join(projectDir, "docs", "autopilot");
+    const outsideDir = path.join(testDir, "phase docs outside");
+
+    fs.mkdirSync(path.join(docsDir, "design", "screens"), { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "plan.md"), "﻿# 기획\n- 화면 6개\n");
+    fs.writeFileSync(path.join(docsDir, "design", "index.html"), "<p>x</p>");
+    fs.writeFileSync(path.join(docsDir, "qa.md"), "가".repeat(MAX_PHASE_DOC_BYTES));
+
+    assert.deepEqual(readPhaseDoc(projectDir, "plan"), { kind: "file", path: "docs/autopilot/plan.md", text: "# 기획\n- 화면 6개\n", isPartial: false });
+    assert.deepEqual(readPhaseDoc(projectDir, "design"), { kind: "folder", path: "docs/autopilot/design", entries: ["index.html", "screens/"] });
+
+    const qaDoc = readPhaseDoc(projectDir, "qa");
+
+    assert.equal(qaDoc.isPartial, true, "256KB를 넘으면 앞부분만 읽는다");
+    assert(Buffer.byteLength(qaDoc.text) <= MAX_PHASE_DOC_BYTES);
+
+    for (const phase of ["build", "../plan", "constructor", "__proto__", ""]) {
+        assert.equal(readPhaseDoc(projectDir, phase), null, phase);
+    }
+
+    assert.equal(getPhaseDoc("", "plan"), null);
+
+    fs.writeFileSync(path.join(docsDir, "design.md"), "# 디자인\n");
+    assert.equal(readPhaseDoc(projectDir, "design").kind, "file");
+
+    // design/이 밖을 가리키는 링크면 design.md가 없을 때 읽을 것이 없다.
+    fs.rmSync(path.join(docsDir, "design.md"));
+    fs.rmSync(path.join(docsDir, "design"), { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, "secret.txt"), "x");
+    fs.symlinkSync(outsideDir, path.join(docsDir, "design"), "junction");
+    assert.equal(readPhaseDoc(projectDir, "design"), null);
+};
+
 // 커밋 접두어·작업 브랜치의 기본값과 검증 규칙은 엔진과 앱이 같아야 한다.
 const checkGitNameSync = () => {
     assert.equal(DEFAULT_COMMIT_PREFIX, ENGINE_COMMIT_PREFIX);
@@ -1213,6 +1250,7 @@ const runChecks = async () => {
         checkGitNameSync();
         checkProjectError(testDir);
         await checkGitInit(testDir);
+        checkPhaseDocs(testDir);
         checkReportOpenGuard(testDir);
 
         await checkClaudeAccount(testDir);

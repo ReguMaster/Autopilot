@@ -84,4 +84,83 @@ const getProgressDir = (projectDir) => {
     return path.join(projectDir, WORK_DIR_NAME, PROGRESS_DIR_NAME);
 };
 
-module.exports = { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, isProjectLogFile, getProgressDir, LOG_FILE_PATTERN, REPORT_FILE_PATTERN };
+// 신규 개발 단계 산출물. 렌더러는 단계 이름만 보내고 경로는 여기서 정한다. 디자인은 design.md가 없으면 design/ 폴더다.
+const PHASE_DOCS = {
+    plan: [{ path: "docs/autopilot/plan.md", isDir: false }],
+    design: [
+        { path: "docs/autopilot/design.md", isDir: false },
+        { path: "docs/autopilot/design", isDir: true }
+    ],
+    qa: [{ path: "docs/autopilot/qa.md", isDir: false }]
+};
+const MAX_PHASE_DOC_BYTES = 256 * 1024;
+const MAX_PHASE_DOC_ENTRIES = 200;
+
+// 단계 산출물의 실제 경로. 없거나, 링크로 프로젝트 밖을 가리키거나, 종류(파일·폴더)가 다르면 건너뛴다.
+const getPhaseDoc = (projectDir, phase) => {
+    if (!projectDir || !Object.hasOwn(PHASE_DOCS, phase)) {
+        return null;
+    }
+
+    for (const doc of PHASE_DOCS[phase]) {
+        try {
+            const realProject = fs.realpathSync.native(projectDir);
+            const realPath = fs.realpathSync.native(path.join(projectDir, doc.path));
+            const relativePath = path.relative(realProject, realPath);
+            const isInside = relativePath !== "" && relativePath.split(path.sep)[0] !== ".." && !path.isAbsolute(relativePath);
+
+            if (isInside && fs.statSync(realPath).isDirectory() === doc.isDir) {
+                return { ...doc, realPath: realPath };
+            }
+        } catch {}
+    }
+
+    return null;
+};
+
+// 미리보기용으로 읽는다. 파일은 앞 256KB까지 글자로, 디자인 폴더는 이름 목록(링크는 빼고)으로 돌려준다.
+const readPhaseDoc = (projectDir, phase) => {
+    const doc = getPhaseDoc(projectDir, phase);
+
+    if (!doc) {
+        return null;
+    }
+
+    if (doc.isDir) {
+        const entries = fs
+            .readdirSync(doc.realPath, { withFileTypes: true })
+            .filter((entry) => !entry.isSymbolicLink())
+            .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
+            .sort();
+
+        return { kind: "folder", path: doc.path, entries: entries.slice(0, MAX_PHASE_DOC_ENTRIES) };
+    }
+
+    const buffer = Buffer.alloc(MAX_PHASE_DOC_BYTES + 1);
+    const fd = fs.openSync(doc.realPath, "r");
+
+    try {
+        const size = fs.readSync(fd, buffer, 0, buffer.length, 0);
+
+        // stream \uB514\uCF54\uB529\uC740 256KB \uACBD\uACC4\uC5D0\uC11C \uC798\uB9B0 \uB9C8\uC9C0\uB9C9 \uAE00\uC790\uB97C \uAE68\uC9C4 \uBB38\uC790\uB85C \uB0A8\uAE30\uC9C0 \uC54A\uACE0 \uBC84\uB9B0\uB2E4.
+        const text = new TextDecoder("utf-8", { ignoreBOM: false }).decode(buffer.subarray(0, Math.min(size, MAX_PHASE_DOC_BYTES)), { stream: true });
+
+        return { kind: "file", path: doc.path, text: text, isPartial: size > MAX_PHASE_DOC_BYTES };
+    } finally {
+        fs.closeSync(fd);
+    }
+};
+
+module.exports = {
+    getProjectError,
+    canInitGitRepo,
+    initGitRepo,
+    isProjectReportFile,
+    isProjectLogFile,
+    getProgressDir,
+    getPhaseDoc,
+    readPhaseDoc,
+    LOG_FILE_PATTERN,
+    REPORT_FILE_PATTERN,
+    MAX_PHASE_DOC_BYTES
+};
