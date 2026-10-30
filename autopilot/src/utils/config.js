@@ -37,6 +37,9 @@ const DEFAULT_WORK_BRANCH = "ai/autopilot";
 // 작업 프로젝트에 더할 수 있는 연결 저장소 수(작업 프로젝트를 합쳐 3개).
 const MAX_LINKED_REPOS = 2;
 const MAX_EXTEND_MINUTES = 7 * 24 * 60;
+// 종료 시각에 날짜를 붙여 정할 수 있는 최대 기간(일). 회차 상한은 하루마다 maxRounds씩 늘어난다.
+const MAX_RUN_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_LOG_RETENTION_DAYS = 3650;
 const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
@@ -100,6 +103,8 @@ export {
     DEFAULT_WORK_BRANCH,
     MAX_LINKED_REPOS,
     MAX_EXTEND_MINUTES,
+    MAX_RUN_DAYS,
+    DAY_MS,
     MAX_LOG_RETENTION_DAYS,
     EFFORT_LEVELS,
     WORK_DIR_NAME,

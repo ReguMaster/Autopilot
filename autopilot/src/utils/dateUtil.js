@@ -19,14 +19,26 @@ const getMinutesFromMs = (ms) => {
     return Math.round(ms / 6000) / 10;
 };
 
-// 날짜는 의도적으로 무시한다. 이미 지난 시각이면 다음 날로 본다.
+// HH:mm만 주면 다음에 오는 그 시각(이미 지났으면 다음 날)이고, yyyy-MM-dd HH:mm이면 그 날짜의 시각이다.
+// 없는 날짜(2월 30일 등)는 Date가 다음 달로 넘기므로 null을 돌려 호출한 쪽이 거부하게 한다.
 const getDeadline = (endTime, now = new Date()) => {
-    const [hour, minute] = endTime.split(":").map(Number);
+    const [datePart, timePart] = endTime.includes(" ") ? endTime.split(" ") : ["", endTime];
+    const [hour, minute] = timePart.split(":").map(Number);
     const deadline = new Date(now);
+
+    if (datePart) {
+        const [year, month, day] = datePart.split("-").map(Number);
+
+        deadline.setFullYear(year, month - 1, day);
+
+        if (deadline.getMonth() !== month - 1 || deadline.getDate() !== day) {
+            return null;
+        }
+    }
 
     deadline.setHours(hour, minute, 0, 0);
 
-    if (deadline <= now) {
+    if (!datePart && deadline <= now) {
         deadline.setDate(deadline.getDate() + 1);
     }
 

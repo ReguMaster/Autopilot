@@ -51,7 +51,7 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
@@ -152,5 +152,5 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 - 우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값).
 - 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이다. 값을 바꾸면 README·지침·검증을 함께 맞춘다.
 - model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어(기본 [ap], --commit-prefix)와 작업 브랜치(기본 ai/autopilot, --branch)는 실행 인자로 바꾸며 지침과 정책에 끼워 넣는다(엔진이 브랜치를 직접 다루지는 않고 세션이 지침대로 전환·생성한다). 접두어는 앞뒤 공백·백틱·제어 문자가 없고 `--`로 시작하지 않는 1~20자, 브랜치는 영문·숫자·._-와 /로 된 100자 이하 이름(`..`·`.lock`·끝 점 금지)이고, AI가 기본 브랜치에 직접 커밋하지 않도록 main·master·HEAD는 쓸 수 없다. 검증의 원본은 util.js(isValidCommitPrefix·isValidWorkBranch)이고 앱의 desktop/engineArgs.cjs가 같은 규칙을 갖는다(tests/checkDesktopRunner.js가 대조). 값이 있어도 기본값과 같으면 앱은 인자를 생략한다.
-- 종료 시각은 HH:mm만 받는다. 날짜는 의도적으로 무시하고 이미 지난 시각이면 다음 날로 본다. 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.
+- 종료 시각은 HH:mm 또는 "yyyy-MM-dd HH:mm"이다. HH:mm만 주면 다음에 오는 그 시각(이미 지났으면 다음 날)이고, 날짜를 붙이면 그 날짜의 시각이다. 날짜를 붙인 값은 이미 지났거나 없는 날짜이거나 MAX_RUN_DAYS(7일)보다 뒤면 거부한다. 회차 상한(maxRounds)은 하루 몫이라 실행 기간의 일수(올림)만큼 곱한다(검증의 limits가 정하면 그 값 그대로). 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.
 - 정책 인자는 auto/self/todo/directed 별칭도 지원한다.

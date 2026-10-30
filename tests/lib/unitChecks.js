@@ -51,6 +51,17 @@ const checkRunSettings = () => {
         assert.throws(() => getRunSettings(invalidEndTime));
     }
 
+    // 날짜를 붙이면 그 날짜의 시각이고, 지난 시각·없는 날짜·7일 넘게 뒤·형식 오류는 거부한다.
+    const datedSettings = getRunSettings("2026-10-12 07:00", "", now);
+
+    assert.equal(datedSettings.deadline.getDate(), 12);
+    assert.equal(datedSettings.deadline.getHours(), 7);
+    assert.equal(getRunSettings("2026-10-15 12:00", "", now).deadline.getDate(), 15);
+
+    for (const invalidEndTime of ["2026-10-08 11:00", "2026-02-30 07:00", "2026-10-15 12:01", "2026-10-9 07:00", "2026-10-09T07:00"]) {
+        assert.throws(() => getRunSettings(invalidEndTime));
+    }
+
     assert.throws(() => getRunSettings("", "not-todo"));
     assert.throws(() => getRunSettings("", "constructor"));
 

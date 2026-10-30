@@ -3,7 +3,7 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>"
 ].join("\n");

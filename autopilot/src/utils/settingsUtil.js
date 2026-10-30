@@ -1,19 +1,37 @@
-import { DEFAULT_COMMIT_PREFIX, DEFAULT_END_TIME, DEFAULT_WORK_BRANCH, POLICY_ALIASES, POLICY_SELF } from "./config.js";
+import { DEFAULT_COMMIT_PREFIX, DEFAULT_END_TIME, DEFAULT_WORK_BRANCH, MAX_RUN_DAYS, MINUTE_MS, POLICY_ALIASES, POLICY_SELF } from "./config.js";
 import dateUtil from "./dateUtil.js";
 import util from "./util.js";
 
 const SOURCE_ARGUMENT = "실행 인자";
 const SOURCE_DEFAULT = "기본값";
-const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const END_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2} )?([01]\d|2[0-3]):[0-5]\d$/;
 
 const getEndTimeSetting = (endTimeArgument) => {
     const endTime = endTimeArgument || DEFAULT_END_TIME;
 
     if (!END_TIME_PATTERN.test(endTime)) {
-        throw new Error(`종료 시각 형식이 잘못되었습니다: '${endTime}' (예: ${DEFAULT_END_TIME})`);
+        throw new Error(`종료 시각 형식이 잘못되었습니다: '${endTime}' (예: ${DEFAULT_END_TIME} 또는 2026-11-02 ${DEFAULT_END_TIME})`);
     }
 
     return { endTime: endTime, endSource: endTimeArgument ? SOURCE_ARGUMENT : SOURCE_DEFAULT };
+};
+
+const getDeadlineSetting = (endTime, now) => {
+    const deadline = dateUtil.getDeadline(endTime, now);
+
+    if (!deadline) {
+        throw new Error(`없는 날짜입니다: '${endTime}'`);
+    }
+
+    if (deadline <= now) {
+        throw new Error(`종료 시각이 이미 지났습니다: '${endTime}'`);
+    }
+
+    if (deadline - now > MAX_RUN_DAYS * 24 * 60 * MINUTE_MS) {
+        throw new Error(`종료 시각은 ${MAX_RUN_DAYS}일 뒤까지 정할 수 있습니다: '${endTime}'`);
+    }
+
+    return deadline;
 };
 
 const getPolicySetting = (policyArgument) => {
@@ -35,7 +53,7 @@ const getRunSettings = (endTimeArgument = "", policyArgument = "", now = new Dat
     const { endTime, endSource } = getEndTimeSetting(endTimeArgument);
     const { policy, policySource } = getPolicySetting(policyArgument);
 
-    return { deadline: dateUtil.getDeadline(endTime, now), policy: policy, endSource: endSource, policySource: policySource };
+    return { deadline: getDeadlineSetting(endTime, now), policy: policy, endSource: endSource, policySource: policySource };
 };
 
 // 커밋 접두어와 작업 브랜치. 우선순위: 실행 인자 > 기본값

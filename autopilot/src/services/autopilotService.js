@@ -8,6 +8,7 @@ import {
     ERROR_CODE_AUTOPILOT_ERROR,
     SECOND_MS,
     MINUTE_MS,
+    DAY_MS,
     WAIT_POLL_MS,
     REPORT_REFRESH_MS,
     EXIT_CODE_SUCCESS,
@@ -84,6 +85,11 @@ const prepareRun = (options) => {
 
     if (runSettings.policy === POLICY_TODO && !tasks) {
         throw new Error("지시개선 정책에는 처리할 작업이 필요합니다.");
+    }
+
+    // 여러 날 실행은 하루마다 회차 상한만큼 더 돌 수 있다. 검증의 limits가 정한 상한은 그대로 둔다.
+    if (options.limits?.maxRounds === undefined) {
+        runConfig.maxRounds = AUTOPILOT_DEFAULTS.maxRounds * Math.ceil((runSettings.deadline - runStart) / DAY_MS);
     }
 
     const progressDir = path.join(workDir, PROGRESS_DIR_NAME, runDate);
