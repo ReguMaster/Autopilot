@@ -66,7 +66,8 @@ const {
     STATUS_OK,
     STATUS_FAILED
 } = require("../desktop/autopilotRunner.cjs");
-const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, getPhaseDoc, readPhaseDoc, MAX_PHASE_DOC_BYTES } = require("../desktop/projectFiles.cjs");
+const { getProjectError, canInitGitRepo, initGitRepo, getGitAuthor, createProject, isProjectReportFile, getPhaseDoc, readPhaseDoc, MAX_PHASE_DOC_BYTES } = require("../desktop/projectFiles.cjs");
+const { getProjectNameError, toFolderName, getDraftPrompt, parseDraft, buildProjectBrief, sanitizeBrief, DRAFT_LIMITS } = require("../desktop/projectDraft.cjs");
 const { DEFAULT_SETTINGS } = require("../desktop/settingsStore.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
@@ -1086,6 +1087,174 @@ const checkGitInit = async (testDir) => {
     assert.notEqual(await initGitRepo(path.join(testDir, "missing"), { env: env }), "", "실패하면 git이 알려준 이유를 돌려준다");
 };
 
+// 새 프로젝트 초안: 폴더 이름 규칙, Claude 답 해석(코드 블록·잡음·개수·길이·모르는 값), brief.md 만들기와 다듬기.
+const checkProjectDraftRules = () => {
+    for (const name of ["hanbit-booking", "미용실 예약", "a.b", "x".repeat(64)]) {
+        assert.equal(getProjectNameError(name), "", name);
+    }
+
+    for (const name of ["", "  ", " lead", "trail.", "trail ", "con", "COM1", "nul.txt", "a/b", "a\\b", "a:b", "a?b", "a*b", 'a"b', "a<b", "a|b", "x".repeat(65), "tab\tname"]) {
+        assert.notEqual(getProjectNameError(name), "", JSON.stringify(name));
+    }
+
+    assert.equal(toFolderName("Hanbit Booking!!"), "hanbit-booking");
+    assert.equal(toFolderName("미용실"), "", "영문이 없으면 이름을 비워 사용자가 정하게 한다");
+    assert.equal(toFolderName("CON"), "");
+
+    const reply = [
+        "초안이에요.",
+        "```json",
+        JSON.stringify({
+            name: "Hanbit Booking",
+            summary: "  미용실\n예약 웹앱\u0007 ",
+            users: [{ label: "손님", picked: true }, { label: "손님" }, "원장", { label: "" }],
+            platforms: ["web", "web", "tv"],
+            features: Array.from({ length: 14 }, (item, index) => ({ label: `기능 ${index}`, picked: index < 3 })),
+            exclusions: [{ label: "결제".repeat(40), picked: true }],
+            stack: { items: ["Next.js", 3, ""], reason: "작아서" }
+        }),
+        "```"
+    ].join("\n");
+    const draft = parseDraft(reply);
+
+    assert.equal(draft.name, "hanbit-booking");
+    assert.equal(draft.summary, "미용실 예약 웹앱");
+    assert.deepEqual(draft.users, [
+        { label: "손님", picked: true },
+        { label: "원장", picked: true }
+    ]);
+    assert.deepEqual(draft.platforms, ["web"]);
+    assert.equal(draft.features.length, DRAFT_LIMITS.features);
+    assert.equal(draft.features[3].picked, false);
+    assert.equal(draft.exclusions[0].label.length, DRAFT_LIMITS.label);
+    assert.deepEqual(draft.stack, { items: ["Next.js"], reason: "작아서" }, "글자가 아닌 항목은 버린다");
+
+    for (const bad of ["", "그냥 글", "{깨진", "[1, 2]", JSON.stringify({ name: "x" })]) {
+        assert.equal(parseDraft(bad), null, bad);
+    }
+
+    const prompt = getDraftPrompt({ what: "미용실 예약", platforms: ["web", "nope"] });
+
+    assert.match(prompt, /<설명>\n미용실 예약\n<\/설명>/);
+    assert.match(prompt, /사용자가 고른 실행 환경: 웹/);
+
+    const brief = buildProjectBrief({
+        name: "hanbit-booking",
+        what: "미용실 예약 앱",
+        summary: "손님이 예약하는 웹앱",
+        users: [{ label: "손님", picked: true }],
+        platforms: ["mobile", "web"],
+        features: [
+            { label: "예약", picked: true },
+            { label: "알림", picked: false }
+        ],
+        exclusions: [],
+        stack: { choice: "recommended", items: ["Next.js"], reason: "작아서", custom: [] },
+        refs: [{ label: "네이버 예약", picked: true }]
+    });
+
+    assert.equal(
+        brief,
+        [
+            "# hanbit-booking",
+            "",
+            "손님이 예약하는 웹앱",
+            "",
+            "## 누가 쓰나요",
+            "",
+            "- 손님",
+            "",
+            "## 어디서 쓰나요",
+            "",
+            "- 웹",
+            "- 모바일 앱",
+            "",
+            "## 꼭 있어야 할 기능",
+            "",
+            "- 예약",
+            "",
+            "## 기술 스택",
+            "",
+            "- Next.js",
+            "",
+            "추천 이유: 작아서",
+            "",
+            "## 참고할 것",
+            "",
+            "- 네이버 예약",
+            "",
+            "## 처음 적은 내용",
+            "",
+            "미용실 예약 앱",
+            ""
+        ].join("\n")
+    );
+    assert.match(
+        buildProjectBrief({ name: "", what: "", summary: "", users: [], platforms: [], features: [], exclusions: [], stack: { choice: "later", items: ["X"], reason: "", custom: [] }, refs: [] }),
+        /^# 새 프로젝트\n[\s\S]*기획 단계에서 정해요\./
+    );
+    assert.equal(sanitizeBrief("a\r\nb\u0000c\u0007\n\n\n"), "a\nbc\n");
+    assert.equal(sanitizeBrief("x".repeat(40000)).length, 32 * 1024 + 1);
+};
+
+// 새 프로젝트 만들기: main 저장소·brief.md 첫 commit·이 저장소에만 쓰는 작성자, 비어 있지 않은 폴더 거부, 실패하면 만든 것만 지운다.
+const checkCreateProject = async (testDir) => {
+    const parentDir = path.join(testDir, "create parent 한글");
+    const emptyConfig = path.join(testDir, "create-empty.gitconfig");
+    const userConfig = path.join(testDir, "create-user.gitconfig");
+    const bareEnv = { ...process.env, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: "1" };
+    const userEnv = { ...process.env, GIT_CONFIG_GLOBAL: userConfig, GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (cwd, ...args) => spawnSync("git", args, { cwd: cwd, env: bareEnv, encoding: "utf8" }).stdout.trim();
+    const brief = "# hanbit-booking\n\n미용실 예약\u0000 웹앱\n";
+
+    fs.mkdirSync(parentDir);
+    fs.writeFileSync(emptyConfig, "");
+    fs.writeFileSync(userConfig, "[user]\n\tname = AutoPilot Check\n\temail = check@example.invalid\n");
+
+    assert.equal(await getGitAuthor({ env: bareEnv }), null);
+    assert.deepEqual(await getGitAuthor({ env: userEnv }), { name: "AutoPilot Check", email: "check@example.invalid" });
+
+    // 작성자가 git에 없으면 받은 작성자를 이 저장소에만 쓴다.
+    const created = await createProject({ parentDir: parentDir, name: "hanbit-booking", brief: brief, author: { name: "한빛", email: "hanbit@example.com" }, env: bareEnv });
+    const projectDir = path.join(parentDir, "hanbit-booking");
+
+    assert.equal(created.projectDir, projectDir, created.error);
+    assert.equal(created.brief, "# hanbit-booking\n\n미용실 예약 웹앱\n");
+    assert.equal(getProjectError(projectDir), "");
+    assert.equal(git(projectDir, "rev-parse", "--abbrev-ref", "HEAD"), "main");
+    assert.equal(git(projectDir, "log", "--format=%an <%ae>|%s"), "한빛 <hanbit@example.com>|init: 프로젝트 초안(brief.md)");
+    assert.equal(git(projectDir, "show", "HEAD:docs/autopilot/brief.md"), created.brief.trim());
+    assert.equal(git(projectDir, "config", "--local", "user.email"), "hanbit@example.com");
+    assert.equal(git(projectDir, "status", "--porcelain"), "");
+
+    // 비어 있지 않은 폴더·잘못된 이름·없는 위치·잘못된 작성자는 디스크를 건드리기 전에 거부한다.
+    assert.equal((await createProject({ parentDir: parentDir, name: "hanbit-booking", brief: brief, env: userEnv })).code, "NOT_EMPTY");
+    assert.equal((await createProject({ parentDir: parentDir, name: "con", brief: brief, env: userEnv })).code, "INVALID_NAME");
+    assert.equal((await createProject({ parentDir: path.join(testDir, "missing"), name: "x", brief: brief, env: userEnv })).code, "INVALID_PARENT");
+    assert.equal((await createProject({ parentDir: parentDir, name: "x", brief: brief, author: { name: "a", email: "nope" }, env: userEnv })).code, "INVALID_AUTHOR");
+    assert(!fs.existsSync(path.join(parentDir, "x")));
+
+    // 이미 있는 빈 폴더에는 만든다.
+    fs.mkdirSync(path.join(parentDir, "empty"));
+    assert.equal((await createProject({ parentDir: parentDir, name: "empty", brief: brief, env: userEnv })).projectDir, path.join(parentDir, "empty"));
+
+    // commit이 실패하면(작성자 없음) 새 폴더는 통째로, 이미 있던 빈 폴더는 만든 .git·docs만 지운다.
+    const failed = await createProject({ parentDir: parentDir, name: "no-author", brief: brief, env: bareEnv });
+
+    assert.equal(failed.code, "CREATE_FAILED");
+    assert(!fs.existsSync(path.join(parentDir, "no-author")), "새로 만든 폴더는 지운다");
+
+    fs.mkdirSync(path.join(parentDir, "kept"));
+
+    assert.equal((await createProject({ parentDir: parentDir, name: "kept", brief: brief, env: bareEnv })).code, "CREATE_FAILED");
+    assert.deepEqual(fs.readdirSync(path.join(parentDir, "kept")), [], "이미 있던 빈 폴더는 남기고 만든 것만 지운다");
+
+    const missingGit = await createProject({ parentDir: parentDir, name: "no-git", brief: brief, git: path.join(testDir, "missing-git"), env: userEnv });
+
+    assert.equal(missingGit.code, "CREATE_FAILED");
+    assert(!fs.existsSync(path.join(parentDir, "no-git")));
+};
+
 // 단계 산출물은 정해진 위치만 읽는다. 디자인은 design.md가 없으면 design/ 폴더 목록이고, 링크로 프로젝트 밖을 가리키면 읽지 않는다.
 const checkPhaseDocs = (testDir) => {
     const projectDir = path.join(testDir, "phase docs 한글");
@@ -1283,6 +1452,8 @@ const runChecks = async () => {
         checkGitNameSync();
         checkProjectError(testDir);
         await checkGitInit(testDir);
+        checkProjectDraftRules();
+        await checkCreateProject(testDir);
         checkPhaseDocs(testDir);
         checkReportOpenGuard(testDir);
 

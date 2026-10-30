@@ -74,7 +74,7 @@ const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
 const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
-const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin"];
+const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin", "createParentDir"];
 // PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
 const NON_PORTABLE_KEYS = [...MACHINE_KEYS, "postRunAction"];
 const EXPORT_APP = "AutoPilot";
@@ -105,6 +105,8 @@ const DEFAULT_SETTINGS = {
     accounts: [],
     accountId: "default",
     claudeDir: "",
+    // 새 프로젝트를 마지막으로 만든 상위 폴더. 비면 문서 폴더다.
+    createParentDir: "",
     keepInTray: false,
     launchAtLogin: false,
     schedules: [],
@@ -153,6 +155,7 @@ const SETTING_VALIDATORS = {
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
     claudeDir: (value) => typeof value === "string",
+    createParentDir: (value) => typeof value === "string",
     keepInTray: (value) => typeof value === "boolean",
     launchAtLogin: (value) => typeof value === "boolean",
     schedules: (value) => Array.isArray(value),

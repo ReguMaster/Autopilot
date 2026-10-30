@@ -373,6 +373,27 @@ const createAccountIpc = ({
         return runAccount;
     };
 
+    // 새 프로젝트 초안을 쓸 계정(새 탭의 기본 계정)의 설정 폴더. 로그인돼 있어야 한다.
+    const getDraftAccount = async () => {
+        const settings = readSettings();
+        const accountId = listAccounts(settings).some((account) => account.id === settings.accountId) ? settings.accountId : DEFAULT_ACCOUNT_ID;
+        const configDir = store.getConfigDir(accountId);
+
+        if (login) {
+            return createFailure("LOGIN_IN_PROGRESS", "로그인이 진행 중이에요. 마치거나 취소한 뒤 다시 해 주세요.");
+        }
+
+        const status = await getAuthStatus(configDir);
+
+        if (status.error) {
+            return createFailure("LOGIN_STATUS_FAILED", `계정의 로그인 상태를 확인하지 못했어요. ${status.error}`);
+        }
+
+        return status.loggedIn
+            ? { status: STATUS_OK, data: { configDir: configDir } }
+            : createFailure("LOGIN_REQUIRED", "새 탭에 쓰는 계정에 로그인되어 있지 않아요. 프로필에서 로그인한 뒤 다시 해 주세요.");
+    };
+
     // 기본 .claude의 위치가 바뀌면 기본 계정의 조회를 새 위치로 옮기고, 다른 계정의 연결을 다시 잇는다.
     const applyBaseDirChange = () => {
         dropReader(DEFAULT_ACCOUNT_ID);
@@ -468,6 +489,7 @@ const createAccountIpc = ({
         register: register,
         startWatch: startWatch,
         getRunAccount: getRunAccount,
+        getDraftAccount: getDraftAccount,
         cancelLogin: handleCancelLogin,
         getActiveUsage: getActiveUsage,
         refreshActiveUsage: refreshActiveUsage,

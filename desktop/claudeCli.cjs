@@ -8,6 +8,7 @@ const WINDOWS_SCRIPT_PATTERN = /\.(cmd|bat)$/i;
 const UNSAFE_CMD_PATH_PATTERN = /["\r\n%!]/;
 const AUTH_STATUS_TIMEOUT_MS = 20000;
 const RENEW_TIMEOUT_MS = 60000;
+const ASK_TIMEOUT_MS = 90000;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
 const LOGIN_URL_HOSTS = ["claude.com", "claude.ai", "anthropic.com"];
@@ -160,6 +161,86 @@ const renewCredentials = (configDir, options = {}) => {
     });
 };
 
+// 도구·사용자 설정·MCP 없이 질문 하나를 보내고 답의 글자를 받는다(새 프로젝트 초안). 질문은 사용자 글이 섞여 있어 명령줄이 아니라 stdin으로 넘긴다.
+// { promise, cancel }을 돌려주고, promise는 { text } 또는 { error } 또는 { cancelled: true }로 풀린다.
+const askClaude = (configDir, prompt, options = {}) => {
+    const launch = getLaunch(options);
+
+    if (!launch.command) {
+        return { promise: Promise.resolve({ error: "claude 실행 파일을 PATH에서 찾지 못했어요. Claude Code를 먼저 설치해 주세요." }), cancel: () => {} };
+    }
+
+    const args = [
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        options.model || "sonnet",
+        "--effort",
+        "low",
+        "--no-session-persistence",
+        "--disable-slash-commands",
+        "--tools=",
+        "--setting-sources",
+        "project",
+        "--strict-mcp-config"
+    ];
+    let child = null;
+    let isCancelled = false;
+
+    const promise = new Promise((resolve) => {
+        try {
+            child = spawnClaudeProcess(launch, args, { env: getClaudeEnv(configDir), cwd: os.tmpdir(), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+        } catch (error) {
+            resolve({ error: error.message });
+
+            return;
+        }
+
+        const timer = setTimeout(() => killProcessTree(child), options.timeoutMs || ASK_TIMEOUT_MS);
+        let stdout = "";
+
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+        });
+        child.stderr.on("data", () => {});
+        child.stdin.on("error", () => {});
+        child.stdin.end(prompt, "utf8");
+        child.on("error", (error) => {
+            clearTimeout(timer);
+            resolve({ error: error.message });
+        });
+        child.on("close", (code) => {
+            clearTimeout(timer);
+
+            if (isCancelled) {
+                resolve({ cancelled: true });
+
+                return;
+            }
+
+            try {
+                const result = JSON.parse(stdout);
+
+                resolve(result.is_error || code !== 0 ? { error: String(result.result || `종료 코드 ${code}`).slice(0, 300) } : { text: String(result.result ?? "") });
+            } catch {
+                resolve({ error: code === 0 ? "Claude의 답을 읽지 못했어요." : `Claude가 답하지 못했어요 (종료 코드 ${code}, 시간이 너무 걸렸을 수 있어요).` });
+            }
+        });
+    });
+
+    return {
+        promise: promise,
+        cancel: () => {
+            isCancelled = true;
+
+            if (child) {
+                killProcessTree(child);
+            }
+        }
+    };
+};
+
 const isLoginUrl = (text) => {
     try {
         const { protocol, hostname } = new URL(text);
@@ -253,4 +334,4 @@ const startLogin = (configDir, handlers, options = {}) => {
     };
 };
 
-module.exports = { findClaude, getAuthStatus, renewCredentials, startLogin, isLoginUrl, LOGIN_CODE_PATTERN, LOGIN_EMAIL_PATTERN };
+module.exports = { findClaude, getAuthStatus, renewCredentials, askClaude, startLogin, isLoginUrl, LOGIN_CODE_PATTERN, LOGIN_EMAIL_PATTERN };

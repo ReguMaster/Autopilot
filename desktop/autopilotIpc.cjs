@@ -3,7 +3,7 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createRunner, execEngine, parseBuildPhase, MODEL_CHOICES, EFFORT_CHOICES, STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
-const { getProjectError, canInitGitRepo, initGitRepo, isProjectReportFile, isProjectLogFile, getPhaseDoc, readPhaseDoc } = require("./projectFiles.cjs");
+const { getProjectError, canInitGitRepo, initGitRepo, getGitAuthor, createProject, isProjectReportFile, isProjectLogFile, getPhaseDoc, readPhaseDoc } = require("./projectFiles.cjs");
 const { createStreakStore } = require("./streakStore.cjs");
 const { sanitizeCardContent, getCardFileName, renderCardPng } = require("./shareCard.cjs");
 const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_RUN_COUNT } = require("./runHistory.cjs");
@@ -17,8 +17,10 @@ const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
 const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES } = require("./settingsStore.cjs");
+const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
+const { askClaude } = require("./claudeCli.cjs");
+const { getDraftPrompt, parseDraft, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
@@ -890,6 +892,110 @@ const handleInitGitRepo = async () => {
     return pending.kind === "select" ? selectProjectDir(pending.dir) : openTabDir(pending.dir);
 };
 
+// 새 프로젝트를 만들 상위 폴더. 이번 실행에서 대화상자로 고른 폴더, 없으면 마지막으로 만든 위치, 없으면 문서 폴더다. 렌더러는 경로를 보내지 않는다.
+let pickedCreateParent = "";
+
+const getCreateParentDir = () => {
+    const saved = readSettings().createParentDir;
+
+    return pickedCreateParent || (saved && fs.existsSync(saved) ? saved : app.getPath("documents"));
+};
+
+const handleGetCreateInfo = async () => {
+    return { status: STATUS_OK, data: { parentDir: getCreateParentDir(), author: await getGitAuthor() } };
+};
+
+const handlePickCreateDir = async (event) => {
+    const selection = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: "새 프로젝트를 만들 위치 선택",
+        defaultPath: getCreateParentDir(),
+        properties: ["openDirectory", "createDirectory"]
+    });
+
+    if (!selection.canceled) {
+        pickedCreateParent = selection.filePaths[0];
+    }
+
+    return { status: STATUS_OK, data: { parentDir: getCreateParentDir(), canceled: selection.canceled } };
+};
+
+// 진행 중인 초안 요청. 한 번에 하나만 두고 새 요청이나 취소가 오면 앞의 것을 끝낸다.
+let draftRequest = null;
+
+const handleCancelDraft = () => {
+    draftRequest?.cancel();
+    draftRequest = null;
+
+    return { status: STATUS_OK };
+};
+
+// 한두 줄 설명으로 Claude에게 초안(이름·요약·사용자·기능·하지 않을 것·기술 스택)을 받는다. 답은 parseDraft가 다듬은 값만 돌려준다.
+const handleDraftProject = async (event, request = {}) => {
+    const what = typeof request.what === "string" ? request.what.slice(0, MAX_WHAT_LENGTH) : "";
+    const platforms = Array.isArray(request.platforms) ? request.platforms.filter((key) => PLATFORM_KEYS.includes(key)) : [];
+
+    if (!what.trim()) {
+        return createFailure("INVALID_DRAFT", "무엇을 만들고 싶은지 적어 주세요.");
+    }
+
+    handleCancelDraft();
+
+    const account = await accounts.getDraftAccount();
+
+    if (account.status !== STATUS_OK) {
+        return account;
+    }
+
+    const ask = askClaude(account.data.configDir, getDraftPrompt({ what: what, platforms: platforms }));
+
+    draftRequest = ask;
+
+    const result = await ask.promise;
+
+    if (draftRequest === ask) {
+        draftRequest = null;
+    }
+
+    if (result.cancelled) {
+        return createFailure("CANCELED", "초안 만들기를 그만뒀어요.");
+    }
+
+    if (result.error) {
+        return createFailure("DRAFT_FAILED", `Claude가 초안을 쓰지 못했어요. ${result.error}`);
+    }
+
+    const draft = parseDraft(result.text);
+
+    return draft ? { status: STATUS_OK, data: { draft: draft } } : createFailure("DRAFT_INVALID", "Claude의 초안을 읽지 못했어요.");
+};
+
+// 새 프로젝트를 만들고 새 탭으로 연다. 신규 개발 모드에 brief.md 내용을 만들 것으로 채워 시작 전 화면에서 바로 기획을 시작할 수 있게 한다.
+const handleCreateProject = async (event, request = {}) => {
+    if (readSettings().tabs.length >= MAX_TABS) {
+        return createFailure("TOO_MANY_TABS", `탭은 ${MAX_TABS}개까지 열 수 있어요. 탭 하나를 닫고 만들어 주세요.`);
+    }
+
+    const parentDir = getCreateParentDir();
+    const author = request.author && typeof request.author === "object" ? { name: String(request.author.name ?? "").trim(), email: String(request.author.email ?? "").trim() } : null;
+    const created = await createProject({ parentDir: parentDir, name: request.name, brief: request.brief, author: author });
+
+    if (created.error) {
+        return createFailure(created.code, created.error);
+    }
+
+    updateSettings({ createParentDir: parentDir });
+
+    const opened = settingsStore.openTab(created.projectDir);
+
+    if (opened.error) {
+        return createFailure("TOO_MANY_TABS", opened.error);
+    }
+
+    settingsStore.remember(opened.projectDir, { mode: "build", tasks: created.brief });
+
+    return getSwitchResult(sessionPool.open(opened.projectDir), { created: true });
+};
+
 const handleActivateTab = async (event, requestedDir) => {
     const session = sessionPool.get(requestedDir);
 
@@ -1395,6 +1501,11 @@ const registerIpc = () => {
     ipcMain.handle("autopilot:get-phase", handleGetPhase);
     ipcMain.handle("autopilot:approve-phase", handleApprovePhase);
     ipcMain.handle("autopilot:init-git-repo", handleInitGitRepo);
+    ipcMain.handle("autopilot:get-create-info", handleGetCreateInfo);
+    ipcMain.handle("autopilot:pick-create-dir", handlePickCreateDir);
+    ipcMain.handle("autopilot:draft-project", handleDraftProject);
+    ipcMain.handle("autopilot:cancel-draft", handleCancelDraft);
+    ipcMain.handle("autopilot:create-project", handleCreateProject);
     ipcMain.handle("autopilot:read-phase-doc", handleReadPhaseDoc);
     ipcMain.handle("autopilot:open-phase-doc", handleOpenPhaseDoc);
     ipcMain.handle("autopilot:open-report", handleOpenReport);

@@ -1,6 +1,8 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
+const { getProjectNameError, sanitizeBrief } = require("./projectDraft.cjs");
 
 const GIT_TIMEOUT_MS = 30000;
 const WORK_DIR_NAME = ".autopilot";
@@ -36,14 +38,10 @@ const runGit = (git, args, options) => {
     });
 };
 
-// main 브랜치로 새 저장소를 만들고 빈 첫 commit을 남긴다(작업 브랜치가 main에서 갈라진다). 실패하면 git이 알려준 이유를, 성공하면 빈 문자열을 돌려준다.
-// commit 작성자가 설정되지 않았으면 지어내지 않고 git의 안내를 그대로 알린다.
-const initGitRepo = async (dir, { git = "git", env = process.env } = {}) => {
-    for (const args of [
-        ["init", "-b", "main"],
-        ["commit", "--allow-empty", "-m", "init"]
-    ]) {
-        const error = await runGit(git, args, { cwd: dir, env: env });
+// 차례로 실행하다 처음 실패한 git의 이유를, 모두 성공하면 빈 문자열을 돌려준다.
+const runGitSteps = async (git, steps, options) => {
+    for (const args of steps) {
+        const error = await runGit(git, args, options);
 
         if (error) {
             return error;
@@ -51,6 +49,116 @@ const initGitRepo = async (dir, { git = "git", env = process.env } = {}) => {
     }
 
     return "";
+};
+
+// main 브랜치로 시작하는 저장소 만들기. init -b는 git 2.28부터라 옛 git도 되게 HEAD를 직접 main으로 돌린다.
+const INIT_MAIN_STEPS = [["init"], ["symbolic-ref", "HEAD", "refs/heads/main"]];
+
+// main 브랜치로 새 저장소를 만들고 빈 첫 commit을 남긴다(작업 브랜치가 main에서 갈라진다). 실패하면 git이 알려준 이유를, 성공하면 빈 문자열을 돌려준다.
+// commit 작성자가 설정되지 않았으면 지어내지 않고 git의 안내를 그대로 알린다.
+const initGitRepo = async (dir, { git = "git", env = process.env } = {}) => {
+    return runGitSteps(git, [...INIT_MAIN_STEPS, ["commit", "--allow-empty", "-m", "init"]], { cwd: dir, env: env });
+};
+
+const readGitConfig = (git, key, env) => {
+    return new Promise((resolve) => {
+        execFile(git, ["config", "--get", key], { cwd: os.tmpdir(), env: env, windowsHide: true, timeout: GIT_TIMEOUT_MS, encoding: "utf8" }, (error, stdout) => resolve(error ? "" : stdout.trim()));
+    });
+};
+
+// 저장소 밖(전역·시스템 설정)에 commit 작성자가 있는지. 둘 중 하나라도 없으면 null이라 새 프로젝트 화면이 작성자를 받는다.
+const getGitAuthor = async ({ git = "git", env = process.env } = {}) => {
+    const [name, email] = await Promise.all([readGitConfig(git, "user.name", env), readGitConfig(git, "user.email", env)]);
+
+    return name && email ? { name: name, email: email } : null;
+};
+
+const AUTHOR_NAME_PATTERN = /^[^\u0000-\u001f\u007f<>]{1,100}$/;
+const AUTHOR_EMAIL_PATTERN = /^[^\s@<>]{1,64}@[^\s@<>]{1,253}$/;
+const BRIEF_PATH = "docs/autopilot/brief.md";
+
+const isDirectory = (dir) => {
+    try {
+        return fs.statSync(dir).isDirectory();
+    } catch {
+        return false;
+    }
+};
+
+// 새 프로젝트: <만들 위치>/<이름> 폴더(없거나 비어 있어야 함)에 main 저장소를 만들고 brief.md를 첫 commit으로 남긴다.
+// 작성자를 받았으면 이 저장소에만 설정한다. 도중에 실패하면 만든 것만 지운다(이미 있던 빈 폴더는 남긴다).
+const createProject = async ({ parentDir, name, brief, author = null, git = "git", env = process.env }) => {
+    const nameError = getProjectNameError(name);
+
+    if (nameError) {
+        return { code: "INVALID_NAME", error: nameError };
+    }
+
+    if (!parentDir || !isDirectory(parentDir)) {
+        return { code: "INVALID_PARENT", error: "만들 위치 폴더를 찾지 못했어요. 다시 골라 주세요." };
+    }
+
+    if (author && !(AUTHOR_NAME_PATTERN.test(author.name ?? "") && AUTHOR_EMAIL_PATTERN.test(author.email ?? ""))) {
+        return { code: "INVALID_AUTHOR", error: "작성자 이름과 이메일을 확인해 주세요." };
+    }
+
+    const projectDir = path.join(parentDir, name);
+    const isExisting = fs.existsSync(projectDir);
+
+    if (isExisting && (!isDirectory(projectDir) || fs.readdirSync(projectDir).length > 0)) {
+        return { code: "NOT_EMPTY", error: `${name} 폴더가 이미 있고 비어 있지 않아요. 다른 이름을 써 주세요.` };
+    }
+
+    const briefText = sanitizeBrief(brief);
+    const options = { cwd: projectDir, env: env };
+
+    try {
+        if (!isExisting) {
+            fs.mkdirSync(projectDir);
+        }
+
+        const initError = await runGitSteps(
+            git,
+            [
+                ...INIT_MAIN_STEPS,
+                ...(author
+                    ? [
+                          ["config", "user.name", author.name],
+                          ["config", "user.email", author.email]
+                      ]
+                    : [])
+            ],
+            options
+        );
+
+        if (initError) {
+            throw new Error(initError);
+        }
+
+        fs.mkdirSync(path.join(projectDir, path.dirname(BRIEF_PATH)), { recursive: true });
+        fs.writeFileSync(path.join(projectDir, BRIEF_PATH), briefText, "utf8");
+
+        const commitError = await runGitSteps(
+            git,
+            [
+                ["add", "--", BRIEF_PATH],
+                ["commit", "-m", "init: 프로젝트 초안(brief.md)"]
+            ],
+            options
+        );
+
+        if (commitError) {
+            throw new Error(commitError);
+        }
+    } catch (error) {
+        const created = isExisting ? [".git", "docs"].map((entry) => path.join(projectDir, entry)) : [projectDir];
+
+        created.forEach((target) => fs.rmSync(target, { recursive: true, force: true }));
+
+        return { code: "CREATE_FAILED", error: `프로젝트를 만들지 못했어요: ${error.message}` };
+    }
+
+    return { projectDir: projectDir, brief: briefText };
 };
 
 // 엔진이 알려준 경로를 그대로 열거나 읽지 않도록, 프로젝트 .autopilot/progress/ 아래에 있고 이름이 엔진이 만드는 형식인 파일만 허용한다.
@@ -156,6 +264,8 @@ module.exports = {
     getProjectError,
     canInitGitRepo,
     initGitRepo,
+    getGitAuthor,
+    createProject,
     isProjectReportFile,
     isProjectLogFile,
     getProgressDir,

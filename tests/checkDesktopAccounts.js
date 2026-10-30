@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { createAccountStore, normalizeAccounts, sanitizeLabel, resolveBaseDir, getHomeConfigDir, DEFAULT_ACCOUNT_ID, MAX_ACCOUNTS } = require("../desktop/accountStore.cjs");
-const { getAuthStatus, startLogin, isLoginUrl } = require("../desktop/claudeCli.cjs");
+const { getAuthStatus, startLogin, isLoginUrl, askClaude } = require("../desktop/claudeCli.cjs");
 const { applyLoginShellPath, parseShellPath, mergePath, runLoginShell } = require("../desktop/loginShellPath.cjs");
 const { readKeychainOAuth, getServiceNames, decodeSecret } = require("../desktop/keychainCredentials.cjs");
 
@@ -456,6 +456,50 @@ const checkKeychainCredentials = async (testDir) => {
     }
 };
 
+// 새 프로젝트 초안 요청: 질문은 명령줄이 아니라 stdin으로 가고(사용자 글이 CMD 래퍼에 섞이지 않게), 도구·MCP 없이 JSON 결과를 읽는다. 그만두면 cancelled다.
+const ASK_SOURCE = String.raw`
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+    input += chunk;
+});
+process.stdin.on("end", () => {
+    if (input.includes("멈춤")) {
+        setInterval(() => {}, 1000);
+        return;
+    }
+    if (input.includes("실패")) {
+        console.log(JSON.stringify({ type: "result", is_error: true, result: "Not logged in" }));
+        process.exit(1);
+    }
+    console.log(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify({ args: process.argv.slice(2), input: input, config: process.env.CLAUDE_CONFIG_DIR }) }));
+});
+`;
+
+const checkAskClaude = async (testDir) => {
+    const fakeFile = path.join(testDir, "fakeAsk.cjs");
+    const fake = { command: process.execPath, prefixArgs: [fakeFile] };
+
+    fs.writeFileSync(fakeFile, ASK_SOURCE);
+
+    const answer = await askClaude(testDir, "미용실 & 예약", fake).promise;
+    const echo = JSON.parse(answer.text);
+
+    assert.equal(echo.input, "미용실 & 예약");
+    assert.equal(echo.config, testDir);
+    assert(echo.args.includes("--tools=") && echo.args.includes("--strict-mcp-config") && echo.args.includes("-p"));
+    assert(!echo.args.some((arg) => arg.includes("미용실")), "질문은 명령줄에 넣지 않는다");
+
+    assert.match((await askClaude(testDir, "실패", fake).promise).error, /Not logged in/);
+
+    const pending = askClaude(testDir, "멈춤", fake);
+
+    setTimeout(pending.cancel, 200);
+    assert.deepEqual(await pending.promise, { cancelled: true });
+    assert((await askClaude(testDir, "멈춤", { ...fake, timeoutMs: 300 }).promise).error, "시간이 넘으면 끝내고 실패로 알린다");
+    assert.match((await askClaude(testDir, "x", { command: path.join(testDir, "missing-claude") }).promise).error, /./);
+};
+
 const runChecks = async () => {
     const testDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-accounts-"));
 
@@ -465,6 +509,7 @@ const runChecks = async () => {
         checkAccountStore(testDir);
 
         await checkClaudeCli(testDir);
+        await checkAskClaude(testDir);
         await checkLoginShellPath(testDir);
         await checkKeychainCredentials(testDir);
 
