@@ -22,8 +22,9 @@ import {
     DEFAULT_ALLOW as UI_DEFAULT_ALLOW,
     DESIGN_FORMATS as UI_DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT as UI_DEFAULT_DESIGN_FORMAT,
-    QA_ON_FAIL_CHOICES as UI_QA_ON_FAIL_CHOICES,
-    DEFAULT_QA_ON_FAIL as UI_DEFAULT_QA_ON_FAIL
+    ON_FAIL_CHOICES as UI_ON_FAIL_CHOICES,
+    DEFAULT_QA_ON_FAIL as UI_DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL as UI_DEFAULT_SECURITY_ON_FAIL
 } from "../desktop/ui/lib/constants.js";
 import {
     MODEL_CHOICES as ENGINE_MODELS,
@@ -45,6 +46,7 @@ import {
     DESIGN_FORMATS as ENGINE_DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT as ENGINE_DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL as ENGINE_DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL as ENGINE_DEFAULT_SECURITY_ON_FAIL,
     MAX_RUN_DAYS as ENGINE_MAX_RUN_DAYS
 } from "../autopilot/src/utils/config.js";
 import engineUtil from "../autopilot/src/utils/util.js";
@@ -82,8 +84,9 @@ const {
     ALLOW_KEYS,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,
-    QA_ON_FAIL_PATTERN,
+    ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL,
     MAX_RUN_DAYS
 } = require("../desktop/engineArgs.cjs");
 
@@ -977,12 +980,21 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...base, linkedRepos: ["/api", "/web"] }).slice(-4), ["--link-project", "/api", "--link-project", "/web"]);
 
     // 신규 개발 인자는 build일 때만 붙고, 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다. 계정 폴더는 맨 뒤다.
-    const buildBase = { ...base, mode: "build", gates: ["plan", "design"], allow: ["deps", "large"], designFormat: DEFAULT_DESIGN_FORMAT, qaOnFail: DEFAULT_QA_ON_FAIL };
+    const buildBase = {
+        ...base,
+        mode: "build",
+        gates: ["plan", "design"],
+        allow: ["deps", "large"],
+        designFormat: DEFAULT_DESIGN_FORMAT,
+        qaOnFail: DEFAULT_QA_ON_FAIL,
+        securityOnFail: DEFAULT_SECURITY_ON_FAIL
+    };
 
     assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain" }), getCliArgs(base));
     assert.deepEqual(getCliArgs({ ...buildBase, configDir: "/c" }).slice(-8), ["--mode", "build", "--gate", "plan,design", "--allow", "deps,large", "--config-dir", "/c"]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [] }).slice(-2), ["--mode", "build"]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], designFormat: "figma", qaOnFail: "stop" }).slice(-6), ["--mode", "build", "--design-format", "figma", "--qa-on-fail", "stop"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], securityOnFail: "retry:1" }).slice(-4), ["--mode", "build", "--security-on-fail", "retry:1"]);
 
     // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
     const now = new Date(2026, 9, 30, 22, 10).getTime();
@@ -1006,27 +1018,44 @@ const checkBuildLogs = () => {
     }
 
     assert.equal(state.mode, "build");
-    assert.deepEqual(state.step, { phase: "qa", status: "failed", qaRetries: 1 });
+    assert.deepEqual(state.step, { phase: "qa", status: "failed", qaRetries: 1, securityRetries: 0 });
 
     parseLine(state, "[단계] 개발 시작");
-    assert.deepEqual(state.step, { phase: "build", status: "running", qaRetries: 1 }, "되돌린 횟수는 다음 단계 줄에도 남는다");
+    assert.deepEqual(state.step, { phase: "build", status: "running", qaRetries: 1, securityRetries: 0 }, "되돌린 횟수는 다음 단계 줄에도 남는다");
+
+    // 보안검토가 되돌린 횟수는 테스트/QA와 따로 센다.
+    parseLine(state, "[단계] 보안검토 시작");
+    parseLine(state, "[단계] 보안검토 실패 - 개발로 되돌림 (2/3)");
+    assert.deepEqual(state.step, { phase: "security", status: "failed", qaRetries: 1, securityRetries: 2 });
 
     parseLine(state, "[단계] 기획 확인 대기");
-    assert.deepEqual(state.step, { phase: "plan", status: "awaiting", qaRetries: 1 });
+    assert.deepEqual(state.step, { phase: "plan", status: "awaiting", qaRetries: 1, securityRetries: 2 });
 
     parseLine(state, "    [단계] 디자인 시작");
     parseLine(state, "[단계] 배포 시작");
     assert.equal(state.step.phase, "plan", "들여 쓴 위조 줄과 모르는 단계는 읽지 않는다");
     assert.equal(createInitialState().step, null);
 
-    assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"design","awaiting":"plan","qaRetries":0}}\n'), { phase: "design", awaiting: "plan", qaRetries: 0 });
-    assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"done","awaiting":null,"qaRetries":2}}'), { phase: "done", awaiting: null, qaRetries: 2 });
+    assert.deepEqual(
+        parseBuildPhase('{"running":false,"phase":{"phase":"design","awaiting":"plan","qaRetries":0}}\n'),
+        { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0 },
+        "옛 엔진은 securityRetries가 없다"
+    );
+    assert.deepEqual(parseBuildPhase('{"running":false,"phase":{"phase":"done","awaiting":null,"qaRetries":2,"securityRetries":1}}'), {
+        phase: "done",
+        awaiting: null,
+        qaRetries: 2,
+        securityRetries: 1
+    });
+    assert.equal(parseBuildPhase('{"running":false,"phase":{"phase":"security","awaiting":null,"qaRetries":0,"securityRetries":0}}').phase, "security");
 
     for (const stdout of [
         '{"running":false}',
         '{"phase":{"phase":"ship","awaiting":null,"qaRetries":0}}',
         '{"phase":{"phase":"qa","awaiting":"qa","qaRetries":0}}',
         '{"phase":{"phase":"qa","awaiting":null,"qaRetries":-1}}',
+        '{"phase":{"phase":"qa","awaiting":null,"qaRetries":0,"securityRetries":"1"}}',
+        '{"phase":5}',
         "nope",
         ""
     ]) {
@@ -1076,6 +1105,9 @@ const checkPhaseDocs = (testDir) => {
 
     assert.equal(qaDoc.isPartial, true, "256KB를 넘으면 앞부분만 읽는다");
     assert(Buffer.byteLength(qaDoc.text) <= MAX_PHASE_DOC_BYTES);
+    assert.equal(readPhaseDoc(projectDir, "security"), null, "보안검토 기록이 없으면 읽을 것이 없다");
+    fs.writeFileSync(path.join(docsDir, "security.md"), "| 심각도 | 위치 |\n");
+    assert.deepEqual(readPhaseDoc(projectDir, "security"), { kind: "file", path: "docs/autopilot/security.md", text: "| 심각도 | 위치 |\n", isPartial: false });
 
     for (const phase of ["build", "../plan", "constructor", "__proto__", ""]) {
         assert.equal(readPhaseDoc(projectDir, phase), null, phase);
@@ -1130,7 +1162,7 @@ const checkChoiceSync = () => {
     assert(UI_POLICIES.every((value) => Object.hasOwn(POLICY_ALIASES, value)));
     assert.equal(POLICY_ALIASES[UI_DEFAULT_POLICY], POLICY_SELF);
 
-    // 작업 모드와 신규 개발 값: 엔진·engineArgs·러너·화면이 같아야 하고, 테스트/QA 실패 처리는 엔진이 받는 값만 고른다.
+    // 작업 모드와 신규 개발 값: 엔진·engineArgs·러너·화면이 같아야 하고, 테스트/QA·보안검토 실패 처리는 엔진이 받는 값만 고른다.
     for (const [appValue, uiValue, engineValue] of [
         [MODES, UI_MODES, ENGINE_MODES],
         [GATE_PHASES, UI_GATE_PHASES, ENGINE_GATE_PHASES],
@@ -1138,6 +1170,7 @@ const checkChoiceSync = () => {
         [DESIGN_FORMATS, UI_DESIGN_FORMATS, ENGINE_DESIGN_FORMATS],
         [DEFAULT_DESIGN_FORMAT, UI_DEFAULT_DESIGN_FORMAT, ENGINE_DEFAULT_DESIGN_FORMAT],
         [DEFAULT_QA_ON_FAIL, UI_DEFAULT_QA_ON_FAIL, ENGINE_DEFAULT_QA_ON_FAIL],
+        [DEFAULT_SECURITY_ON_FAIL, UI_DEFAULT_SECURITY_ON_FAIL, ENGINE_DEFAULT_SECURITY_ON_FAIL],
         [RUNNER_BUILD_PHASES, UI_BUILD_PHASES, ENGINE_BUILD_PHASES],
         [RUNNER_PHASE_LABELS, UI_PHASE_LABELS, ENGINE_PHASE_LABELS]
     ]) {
@@ -1152,10 +1185,10 @@ const checkChoiceSync = () => {
     assert.equal(DEFAULT_SETTINGS.mode, UI_DEFAULT_MODE);
 
     for (const value of ["stop", "retry:0", "retry:1", "retry:3", "retry:5", "retry:6", "retry:03", "again"]) {
-        assert.equal(QA_ON_FAIL_PATTERN.test(value), UI_QA_ON_FAIL_CHOICES.includes(value), `테스트/QA 실패 처리 ${value}`);
+        assert.equal(ON_FAIL_PATTERN.test(value), UI_ON_FAIL_CHOICES.includes(value), `실패 처리 ${value}`);
 
-        if (QA_ON_FAIL_PATTERN.test(value)) {
-            assert.notEqual(phaseUtil.parseQaOnFail(value), null, `엔진도 ${value}를 받는다`);
+        if (ON_FAIL_PATTERN.test(value)) {
+            assert.notEqual(phaseUtil.parseOnFail(value), null, `엔진도 ${value}를 받는다`);
         }
     }
 };

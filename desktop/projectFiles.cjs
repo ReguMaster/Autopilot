@@ -91,7 +91,8 @@ const PHASE_DOCS = {
         { path: "docs/autopilot/design.md", isDir: false },
         { path: "docs/autopilot/design", isDir: true }
     ],
-    qa: [{ path: "docs/autopilot/qa.md", isDir: false }]
+    qa: [{ path: "docs/autopilot/qa.md", isDir: false }],
+    security: [{ path: "docs/autopilot/security.md", isDir: false }]
 };
 const MAX_PHASE_DOC_BYTES = 256 * 1024;
 const MAX_PHASE_DOC_ENTRIES = 200;

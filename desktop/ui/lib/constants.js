@@ -12,16 +12,18 @@ const POLICY_LABELS = { auto: "자율개선", todo: "지시개선" };
 // 작업 모드와 신규 개발. 엔진 config.js·engineArgs.cjs와 같다.
 const MODES = ["maintain", "build"];
 const DEFAULT_MODE = "maintain";
-const BUILD_PHASES = ["plan", "design", "build", "qa"];
-const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA" };
+const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
+const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
 const GATE_PHASES = ["plan", "design"];
 const DEFAULT_GATES = ["plan", "design"];
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DEFAULT_ALLOW = ["deps", "large"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
 const DEFAULT_DESIGN_FORMAT = "html";
-const QA_ON_FAIL_CHOICES = ["stop", "retry:1", "retry:2", "retry:3", "retry:4", "retry:5"];
+// 테스트/QA·보안검토가 fail이면 개발로 되돌리는 횟수. 두 단계가 같은 값을 쓴다.
+const ON_FAIL_CHOICES = ["stop", "retry:1", "retry:2", "retry:3", "retry:4", "retry:5"];
 const DEFAULT_QA_ON_FAIL = "retry:3";
+const DEFAULT_SECURITY_ON_FAIL = "retry:3";
 
 const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·Effort를 바꿀 수 없어요";
 
@@ -51,8 +53,9 @@ export {
     DEFAULT_ALLOW,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,
-    QA_ON_FAIL_CHOICES,
+    ON_FAIL_CHOICES,
     DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL,
     OPTIONS_LOCKED_TITLE,
     MAIN_ACTIONS
 };

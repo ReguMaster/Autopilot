@@ -419,7 +419,9 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     composer.toggleAllow("deps");
     assert.deepEqual(useComposerStore.getState().allow, ["large", "send"]);
     composer.setMode("build");
-    assert.deepEqual(composer.getModeOptions(), { mode: "build", gates: ["plan", "design"], allow: ["large", "send"], designFormat: "html", qaOnFail: "retry:3" });
+    composer.setSecurityOnFail("stop");
+    assert.deepEqual(composer.getModeOptions(), { mode: "build", gates: ["plan", "design"], allow: ["large", "send"], designFormat: "html", qaOnFail: "retry:3", securityOnFail: "stop" });
+    composer.setSecurityOnFail("retry:3");
     composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"] }, ["mode", "gates", "allow"]);
 
     calls.length = 0;

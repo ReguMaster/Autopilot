@@ -122,16 +122,16 @@ const checkNormalize = () => {
     const buildDefaults = normalizeSettings({});
 
     assert.deepEqual(
-        [buildDefaults.mode, buildDefaults.gates, buildDefaults.allow, buildDefaults.designFormat, buildDefaults.qaOnFail],
-        ["maintain", ["plan", "design"], ["deps", "large"], "html", "retry:3"]
+        [buildDefaults.mode, buildDefaults.gates, buildDefaults.allow, buildDefaults.designFormat, buildDefaults.qaOnFail, buildDefaults.securityOnFail],
+        ["maintain", ["plan", "design"], ["deps", "large"], "html", "retry:3", "retry:3"]
     );
     assert.deepEqual(normalizeSettings({ mode: "build", gates: [], allow: ["send"], designFormat: "figma", qaOnFail: "stop" }).allow, ["send"]);
     assert.deepEqual(
-        normalizeOverrides({ mode: "fast", gates: ["plan", "plan"], allow: ["root"], designFormat: "pdf", qaOnFail: "retry:9", endTime: "2026-11-02 07:00" }),
+        normalizeOverrides({ mode: "fast", gates: ["plan", "plan"], allow: ["root"], designFormat: "pdf", qaOnFail: "retry:9", securityOnFail: "retry:0", endTime: "2026-11-02 07:00" }),
         {},
         "허용되지 않은 신규 개발 값과 날짜를 붙인 종료 시각은 버린다"
     );
-    assert.deepEqual(normalizeOverrides({ mode: "build", gates: ["design"] }), { mode: "build", gates: ["design"] });
+    assert.deepEqual(normalizeOverrides({ mode: "build", gates: ["design"], securityOnFail: "stop" }), { mode: "build", gates: ["design"], securityOnFail: "stop" });
     assert.equal(normalizeSettings({ commitPrefix: "a`b" }).commitPrefix, "[ap]");
     assert.equal(normalizeSettings({}).logRetentionDays, 30);
     assert.equal(normalizeSettings({ logRetentionDays: 7 }).logRetentionDays, 7);

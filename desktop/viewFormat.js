@@ -295,6 +295,9 @@ const getLineKind = ({ stream, text }) => {
     return "";
 };
 
+// 신규 개발에서 테스트/QA·보안검토가 되돌릴 횟수를 다 쓰고 멈춘 종료 사유. 엔진은 이때도 종료 코드 0으로 끝낸다.
+const PHASE_FAILED_PATTERN = /^(테스트\/QA|보안검토) 실패$/;
+
 // 앱이 시작하지 않고 연결한 엔진은 종료 코드를 알 수 없어(exitCode가 null) 종료 사유로만 판단한다.
 const getRunPhase = (state) => {
     if (state.status === "running") {
@@ -307,6 +310,13 @@ const getRunPhase = (state) => {
 
     if (!state.endedAt) {
         return { label: "대기 중", tone: "muted" };
+    }
+
+    const phaseFailed = PHASE_FAILED_PATTERN.exec(state.reason || "");
+
+    // 단계 실패는 종료 코드가 0이어도 정상 종료가 아니라 그 단계에서 멈춘 것이다.
+    if (phaseFailed) {
+        return { label: `${phaseFailed[1]}에서 멈춤`, tone: "warn" };
     }
 
     if (state.exitCode === 0) {
@@ -492,8 +502,9 @@ const FINISH_REASONS = [
     [/사용량 한도/, () => "사용량 한도 때문에 더 이어 가지 못했어요."],
     [/회차 상한/, () => "정해진 회차를 모두 채웠어요."],
     [/^(.+) 확인 대기$/, (state, match) => `${match[1]} 결과를 확인해 주시면 다음 단계를 이어서 할게요.`],
-    [/모든 단계 완료$/, () => "기획부터 테스트/QA까지 모든 단계를 마쳤어요."],
-    [/^테스트\/QA 실패$/, () => "테스트/QA에서 고치지 못한 문제가 남아서 멈췄어요. docs/autopilot/qa.md에서 확인해 주세요."]
+    [/모든 단계 완료$/, () => "기획부터 보안검토까지 모든 단계를 마쳤어요."],
+    [/^테스트\/QA 실패$/, () => "테스트/QA에서 고치지 못한 문제가 남아서 멈췄어요. docs/autopilot/qa.md에서 확인해 주세요."],
+    [/^보안검토 실패$/, () => "보안검토에서 고치지 못한 심각한 문제가 남아서 멈췄어요. docs/autopilot/security.md에서 확인해 주세요."]
 ];
 
 const getReasonText = (reason, deadlineAt) => {
@@ -527,8 +538,8 @@ const describeFinish = (state) => {
         title = "확인을 기다리고 있어요.";
     } else if (/모든 단계 완료$/.test(state.reason)) {
         title = "모든 단계를 마쳤어요.";
-    } else if (state.reason === "테스트/QA 실패") {
-        title = "테스트/QA에서 멈췄어요.";
+    } else if (PHASE_FAILED_PATTERN.test(state.reason)) {
+        title = `${PHASE_FAILED_PATTERN.exec(state.reason)[1]}에서 멈췄어요.`;
     } else if (tone === "warn") {
         title = "여기까지 하고 멈췄어요.";
     } else if (hour >= 5 && hour < 12) {
@@ -949,7 +960,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PAST_STATUSES = [
     [/^예정 시각 도달$|예약 작업 완료|연속 새 commit 없음|회차 상한/, "정상 종료", "ok"],
     [/모든 단계 완료$/, "모든 단계 완료", "ok"],
-    [/^테스트\/QA 실패$/, "QA 실패", "danger"],
+    [/^테스트\/QA 실패$/, "QA 실패", "warn"],
+    [/^보안검토 실패$/, "보안검토 실패", "warn"],
     [/^중단 요청$|^강제 종료$/, "중단됨", "warn"],
     [/사용량 한도/, "한도로 멈춤", "warn"],
     [/연속 \d+회 실패|^실행 오류/, "오류 종료", "danger"]

@@ -1,7 +1,7 @@
-import { BUILD_PHASES, GATE_PHASES, PHASE_LABELS, QA_ON_FAIL_CHOICES } from "./constants.js";
+import { BUILD_PHASES, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS } from "./constants.js";
 
 // 신규 개발 단계 카드와 시작 전 안내에 쓰는 문구. DOM에 의존하지 않아 tests/checkDesktopUi.js가 그대로 부른다.
-const PHASE_DETAILS = { plan: "만들 것을 정리해요", design: "화면을 그려요", build: "코드를 짜고 커밋해요", qa: "확인하고 고쳐요" };
+const PHASE_DETAILS = { plan: "만들 것을 정리해요", design: "화면을 그려요", build: "코드를 짜고 커밋해요", qa: "확인하고 고쳐요", security: "약점을 찾아 고쳐요" };
 const PHASE_DONE = "done";
 
 const DESIGN_FORMAT_OPTIONS = [
@@ -11,10 +11,13 @@ const DESIGN_FORMAT_OPTIONS = [
     { value: "image", label: "이미지(Codex)", hint: "codex exec로 시안 이미지를 만들어요. 외부 서비스 보내기가 필요해요" }
 ];
 
-const QA_ON_FAIL_OPTIONS = [
-    ...QA_ON_FAIL_CHOICES.filter((value) => value !== "stop").map((value) => ({ value: value, label: `실패하면 개발로, ${value.split(":")[1]}번까지` })),
-    { value: "stop", label: "실패하면 멈추기", hint: "QA 결과만 남기고 끝내요" }
+// 테스트/QA·보안검토가 실패하면 개발로 되돌리는 횟수. 칸이 좁아 선택 상자에는 짧은 이름만 쓰고 뜻은 칸의 설명이 맡는다.
+const ON_FAIL_OPTIONS = [
+    ...ON_FAIL_CHOICES.filter((value) => value !== "stop").map((value) => ({ value: value, label: `${value.split(":")[1]}번까지` })),
+    { value: "stop", label: "되돌리지 않기", hint: "결과만 남기고 멈춰요" }
 ];
+const ON_FAIL_CAPTIONS = { qa: "실패하면 개발로 되돌려요", security: "심각하면 개발로 되돌려요" };
+const ON_FAIL_SUBJECTS = { qa: "실패하면", security: "심각하면" };
 
 const ALLOW_OPTIONS = [
     { key: "deps", label: "새 dependency 추가", desc: "추가한 이유는 기획서와 커밋에 남겨요" },
@@ -85,16 +88,36 @@ const getBuildActionLabel = (buildPhase) => {
     return buildPhase?.awaiting ? `${PHASE_LABELS[startPhase]} 다시 하기` : `${PHASE_LABELS[startPhase]} 시작`;
 };
 
-const getQaOnFailLabel = (qaOnFail) => {
-    return QA_ON_FAIL_OPTIONS.find((option) => option.value === qaOnFail)?.label || "";
+// 기다리는 테스트/QA·보안검토 칸의 설명(예: 개발로 최대 3번). 다섯 칸이 한 줄에 들어가도록 짧게 쓴다.
+const getOnFailLabel = (phase, value) => {
+    const subject = ON_FAIL_SUBJECTS[phase];
+
+    if (!subject || !ON_FAIL_CHOICES.includes(value)) {
+        return "";
+    }
+
+    return value === "stop" ? `${subject} 멈춰요` : `개발로 최대 ${value.split(":")[1]}번`;
+};
+
+const getMaxRetries = (value) => {
+    return value === "stop" ? 0 : Number(String(value).split(":")[1] || 0);
+};
+
+// 되돌아온 개발 칸의 설명. 테스트/QA와 보안검토가 되돌린 횟수를 따로 보여준다(예: 다시 개발 QA 1/3, 둘 다면 QA 1/3, 보안 1/3).
+const getRetryText = (step, qaOnFail, securityOnFail) => {
+    const parts = [step?.qaRetries ? `QA ${step.qaRetries}/${getMaxRetries(qaOnFail)}` : "", step?.securityRetries ? `보안 ${step.securityRetries}/${getMaxRetries(securityOnFail)}` : ""].filter(
+        Boolean
+    );
+
+    return parts.length === 1 ? `다시 개발 ${parts[0]}` : parts.join(", ");
 };
 
 // 실행 중·마친 뒤의 단계 카드. 엔진의 [단계] 줄(step)이 있으면 그 단계가 지금이고, 오기 전에는 시작할 단계(buildPhase)가 지금이다.
-// 마친 단계 중 확인받기로 둔 것은 "확인함", 테스트/QA에서 돌아온 개발은 몇 번째로 다시 하는지 보여준다.
-const getRunSteps = ({ step, buildPhase, gates, qaOnFail, round }) => {
+// 마친 단계 중 확인받기로 둔 것은 "확인함", 테스트/QA·보안검토에서 돌아온 개발은 몇 번째로 다시 하는지 보여준다.
+const getRunSteps = ({ step, buildPhase, gates, qaOnFail, securityOnFail, round }) => {
     const current = step?.phase || getBuildStartPhase(buildPhase);
     const currentIndex = current === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(current);
-    const maxRetries = qaOnFail === "stop" ? 0 : Number(String(qaOnFail).split(":")[1] || 0);
+    const onFail = { qa: qaOnFail, security: securityOnFail };
 
     return BUILD_PHASES.map((phase, index) => {
         if (index < currentIndex || (index === currentIndex && step?.status === "done")) {
@@ -106,33 +129,40 @@ const getRunSteps = ({ step, buildPhase, gates, qaOnFail, round }) => {
         }
 
         if (index === currentIndex && step?.status === "failed") {
-            return { phase: phase, state: "hold", detail: "고치지 못한 실패가 남았어요" };
+            return { phase: phase, state: "hold", detail: "문제가 남았어요" };
         }
 
         if (index === currentIndex) {
-            const retryText = phase === "build" && step?.qaRetries ? `다시 개발 ${step.qaRetries}/${maxRetries}` : "";
+            const retryText = phase === "build" ? getRetryText(step, qaOnFail, securityOnFail) : "";
 
             return { phase: phase, state: "active", detail: retryText || (round ? `${round}회차` : "준비하고 있어요") };
         }
 
-        return { phase: phase, state: "waiting", detail: phase === "qa" ? getQaOnFailLabel(qaOnFail) : PHASE_DETAILS[phase] };
+        return { phase: phase, state: "waiting", detail: getOnFailLabel(phase, onFail[phase]) || PHASE_DETAILS[phase] };
     });
 };
 
 // 실행 중 카드의 단계 문서: 지금까지 온 단계의 산출물. 지금 단계 것은 쓰는 중, 지난 단계 것은 확인받기로 뒀으면 확인함이다.
+// 테스트/QA·보안검토가 개발로 되돌렸으면 그 기록(qa.md·security.md)은 이미 있으므로 고칠 항목으로 함께 보여준다.
 const getPhaseDocs = ({ step, buildPhase, gates, designFormat }) => {
     const current = step?.phase || getBuildStartPhase(buildPhase);
     const currentIndex = current === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(current);
+    const retries = { qa: step?.qaRetries || buildPhase?.qaRetries || 0, security: step?.securityRetries || buildPhase?.securityRetries || 0 };
     const docs = [
         { phase: "plan", path: "docs/autopilot/plan.md" },
         { phase: "design", path: designFormat === "md" ? "docs/autopilot/design.md" : "docs/autopilot/design/" },
-        { phase: "qa", path: "docs/autopilot/qa.md" }
+        { phase: "qa", path: "docs/autopilot/qa.md" },
+        { phase: "security", path: "docs/autopilot/security.md" }
     ];
 
     return docs
-        .filter((doc) => BUILD_PHASES.indexOf(doc.phase) <= currentIndex)
+        .filter((doc) => BUILD_PHASES.indexOf(doc.phase) <= currentIndex || retries[doc.phase] > 0)
         .map((doc) => {
             const isWriting = doc.phase === current && step?.status !== "done";
+
+            if (BUILD_PHASES.indexOf(doc.phase) > currentIndex) {
+                return { ...doc, note: "고칠 항목" };
+            }
 
             return { ...doc, note: isWriting ? "쓰는 중" : gates.includes(doc.phase) ? "확인함" : "마침" };
         });
@@ -149,13 +179,14 @@ export {
     PHASE_DETAILS,
     PHASE_DONE,
     DESIGN_FORMAT_OPTIONS,
-    QA_ON_FAIL_OPTIONS,
+    ON_FAIL_OPTIONS,
+    ON_FAIL_CAPTIONS,
     ALLOW_OPTIONS,
     getBuildStartPhase,
     getReadySteps,
     getBuildGreeting,
     getBuildActionLabel,
-    getQaOnFailLabel,
+    getOnFailLabel,
     getRunSteps,
     getPhaseDocs,
     getRevisionTasks

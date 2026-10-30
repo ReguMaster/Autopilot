@@ -705,7 +705,7 @@ const checkShareCard = ({ pickCardSentence, splitCardEmphasis, getCardWhen, buil
 };
 
 // 신규 개발: 단계 줄은 이야기·지난 실행 대화에 한 문장으로 남고, 종료 사유는 확인 대기·모든 단계 완료·QA 실패를 들려준다.
-const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, getReasonText, describeFinish, describePastRun, getLineKind }) => {
+const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, buildTranscript, getReasonText, describeFinish, describePastRun, getLineKind, getRunPhase }) => {
     assert.equal(describeStepLine("[단계] 기획 시작"), "기획 단계를 시작할게요.");
     assert.equal(describeStepLine("[단계] 디자인 완료"), "디자인 단계를 마쳤어요.");
     assert.equal(describeStepLine("[단계] 기획 확인 대기"), "기획 결과를 확인해 주시면 이어서 할게요.");
@@ -738,8 +738,10 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
     );
 
     assert.equal(getReasonText("디자인 확인 대기", 0), "디자인 결과를 확인해 주시면 다음 단계를 이어서 할게요.");
-    assert.equal(getReasonText("신규 개발: 모든 단계 완료", 0), "기획부터 테스트/QA까지 모든 단계를 마쳤어요.");
+    assert.equal(getReasonText("신규 개발: 모든 단계 완료", 0), "기획부터 보안검토까지 모든 단계를 마쳤어요.");
     assert.match(getReasonText("테스트/QA 실패", 0), /qa\.md/);
+    assert.match(getReasonText("보안검토 실패", 0), /security\.md/);
+    assert.equal(describeStepLine("[단계] 보안검토 실패 - 개발로 되돌림 (2/3)"), "보안검토에서 문제가 남아서 개발로 돌아가 고칠게요. (2/3)");
     assert.equal(
         describeFinish({ status: "idle", endedAt: new Date(2026, 9, 14, 22, 0).getTime(), exitCode: 0, reason: "기획 확인 대기", rounds: [], deadlineAt: 0, work: {} }).title,
         "확인을 기다리고 있어요."
@@ -749,13 +751,20 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
 
     assert.equal(describeFinish({ ...buildEnd, reason: "신규 개발: 모든 단계 완료" }).title, "모든 단계를 마쳤어요.");
     assert.equal(describeFinish({ ...buildEnd, reason: "테스트/QA 실패" }).title, "테스트/QA에서 멈췄어요.");
+    assert.equal(describeFinish({ ...buildEnd, reason: "보안검토 실패" }).title, "보안검토에서 멈췄어요.");
+
+    // 단계 실패는 종료 코드가 0이어도 상태 줄이 정상 종료라고 하지 않는다(태그와 같은 말을 한다).
+    assert.deepEqual(getRunPhase({ ...buildEnd, reason: "보안검토 실패" }), { label: "보안검토에서 멈춤", tone: "warn" });
+    assert.deepEqual(getRunPhase({ ...buildEnd, exitCode: null, reason: "테스트/QA 실패" }), { label: "테스트/QA에서 멈춤", tone: "warn" });
+    assert.deepEqual(getRunPhase({ ...buildEnd, reason: "신규 개발: 모든 단계 완료" }), { label: "정상 종료", tone: "ok" });
 
     const now = new Date(2026, 9, 14, 9, 0).getTime();
     const run = { startedAt: now - 3600000, endedAt: now, roundCount: 3, commitCount: 3, insertions: 10, deletions: 0, mode: "build", isEmpty: false, isUnreadable: false, isActive: false };
 
     assert.deepEqual({ ...describePastRun({ ...run, reason: "기획 확인 대기" }, now).status }, { label: "기획 확인 대기", tone: "warn" });
     assert.deepEqual({ ...describePastRun({ ...run, reason: "신규 개발: 모든 단계 완료" }, now).status }, { label: "모든 단계 완료", tone: "ok" });
-    assert.deepEqual({ ...describePastRun({ ...run, reason: "테스트/QA 실패" }, now).status }, { label: "QA 실패", tone: "danger" });
+    assert.deepEqual({ ...describePastRun({ ...run, reason: "테스트/QA 실패" }, now).status }, { label: "QA 실패", tone: "warn" });
+    assert.deepEqual({ ...describePastRun({ ...run, reason: "보안검토 실패" }, now).status }, { label: "보안검토 실패", tone: "warn" });
     assert.match(describePastRun({ ...run, reason: "기획 확인 대기" }, now).meta, /^신규 개발 · 3회차/);
     assert.doesNotMatch(describePastRun({ ...run, mode: "", reason: "예정 시각 도달" }, now).meta, /신규 개발/);
 };

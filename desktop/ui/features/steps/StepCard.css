@@ -1,9 +1,9 @@
-/* 신규 개발 단계 카드: 이어 붙은 네 칸. 위 2px 막대는 마친 단계의 비율, 지금 단계는 파란 바탕과 아래 3px 선, 확인을 기다리는 단계는 주황이다 */
+/* 신규 개발 단계 카드: 이어 붙은 다섯 칸. 위 2px 막대는 마친 단계의 비율, 지금 단계는 파란 바탕과 아래 3px 선, 확인을 기다리는 단계는 주황이다 */
 .step-card {
     position: relative;
     display: grid;
     flex: none;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     margin: 0;
     padding: 0;
     overflow: hidden;
@@ -186,17 +186,25 @@
     color: var(--warn);
 }
 
-/* 좁은 창에서는 설정을 펼친 카드가 두 줄(2×2)로 접힌다 */
+/* 좁은 창에서는 설정을 펼친 카드가 두 줄(위 세 칸, 아래 두 칸)로 접힌다 */
 @media (max-width: 960px) {
     .step-card.expanded {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 
-    .step-card.expanded .step:nth-child(3) {
-        box-shadow: inset 0 1px 0 var(--hair);
+    .step-card.expanded .step {
+        grid-column: span 2;
+    }
+
+    .step-card.expanded .step:nth-child(n + 4) {
+        grid-column: span 3;
     }
 
     .step-card.expanded .step:nth-child(4) {
+        box-shadow: inset 0 1px 0 var(--hair);
+    }
+
+    .step-card.expanded .step:nth-child(5) {
         box-shadow:
             inset 1px 0 0 var(--hair),
             inset 0 1px 0 var(--hair);

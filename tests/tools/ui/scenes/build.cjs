@@ -99,6 +99,20 @@ const BUILD_RUN_SCENES = [
         }
     },
     {
+        name: "run-build-security-retry",
+        init: {
+            ...RUN_BUILD,
+            state: buildRunState({ step: { phase: "build", status: "running", qaRetries: 1, securityRetries: 1 } }),
+            model: { buildPhase: { phase: "build", awaiting: null, qaRetries: 1, securityRetries: 1 } }
+        },
+        run: async (t) => {
+            await t.log(BUILD_LINES);
+            await t.shot("run");
+            await t.shot("steps", "#run-steps");
+            await t.shot("card", "#run-card");
+        }
+    },
+    {
         name: "run-maintain",
         init: { settings: { projectDir: PROJECT }, state: runningState(), tabs: [{ projectDir: PROJECT, name: "Kirikomodo", status: "running" }] },
         run: async (t) => {
@@ -162,11 +176,11 @@ const BUILD_RUN_SCENES = [
                 mode: "build",
                 reason: "신규 개발: 모든 단계 완료",
                 exitCode: 0,
-                step: { phase: "qa", status: "done", qaRetries: 1 },
+                step: { phase: "security", status: "done", qaRetries: 1, securityRetries: 0 },
                 rounds: BUILD_ROUNDS.slice(0, 3),
                 gains: [{ round: 3, text: "테스트 통과 0 → 34" }]
             }),
-            model: { buildPhase: { phase: "done", awaiting: null, qaRetries: 1 } }
+            model: { buildPhase: { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 0 } }
         },
         run: async (t) => {
             await t.shot("done");
@@ -186,6 +200,25 @@ const BUILD_RUN_SCENES = [
                 gains: []
             }),
             model: { buildPhase: { phase: "qa", awaiting: null, qaRetries: 3 } }
+        },
+        run: async (t) => {
+            await t.shot("done");
+        }
+    },
+    {
+        name: "done-security-failed",
+        init: {
+            ...BUILD,
+            state: doneState({
+                project: SECOND,
+                mode: "build",
+                reason: "보안검토 실패",
+                exitCode: 0,
+                step: { phase: "security", status: "failed", qaRetries: 0, securityRetries: 3 },
+                rounds: BUILD_ROUNDS.slice(0, 3),
+                gains: []
+            }),
+            model: { buildPhase: { phase: "security", awaiting: null, qaRetries: 0, securityRetries: 3 } }
         },
         run: async (t) => {
             await t.shot("done");

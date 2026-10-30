@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
     allow: ["deps", "large"],
     designFormat: "html",
     qaOnFail: "retry:3",
+    securityOnFail: "retry:3",
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -71,7 +72,8 @@ const OVERRIDABLE_DEFAULTS = {
     gates: DEFAULT_SETTINGS.gates,
     allow: DEFAULT_SETTINGS.allow,
     designFormat: DEFAULT_SETTINGS.designFormat,
-    qaOnFail: DEFAULT_SETTINGS.qaOnFail
+    qaOnFail: DEFAULT_SETTINGS.qaOnFail,
+    securityOnFail: DEFAULT_SETTINGS.securityOnFail
 };
 const DEFAULT_ACCOUNTS = {
     accounts: [{ id: "default", label: "기본 계정", shared: false }],

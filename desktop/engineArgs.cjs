@@ -9,14 +9,16 @@ const COMMIT_PREFIX_PATTERN = /^[^`\p{Cc}]{1,20}$/u;
 const WORK_BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
 const MAX_WORK_BRANCH_LENGTH = 100;
 const PROTECTED_BRANCHES = ["main", "master", "head"];
-// 작업 모드와 신규 개발 인자. 값은 엔진 config.js(MODES·GATE_PHASES·ALLOW_KEYS·DESIGN_FORMATS·DEFAULT_*·MAX_QA_RETRIES)와 같다.
+// 작업 모드와 신규 개발 인자. 값은 엔진 config.js(MODES·GATE_PHASES·ALLOW_KEYS·DESIGN_FORMATS·DEFAULT_*·MAX_FAIL_RETRIES)와 같다.
 const MODES = ["maintain", "build"];
 const GATE_PHASES = ["plan", "design"];
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
 const DEFAULT_DESIGN_FORMAT = "html";
-const QA_ON_FAIL_PATTERN = /^(stop|retry:[1-5])$/;
+// 테스트/QA·보안검토가 fail이면 개발로 되돌리는 횟수(stop은 되돌리지 않고 멈춤). 두 단계가 같은 형식을 쓴다.
+const ON_FAIL_PATTERN = /^(stop|retry:[1-5])$/;
 const DEFAULT_QA_ON_FAIL = "retry:3";
+const DEFAULT_SECURITY_ON_FAIL = "retry:3";
 // 종료 시각은 HH:mm(다음에 오는 그 시각) 또는 yyyy-MM-dd HH:mm(그 날짜)이다. 날짜는 엔진의 MAX_RUN_DAYS(7일) 뒤까지다.
 const END_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2} )?([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_RUN_DAYS = 7;
@@ -66,7 +68,7 @@ const getEndTimeError = (endTime, now = Date.now()) => {
 };
 
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail }) => {
+const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail }) => {
     if (mode !== "build") {
         return [];
     }
@@ -87,6 +89,10 @@ const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail }) 
 
     if (qaOnFail && qaOnFail !== DEFAULT_QA_ON_FAIL) {
         args.push("--qa-on-fail", qaOnFail);
+    }
+
+    if (securityOnFail && securityOnFail !== DEFAULT_SECURITY_ON_FAIL) {
+        args.push("--security-on-fail", securityOnFail);
     }
 
     return args;
@@ -162,7 +168,8 @@ module.exports = {
     ALLOW_KEYS,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,
-    QA_ON_FAIL_PATTERN,
+    ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
+    DEFAULT_SECURITY_ON_FAIL,
     MAX_RUN_DAYS
 };

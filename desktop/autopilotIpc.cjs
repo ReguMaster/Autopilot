@@ -115,7 +115,7 @@ const isValidRoundOptions = ({ model, effort }) => {
 };
 
 // 작업 모드와 신규 개발 설정. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail"];
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail"];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
@@ -125,7 +125,7 @@ const isValidModeOptions = (options) => {
     return MODE_KEYS.every((key) => SETTING_VALIDATORS[key](options[key]));
 };
 
-// 엔진 status가 알려주는 신규 개발 단계 상태({phase, awaiting, qaRetries}). 신규 개발을 한 적 없거나 읽지 못하면 null이다.
+// 엔진 status가 알려주는 신규 개발 단계 상태({phase, awaiting, qaRetries, securityRetries}). 신규 개발을 한 적 없거나 읽지 못하면 null이다.
 const readBuildPhase = (projectDir) => {
     return new Promise((resolve) => {
         execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "status", [], (error, stdout) => {

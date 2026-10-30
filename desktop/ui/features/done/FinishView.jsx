@@ -20,6 +20,8 @@ import { StepCard } from "../steps/StepCard.jsx";
 const FINISH_GAIN_LIMIT = 3;
 const FINISH_ROUND_LIMIT = 6;
 const TAG_ICONS = { ok: "icon-check", warn: "icon-pause", danger: "icon-x" };
+// 단계 실패로 멈췄을 때 열어 볼 그 단계의 기록
+const FAILED_DOCS = { "테스트/QA 실패": { phase: "qa", name: "qa.md" }, "보안검토 실패": { phase: "security", name: "security.md" } };
 
 const sum = (commits, field) => commits.reduce((total, commit) => total + commit[field], 0);
 
@@ -51,7 +53,7 @@ const FinishRound = ({ round }) => {
     );
 };
 
-// 신규 개발을 모두 마쳤으면 유지 보수로 넘어가 다듬기를 권하고, 테스트/QA 실패로 멈췄으면 실패 기록(qa.md)을 열게 한다(다시 하기는 주 버튼이 맡는다).
+// 신규 개발을 모두 마쳤으면 유지 보수로 넘어가 다듬기를 권하고, 테스트/QA·보안검토 실패로 멈췄으면 그 기록(qa.md·security.md)을 열게 한다(다시 하기는 주 버튼이 맡는다).
 const BuildNext = ({ reason }) => {
     if (/모든 단계 완료$/.test(reason)) {
         return (
@@ -68,11 +70,13 @@ const BuildNext = ({ reason }) => {
         );
     }
 
-    if (reason === "테스트/QA 실패") {
+    const failedDoc = FAILED_DOCS[reason];
+
+    if (failedDoc) {
         return (
-            <Button id="done-open-qa" onClick={() => openPhaseDoc("qa")}>
+            <Button id={`done-open-${failedDoc.phase}`} onClick={() => openPhaseDoc(failedDoc.phase)}>
                 <Icon symbol="icon-out" />
-                qa.md 열기
+                {`${failedDoc.name} 열기`}
             </Button>
         );
     }
@@ -82,9 +86,9 @@ const BuildNext = ({ reason }) => {
 
 const FinishSteps = ({ state }) => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
-    const { gates, qaOnFail } = useComposerStore(useShallow((store) => ({ gates: store.gates, qaOnFail: store.qaOnFail })));
+    const { gates, qaOnFail, securityOnFail } = useComposerStore(useShallow((store) => ({ gates: store.gates, qaOnFail: store.qaOnFail, securityOnFail: store.securityOnFail })));
 
-    return <StepCard id="finish-steps" cells={getRunSteps({ step: state.step, buildPhase: buildPhase, gates: gates, qaOnFail: qaOnFail, round: state.round })} />;
+    return <StepCard id="finish-steps" cells={getRunSteps({ step: state.step, buildPhase: buildPhase, gates: gates, qaOnFail: qaOnFail, securityOnFail: securityOnFail, round: state.round })} />;
 };
 
 const FinishBody = () => {

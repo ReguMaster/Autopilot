@@ -166,26 +166,34 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
     const fresh = getReadySteps(null);
 
     assert.deepEqual(
-        fresh.map((cell) => cell.state),
-        ["waiting", "waiting", "waiting", "waiting"]
+        fresh.map((cell) => [cell.phase, cell.state]),
+        [
+            ["plan", "waiting"],
+            ["design", "waiting"],
+            ["build", "waiting"],
+            ["qa", "waiting"],
+            ["security", "waiting"]
+        ]
     );
+    assert.equal(fresh[4].detail, "약점을 찾아 고쳐요");
     assert.deepEqual(
         getReadySteps({ phase: "build", awaiting: null, qaRetries: 0 }).map((cell) => cell.state),
-        ["done", "done", "next", "waiting"]
+        ["done", "done", "next", "waiting", "waiting"]
     );
     assert.deepEqual(
         getReadySteps({ phase: "design", awaiting: "plan", qaRetries: 0 }).map((cell) => cell.state),
-        ["hold", "waiting", "waiting", "waiting"],
+        ["hold", "waiting", "waiting", "waiting", "waiting"],
         "확인을 기다리던 단계는 승인 없이 시작하면 다시 하므로 그 칸이 멈춤이다"
     );
     assert.deepEqual(
         getReadySteps({ phase: "done", awaiting: null, qaRetries: 1 }).map((cell) => cell.state),
-        ["done", "done", "done", "done"]
+        ["done", "done", "done", "done", "done"]
     );
 
     assert.equal(getBuildActionLabel(null), "기획 시작");
     assert.equal(getBuildActionLabel({ phase: "build", awaiting: "design", qaRetries: 0 }), "디자인 다시 하기");
     assert.equal(getBuildActionLabel({ phase: "qa", awaiting: null, qaRetries: 0 }), "테스트/QA 시작");
+    assert.equal(getBuildActionLabel({ phase: "security", awaiting: null, qaRetries: 0, securityRetries: 0 }), "보안검토 시작");
     assert.equal(
         getBuildGreeting({ buildPhase: null, endLabel: "07:00", gates: ["plan"] }).lead,
         "적어 주신 내용으로 기획부터 시작해서 07:00까지 이어 갈게요. 기획 단계가 끝나면 멈추고 확인을 기다려요."
@@ -208,28 +216,36 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
     const compact = renderStepCard({ cells: getReadySteps({ phase: "build", awaiting: null, qaRetries: 0 }) });
 
     assert.match(compact, /class="step-card"/);
-    assert.match(compact, /--step-progress:50%/);
+    assert.match(compact, /--step-progress:40%/);
     assert.equal((compact.match(/href="#icon-check"/g) ?? []).length, 2);
 };
 
 // 실행 중 단계 카드: [단계] 줄이 지금 단계를 정하고, 오기 전에는 시작할 단계가 지금이다. 확인받기로 둔 지난 단계는 "확인함"이다.
 const checkRunSteps = ({ getRunSteps, getPhaseDocs, getRevisionTasks, renderDocPreview }) => {
-    const base = { buildPhase: { phase: "build", awaiting: null, qaRetries: 0 }, gates: ["plan"], qaOnFail: "retry:3", round: 4 };
+    const base = { buildPhase: { phase: "build", awaiting: null, qaRetries: 0, securityRetries: 0 }, gates: ["plan"], qaOnFail: "retry:3", securityOnFail: "retry:2", round: 4 };
     const getCells = (options) => getRunSteps({ ...base, ...options }).map((cell) => `${cell.state}:${cell.detail}`);
 
-    assert.deepEqual(getCells({ step: null }), ["done:확인함", "done:마쳤어요", "active:4회차", "waiting:실패하면 개발로, 3번까지"]);
-    assert.deepEqual(getCells({ step: { phase: "build", status: "running", qaRetries: 1 } })[2], "active:다시 개발 1/3");
+    assert.deepEqual(getCells({ step: null }), ["done:확인함", "done:마쳤어요", "active:4회차", "waiting:개발로 최대 3번", "waiting:개발로 최대 2번"]);
+    assert.equal(getCells({ step: null, securityOnFail: "stop" })[4], "waiting:심각하면 멈춰요");
+    assert.deepEqual(getCells({ step: { phase: "build", status: "running", qaRetries: 1, securityRetries: 0 } })[2], "active:다시 개발 QA 1/3");
+    assert.deepEqual(getCells({ step: { phase: "build", status: "running", qaRetries: 1, securityRetries: 2 } })[2], "active:QA 1/3, 보안 2/2");
     assert.deepEqual(getCells({ step: { phase: "design", status: "awaiting", qaRetries: 0 } }).slice(0, 2), ["done:확인함", "hold:확인을 기다려요"]);
     assert.deepEqual(
         getCells({ step: { phase: "qa", status: "done", qaRetries: 1 } }).map((cell) => cell.split(":")[0]),
-        ["done", "done", "done", "done"]
+        ["done", "done", "done", "done", "waiting"]
     );
-    assert.deepEqual(getCells({ step: { phase: "qa", status: "failed", qaRetries: 3 }, qaOnFail: "stop" })[3], "hold:고치지 못한 실패가 남았어요");
+    assert.deepEqual(getCells({ step: { phase: "security", status: "failed", qaRetries: 0, securityRetries: 2 } })[4], "hold:문제가 남았어요");
+    assert.deepEqual(getCells({ step: { phase: "qa", status: "failed", qaRetries: 3 }, qaOnFail: "stop" })[3], "hold:문제가 남았어요");
     assert.equal(getCells({ step: null, buildPhase: null, round: 0 })[0], "active:준비하고 있어요");
 
     assert.deepEqual(
         getPhaseDocs({ step: { phase: "build", status: "running", qaRetries: 0 }, buildPhase: null, gates: ["plan"], designFormat: "html" }).map((doc) => `${doc.path} ${doc.note}`),
         ["docs/autopilot/plan.md 확인함", "docs/autopilot/design/ 마침"]
+    );
+    assert.deepEqual(
+        getPhaseDocs({ step: { phase: "build", status: "running", qaRetries: 0, securityRetries: 1 }, buildPhase: null, gates: [], designFormat: "md" }).map((doc) => `${doc.path} ${doc.note}`),
+        ["docs/autopilot/plan.md 마침", "docs/autopilot/design.md 마침", "docs/autopilot/security.md 고칠 항목"],
+        "보안검토가 되돌린 개발은 security.md를 고칠 항목으로 보여준다"
     );
     assert.deepEqual(
         getPhaseDocs({ step: null, buildPhase: null, gates: [], designFormat: "md" }).map((doc) => doc.note),

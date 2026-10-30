@@ -20,7 +20,9 @@ const StepCard = ({ id, cells, settings = null, label = "신규 개발 단계" }
                         </span>
                         <span className="step-label">{PHASE_LABELS[cell.phase]}</span>
                     </div>
-                    <p className="step-detail">{cell.detail}</p>
+                    <p className="step-detail" title={cell.detail}>
+                        {cell.detail}
+                    </p>
                     {settings?.[cell.phase] ? <div className="step-set">{settings[cell.phase]}</div> : null}
                 </li>
             ))}

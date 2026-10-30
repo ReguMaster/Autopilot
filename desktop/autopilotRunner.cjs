@@ -16,8 +16,10 @@ const ATTACH_READ_CHUNK_BYTES = 1024 * 1024;
 
 const HEADER_PATTERN = /^(Project|Deadline|Policy|Mode|Log|Report) : (.+)$/;
 // 신규 개발의 단계. 이름은 엔진 config.js의 BUILD_PHASES·PHASE_LABELS와 같다.
-const BUILD_PHASES = ["plan", "design", "build", "qa"];
-const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA" };
+const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
+const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
+// fail이면 개발로 되돌리는 단계와 그 단계가 되돌린 횟수를 세는 키(엔진 phaseUtil.RETRY_KEYS)
+const RETRY_KEYS = { qa: "qaRetries", security: "securityRetries" };
 const STEP_PATTERN = /^\[단계\] (.+?) (시작|완료|확인 대기|실패)(?: - 개발로 되돌림 \((\d+)\/\d+\))?$/;
 const STEP_STATUSES = { 시작: "running", 완료: "done", "확인 대기": "awaiting", 실패: "failed" };
 const DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/;
@@ -205,9 +207,15 @@ const parseLine = (state, line, isReplay = false) => {
     const step = line.match(STEP_PATTERN);
     const stepPhase = step && BUILD_PHASES.find((phase) => PHASE_LABELS[phase] === step[1]);
 
-    // 신규 개발의 지금 단계. 테스트/QA에서 개발로 되돌린 횟수는 다음 단계 줄에도 이어 둔다.
+    // 신규 개발의 지금 단계. 테스트/QA·보안검토가 개발로 되돌린 횟수는 단계마다 따로 세고 다음 단계 줄에도 이어 둔다.
     if (stepPhase) {
-        state.step = { phase: stepPhase, status: STEP_STATUSES[step[2]], qaRetries: step[3] ? Number(step[3]) : state.step?.qaRetries || 0 };
+        const retries = { qaRetries: state.step?.qaRetries || 0, securityRetries: state.step?.securityRetries || 0 };
+
+        if (step[3] && RETRY_KEYS[stepPhase]) {
+            retries[RETRY_KEYS[stepPhase]] = Number(step[3]);
+        }
+
+        state.step = { phase: stepPhase, status: STEP_STATUSES[step[2]], ...retries };
 
         return;
     }
@@ -286,14 +294,20 @@ const parseRunStatus = (stdout) => {
     return null;
 };
 
-// 엔진 status 출력의 신규 개발 단계 상태({phase, awaiting, qaRetries}). 신규 개발을 한 적 없거나 형식이 맞지 않으면 null이다.
+const isCount = (value) => {
+    return Number.isInteger(value) && value >= 0;
+};
+
+// 엔진 status 출력의 신규 개발 단계 상태({phase, awaiting, qaRetries, securityRetries}). 신규 개발을 한 적 없거나 형식이 맞지 않으면 null이다.
 const parseBuildPhase = (stdout) => {
     try {
-        const phase = JSON.parse(stdout.trim().split(/\r?\n/).at(-1))?.phase;
+        const parsed = JSON.parse(stdout.trim().split(/\r?\n/).at(-1))?.phase;
+        // 보안검토가 생기기 전의 엔진은 securityRetries를 보내지 않는다.
+        const phase = parsed && { securityRetries: 0, ...parsed };
         const isValid =
-            [...BUILD_PHASES, "done"].includes(phase?.phase) && (phase.awaiting === null || ["plan", "design"].includes(phase.awaiting)) && Number.isInteger(phase.qaRetries) && phase.qaRetries >= 0;
+            [...BUILD_PHASES, "done"].includes(phase?.phase) && (phase.awaiting === null || ["plan", "design"].includes(phase.awaiting)) && isCount(phase.qaRetries) && isCount(phase.securityRetries);
 
-        return isValid ? { phase: phase.phase, awaiting: phase.awaiting, qaRetries: phase.qaRetries } : null;
+        return isValid ? { phase: phase.phase, awaiting: phase.awaiting, qaRetries: phase.qaRetries, securityRetries: phase.securityRetries } : null;
     } catch {
         return null;
     }
