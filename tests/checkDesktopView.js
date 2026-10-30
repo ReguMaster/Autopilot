@@ -100,22 +100,57 @@ const checkRoundTime = ({ formatRoundTime }) => {
     assert.equal(formatRoundTime({ timesKnown: false, startedAt: startedAt, endedAt: startedAt }), "시각을 알 수 없어요");
 };
 
-// 종료 시각은 날짜 없이 HH:mm이고, 비우면 07:00, 지난 시각은 다음 날이다(엔진과 같다).
-const checkEndTime = ({ shiftEndTime, getEndTimeAfter, formatTimeUntil }) => {
+// 종료 시각은 HH:mm(비우면 07:00, 지난 시각은 다음 날)이거나 "yyyy-MM-dd HH:mm"이다(엔진과 같다). 24시간 안은 HH:mm으로, 그보다 뒤는 날짜를 붙여 쓴다.
+const checkEndTime = (view) => {
+    const { shiftEndTime, getEndTimeAfter, formatTimeUntil, resolveEndTime, buildEndTime, getEndTimeParts, formatEndTimeLabel, formatEndTimeShort, describeEndTime, getEndTimeShortcuts } = view;
+    // 2026-10-10은 토요일이다.
     const at2232 = new Date(2026, 9, 10, 22, 32, 10).getTime();
     const at0700 = new Date(2026, 9, 10, 7, 0).getTime();
+    const at1200 = new Date(2026, 9, 10, 12, 0).getTime();
 
-    assert.equal(shiftEndTime("", 60), "08:00");
-    assert.equal(shiftEndTime("23:30", 60), "00:30");
-    assert.equal(shiftEndTime("00:05", -10), "23:55");
+    // 시각만 옮기고 고른 날은 그대로다. 그 날의 시각이 24시간을 넘어가면 날짜를 붙인다.
+    assert.equal(shiftEndTime("", 60, at1200), "08:00");
+    assert.equal(shiftEndTime("23:30", 60, at1200), "00:30");
+    assert.equal(shiftEndTime("00:05", -10, at1200), "2026-10-11 23:55");
+    assert.equal(shiftEndTime("07:00", 360, at1200), "2026-10-11 13:00");
+    assert.equal(shiftEndTime("2026-10-13 07:00", 60, at1200), "2026-10-13 08:00");
+    assert.equal(shiftEndTime("2026-10-13 23:30", 60, at1200), "2026-10-13 00:30");
 
     assert.equal(getEndTimeAfter(at2232, 60), "23:35");
     assert.equal(getEndTimeAfter(at2232, 180), "01:35");
+    assert.equal(getEndTimeAfter(at1200, 7 * 1440), "2026-10-17 12:00");
 
     assert.equal(formatTimeUntil("", at2232), "8시간 28분 뒤");
     assert.equal(formatTimeUntil("23:00", at2232), "28분 뒤");
     assert.equal(formatTimeUntil("09:00", at0700), "2시간 뒤");
     assert.equal(formatTimeUntil("07:00", at0700), "24시간 뒤");
+    assert.equal(formatTimeUntil("2026-10-12 20:50", at1200), "2일 8시간 뒤");
+
+    assert.equal(resolveEndTime("2026-10-12 07:00", at1200), new Date(2026, 9, 12, 7, 0).getTime());
+    assert.equal(resolveEndTime("07:00", at0700), new Date(2026, 9, 11, 7, 0).getTime());
+    assert.deepEqual(getEndTimeParts("07:00", at1200), { dayOffset: 1, time: "07:00" });
+    assert.deepEqual(getEndTimeParts("2026-10-12 07:00", at1200), { dayOffset: 2, time: "07:00" });
+
+    // 날을 고르면 그 날의 시각이고, 이미 지났으면 다음 날, 7일을 넘으면 상한으로 당긴다.
+    assert.equal(buildEndTime(0, "18:00", at1200), "18:00");
+    assert.equal(buildEndTime(0, "09:00", at1200), "09:00");
+    assert.equal(buildEndTime(2, "07:00", at1200), "2026-10-12 07:00");
+    assert.equal(buildEndTime(7, "18:00", at1200), "2026-10-17 12:00");
+
+    assert.equal(formatEndTimeLabel("18:00", at1200), "오늘 18:00");
+    assert.equal(formatEndTimeLabel("07:00", at1200), "내일 07:00");
+    assert.equal(formatEndTimeLabel("2026-10-12 07:00", at1200), "10월 12일 (월) 07:00");
+    assert.equal(formatEndTimeShort("07:00", at1200), "07:00");
+    assert.equal(formatEndTimeShort("2026-10-12 07:00", at1200), "월요일 07:00");
+    assert.equal(formatEndTimeShort("2026-10-17 07:00", at1200), "다음 주 토요일 07:00");
+    assert.deepEqual(describeEndTime("2026-10-12 20:50", at1200), { span: "2일 8시간 50분", until: "10월 12일 월요일 20:50까지" });
+
+    // 바로가기: 주말 내내는 다음 월요일 07:00, 월요일에는 다음 주 월요일이다.
+    const values = (nowMs) => Object.fromEntries(getEndTimeShortcuts(nowMs).map((shortcut) => [shortcut.key, shortcut.value]));
+    const monday = new Date(2026, 9, 12, 10, 0).getTime();
+
+    assert.deepEqual(values(at1200), { "3h": "15:00", tomorrow: "07:00", weekend: "2026-10-12 07:00", week: "2026-10-17 12:00" });
+    assert.equal(values(monday).weekend, "2026-10-19 07:00");
 };
 
 const checkLoginExpiry = ({ describeLoginExpiry }) => {

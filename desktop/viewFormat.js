@@ -37,10 +37,13 @@ const formatDeadline = (ms) => {
     return `${date.getMonth() + 1}월 ${date.getDate()}일 ${formatClock(ms)}`;
 };
 
-// 종료 시각(HH:mm, 비우면 엔진 기본값). 엔진처럼 날짜는 없고 이미 지난 시각이면 다음 날로 본다.
+// 종료 시각: HH:mm(비우면 엔진 기본값)은 엔진처럼 다음에 오는 그 시각이고, "yyyy-MM-dd HH:mm"은 그 날짜의 시각이다(최대 MAX_RUN_DAYS일 뒤).
 const DEFAULT_END_TIME = "07:00";
 const MINUTES_PER_DAY = 1440;
 const PRESET_ROUND_MINUTES = 5;
+// 엔진 config.js의 MAX_RUN_DAYS와 같다.
+const MAX_RUN_DAYS = 7;
+const END_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) ([01]\d|2[0-3]):([0-5]\d)$/;
 
 const parseTimeMinutes = (value) => {
     const [hours, minutes] = (value || DEFAULT_END_TIME).split(":").map(Number);
@@ -54,30 +57,125 @@ const formatTimeMinutes = (totalMinutes) => {
     return `${padNumber(Math.floor(minutes / 60))}:${padNumber(minutes % 60)}`;
 };
 
-const shiftEndTime = (value, minutes) => {
-    return formatTimeMinutes(parseTimeMinutes(value) + minutes);
+// 종료 값이 가리키는 시각(ms)
+const resolveEndTime = (value, nowMs) => {
+    const dated = END_DATE_PATTERN.exec(value || "");
+
+    if (dated) {
+        return new Date(Number(dated[1]), Number(dated[2]) - 1, Number(dated[3]), Number(dated[4]), Number(dated[5])).getTime();
+    }
+
+    const date = new Date(nowMs);
+
+    date.setHours(Math.floor(parseTimeMinutes(value) / 60), parseTimeMinutes(value) % 60, 0, 0);
+
+    if (date.getTime() <= nowMs) {
+        date.setDate(date.getDate() + 1);
+    }
+
+    return date.getTime();
 };
 
-// 지금부터 minutes 뒤를 5분 단위로 올려 잡는다.
-const getEndTimeAfter = (nowMs, minutes) => {
-    const date = new Date(nowMs);
-    const target = date.getHours() * 60 + date.getMinutes() + (date.getSeconds() > 0 ? 1 : 0) + minutes;
+// 24시간 안이면 HH:mm(엔진이 다음에 오는 그 시각으로 읽어 같은 때를 가리킨다), 그보다 뒤면 날짜를 붙인다.
+const toEndTimeValue = (ms, nowMs) => {
+    const time = formatClock(ms);
 
-    return formatTimeMinutes(Math.ceil(target / PRESET_ROUND_MINUTES) * PRESET_ROUND_MINUTES);
+    return ms - nowMs <= DAY_MS ? time : `${formatDayKey(ms)} ${time}`;
+};
+
+// 고른 날(오늘부터 dayOffset일 뒤)의 시각. 이미 지났으면 다음 날로, 엔진 상한(MAX_RUN_DAYS일)을 넘으면 상한 안의 5분 단위로 당긴다.
+const buildEndTime = (dayOffset, time, nowMs) => {
+    const date = new Date(getStartOfDay(nowMs));
+
+    date.setDate(date.getDate() + dayOffset);
+    date.setHours(Math.floor(parseTimeMinutes(time) / 60), parseTimeMinutes(time) % 60, 0, 0);
+
+    if (date.getTime() <= nowMs) {
+        date.setDate(date.getDate() + 1);
+    }
+
+    const roundMs = PRESET_ROUND_MINUTES * 60000;
+    const maxMs = Math.floor((nowMs + MAX_RUN_DAYS * DAY_MS) / roundMs) * roundMs;
+
+    return toEndTimeValue(Math.min(date.getTime(), maxMs), nowMs);
+};
+
+// 종료 값을 고른 날(오늘부터 며칠 뒤)과 시각으로 나눈다. 날짜 띠와 시각 칸이 따로 바꾼다.
+const getEndTimeParts = (value, nowMs) => {
+    const ms = resolveEndTime(value, nowMs);
+
+    return { dayOffset: Math.round((getStartOfDay(ms) - getStartOfDay(nowMs)) / DAY_MS), time: formatClock(ms) };
+};
+
+// 시각만 옮기고 고른 날은 그대로 둔다(하루 안에서 돈다).
+const shiftEndTime = (value, minutes, nowMs = Date.now()) => {
+    const { dayOffset, time } = getEndTimeParts(value, nowMs);
+
+    return buildEndTime(dayOffset, formatTimeMinutes(parseTimeMinutes(time) + minutes), nowMs);
+};
+
+// 지금부터 minutes 뒤를 5분 단위로 올려 잡는다(상한을 넘으면 상한 안으로).
+const getEndTimeAfter = (nowMs, minutes) => {
+    const roundMs = PRESET_ROUND_MINUTES * 60000;
+    const targetMs = Math.ceil((nowMs + minutes * 60000) / roundMs) * roundMs;
+
+    return toEndTimeValue(Math.min(targetMs, Math.floor((nowMs + MAX_RUN_DAYS * DAY_MS) / roundMs) * roundMs), nowMs);
+};
+
+// 지금 분부터 종료 시각까지 남은 분
+const getMinutesUntilEnd = (value, nowMs) => {
+    return Math.round((resolveEndTime(value, nowMs) - (nowMs - (nowMs % 60000))) / 60000);
+};
+
+// 하루를 넘을 때만 일을 쓴다(정확히 24시간은 "24시간"). isCompact면 일이 있을 때 분을 뺀다.
+const formatMinutesSpan = (totalMinutes, isCompact = false) => {
+    const days = totalMinutes > MINUTES_PER_DAY ? Math.floor(totalMinutes / MINUTES_PER_DAY) : 0;
+    const rest = totalMinutes - days * MINUTES_PER_DAY;
+    const parts = [days ? `${days}일` : "", Math.floor(rest / 60) ? `${Math.floor(rest / 60)}시간` : "", rest % 60 && !(days && isCompact) ? `${rest % 60}분` : ""];
+
+    return parts.filter(Boolean).join(" ") || "0분";
 };
 
 const formatTimeUntil = (value, nowMs) => {
-    const date = new Date(nowMs);
-    const nowMinutes = date.getHours() * 60 + date.getMinutes();
-    const diff = (((parseTimeMinutes(value) - nowMinutes) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY || MINUTES_PER_DAY;
-    const hours = Math.floor(diff / 60);
-    const minutes = diff % 60;
+    return `${formatMinutesSpan(getMinutesUntilEnd(value, nowMs), true)} 뒤`;
+};
 
-    if (!hours) {
-        return `${minutes}분 뒤`;
+// 알약 글자: 오늘·내일은 말로, 그 밖에는 날짜와 요일로
+const formatEndTimeLabel = (value, nowMs) => {
+    return formatScheduleWhen(resolveEndTime(value, nowMs), nowMs);
+};
+
+// 안내 문장 속 종료 시각: 24시간 안이면 시각만, 그보다 뒤면 요일을 붙인다(일주일 뒤 같은 요일은 "다음 주").
+const formatEndTimeShort = (value, nowMs) => {
+    const ms = resolveEndTime(value, nowMs);
+
+    if (ms - nowMs <= DAY_MS) {
+        return formatClock(ms);
     }
 
-    return minutes ? `${hours}시간 ${minutes}분 뒤` : `${hours}시간 뒤`;
+    const prefix = getEndTimeParts(value, nowMs).dayOffset >= 7 ? "다음 주 " : "";
+
+    return `${prefix}${WEEKDAY_NAMES[new Date(ms).getDay()]}요일 ${formatClock(ms)}`;
+};
+
+// 팝오버의 합계 줄: 남은 시간 전체와 끝나는 날짜
+const describeEndTime = (value, nowMs) => {
+    const ms = resolveEndTime(value, nowMs);
+    const date = new Date(ms);
+
+    return { span: formatMinutesSpan(getMinutesUntilEnd(value, nowMs)), until: `${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAY_NAMES[date.getDay()]}요일 ${formatClock(ms)}까지` };
+};
+
+// 바로가기: 주말 내내는 다음 월요일 07:00(오늘이 월요일이면 다음 주), 일주일은 지금부터 상한(7일)까지
+const getEndTimeShortcuts = (nowMs) => {
+    const day = new Date(nowMs).getDay();
+
+    return [
+        { key: "3h", label: "3시간 뒤", value: getEndTimeAfter(nowMs, 180) },
+        { key: "tomorrow", label: "내일 07:00", value: buildEndTime(1, DEFAULT_END_TIME, nowMs) },
+        { key: "weekend", label: "주말 내내", value: buildEndTime((8 - day) % 7 || 7, DEFAULT_END_TIME, nowMs) },
+        { key: "week", label: "일주일", value: getEndTimeAfter(nowMs, MAX_RUN_DAYS * MINUTES_PER_DAY) }
+    ];
 };
 
 const EFFORT_LABELS = { low: "Low", medium: "Medium", high: "High", xhigh: "XHigh", max: "Max" };
@@ -281,12 +379,13 @@ const getGreetingEmoji = (hour) => {
 };
 
 // streakText는 연속 실행 문장(describeStreak)이고 있으면 안내 문구 앞에 붙는다.
-const getGreeting = ({ hour, policy, endTime, projectName, streakText = "" }) => {
+// endLabel은 날짜가 붙은 종료 시각을 문장에 맞게 줄인 글자(formatEndTimeShort)다.
+const getGreeting = ({ hour, policy, endTime, endLabel = "", projectName, streakText = "" }) => {
     if (!projectName) {
         return { title: "먼저 작업할 프로젝트를 골라 주세요. 📂", lead: "Git 저장소의 루트 폴더를 고르면 바로 시작할 수 있어요." };
     }
 
-    const end = endTime || DEFAULT_END_TIME;
+    const end = endLabel || endTime || DEFAULT_END_TIME;
     const when = isNightHour(hour) ? "오늘 밤에는" : "지금부터";
     const title = `${when} ${projectName}에 무엇을 해 둘까요? ${getGreetingEmoji(hour)}`;
     const lead = policy === "todo" ? `적어 주신 일만 하나씩 해 두고 끝낼게요. 늦어도 ${end}에는 멈춰요.` : `적어 주신 일을 ${end}까지 하나씩 해 두고, 남는 시간에는 스스로 고칠 곳을 찾아볼게요.`;
@@ -1166,9 +1265,19 @@ export {
     PRESET_ROUND_MINUTES,
     parseTimeMinutes,
     formatTimeMinutes,
+    MAX_RUN_DAYS,
+    resolveEndTime,
+    toEndTimeValue,
+    buildEndTime,
+    getEndTimeParts,
     shiftEndTime,
     getEndTimeAfter,
+    formatMinutesSpan,
     formatTimeUntil,
+    formatEndTimeLabel,
+    formatEndTimeShort,
+    describeEndTime,
+    getEndTimeShortcuts,
     EFFORT_LABELS,
     formatEffort,
     getModelFamily,

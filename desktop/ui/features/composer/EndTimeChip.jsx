@@ -1,67 +1,143 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_END_TIME, formatTimeUntil } from "../../../viewFormat.js";
-import { Button } from "../../components/Button.jsx";
+import { DAY_MS, MAX_RUN_DAYS, WEEKDAY_NAMES, buildEndTime, describeEndTime, formatEndTimeLabel, formatTimeUntil, getEndTimeParts, getEndTimeShortcuts, getStartOfDay } from "../../../viewFormat.js";
 import { Chip } from "../../components/Chip.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Popover } from "../../components/Popover.jsx";
-import { TickText } from "../../components/TickText.jsx";
 import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useClock } from "../../stores/clock.js";
 import { useRunStore } from "../../stores/runStore.js";
 
-const PRESETS = [
-    { minutes: 60, label: "1시간 뒤" },
-    { minutes: 180, label: "3시간 뒤" },
-    { minutes: 360, label: "6시간 뒤" }
-];
+const TIME_PATTERN = /^([01]?\d|2[0-3]):?([0-5]\d)$/;
+const STEP_MINUTES = 10;
+const DAY_OFFSETS = Array.from({ length: MAX_RUN_DAYS + 1 }, (_, index) => index);
 
-const Arrow = ({ points }) => {
-    return (
-        <svg viewBox="0 0 12 12" aria-hidden="true">
-            <path d={points} />
-        </svg>
-    );
-};
+// 분 단위 시계. 팝오버의 날짜 띠·합계는 분이 바뀔 때만 다시 그린다.
+const getMinute = (now) => now - (now % 60000);
 
-// 시·분 한 자리. 위·아래 버튼이나 마우스 휠로 단위만큼 옮긴다.
-const TimeSpin = ({ unit, id, value, direction, upLabel, downLabel, onStep }) => {
-    const ref = useRef(null);
+// 시각 칸: 직접 적거나(Enter·포커스를 떠날 때 반영) ↑↓로 10분(Shift는 1시간)씩 옮긴다. 고른 날은 그대로 둔다.
+const TimeBox = ({ dayOffset, time }) => {
+    const [draft, setDraft] = useState(time);
 
-    // 휠은 화면이 스크롤되지 않도록 preventDefault가 필요해 passive가 아닌 리스너로 건다.
-    useEffect(() => {
-        const element = ref.current;
-        const handleWheel = (event) => {
-            event.preventDefault();
-            onStep(unit, event.deltaY < 0 ? 1 : -1);
-        };
+    useEffect(() => setDraft(time), [time]);
 
-        element.addEventListener("wheel", handleWheel, { passive: false });
+    const commit = () => {
+        const match = TIME_PATTERN.exec(draft.trim());
 
-        return () => element.removeEventListener("wheel", handleWheel);
-    }, [unit, onStep]);
+        if (!match) {
+            setDraft(time);
+
+            return;
+        }
+
+        composer.setEndTime(buildEndTime(dayOffset, `${match[1].padStart(2, "0")}:${match[2]}`, Date.now()));
+    };
+
+    const step = (minutes) => composer.stepEndTime(minutes, 1);
 
     return (
-        <div ref={ref} className="time-spin" data-unit={unit}>
-            <button type="button" className="spin-button" data-step="1" aria-label={upLabel} onClick={() => onStep(unit, 1)}>
-                <Arrow points="M3 7.5 6 4.5l3 3" />
-            </button>
-            <TickText as="b" id={id} className="num" value={value} direction={direction} />
-            <button type="button" className="spin-button" data-step="-1" aria-label={downLabel} onClick={() => onStep(unit, -1)}>
-                <Arrow points="M3 4.5 6 7.5l3-3" />
-            </button>
+        <div className="time-box">
+            <input
+                id="end-time-input"
+                className="num"
+                inputMode="numeric"
+                spellCheck={false}
+                aria-label="끝낼 시각"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={commit}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        commit();
+                    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                        event.preventDefault();
+                        step((event.key === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 60 : STEP_MINUTES));
+                    }
+                }}
+            />
+            <span className="time-box-steps">
+                <button type="button" className="spin-button" aria-label="10분 늦게" onClick={() => step(STEP_MINUTES)}>
+                    <Icon symbol="icon-chevron" className="chevron up" />
+                </button>
+                <button type="button" className="spin-button" aria-label="10분 이르게" onClick={() => step(-STEP_MINUTES)}>
+                    <Icon symbol="icon-chevron" className="chevron" />
+                </button>
+            </span>
         </div>
     );
 };
 
-// 종료 시각: 비우면 엔진 기본값(07:00)이고, 지난 시각이면 다음 날이다. 바뀐 자리의 숫자만 바뀐 방향에서 미끄러져 들어온다.
+// 언제까지 할지: 바로가기, 오늘부터 7일 뒤까지의 날짜 띠, 끝낼 시각, 남은 시간 합계. 값은 24시간 안이면 HH:mm, 그보다 뒤면 날짜를 붙여 컴포저가 갖는다.
+const EndTimePicker = () => {
+    const endTime = useComposerStore((store) => store.endTime);
+    const nowMs = useClock(getMinute);
+    const { dayOffset, time } = getEndTimeParts(endTime, nowMs);
+    const total = describeEndTime(endTime, nowMs);
+    const shortcuts = getEndTimeShortcuts(nowMs);
+
+    return (
+        <>
+            <div className="time-quick">
+                {shortcuts.map((shortcut) => (
+                    <button
+                        key={shortcut.key}
+                        type="button"
+                        data-shortcut={shortcut.key}
+                        aria-pressed={shortcut.value === endTime}
+                        onClick={() => composer.setEndTime(getEndTimeShortcuts(Date.now()).find((fresh) => fresh.key === shortcut.key).value)}
+                    >
+                        {shortcut.label}
+                    </button>
+                ))}
+            </div>
+            <div className="time-days" role="group" aria-label="끝낼 날">
+                {DAY_OFFSETS.map((offset) => {
+                    const date = new Date(getStartOfDay(nowMs) + offset * DAY_MS + DAY_MS / 2);
+                    // 오늘인데 그 시각이 이미 지났으면 고를 수 없다(다음 날이 된다).
+                    const isUnreachable = getEndTimeParts(buildEndTime(offset, time, nowMs), nowMs).dayOffset !== offset;
+
+                    return (
+                        <button
+                            key={offset}
+                            type="button"
+                            data-offset={offset}
+                            data-weekend={[0, 6].includes(date.getDay()) ? "" : undefined}
+                            data-span={offset < dayOffset ? "" : undefined}
+                            aria-pressed={offset === dayOffset}
+                            aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAY_NAMES[date.getDay()]}요일`}
+                            disabled={isUnreachable}
+                            onClick={() => composer.setEndTime(buildEndTime(offset, time, Date.now()))}
+                        >
+                            <small>{offset ? WEEKDAY_NAMES[date.getDay()] : "오늘"}</small>
+                            <b className="num">{date.getDate()}</b>
+                        </button>
+                    );
+                })}
+            </div>
+            <div className="time-row">
+                <span className="time-row-label">끝낼 시각</span>
+                <TimeBox dayOffset={dayOffset} time={time} />
+                <p id="time-until" className="time-total">
+                    <b className="num">{total.span}</b>
+                    <span>{total.until}</span>
+                </p>
+            </div>
+            <p className="time-foot">
+                <Icon symbol="icon-clock" />
+                {`${MAX_RUN_DAYS}일 뒤까지 정할 수 있어요. 한도로 기다린 시간은 사용량 한도 설정대로 따로 늘어나요`}
+            </p>
+        </>
+    );
+};
+
+// 종료 시각 알약: 오늘·내일은 말로, 그 밖에는 날짜와 요일로 보이고 남은 시간을 붙인다. 실행 중에는 상태 줄이 보여주므로 숨긴다.
 const EndTimeChip = () => {
     const endTime = useComposerStore((store) => store.endTime);
     const isIdle = useRunStore((store) => store.state.status === "idle");
+    const label = useClock((now) => formatEndTimeLabel(endTime, now));
     const until = useClock((now) => formatTimeUntil(endTime, now));
     const [isOpen, setIsOpen] = useState(false);
-    const [direction, setDirection] = useState("up");
     const popoverRef = useRef(null);
-    const [hour, minute] = (endTime || DEFAULT_END_TIME).split(":");
 
     useEffect(() => {
         if (!isIdle) {
@@ -69,21 +145,12 @@ const EndTimeChip = () => {
         }
     }, [isIdle]);
 
-    const step = (unit, direction) => {
-        setDirection(direction > 0 ? "up" : "down");
-        composer.stepEndTime(unit, direction);
-    };
-
-    const setAfter = (minutes) => {
-        setDirection("up");
-        composer.setEndTimeAfter(minutes);
-    };
-
     return (
         <>
             <Chip id="end-time-button" className="end-time-chip" popoverTarget="end-time-popover" aria-label="종료 시각 고르기" aria-expanded={isOpen} disabled={!isIdle}>
+                <Icon symbol="icon-clock" className="chip-icon" />
                 <b id="end-time-value" className="num">
-                    {endTime || DEFAULT_END_TIME}
+                    {label}
                 </b>
                 <small id="end-time-until" className="end-time-until num">
                     {until}
@@ -91,29 +158,8 @@ const EndTimeChip = () => {
                 <Icon symbol="icon-chevron" className="chevron" />
             </Chip>
             <Popover id="end-time-popover" className="popover time-popover" aria-label="종료 시각" popoverRef={popoverRef} onToggle={setIsOpen}>
-                <p className="time-popover-title">언제 끝낼까요?</p>
-                <div className="time-spinners">
-                    <TimeSpin unit={60} id="time-hour" value={hour} direction={direction} upLabel="1시간 늦게" downLabel="1시간 이르게" onStep={step} />
-                    <span className="time-colon">:</span>
-                    <TimeSpin unit={10} id="time-minute" value={minute} direction={direction} upLabel="10분 늦게" downLabel="10분 이르게" onStep={step} />
-                </div>
-                <p id="time-until" className="time-until num">{`지금부터 ${until}에 끝나요`}</p>
-                <div className="time-presets">
-                    {PRESETS.map((preset) => (
-                        <Button key={preset.minutes} data-after={preset.minutes} onClick={() => setAfter(preset.minutes)}>
-                            {preset.label}
-                        </Button>
-                    ))}
-                    <Button
-                        data-reset=""
-                        onClick={() => {
-                            setDirection("up");
-                            composer.setEndTime("");
-                        }}
-                    >
-                        {`기본 ${DEFAULT_END_TIME}`}
-                    </Button>
-                </div>
+                <p className="time-popover-title">언제까지 할까요?</p>
+                <EndTimePicker />
             </Popover>
         </>
     );

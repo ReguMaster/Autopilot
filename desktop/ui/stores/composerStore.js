@@ -138,7 +138,7 @@ const composer = {
     setDesignFormat: (designFormat) => useComposerStore.setState({ designFormat: designFormat }),
     setQaOnFail: (qaOnFail) => useComposerStore.setState({ qaOnFail: qaOnFail }),
     getModeOptions: getModeOptions,
-    stepEndTime: (unit, step) => useComposerStore.setState((current) => ({ endTime: shiftEndTime(current.endTime, step * unit) })),
+    stepEndTime: (unit, step) => useComposerStore.setState((current) => ({ endTime: shiftEndTime(current.endTime, step * unit, Date.now()) })),
     setEndTimeAfter: (minutes) => useComposerStore.setState({ endTime: getEndTimeAfter(Date.now(), minutes) }),
     // 모델 버전 고정이 바뀌면 알약은 다시 계열 기준으로 보여준다.
     showFamily: () => useComposerStore.setState((current) => ({ modelId: current.model })),

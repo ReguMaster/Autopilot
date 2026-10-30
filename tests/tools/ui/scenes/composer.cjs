@@ -84,19 +84,17 @@ const SCENES = [
         run: async (t) => {
             await t.click("#end-time-button");
             await t.shot("popover-open", "#end-time-popover");
-            await t.click(".time-spin:nth-child(1) .spin-button:nth-child(1)");
+            await t.click(".time-box .spin-button:nth-child(1)");
             await t.wait(500);
-            await t.shot("popover-hour-up", "#end-time-popover");
-            await t.click(".time-spin:nth-child(3) .spin-button:nth-child(3)");
-            await t.wait(500);
-            await t.shot("popover-minute-down", "#end-time-popover");
+            await t.shot("popover-minute-up", "#end-time-popover");
             await t.shot("chip-changed", "#end-time-button");
-            await t.click(".time-presets .button:nth-child(2)");
+            await t.click('[data-shortcut="3h"]');
             await t.wait(500);
             await t.shot("popover-preset", "#end-time-popover");
-            await t.click(".time-presets .button:nth-child(4)");
+            await t.click('.time-days [data-offset="3"]');
             await t.wait(500);
-            await t.shot("popover-reset", "#end-time-popover");
+            await t.shot("popover-day", "#end-time-popover");
+            await t.shot("chip-dated", "#end-time-button");
         }
     },
     {

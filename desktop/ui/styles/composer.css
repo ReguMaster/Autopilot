@@ -554,7 +554,8 @@ body[data-view="run"] #policy-chip {
 .time-popover {
     position-anchor: --end-time;
     position-area: top span-left;
-    width: min(264px, calc(100vw - 32px));
+    width: min(420px, calc(100vw - 32px));
+    padding: 14px 14px 6px;
 }
 
 .choice-popover {
@@ -677,46 +678,189 @@ body[data-view="run"] #policy-chip {
 }
 
 .time-popover-title {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     font-size: var(--text-md);
     font-weight: 600;
 }
 
-.time-spinners {
+/* 종료 시각: 바로가기, 오늘부터 7일 뒤까지의 날짜 띠, 끝낼 시각과 남은 시간 합계 */
+.time-quick {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
-.time-spin {
+.time-quick button {
+    height: 30px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    transition: background-color 0.2s var(--ease-out);
+}
+
+.time-quick button:hover {
+    background: var(--hair);
+}
+
+.time-quick button[aria-pressed="true"],
+.time-days button[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--bg);
+}
+
+.time-days {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 3px;
+    margin: 14px 0 12px;
+}
+
+.time-days button {
     display: grid;
     justify-items: center;
-    gap: 2px;
+    gap: 1px;
+    padding: 7px 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--ink);
+    transition: background-color 0.2s var(--ease-out);
 }
 
-.time-spin b {
-    min-width: 2ch;
-    font-size: var(--title-xl);
-    font-weight: 400;
-    line-height: 1.15;
-    text-align: center;
+.time-days button:hover:not(:disabled, [aria-pressed="true"]) {
+    background: var(--surface);
 }
 
-.time-colon {
-    padding-bottom: 4px;
-    color: var(--faint);
-    font-size: var(--title-lg);
+.time-days button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.time-days small {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.time-days b {
+    font-size: var(--text-lg);
+    font-weight: 600;
+}
+
+.time-days button[data-weekend] small {
+    color: var(--del);
+}
+
+.time-days button[data-offset="0"] b {
+    color: var(--accent-ink);
+}
+
+.time-days button[data-span] {
+    background: var(--accent-wash);
+}
+
+.time-days button[aria-pressed="true"] :is(small, b) {
+    color: var(--bg);
+}
+
+.time-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.time-row-label {
+    flex: none;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.time-box {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 36px;
+    padding: 0 2px 0 10px;
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.time-box:focus-within {
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.time-box input {
+    width: 52px;
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    outline: none;
+}
+
+.time-box-steps {
+    display: grid;
+}
+
+.time-box .spin-button {
+    width: 22px;
+    height: 16px;
+    border-radius: 5px;
+}
+
+.time-box .chevron {
+    width: 9px;
+    height: 9px;
+}
+
+.time-box .chevron.up {
+    rotate: 180deg;
+}
+
+.time-total {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    text-align: right;
+}
+
+.time-total b {
+    color: var(--ink);
+    font-size: var(--text-md);
+}
+
+.time-foot,
+.allow-foot {
+    display: flex;
+    gap: 8px;
+    margin: 12px -14px 0;
+    padding: 10px 14px 4px;
+    box-shadow: 0 -1px 0 var(--hair);
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+}
+
+.time-foot .icon,
+.allow-foot .icon {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    margin-top: 2px;
 }
 
 .spin-button {
     display: grid;
     place-items: center;
-    width: 48px;
-    height: 26px;
     padding: 0;
     border: 0;
-    border-radius: 8px;
     background: none;
     color: var(--muted);
 }
@@ -726,25 +870,62 @@ body[data-view="run"] #policy-chip {
     color: var(--ink);
 }
 
-.spin-button svg {
-    width: 12px;
-    height: 12px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+/* 신규 개발 허용: 체크박스 네 줄과 풀 수 없는 정책 안내 */
+#allow-chip {
+    anchor-name: --allow-chip;
 }
 
-.time-until {
-    margin: 6px 0 14px;
+#allow-chip small {
     color: var(--muted);
-    font-size: var(--text-sm);
-    text-align: center;
+    font-weight: 500;
 }
 
-.time-presets {
+.allow-popover {
+    position-anchor: --allow-chip;
+    width: min(360px, calc(100vw - 32px));
+    padding: 6px 14px 4px;
+}
+
+.allow-popover:popover-open {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+}
+
+.allow-title {
+    padding: 8px 0 4px;
+    font-size: var(--text-md);
+    font-weight: 600;
+}
+
+.allow-option {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 1px 10px;
+    margin: 0 -8px;
+    padding: 8px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: background-color 0.2s var(--ease-out);
+}
+
+.allow-option:hover {
+    background: var(--surface);
+}
+
+.allow-option input {
+    width: 16px;
+    height: 16px;
+    margin: 2px 0 0;
+    accent-color: var(--accent);
+    cursor: inherit;
+}
+
+.allow-option b {
+    font-size: var(--text-md);
+    font-weight: 600;
+}
+
+.allow-option small {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: var(--text-xs);
 }

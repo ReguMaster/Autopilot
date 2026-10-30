@@ -215,11 +215,21 @@ const checkComposer = async ({ runStore, composerStore }) => {
     composer.chooseModel("opus");
     assert.equal(sent.length, 2, "실행 중이 아니면 엔진에 보내지 않는다");
 
+    // 종료 시각은 고른 날은 두고 시각만 단위만큼 옮긴다. 24시간을 넘어가면 날짜가 붙는다.
+    const realNow = Date.now;
+
+    Date.now = () => new Date(2026, 9, 10, 12, 0).getTime();
     composer.setEndTime("22:30");
     composer.stepEndTime(60, 1);
     assert.equal(useComposerStore.getState().endTime, "23:30", "종료 시각은 단위만큼 옮긴다");
     composer.stepEndTime(10, -1);
     assert.equal(useComposerStore.getState().endTime, "23:20");
+    composer.setEndTime("2026-10-12 07:00");
+    composer.stepEndTime(60, 1);
+    assert.equal(useComposerStore.getState().endTime, "2026-10-12 08:00");
+    composer.setEndTimeAfter(180);
+    assert.equal(useComposerStore.getState().endTime, "15:00");
+    Date.now = realNow;
 };
 
 const checkRunActions = async ({ runStore, uiStore, composerStore, modalStore, run }) => {
