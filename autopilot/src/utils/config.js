@@ -33,7 +33,7 @@ const PHASE_DONE = "done";
 const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
 // 끝나면 멈추고 사용자 확인을 받을 수 있는 단계
 const GATE_PHASES = ["plan", "design"];
-// 신규 개발에서 실행마다 켜는 정책 완화. deps 새 dependency, large 큰 구조 만들기, external-api 외부 API 호출 코드, send 외부 서비스로 코드 보내기
+// 신규 개발에서 실행마다 켜는 정책 완화. deps 새 라이브러리(패키지), large 큰 구조 만들기, external-api 외부 API 호출 코드, send 외부 서비스로 코드 보내기
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
 const DEFAULT_DESIGN_FORMAT = "html";

@@ -237,7 +237,7 @@ const checkPhaseRules = (context) => {
     // 신규 개발의 허용 체크만 정책에 덧붙는다. 보내기를 켜지 않았으면 외부 도구 금지를 덧붙인다.
     assert.equal(getAutopilotPolicy("ai/autopilot"), getAutopilotPolicy("ai/autopilot", null));
     assert.doesNotMatch(getAutopilotPolicy("ai/autopilot"), /신규 개발에서 이번 실행에 허용한 것/);
-    assert.match(getAutopilotPolicy("ai/autopilot", ["deps"]), /새 dependency 추가를 허용한다[\s\S]*외부 도구\(Codex, MCP 서버/);
+    assert.match(getAutopilotPolicy("ai/autopilot", ["deps"]), /새 라이브러리\(패키지\) 추가를 허용한다[\s\S]*외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(getAutopilotPolicy("ai/autopilot", ["send"]), /외부 도구\(Codex, MCP 서버/);
     assert.match(getAutopilotPolicy("ai/autopilot", []), /완화한 정책이 없다/);
 

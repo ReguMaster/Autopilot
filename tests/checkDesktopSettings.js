@@ -118,7 +118,7 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({ commitPrefix: "feat:", workBranch: "bot/x" }).workBranch, "bot/x");
     assert.equal(normalizeSettings({ workBranch: "main" }).workBranch, "ai/autopilot", "보호 브랜치는 기본값으로");
 
-    // 작업 모드와 신규 개발: 기본은 유지 보수·확인받기 둘·허용 dependency와 큰 구조이고, 모르는 값·겹친 값은 기본값으로 돌린다. 저장하는 종료 시각에는 날짜를 붙이지 않는다.
+    // 작업 모드와 신규 개발: 기본은 유지 보수·확인받기 둘·허용 새 라이브러리와 큰 구조이고, 모르는 값·겹친 값은 기본값으로 돌린다. 저장하는 종료 시각에는 날짜를 붙이지 않는다.
     const buildDefaults = normalizeSettings({});
 
     assert.deepEqual(

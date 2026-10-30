@@ -20,7 +20,7 @@ const ON_FAIL_CAPTIONS = { qa: "실패하면 개발로 되돌려요", security: 
 const ON_FAIL_SUBJECTS = { qa: "실패하면", security: "심각하면" };
 
 const ALLOW_OPTIONS = [
-    { key: "deps", label: "새 dependency 추가", desc: "추가한 이유는 기획서와 커밋에 남겨요" },
+    { key: "deps", label: "새 라이브러리 추가", desc: "패키지를 새로 설치해요. 고른 이유는 기획서와 커밋에 남겨요" },
     { key: "large", label: "큰 구조 만들기", desc: "폴더 구조와 프레임워크를 처음부터 정해요" },
     { key: "external-api", label: "외부 API 호출 코드", desc: "결제, 지도처럼 바깥 서버를 부르는 코드" },
     { key: "send", label: "외부 서비스로 코드 보내기", desc: "Codex, Figma, 이미지 생성 도구에 프로젝트 내용을 보내요" }

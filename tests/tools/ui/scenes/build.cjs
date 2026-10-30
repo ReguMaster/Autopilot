@@ -27,7 +27,7 @@ const PLAN_DOC = {
         "- 원장: 하루 예약표, 디자이너 근무 시간 설정",
         "",
         "## 기술 선택",
-        "- Next.js 15, SQLite(Prisma), Tailwind. 새 dependency 6개(허용됨)",
+        "- Next.js 15, SQLite(Prisma), Tailwind. 새 라이브러리 6개(허용됨)",
         "- 로그인은 원장 한 명만, 손님은 전화번호로 `예약 조회`",
         "",
         "## 이번에 하지 않는 것",
