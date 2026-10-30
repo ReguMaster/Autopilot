@@ -8,6 +8,7 @@ import { runAutopilot, requestRoundOptions, requestProgressReset, requestPhaseAp
 import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
 import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
+import providerUtil from "../../autopilot/src/utils/providerUtil.js";
 import autopilotUtil from "../../autopilot/src/utils/autopilotUtil.js";
 import dateUtil from "../../autopilot/src/utils/dateUtil.js";
 import { FAKE_CODEX_SOURCE, getEndTime, waitForProcessStop, commitInitialProject, writeCmdWrapper } from "./fixtures.js";
@@ -1561,6 +1562,17 @@ const checkSessionRunner = async (context, fakeCliFile) => {
 
         assert.equal(wrapperResult.exitCode, 0);
         assert.equal(fs.readFileSync(path.join(wrapperDir, "prompt.txt"), "utf8"), "stdin & | < > 한글");
+
+        // 보조 Claude의 읽기 도구 인자(쉼표 포함)도 CMD 래퍼를 통과해 그대로 전달된다.
+        const assistOptions = createSessionOptions(context, wrapperDir, "idle");
+        const assistResult = await providerUtil.askClaude({ command: wrapperFile, baseArgs: [], model: "sonnet", tools: "Read,Glob,Grep" }, "안을 내 주세요", {
+            cwd: wrapperDir,
+            processEnv: assistOptions.processEnv,
+            deadline: assistOptions.roundDeadline
+        });
+
+        assert.equal(assistResult.error, undefined);
+        assert.match(fs.readFileSync(path.join(wrapperDir, "assist-claude.log"), "utf8"), /--tools=Read,Glob,Grep/);
     }
 
     const missingError = await runSession(path.join(context.testDir, "missing-executable"), [], "", {

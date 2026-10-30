@@ -9,7 +9,8 @@ const HELP_TIMEOUT_MS = 10000;
 const IS_WINDOWS = process.platform === "win32";
 const WINDOWS_SCRIPT_PATTERN = /\.(cmd|bat)$/i;
 const UNSAFE_CMD_PATH_PATTERN = /["\r\n%!]/;
-const SAFE_CMD_ARG_PATTERN = /^[\w.=-]+$/;
+// 쉼표는 CMD 메타 문자가 아니라 그대로 전달된다(보조 Claude의 --tools=Read,Glob,Grep).
+const SAFE_CMD_ARG_PATTERN = /^[\w.,=-]+$/;
 
 const getSearchDirectories = (processEnv) => {
     const searchPath = Object.entries(processEnv).find(([key]) => key.toUpperCase() === "PATH")?.[1] || "";
