@@ -178,12 +178,12 @@ const getEndTimeShortcuts = (nowMs) => {
     ];
 };
 
-// Effort는 AI마다 부르는 이름이 다르다. Claude는 Effort, Codex는 Reasoning(추론 강도)이다. 단계 이름은 둘 다 xhigh를 Extra High라고 쓴다.
+// 노력(Effort)은 AI마다 부르는 이름이 다르다. Claude는 노력, Codex는 추론(Reasoning)이다. 단계 이름은 둘 다 xhigh를 Extra High라고 쓴다.
 const EFFORT_LABELS = {
     claude: { low: "Low", medium: "Medium", high: "High", xhigh: "Extra High", max: "Max" },
     codex: { low: "Low", medium: "Medium", high: "High", xhigh: "Extra High", max: "Max" }
 };
-const EFFORT_TERMS = { claude: "Effort", codex: "Reasoning" };
+const EFFORT_TERMS = { claude: "노력", codex: "추론" };
 
 const formatEffort = (effort, runner = "claude") => {
     return EFFORT_LABELS[runner]?.[effort] || effort;

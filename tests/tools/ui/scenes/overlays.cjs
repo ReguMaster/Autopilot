@@ -211,7 +211,7 @@ const SCENES = [
             await t.wait(500);
             await t.shot("picked", "#model-versions");
             await t.note("calls", await callsWithArgs(t));
-            await t.shot("chip", "#model-chip");
+            await t.shot("chip", "#ai-pill-claude");
         }
     },
     {

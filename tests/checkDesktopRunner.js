@@ -33,7 +33,6 @@ import {
     CODEX_RUNNER as UI_CODEX_RUNNER,
     DEFAULT_DEBATE_TURNS as UI_DEFAULT_DEBATE_TURNS,
     DEBATE_TURNS_LIMIT as UI_DEBATE_TURNS_LIMIT,
-    DEBATE_TURN_CHOICES as UI_DEBATE_TURN_CHOICES,
     RAIL_WIDTH as UI_RAIL_WIDTH
 } from "../desktop/ui/lib/constants.js";
 import {
@@ -1660,8 +1659,7 @@ const checkChoiceSync = () => {
         assert.deepEqual(uiValue, engineValue);
     }
 
-    assert(UI_DEBATE_TURN_CHOICES.every((value) => Number.isInteger(value) && value >= 1 && value <= ENGINE_DEBATE_TURNS_LIMIT));
-    assert(UI_DEBATE_TURN_CHOICES.includes(ENGINE_DEBATE_DEFAULT_TURNS));
+    assert(ENGINE_DEBATE_DEFAULT_TURNS >= 1 && ENGINE_DEBATE_DEFAULT_TURNS <= ENGINE_DEBATE_TURNS_LIMIT);
     assert.equal(DEFAULT_SETTINGS.debateTurns, ENGINE_DEBATE_DEFAULT_TURNS);
 
     assert.equal(CODEX_MODEL_PATTERN.source, ENGINE_CODEX_MODEL_PATTERN.source);

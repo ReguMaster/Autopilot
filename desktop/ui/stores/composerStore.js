@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getEndTimeAfter, getModelFamily, shiftEndTime } from "../../viewFormat.js";
+import { getAssistant } from "../lib/phaseAgents.js";
 import {
     ALLOW_KEYS,
     BRAINSTORM_PHASES,
@@ -22,9 +23,10 @@ import {
 import { getRunState } from "./runStore.js";
 import { ui } from "./uiStore.js";
 
-// 시작 전에 고르는 값(실행 에이전트·모델·Effort·정책·종료 시각·작업·한도 연장·작업 모드와 신규 개발 설정). 실행 중에는 엔진에 전달된 값을 따라간다.
+// 시작 전에 고르는 값(실행 에이전트·모델·노력·추론·정책·종료 시각·작업·한도 연장·작업 모드와 신규 개발 설정). 실행 중에는 엔진에 전달된 값을 따라간다.
 // model은 계열이고, modelId는 알약에 보여줄 값(계열 별칭이거나 엔진이 쓰는 모델 ID)이다. endTime은 HH:mm이거나 yyyy-MM-dd HH:mm(날짜 지정)이다.
-// runner가 codex면 회차를 Codex가 codexModel·codexEffort(빈 값은 Codex 설정을 따름)로 돌린다. Claude의 model·effort는 협의의 Claude 발언에 그대로 쓴다.
+// Claude(model·effort)와 Codex(codexModel·codexEffort, 빈 값은 Codex 설정을 따름)의 모델·노력(추론)은 늘 둘 다 갖고, 누가 일하는지와 무관하다.
+// 유지 보수는 runner가 회차를 돌리는 AI이고, 신규 개발은 mains(단계마다 메인 AI, 비면 Claude)가 정한다.
 const useComposerStore = create(() => ({
     runner: DEFAULT_RUNNER,
     model: DEFAULT_MODEL,
@@ -40,6 +42,7 @@ const useComposerStore = create(() => ({
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
+    mains: {},
     brainstorm: [],
     crossReview: false,
     debate: [],
@@ -51,6 +54,14 @@ const useComposerStore = create(() => ({
 // 체크를 바꾼 목록. 순서는 고를 수 있는 값의 순서로 맞춰 저장 값이 흔들리지 않게 한다.
 const toggleChoice = (current, choices, value) => {
     return choices.filter((choice) => (choice === value ? !current.includes(choice) : current.includes(choice)));
+};
+
+// 보내기를 허용하지 않으면 Codex가 보조인 단계(메인이 Claude)는 보조를 쓸 수 없다. 그 단계를 빼고, 협의·교차검토를 남은 단계에 맞춘다.
+const dropBlockedAssistants = ({ allow, mains, brainstorm, debate, crossReview }) => {
+    const next = allow.includes("send") ? brainstorm : brainstorm.filter((phase) => getAssistant(mains, phase) === "claude");
+    const nextDebate = debate.filter((phase) => next.includes(phase));
+
+    return { brainstorm: next, debate: nextDebate, crossReview: next.some((phase) => !nextDebate.includes(phase)) ? crossReview : false };
 };
 
 let isApplying = false;
@@ -128,6 +139,7 @@ const COMPOSER_KEYS = [
     "designFormat",
     "qaOnFail",
     "securityOnFail",
+    "mains",
     "brainstorm",
     "crossReview",
     "debate",
@@ -138,7 +150,7 @@ const COMPOSER_KEYS = [
 
 // 시작·예약 저장 때 엔진에 넘길 작업 모드와 신규 개발 설정
 const getModeOptions = () => {
-    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } = useComposerStore.getState();
+    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, mains, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } = useComposerStore.getState();
 
     return {
         mode: mode,
@@ -147,6 +159,7 @@ const getModeOptions = () => {
         designFormat: designFormat,
         qaOnFail: qaOnFail,
         securityOnFail: securityOnFail,
+        mains: mains,
         brainstorm: brainstorm,
         crossReview: crossReview,
         debate: debate,
@@ -175,13 +188,18 @@ const loadSettings = (settings, keys = COMPOSER_KEYS) => {
 };
 
 const composer = {
-    // Claude 모델을 고르면 Claude가, Codex 모델(빈 값은 Codex 설정)을 고르면 Codex가 회차를 돌린다.
+    // 모델·노력은 AI마다 따로 정한다. 누가 일하는지(유지 보수의 runner, 신규 개발의 mains)는 바꾸지 않는다.
     chooseModel: (family) => {
-        useComposerStore.setState({ runner: DEFAULT_RUNNER, model: family, modelId: family });
+        useComposerStore.setState({ model: family, modelId: family });
         handleOptionChange();
     },
     chooseCodexModel: (codexModel) => {
-        useComposerStore.setState({ runner: CODEX_RUNNER, codexModel: codexModel });
+        useComposerStore.setState({ codexModel: codexModel });
+        handleOptionChange();
+    },
+    // 유지 보수에서 회차를 돌릴 AI. 실행 중이면 다음 회차부터 바뀐다.
+    setRunner: (runner) => {
+        useComposerStore.setState({ runner: runner });
         handleOptionChange();
     },
     chooseEffort: (level) => {
@@ -203,21 +221,30 @@ const composer = {
         useComposerStore.setState((current) => {
             const allow = toggleChoice(current.allow, ALLOW_KEYS, key);
 
-            return allow.includes("send") ? { allow: allow } : { allow: allow, brainstorm: [], crossReview: false, debate: [] };
+            return { allow: allow, ...dropBlockedAssistants({ ...current, allow: allow }) };
         }),
-    // 단계를 누가 쓸지(claude: Claude만, compare: 나란히 비교, debate: 협의). Codex를 쓰면 보내기도 함께 켠다(단계 칸이 그 사실을 알린다).
+    // 단계의 메인 AI. Codex가 보조가 되는 단계(메인이 Claude)는 프로젝트 내용을 보내야 하므로 보내기도 함께 켠다(단계 문장이 그 사실을 알린다).
+    setPhaseMain: (phase, provider) =>
+        useComposerStore.setState((current) => {
+            const mains = Object.fromEntries(Object.entries({ ...current.mains, [phase]: provider }).filter(([, value]) => value !== DEFAULT_RUNNER));
+            const needsSend = current.brainstorm.includes(phase) && getAssistant(mains, phase) === CODEX_RUNNER && !current.allow.includes("send");
+
+            return { mains: mains, allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow };
+        }),
+    // 단계의 보조 방식(none: 보조 없이, compare: 나란히 비교, debate: 협의). 보조는 메인의 반대쪽 AI이고, Codex가 보조면 보내기도 함께 켠다.
     // 나란히 비교하는 단계가 하나도 없으면 교차검토도 끈다(협의는 이미 서로 검토한다).
     setBrainstormMode: (phase, brainstormMode) =>
         useComposerStore.setState((current) => {
-            const isCodex = brainstormMode !== "claude";
-            const brainstorm = BRAINSTORM_PHASES.filter((item) => (item === phase ? isCodex : current.brainstorm.includes(item)));
+            const isAssisted = brainstormMode !== "none";
+            const brainstorm = BRAINSTORM_PHASES.filter((item) => (item === phase ? isAssisted : current.brainstorm.includes(item)));
             const debate = BRAINSTORM_PHASES.filter((item) => (item === phase ? brainstormMode === "debate" : current.debate.includes(item) && brainstorm.includes(item)));
             const hasCompare = brainstorm.some((item) => !debate.includes(item));
+            const needsSend = isAssisted && getAssistant(current.mains, phase) === CODEX_RUNNER && !current.allow.includes("send");
 
             return {
                 brainstorm: brainstorm,
                 debate: debate,
-                allow: brainstorm.length && !current.allow.includes("send") ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow,
+                allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow,
                 crossReview: hasCompare ? current.crossReview : false
             };
         }),

@@ -1,5 +1,5 @@
-import { formatEffort } from "../../viewFormat.js";
-import { BUILD_PHASES, CODEX_EFFORT_LEVELS, CODEX_RUNNER, DEBATE_TURN_CHOICES, DEFAULT_DEBATE_TURNS, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS } from "./constants.js";
+import { BUILD_PHASES, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS, PROVIDER_LABELS } from "./constants.js";
+import { PROVIDER_LOGOS, getOtherProvider } from "./phaseAgents.js";
 
 // 신규 개발 단계 카드와 시작 전 안내에 쓰는 문구. DOM에 의존하지 않아 tests/checkDesktopUi.js가 그대로 부른다.
 const PHASE_DETAILS = { plan: "만들 것을 정리해요", design: "화면을 그려요", build: "코드를 짜고 커밋해요", qa: "확인하고 고쳐요", security: "약점을 찾아 고쳐요" };
@@ -13,12 +13,29 @@ const DESIGN_FORMAT_OPTIONS = [
 ];
 
 // 단계 설정은 문장으로 읽힌다(BuildReady). 선택 상자의 label은 문장 속에서 이어 읽히는 말이고, 목록에서는 hint가 그 뜻을 풀어 준다.
-// 기획 · 디자인: "[Claude만 써서] 진행하고". Codex를 고르면 Claude와 따로 안을 내고, 나란히 비교면 두 안 중에서, 협의면 못 맞춘 쟁점만 골라요.
-const BRAINSTORM_OPTIONS = [
-    { value: "claude", label: "Claude만 써서", hint: "Claude 혼자 안을 써요" },
-    { value: "compare", label: "Claude와 Codex가 따로 안을 내서", hint: "끝나면 두 안을 나란히 보고 하나를 골라요" },
-    { value: "debate", label: "Claude와 Codex가 협의해서", hint: "더 고칠 것이 없을 때까지 주고받고, 못 맞춘 쟁점만 골라요" }
-];
+// 단계 문장의 메인: "기획은 [Codex가 메인]이고". Codex를 쓸 수 없으면(설치·로그인 안 됨) 그 이유를 알리고 고를 수 없게 한다.
+const getMainOptions = (codex) => {
+    const reason = codex && !codex.available ? codex.reason : "";
+
+    return [
+        { value: "claude", label: "Claude가 메인", icon: PROVIDER_LOGOS.claude, hint: "이 단계의 회차를 Claude가 돌려요" },
+        { value: "codex", label: "Codex가 메인", icon: PROVIDER_LOGOS.codex, hint: reason || "이 단계의 회차를 Codex가 돌려요", disabled: Boolean(reason) }
+    ];
+};
+
+// 기획 · 디자인의 보조: "[Claude와 협의해서] 진행하고". 보조는 메인의 반대쪽 AI이고, 나란히 비교면 두 안 중에서, 협의면 못 맞춘 쟁점만 골라요.
+const getAssistOptions = (main, codex) => {
+    const assistant = getOtherProvider(main);
+    const name = PROVIDER_LABELS[assistant];
+    const reason = assistant === "codex" && codex && !codex.available ? codex.reason : "";
+    const icon = PROVIDER_LOGOS[assistant];
+
+    return [
+        { value: "none", label: "보조 없이", hint: `${PROVIDER_LABELS[main]} 혼자 안을 써요` },
+        { value: "compare", label: `${name}가 따로 안을 내서`, icon: icon, hint: reason || "끝나면 두 안을 나란히 보고 하나를 골라요", disabled: Boolean(reason) },
+        { value: "debate", label: `${name}와 협의해서`, icon: icon, hint: reason || "더 고칠 것이 없을 때까지 주고받고, 못 맞춘 쟁점만 골라요", disabled: Boolean(reason) }
+    ];
+};
 // 기획 · 디자인이 끝났을 때: "끝나면 [멈추고 확인 받을게요]". 두 AI가 쓴 단계는 늘 멈추므로 이 선택은 잠긴다.
 const GATE_OPTIONS = [
     { value: "stop", label: "멈추고 확인 받을게요", hint: "산출물을 직접 보고 승인해야 다음 단계로 가요" },
@@ -30,16 +47,6 @@ const CROSS_REVIEW_OPTIONS = [
     { value: "on", label: "서로 검토도 해요", hint: "상대가 쓴 안을 읽고 검토를 남겨요" },
     { value: "off", label: "검토는 건너뛰어요", hint: "두 안만 받아서 나란히 보여 줘요" }
 ];
-
-// 협의에서 주고받는 최대 횟수. 둘 다 더 고칠 것이 없으면 그 전에 끝난다. 저장된 값이 목록에 없어도(가져온 설정) 고른 값은 그대로 보인다.
-const getDebateTurnOptions = (current) => {
-    const choices = DEBATE_TURN_CHOICES.includes(current) ? DEBATE_TURN_CHOICES : [...DEBATE_TURN_CHOICES, current].sort((a, b) => a - b);
-
-    return choices.map((value) => ({ value: value, label: `최대 ${value}번`, hint: value === DEFAULT_DEBATE_TURNS ? "기본값" : undefined }));
-};
-
-// Codex의 model·effort. 값이 비면 Codex 설정(~/.codex/config.toml)을 따른다. 칸이 좁아 항목 이름과 설명은 짧게 두고 Codex 것임은 칸의 설명 줄이 알린다.
-const CODEX_EFFORT_OPTIONS = [{ value: "", label: "기본", hint: "Codex 설정" }, ...CODEX_EFFORT_LEVELS.map((level) => ({ value: level, label: formatEffort(level, CODEX_RUNNER) }))];
 
 // models는 Codex가 알려준 [{ id, label }]이다. 저장된 모델이 목록에 없어도(목록을 못 읽었거나 내려간 모델) 고른 값은 그대로 보인다.
 const getCodexModelOptions = (models, current) => {
@@ -61,10 +68,10 @@ const getCodexDefaults = (codex, codexModel = "") => {
     };
 };
 
-// 그 단계를 누가 쓰는지. 협의는 나란히 비교의 한 갈래라 brainstorm과 debate에 함께 든다.
+// 그 단계의 보조 방식(none: 보조 없이, compare: 나란히 비교, debate: 협의). 협의는 나란히 비교의 한 갈래라 brainstorm과 debate에 함께 든다.
 const getBrainstormMode = ({ brainstorm, debate }, phase) => {
     if (!brainstorm.includes(phase)) {
-        return "claude";
+        return "none";
     }
 
     return debate.includes(phase) ? "debate" : "compare";
@@ -309,12 +316,11 @@ export {
     PHASE_DETAILS,
     PHASE_DONE,
     DESIGN_FORMAT_OPTIONS,
-    BRAINSTORM_OPTIONS,
+    getMainOptions,
+    getAssistOptions,
     BRAINSTORM_AFTER,
     GATE_OPTIONS,
     CROSS_REVIEW_OPTIONS,
-    CODEX_EFFORT_OPTIONS,
-    getDebateTurnOptions,
     getCodexModelOptions,
     getCodexDefaults,
     getBrainstormMode,

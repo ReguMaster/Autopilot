@@ -201,10 +201,13 @@ const PHASE_DOCS = {
     ],
     qa: [{ path: "docs/autopilot/qa.md", isDir: false }],
     security: [{ path: "docs/autopilot/security.md", isDir: false }],
-    // 여러 AI 브레인스토밍의 다른 AI 안(디자인은 HTML일 수 있다)과 서로의 검토. 이름은 엔진 phaseUtil.getProposalPath·getReviewPath와 같다.
+    // 여러 AI 브레인스토밍의 보조 안(디자인은 HTML일 수 있다. 메인이 Codex이면 Claude 안)과 서로의 검토. 이름은 엔진 phaseUtil.getProposalPath·getReviewPath와 같다.
     ...Object.fromEntries(
         ["plan", "design"].flatMap((phase) => [
-            [`${phase}-codex`, ["md", "html"].map((extension) => ({ path: `docs/autopilot/proposals/${phase}-codex.${extension}`, isDir: false }))],
+            ...["claude", "codex"].map((provider) => [
+                `${phase}-${provider}`,
+                ["md", "html"].map((extension) => ({ path: `docs/autopilot/proposals/${phase}-${provider}.${extension}`, isDir: false }))
+            ]),
             ...["claude", "codex"].map((reviewer) => [`${phase}-review-${reviewer}`, [{ path: `docs/autopilot/proposals/${phase}-review-${reviewer}.md`, isDir: false }]]),
             // 협의 기록(엔진 phaseUtil.getDebatePath). 쟁점은 엔진이 단계 상태로 옮겨 status로 받는다.
             [`${phase}-debate`, [{ path: `docs/autopilot/proposals/${phase}-debate.md`, isDir: false }]]

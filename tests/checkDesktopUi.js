@@ -15,6 +15,7 @@ const loadUi = async () => {
         import { Select } from "./components/Select.jsx";
         import { Seg } from "./components/Seg.jsx";
         import { Stepper } from "./components/Stepper.jsx";
+        import { EffortSlider } from "./components/EffortSlider.jsx";
         import { Modal } from "./components/Modal.jsx";
         import { ProjectList } from "./features/shell/Rail.jsx";
         import { StepCard } from "./features/steps/StepCard.jsx";
@@ -22,8 +23,11 @@ const loadUi = async () => {
         import { TagChips } from "./features/create/TagChips.jsx";
         export * from "./selectKeys.js";
         export * from "./lib/buildSteps.js";
-        export { ALLOW_KEYS, ON_FAIL_CHOICES } from "./lib/constants.js";
+        export { ALLOW_KEYS, ON_FAIL_CHOICES, PHASE_LABELS } from "./lib/constants.js";
+        export * from "./lib/phaseAgents.js";
+        export * from "./lib/effortLevels.js";
         export const renderSelect = (props) => renderToStaticMarkup(createElement(Select, props));
+        export const renderEffortSlider = (props) => renderToStaticMarkup(createElement(EffortSlider, props));
         export const renderStepper = (props) => renderToStaticMarkup(createElement(Stepper, props));
         export const renderSeg = (props) => renderToStaticMarkup(createElement(Seg, props));
         export const renderModal = (props, children) => renderToStaticMarkup(createElement(Modal, props, children));
@@ -263,18 +267,7 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
 };
 
 // Codex 선택 상자: 값이 비면 Codex 설정을 따르는 기본 항목이 맨 앞에 있고, 저장된 모델이 목록에 없어도 고른 값은 보인다.
-const checkCodexOptions = ({ getCodexModelOptions, CODEX_EFFORT_OPTIONS, getDebateTurnOptions }) => {
-    // 협의 최대 횟수: 자주 쓰는 값이 순서대로 있고, 목록에 없는 저장값(가져온 설정)도 제자리에 보인다.
-    assert.deepEqual(
-        getDebateTurnOptions(8).map((option) => option.value),
-        [3, 5, 8, 10, 15, 20]
-    );
-    assert.deepEqual(
-        getDebateTurnOptions(12).map((option) => option.value),
-        [3, 5, 8, 10, 12, 15, 20]
-    );
-    assert.equal(getDebateTurnOptions(12).find((option) => option.value === 12).label, "최대 12번");
-
+const checkCodexOptions = ({ getCodexModelOptions }) => {
     const models = [
         { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
         { id: "gpt-6-luna", label: "GPT-6-Luna" }
@@ -295,10 +288,6 @@ const checkCodexOptions = ({ getCodexModelOptions, CODEX_EFFORT_OPTIONS, getDeba
             .at(-1),
         ["gpt-9", "gpt-9"],
         "목록에 없는 저장값도 그대로 보인다"
-    );
-    assert.deepEqual(
-        CODEX_EFFORT_OPTIONS.map((option) => option.value),
-        ["", "low", "medium", "high", "xhigh", "max"]
     );
 };
 
@@ -325,19 +314,52 @@ const checkAllowOptions = ({ ALLOW_OPTIONS, ALLOW_RISKS, getAllowRisk, getAllowU
     assert.equal(getAllowUsage("send", { brainstorm: [], designFormat: "html" }).length, 0);
 };
 
-// 단계 설정 문장의 선택지: 두 AI가 쓰는 단계는 늘 멈춘다는 말이 따로 있고, 실패 처리는 횟수와 되돌리지 않음을 고른다.
-const checkSentenceOptions = ({ BRAINSTORM_OPTIONS, BRAINSTORM_AFTER, GATE_OPTIONS, ON_FAIL_CHOICES, MAX_ON_FAIL_RETRIES, getMaxRetries, toOnFailValue, ON_FAIL_WHEN }) => {
+// 단계 설정 문장의 선택지: 메인(Claude·Codex)과 보조(메인의 반대쪽 AI), 보조가 있는 단계는 늘 멈춘다는 말이 따로 있고, 실패 처리는 횟수와 되돌리지 않음을 고른다.
+const checkSentenceOptions = ({ getMainOptions, getAssistOptions, BRAINSTORM_AFTER, GATE_OPTIONS, ON_FAIL_CHOICES, MAX_ON_FAIL_RETRIES, getMaxRetries, toOnFailValue, ON_FAIL_WHEN }) => {
+    const missing = { available: false, reason: "Codex 로그인이 필요해요" };
+
     assert.deepEqual(
-        BRAINSTORM_OPTIONS.map((option) => option.value),
-        ["claude", "compare", "debate"]
+        getMainOptions(null).map((option) => [option.value, option.label, option.icon, Boolean(option.disabled)]),
+        [
+            ["claude", "Claude가 메인", "logo-claude", false],
+            ["codex", "Codex가 메인", "logo-openai", false]
+        ]
     );
-    assert.deepEqual(Object.keys(BRAINSTORM_AFTER), ["compare", "debate"], "Claude만 쓰는 단계만 끝난 뒤 멈출지 고른다");
+    assert.deepEqual(
+        getMainOptions(missing).map((option) => Boolean(option.disabled)),
+        [false, true],
+        "Codex를 쓸 수 없으면 메인으로 고를 수 없다"
+    );
+    assert.equal(getMainOptions(missing)[1].hint, "Codex 로그인이 필요해요");
+
+    // 보조는 늘 메인의 반대쪽 AI다. 보조가 없음이면 로고가 없고, Codex가 보조인데 쓸 수 없으면 보조 항목이 잠긴다(Claude 보조는 잠기지 않는다).
+    assert.deepEqual(
+        getAssistOptions("claude", null).map((option) => [option.value, option.label]),
+        [
+            ["none", "보조 없이"],
+            ["compare", "Codex가 따로 안을 내서"],
+            ["debate", "Codex와 협의해서"]
+        ]
+    );
+    assert.deepEqual(
+        getAssistOptions("codex", null).map((option) => option.label),
+        ["보조 없이", "Claude가 따로 안을 내서", "Claude와 협의해서"]
+    );
+    assert.equal(getAssistOptions("codex", null)[1].icon, "logo-claude");
+    assert.equal(getAssistOptions("claude", null)[0].icon, undefined);
+    assert.ok(
+        getAssistOptions("claude", missing)
+            .slice(1)
+            .every((option) => option.disabled)
+    );
+    assert.ok(getAssistOptions("codex", missing).every((option) => !option.disabled));
+    assert.deepEqual(Object.keys(BRAINSTORM_AFTER), ["compare", "debate"], "보조가 없는 단계만 끝난 뒤 멈출지 고른다");
     assert.deepEqual(
         GATE_OPTIONS.map((option) => option.value),
         ["stop", "go"]
     );
     assert.ok(
-        [...BRAINSTORM_OPTIONS, ...GATE_OPTIONS].every((option) => option.label && option.hint),
+        [...getMainOptions(null), ...getAssistOptions("claude", null), ...GATE_OPTIONS].every((option) => option.label && option.hint),
         "문장 속 선택은 목록에서 뜻을 풀어 준다"
     );
     // 되돌리는 횟수: 0~최대(엔진 허용 값 stop·retry:1~5)를 횟수로 다루고, 저장 값으로 되돌려도 같아야 한다.
@@ -350,9 +372,28 @@ const checkSentenceOptions = ({ BRAINSTORM_OPTIONS, BRAINSTORM_AFTER, GATE_OPTIO
     assert.deepEqual(Object.keys(ON_FAIL_WHEN), ["qa", "security"]);
 };
 
+// 단계별 메인과 보조(엔진 phaseUtil과 같은 규칙)와 노력·추론의 다섯 단계.
+const checkPhaseAgents = ({ getMain, getAssistant, getOtherProvider, getMainPhases, PHASE_LABELS, LEVEL_INFO, getLevelNames, getLevelValues }) => {
+    assert.equal(getMain({}, "plan"), "claude");
+    assert.equal(getMain({ plan: "codex" }, "plan"), "codex");
+    assert.equal(getMain({ plan: "codex" }, "design"), "claude", "맵에 없는 단계는 Claude다");
+    assert.equal(getAssistant({ plan: "codex" }, "plan"), "claude");
+    assert.equal(getAssistant({}, "plan"), "codex");
+    assert.equal(getOtherProvider("claude"), "codex");
+    assert.deepEqual(getMainPhases({ plan: "codex", security: "codex" }, "codex", PHASE_LABELS), ["기획", "보안검토"]);
+    assert.deepEqual(getMainPhases({ plan: "codex", security: "codex" }, "claude", PHASE_LABELS), ["디자인", "개발", "테스트/QA"]);
+
+    assert.equal(LEVEL_INFO.length, 5);
+    assert.deepEqual(getLevelNames("claude"), ["Low", "Medium", "High", "Extra High", "Max"]);
+    assert.deepEqual(getLevelNames("codex"), getLevelNames("claude"));
+    assert.deepEqual(getLevelValues("codex"), ["low", "medium", "high", "xhigh", "max"]);
+    assert.deepEqual([LEVEL_INFO[2].tags.claude, LEVEL_INFO[2].tags.codex], ["기본값", "깊게"], "Claude는 가운데가 기본값이고 Codex는 기본이 따로 있다");
+    assert.ok(LEVEL_INFO.every((info) => info.desc && info.tags.claude && info.tags.codex));
+};
+
 // 실행 중 단계 카드: [단계] 줄이 지금 단계를 정하고, 오기 전에는 시작할 단계가 지금이다. 확인받기로 둔 지난 단계는 "확인함"이다.
 // 문장 속 선택 상자는 inline 클래스를 달고, 미끄러지는 스위치는 고른 칸의 순서와 칸 수를 변수로 알린다.
-const checkInlineControls = ({ renderSelect, renderSeg, renderStepper }) => {
+const checkInlineControls = ({ renderSelect, renderSeg, renderStepper, renderEffortSlider }) => {
     const zero = renderStepper({ value: 0, max: 5, onChange: () => {}, ariaLabel: "횟수" });
     const full = renderStepper({ value: 5, max: 5, onChange: () => {}, ariaLabel: "횟수" });
 
@@ -369,6 +410,34 @@ const checkInlineControls = ({ renderSelect, renderSeg, renderStepper }) => {
 
     assert.match(renderSelect({ value: "a", options: options, onChange: () => {}, ariaLabel: "x", inline: true }), /class="select select-inline"/);
     assert.doesNotMatch(renderSelect({ value: "a", options: options, onChange: () => {}, ariaLabel: "x" }), /select-inline/);
+
+    // 로고가 있는 항목은 트리거에도 로고가 보이고, 고를 수 없는 항목은 잠긴다.
+    const withIcons = renderSelect({
+        value: "a",
+        options: [
+            { value: "a", label: "가", icon: "logo-claude" },
+            { value: "b", label: "나", icon: "logo-openai", disabled: true, hint: "이유" }
+        ],
+        onChange: () => {},
+        ariaLabel: "x"
+    });
+
+    assert.match(withIcons, /class="mark logo select-logo"[^>]*><use href="#logo-claude"/);
+    assert.match(withIcons, /aria-disabled="true"[^>]*data-icon=""/);
+    assert.equal((withIcons.match(/aria-disabled="true"/g) ?? []).length, 1);
+
+    // 노력·추론 슬라이드: 단계 이름과 설명이 칸마다 바뀌고, Codex 설정을 따르는 중이면 잠긴다.
+    const high = renderEffortSlider({ provider: "claude", level: 2, onChange: () => {} });
+    const maxLevel = renderEffortSlider({ provider: "claude", level: 4, onChange: () => {} });
+    const following = renderEffortSlider({ provider: "codex", level: 1, disabled: true, onChange: () => {} });
+
+    assert.match(high, /class="slider" data-provider="claude" data-level="2"/);
+    assert.match(high, /aria-label="노력"[^>]*aria-valuetext="High, 기본값"/);
+    assert.match(high, /<b>High<\/b>[\s\S]*대부분의 작업에 알맞은 균형이에요/);
+    assert.match(maxLevel, /data-level="4"[\s\S]*<b>Max<\/b>[\s\S]*가장 깊게/);
+    assert.match(following, /data-provider="codex" data-level="1" data-off=""/);
+    assert.match(following, /disabled=""[^>]*aria-label="추론"/);
+    assert.equal((high.match(/<i><\/i>/g) ?? []).length, 5, "다섯 칸 점");
 
     const slid = renderSeg({ name: "m", label: "모드", options: options, value: "b", onChange: () => {}, slide: true });
 
@@ -504,6 +573,7 @@ const checkUi = async () => {
     checkCodexOptions(ui);
     checkAllowOptions(ui, ui.ALLOW_KEYS);
     checkSentenceOptions(ui);
+    checkPhaseAgents(ui);
     checkInlineControls(ui);
     checkRunSteps(ui);
     checkTagChips(ui);

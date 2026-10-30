@@ -155,6 +155,32 @@
     color: var(--ink);
 }
 
+/* 제공자 로고가 있는 항목은 로고 칸이 앞에 더해진다. 고를 수 없는 항목은 흐리게 두고 이유(hint)를 보인다 */
+.select-option[data-icon] {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+        "icon label check"
+        "icon hint check";
+}
+
+.select-option-logo {
+    grid-area: icon;
+    align-self: center;
+    width: 16px;
+    height: 16px;
+}
+
+.select-option[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.select-logo {
+    flex: none;
+    width: 15px;
+    height: 15px;
+}
+
 .select-option-label {
     grid-area: label;
     font-weight: 600;

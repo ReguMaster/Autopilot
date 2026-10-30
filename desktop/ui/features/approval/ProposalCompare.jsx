@@ -5,9 +5,9 @@ import { PHASE_LABELS, PROVIDER_LABELS } from "../../lib/constants.js";
 import { DocPreview } from "./DocPreview.jsx";
 import { usePhaseDoc } from "./usePhaseDoc.js";
 
-// 안의 문서 키. Claude 안은 단계 산출물 그 자체이고 다른 AI의 안은 proposals/<단계>-<제공자>.*다(메인의 projectFiles.PHASE_DOCS).
-const getDocKey = (phase, provider) => {
-    return provider === "claude" ? phase : `${phase}-${provider}`;
+// 안의 문서 키. 메인(후보의 맨 앞)의 안은 단계 산출물 그 자체이고 보조의 안은 proposals/<단계>-<제공자>.*다(메인 프로세스의 projectFiles.PHASE_DOCS).
+const getDocKey = (phase, provider, main) => {
+    return provider === main ? phase : `${phase}-${provider}`;
 };
 
 // 이 안을 검토한 쪽. 두 안일 때 상대가 검토자다.
@@ -16,7 +16,7 @@ const getReviewer = (candidates, provider) => {
 };
 
 const Proposal = ({ phase, provider, candidates, nextLabel, isStarting }) => {
-    const docKey = getDocKey(phase, provider);
+    const docKey = getDocKey(phase, provider, candidates[0]);
     const reviewer = getReviewer(candidates, provider);
     const doc = usePhaseDoc(docKey);
     const review = usePhaseDoc(`${phase}-review-${reviewer}`);

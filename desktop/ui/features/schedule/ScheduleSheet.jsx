@@ -67,7 +67,7 @@ const ScheduleSheet = () => {
             </p>
 
             <div id="schedule-list-pane" className="archive-pane schedule-pane" hidden={isForm}>
-                <p className="schedule-plan">예약은 저장하는 순간의 작업·정책·모델·Effort로 실행해요. 앱이 켜져 있거나 트레이에 있어야 시작할 수 있어요.</p>
+                <p className="schedule-plan">예약은 저장하는 순간의 작업·정책·모델·노력으로 실행해요. 앱이 켜져 있거나 트레이에 있어야 시작할 수 있어요.</p>
                 <ul id="schedule-list" className="schedule-list">
                     {list.map((schedule) => (
                         <ScheduleItem key={schedule.id} schedule={schedule} status={statuses.find((entry) => entry.id === schedule.id)} nowMs={nowMs} />

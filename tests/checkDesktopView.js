@@ -20,7 +20,7 @@ const checkFormatting = ({ formatDuration, formatBytes, formatClock, formatDeadl
     assert.equal(formatEffort("xhigh", "codex"), "Extra High");
     assert.equal(formatEffort("max"), "Max", "AI를 안 정하면 Claude 이름이다");
     assert.equal(formatEffort("", "codex"), "");
-    assert.deepEqual(EFFORT_TERMS, { claude: "Effort", codex: "Reasoning" });
+    assert.deepEqual(EFFORT_TERMS, { claude: "노력", codex: "추론" });
     assert.equal(formatOptions("unknown-model", "low"), "unknown-model · Low");
     assert.equal(formatOptions("", "high"), "-");
 

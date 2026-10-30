@@ -612,22 +612,24 @@ const SCENES = [
         run: async (t) => {
             await t.shot("ready");
             await t.shot("steps", "#build-steps");
-            // 디자인 칸에도 Codex를 켜면 두 칸 모두 교차검토가 보인다. 보내기를 끄면 다시 Claude만이다.
-            await t.click('[aria-label="디자인을 누가 쓸까요"]');
+            // 디자인에도 보조(Codex)를 붙이면 협의·교차검토는 한 줄을 두 단계가 함께 쓴다.
+            await t.click('[aria-label="디자인의 보조"]');
             await t.wait(300);
+            await t.shot("assist-list");
             await t.press("Down");
             await t.press("Return");
             await t.wait(300);
             await t.shot("steps-design", "#build-steps");
-            await t.note("modeOptions", await t.eval("JSON.stringify([...document.querySelectorAll('[aria-label$=\"교차검토\"]')].map((el) => el.getAttribute('aria-label')))"));
+            await t.note("crossReviews", await t.eval("document.querySelectorAll('[aria-label=\"교차검토\"]').length"));
+            await t.note("assistRow", await t.eval("document.querySelector('[data-phase=\"shared\"]')?.textContent.replace(/\\s+/g, ' ') ?? ''"));
         }
     },
     {
-        // Codex를 켠 칸에만 모델·Effort 선택 상자가 보이고, 어느 칸에서 바꿔도 같은 값이다.
-        name: "ready-build-codex-settings",
+        // 단계마다 메인 AI를 따로 고른다. 기획은 Codex가 메인이고 Claude와 협의하고, 디자인은 Claude가 메인이고 Codex가 따로 안을 낸다. 모델·추론은 아래 입력창의 알약이 맡고, 메인으로 맡은 단계를 알려 준다.
+        name: "ready-build-hybrid",
         init: {
             ...BUILD,
-            settings: { ...BUILD.settings, brainstorm: ["plan", "design"], debate: ["plan"], allow: ["deps", "large", "send"] },
+            settings: { ...BUILD.settings, mains: { plan: "codex", qa: "codex" }, brainstorm: ["plan", "design"], debate: ["plan"], allow: ["deps", "large", "send"] },
             model: {
                 providers: {
                     codex: {
@@ -644,26 +646,42 @@ const SCENES = [
         },
         run: async (t) => {
             await t.shot("steps", "#build-steps");
-            await t.click('[aria-label="Codex 모델"]');
+            await t.shot("ready");
+            await t.click("#ai-pill-codex");
             await t.wait(300);
-            await t.shot("model-list");
+            await t.shot("popover-codex", "#ai-popover-codex");
+            await t.click("#ai-pill-claude");
+            await t.wait(300);
+            await t.shot("popover-claude", "#ai-popover-claude");
+            await t.note("tags", await t.eval('JSON.stringify([...document.querySelectorAll(".ai-tag")].map((el) => el.closest(".ai-pill").dataset.provider + ":" + el.textContent))'));
+            await t.note("foot", await t.eval('JSON.stringify([...document.querySelectorAll(".ai-popover .ai-foot")].map((el) => el.textContent.replace(/\\s+/g, " ").trim()))'));
+        }
+    },
+    {
+        // 메인 선택 상자로 기획의 메인을 Codex로 바꾸면 그 단계의 보조가 Claude가 되고, 보조를 협의로 고르면 협의 횟수 줄이 생긴다.
+        name: "ready-build-main-switch",
+        init: { ...BUILD, model: { providers: { codex: { available: true, reason: "", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol" }] } } } },
+        run: async (t) => {
+            const plan = "document.querySelector('[data-phase=\"plan\"] .step-sentence').textContent.replace(/\\s+/g, ' ')";
+
+            await t.note("before", await t.eval(plan));
+            await t.click('[aria-label="기획의 메인"]');
+            await t.wait(300);
+            await t.shot("main-list");
+            await t.press("Down");
+            await t.press("Return");
+            await t.wait(300);
+            await t.note("afterMain", await t.eval(plan));
+            await t.click('[aria-label="기획의 보조"]');
+            await t.wait(300);
+            await t.shot("assist-list");
             await t.press("Down");
             await t.press("Down");
             await t.press("Return");
             await t.wait(300);
-            await t.click('[aria-label="Codex Effort"]');
-            await t.wait(300);
-            await t.shot("effort-list");
-            await t.press("Down");
-            await t.press("Down");
-            await t.press("Down");
-            await t.press("Return");
-            await t.wait(300);
-            await t.shot("steps-chosen", "#build-steps");
-            await t.note(
-                "codexTriggers",
-                await t.eval("JSON.stringify([...document.querySelectorAll('[aria-label^=\"Codex\"]')].map((el) => `${el.getAttribute('aria-label')}=${el.textContent.trim()}`))")
-            );
+            await t.shot("steps", "#build-steps");
+            await t.note("afterAssist", await t.eval(plan));
+            await t.note("turns", await t.eval("document.querySelectorAll('[aria-label=\"협의 최대 횟수\"]').length"));
         }
     },
     {

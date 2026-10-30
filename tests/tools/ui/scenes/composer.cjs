@@ -1,15 +1,15 @@
 const { MODELS, PROJECT, runningState, withProject } = require("./data.cjs");
 
 const CHIPS = [
-    ["model", "#model-chip"],
-    ["effort", "#effort-control"],
+    ["claude", "#ai-pill-claude"],
+    ["codex", "#ai-pill-codex"],
     ["policy", "#policy-chip"],
     ["end-time", "#end-time-button"],
     ["main", "#main-action"]
 ];
 
-// 모델 목록에는 Claude·Codex 묶음 제목이 섞여 있어 순서 대신 값으로 고른다.
-const SONNET_OPTION = '#model-popover label:has(input[value="sonnet"])';
+// 모델 목록에는 계열 줄과 버전 줄이 섞여 있어 순서 대신 값으로 고른다.
+const SONNET_OPTION = '#ai-popover-claude label:has(input[value="sonnet"])';
 const CODEX_PROVIDERS = {
     codex: {
         available: true,
@@ -22,10 +22,18 @@ const CODEX_PROVIDERS = {
         defaults: { model: "gpt-6.1-sol", effort: "" }
     }
 };
-const CODEX_TAB = "#model-popover .runner-tab:nth-child(2)";
 
 const noteCalls = async (t, key = "calls") => {
     await t.note(key, JSON.stringify(await t.calls()));
+};
+
+// 슬라이드를 코드로 움직인다(React의 onChange가 받는 input 이벤트를 보낸다).
+const setSlider = (t, provider, level) => {
+    return t.eval(`(() => {
+        const input = document.querySelector("#ai-popover-${provider} .slider input");
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "${level}");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
 };
 
 const SCENES = [
@@ -39,8 +47,8 @@ const SCENES = [
                 await t.shot(`chip-${name}`, selector);
             }
 
-            await t.hover("#model-chip");
-            await t.shot("chip-model-hover", "#model-chip");
+            await t.hover("#ai-pill-claude");
+            await t.shot("chip-claude-hover", "#ai-pill-claude");
         }
     },
     {
@@ -52,18 +60,20 @@ const SCENES = [
         }
     },
     {
+        // Claude 알약: 모델 목록(계열 아래에 버전)과 노력 슬라이드가 한 팝오버에 있다.
         name: "composer-model-popover",
         init: { ...withProject, models: MODELS },
         run: async (t) => {
-            await t.click("#model-chip");
-            await t.shot("popover-open", "#model-popover");
-            await t.shot("chip-open", "#model-chip");
+            await t.click("#ai-pill-claude");
+            await t.wait(300);
+            await t.shot("popover-open", "#ai-popover-claude");
+            await t.shot("chip-open", "#ai-pill-claude");
             await t.click(SONNET_OPTION);
             await t.wait(500);
-            await t.shot("chip-sonnet", "#model-chip");
-            await t.shot("popover-after-pick", "#model-popover", { skipDom: true });
-            await t.click("#model-chip");
-            await t.shot("popover-sonnet", "#model-popover");
+            await t.shot("chip-sonnet", "#ai-pill-claude");
+            await t.click("#ai-pill-claude");
+            await t.wait(300);
+            await t.shot("popover-sonnet", "#ai-popover-claude");
         }
     },
     {
@@ -71,72 +81,81 @@ const SCENES = [
         name: "composer-model-version",
         init: { ...withProject, models: MODELS },
         run: async (t) => {
-            await t.click("#model-chip");
+            await t.click("#ai-pill-claude");
             await t.wait(300);
-            await t.click('#model-popover label:has(input[value="opus@claude-opus-4-7"])');
+            await t.click('#ai-popover-claude label:has(input[value="opus@claude-opus-4-7"])');
             await t.wait(600);
-            await t.shot("chip-pinned", "#model-chip");
+            await t.shot("chip-pinned", "#ai-pill-claude");
             await noteCalls(t);
-            await t.click("#model-chip");
+            await t.click("#ai-pill-claude");
             await t.wait(300);
-            await t.shot("popover-pinned", "#model-popover");
-            await t.click('#model-popover label:has(input[value="opus"])');
+            await t.shot("popover-pinned", "#ai-popover-claude");
+            await t.click('#ai-popover-claude label:has(input[value="opus"])');
             await t.wait(600);
-            await t.shot("chip-latest", "#model-chip");
+            await t.shot("chip-latest", "#ai-pill-claude");
         }
     },
     {
-        // Codex 모델을 고르면 알약이 Codex 마크와 모델 이름으로 바뀌고, Effort 목록은 Codex 설정을 따르는 기본을 맨 앞에 둔다.
+        // Codex 알약: 모델은 Codex 설정을 따르는 기본이 맨 앞이고, 추론은 Codex 설정을 따르는 스위치를 끄면 슬라이드로 직접 정한다.
         name: "composer-model-codex",
         init: { ...withProject, models: MODELS, model: { providers: CODEX_PROVIDERS } },
         run: async (t) => {
-            await t.click("#model-chip");
+            await t.shot("chips-initial", ".composer-bar");
+            await t.click("#ai-pill-codex");
             await t.wait(300);
-            await t.shot("popover-claude", "#model-popover");
-            await t.click(CODEX_TAB);
-            await t.wait(300);
-            await t.shot("popover-codex", "#model-popover");
-            await t.click('#model-popover label:has(input[value="codex:"])');
+            await t.shot("popover-codex", "#ai-popover-codex");
+            await t.click('#ai-popover-codex label:has(input[value="gpt-6.1-sol-mini"])');
             await t.wait(500);
-            await t.shot("chips-codex-default", ".composer-bar");
-            await t.click("#model-chip");
+            await t.click("#ai-pill-codex");
             await t.wait(300);
-            await t.shot("popover-codex-picked", "#model-popover");
-            await t.click('#model-popover label:has(input[value="codex:gpt-6.1-sol-mini"])');
-            await t.wait(500);
-            await t.click("#effort-control");
+            await t.click('#ai-popover-codex .ai-follow input[type="checkbox"]');
             await t.wait(300);
-            await t.shot("effort-codex", "#effort-popover");
-            await t.click("#effort-popover button:nth-of-type(4)");
+            await setSlider(t, "codex", 3);
             await t.wait(500);
+            await t.shot("popover-codex-high", "#ai-popover-codex");
             await t.shot("chips-codex", ".composer-bar");
+            await t.note("codexPill", await t.eval('document.querySelector("#ai-pill-codex").textContent.trim()'));
         }
     },
     {
         name: "composer-model-codex-unavailable",
         init: { ...withProject, model: { providers: { codex: { available: false, reason: "Codex 로그인이 필요해요" } } } },
         run: async (t) => {
-            await t.click("#model-chip");
+            await t.click("#ai-pill-codex");
             await t.wait(300);
-            await t.click(CODEX_TAB);
-            await t.wait(300);
-            await t.shot("popover-unavailable", "#model-popover");
+            await t.shot("popover-unavailable", "#ai-popover-codex");
         }
     },
     {
+        // 노력 슬라이드: 단계마다 이름과 설명이 바뀌고 알약도 따라 바뀐다. 끝(Max)에서는 선과 글자가 붉게 바뀐다.
         name: "composer-effort-popover",
         init: { ...withProject },
         run: async (t) => {
-            await t.click("#effort-control");
-            await t.shot("popover-open", "#effort-popover");
-            await t.click("#effort-popover button:nth-of-type(5)");
+            await t.click("#ai-pill-claude");
+            await t.wait(300);
+            await t.shot("popover-open", "#ai-popover-claude");
+            await setSlider(t, "claude", 4);
             await t.wait(500);
-            await t.shot("chip-max", "#effort-control");
-            await t.click("#effort-control");
-            await t.shot("popover-max", "#effort-popover");
-            await t.click("#effort-popover button:nth-of-type(1)");
+            await t.shot("popover-max", "#ai-popover-claude");
+            await t.shot("chip-max", "#ai-pill-claude");
+            await setSlider(t, "claude", 0);
             await t.wait(500);
-            await t.shot("chip-low", "#effort-control");
+            await t.shot("chip-low", "#ai-pill-claude");
+        }
+    },
+    {
+        // 유지 보수: 작업할 AI는 팝오버의 스위치로 바꾸고, 알약 끝에 메인 표시가 붙는다. 하나를 켜면 다른 쪽이 꺼진다.
+        name: "composer-runner-switch",
+        init: { ...withProject, model: { providers: CODEX_PROVIDERS } },
+        run: async (t) => {
+            await t.note("tagsBefore", await t.eval('JSON.stringify([...document.querySelectorAll(".ai-tag")].map((el) => el.closest(".ai-pill").dataset.provider + ":" + el.textContent))'));
+            await t.click("#ai-pill-codex");
+            await t.wait(300);
+            await t.shot("popover-foot", "#ai-popover-codex");
+            await t.click('#ai-popover-codex .ai-foot input[role="switch"]');
+            await t.wait(400);
+            await t.note("tagsAfter", await t.eval('JSON.stringify([...document.querySelectorAll(".ai-tag")].map((el) => el.closest(".ai-pill").dataset.provider + ":" + el.textContent))'));
+            await t.shot("chips-after", ".composer-bar");
         }
     },
     {
@@ -231,11 +250,12 @@ const SCENES = [
         init: { ...withProject, state: runningState() },
         run: async (t) => {
             await t.clearCalls();
-            await t.click("#model-chip");
+            await t.click("#ai-pill-claude");
             await t.click(SONNET_OPTION);
             await t.wait(500);
-            await t.click("#effort-control");
-            await t.click("#effort-popover button:nth-of-type(1)");
+            await t.click("#ai-pill-claude");
+            await t.wait(300);
+            await setSlider(t, "claude", 0);
             await t.wait(500);
             await noteCalls(t, "options-calls");
             await t.shot("apply-note", ".now-meta");
@@ -291,7 +311,7 @@ const SCENES = [
     },
     {
         name: "composer-start-failure",
-        init: { ...withProject, responses: { start: { status: "FAILED", error: { code: "INVALID_OPTIONS", msg: "모델, Effort, 정책, 종료 시각 값이 올바르지 않아요." } } } },
+        init: { ...withProject, responses: { start: { status: "FAILED", error: { code: "INVALID_OPTIONS", msg: "모델, 노력, 정책, 종료 시각 값이 올바르지 않아요." } } } },
         run: async (t) => {
             await t.click("#main-action");
             await t.wait(200);
@@ -305,7 +325,7 @@ const SCENES = [
             await t.note(
                 "wave",
                 await t.eval(`(() => {
-                    const path = document.querySelector("#effort-control .wave path");
+                    const path = document.querySelector("#ai-pill-claude .wave path");
                     const style = getComputedStyle(path);
                     return JSON.stringify({ d: style.d, transform: style.transform, anims: path.getAnimations().map((a) => a.animationName + ":" + a.playState) });
                 })()`)

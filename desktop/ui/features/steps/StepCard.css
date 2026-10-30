@@ -160,16 +160,49 @@
     grid-column: 2;
 }
 
+/* 문장은 말 조각과 알약을 같은 간격(8px)으로 늘어놓는다. 조사(.j)는 앞 알약에 바짝 붙고, 줄이 넘치면 알약째로 줄을 바꾼다 */
 .step-sentence {
-    color: var(--ink);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    min-height: 36px;
+    color: var(--ink-2);
     font-size: var(--text-sm);
-    line-height: 32px;
-    text-wrap: pretty;
+    line-height: 1.5;
 }
 
-.step-sentence-sub {
+.step-sentence + .step-sentence {
     margin-top: 2px;
-    color: var(--ink-2);
+}
+
+.step-sentence .j {
+    margin-left: -4px;
+}
+
+.step-sentence .stepper {
+    margin-inline: 0;
+}
+
+/* 모델·노력·추론은 문장이 아니라 입력창의 AI 알약이 맡는다는 안내 */
+.build-tip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 10px 4px 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.build-tip .icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+}
+
+.build-tip b {
+    color: var(--ink);
+    font-weight: 650;
 }
 
 .step-note,

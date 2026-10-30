@@ -79,7 +79,7 @@ const CommitList = ({ rounds }) => {
 
 const BRAINSTORM_NOTES = { receiving: "받는 중", received: "받음", skipped: "건너뜀" };
 
-// 다른 AI(지금은 Codex)의 안 · 검토를 받는 상태. 엔진 로그의 마지막 브레인스토밍 줄을 따른다.
+// 보조(메인의 반대쪽 AI)의 안 · 검토를 받는 상태. 엔진 로그의 마지막 브레인스토밍 줄을 따른다.
 const BrainstormState = ({ brainstorm }) => {
     const isBlocked = brainstorm.status === "blocked";
 
@@ -87,7 +87,7 @@ const BrainstormState = ({ brainstorm }) => {
         <section className="card-section" aria-label="다른 AI">
             <h3>다른 AI</h3>
             <p id="card-ai" className="card-ai" data-status={brainstorm.status} title={brainstorm.reason || undefined}>
-                <b>{isBlocked ? "보내기가 꺼져 있어 Claude만 써요" : `${brainstorm.provider} ${brainstorm.phaseLabel} ${brainstorm.kind === "review" ? "검토" : "안"}`}</b>
+                <b>{isBlocked ? "보내기가 꺼져 있어 보조 없이 메인만 써요" : `${brainstorm.provider} ${brainstorm.phaseLabel} ${brainstorm.kind === "review" ? "검토" : "안"}`}</b>
                 {isBlocked ? null : <span>{BRAINSTORM_NOTES[brainstorm.status]}</span>}
             </p>
             {brainstorm.status === "skipped" && brainstorm.reason ? <p className="card-empty">{brainstorm.reason}</p> : null}

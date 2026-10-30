@@ -5,7 +5,7 @@ import "./Select.css";
 
 const toAnchorName = (id) => `--select-${id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
-// options는 [{ value, label, hint }]이다. 목록은 native popover라 패널의 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙어 자리가 모자라면 위로 뒤집힌다.
+// options는 [{ value, label, hint, icon, disabled }]이다. icon은 Symbols의 심볼 이름(제공자 로고 등)이고, disabled인 항목은 이유를 hint로 보이고 고를 수 없다. 목록은 native popover라 패널의 스크롤 안에서도 잘리지 않고, 트리거 아래에 붙어 자리가 모자라면 위로 뒤집힌다.
 // inline이면 문장 속에 끼는 알약 모양이다. 트리거는 글자만큼 줄어들고, 목록은 설명이 잘리지 않게 트리거보다 넓게 열린다.
 const Select = ({ value, options, onChange, disabled = false, disabledReason = "", labelId = "", ariaLabel = "", inline = false }) => {
     const id = useId();
@@ -54,12 +54,16 @@ const Select = ({ value, options, onChange, disabled = false, disabledReason = "
     const choose = (index) => {
         const option = options[index];
 
-        if (option && option.value !== value) {
+        if (option && !option.disabled && option.value !== value) {
             onChange(option.value);
         }
     };
 
     const handleOptionClick = (index) => {
+        if (options[index]?.disabled) {
+            return;
+        }
+
         choose(index);
         listRef.current.hidePopover();
     };
@@ -141,6 +145,11 @@ const Select = ({ value, options, onChange, disabled = false, disabledReason = "
                 onClick={handleTriggerClick}
                 onKeyDown={handleKeyDown}
             >
+                {selected?.icon ? (
+                    <svg className="mark logo select-logo" aria-hidden="true">
+                        <use href={`#${selected.icon}`} />
+                    </svg>
+                ) : null}
                 <span id={`${id}-value`} className="select-value">
                     {selected?.label}
                 </span>
@@ -169,10 +178,17 @@ const Select = ({ value, options, onChange, disabled = false, disabledReason = "
                         className="select-option"
                         role="option"
                         aria-selected={option.value === value}
+                        aria-disabled={option.disabled ? "true" : undefined}
+                        data-icon={option.icon ? "" : undefined}
                         data-active={index === activeIndex ? "" : undefined}
                         onPointerMove={() => setActiveIndex(index)}
                         onClick={() => handleOptionClick(index)}
                     >
+                        {option.icon ? (
+                            <svg className="mark logo select-option-logo" aria-hidden="true">
+                                <use href={`#${option.icon}`} />
+                            </svg>
+                        ) : null}
                         <span className="select-option-label">{option.label}</span>
                         {option.hint ? <span className="select-option-hint">{option.hint}</span> : null}
                         <svg className="icon select-check" aria-hidden="true">

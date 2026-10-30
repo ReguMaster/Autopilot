@@ -33,15 +33,14 @@ const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 // 회차를 돌리는 에이전트(엔진 config.js의 RUNNERS·DEFAULT_RUNNER)
 const DEFAULT_RUNNER = "claude";
 const CODEX_RUNNER = "codex";
-// 협의에서 주고받는 최대 횟수(엔진 config.js의 DEBATE_DEFAULT_TURNS·DEBATE_TURNS_LIMIT). 선택 상자에는 자주 쓰는 값만 둔다.
+// 협의에서 주고받는 최대 횟수(엔진 config.js의 DEBATE_DEFAULT_TURNS·DEBATE_TURNS_LIMIT).
 const DEFAULT_DEBATE_TURNS = 8;
 const DEBATE_TURNS_LIMIT = 20;
-const DEBATE_TURN_CHOICES = [3, 5, 8, 10, 15, 20];
 
 // 왼쪽 레일 너비(px). settingsStore.cjs의 MIN·MAX·DEFAULT_RAIL_WIDTH와 같다.
 const RAIL_WIDTH = { min: 200, max: 360, default: 224 };
 
-const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·Effort를 바꿀 수 없어요";
+const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·노력·추론을 바꿀 수 없어요";
 
 // 상태별 가운데 버튼. 종료 요청 후에 누르면 메인 프로세스가 확인 모달을 띄우고 강제 종료한다.
 const MAIN_ACTIONS = {
@@ -80,7 +79,6 @@ export {
     CODEX_RUNNER,
     DEFAULT_DEBATE_TURNS,
     DEBATE_TURNS_LIMIT,
-    DEBATE_TURN_CHOICES,
     RAIL_WIDTH,
     OPTIONS_LOCKED_TITLE,
     MAIN_ACTIONS

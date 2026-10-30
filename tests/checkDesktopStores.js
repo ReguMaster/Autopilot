@@ -208,7 +208,7 @@ const checkComposer = async ({ runStore, composerStore }) => {
     release();
     await wait(10);
 
-    // Codex 모델을 고르면 Codex가 회차를 돌리고, Codex Effort도 실행 중에 바로 보낸다. Claude 모델을 고르면 다시 Claude다.
+    // 모델·노력은 AI마다 따로 정하고 누가 일하는지(runner)는 바꾸지 않는다. Codex의 모델·추론도 실행 중에 바로 보낸다.
     composer.chooseCodexModel("gpt-6.1-sol");
     release();
     await wait(10);
@@ -218,12 +218,17 @@ const checkComposer = async ({ runStore, composerStore }) => {
     assert.deepEqual(
         sent.slice(2).map((options) => [options.runner, options.codexModel, options.codexEffort]),
         [
-            ["codex", "gpt-6.1-sol", ""],
-            ["codex", "gpt-6.1-sol", "high"]
+            ["claude", "gpt-6.1-sol", ""],
+            ["claude", "gpt-6.1-sol", "high"]
         ]
     );
 
-    composer.chooseModel("haiku");
+    // 유지 보수에서 작업할 AI는 따로 바꾸고, 실행 중이면 다음 회차를 위해 바로 보낸다.
+    composer.setRunner("codex");
+    release();
+    await wait(10);
+    assert.equal(sent.at(-1).runner, "codex");
+    composer.setRunner("claude");
     release();
     await wait(10);
     assert.equal(sent.at(-1).runner, "claude");
@@ -456,6 +461,7 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         designFormat: "html",
         qaOnFail: "retry:3",
         securityOnFail: "stop",
+        mains: {},
         brainstorm: [],
         crossReview: false,
         debate: [],
@@ -484,7 +490,7 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     composer.loadSettings({ codexModel: "", codexEffort: "" }, ["codexModel", "codexEffort"]);
     assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["", ""]);
 
-    // 단계에 Codex를 켜면(나란히 비교 · 협의) 보내기도 켜지고, 보내기를 끄면 브레인스토밍 · 협의 · 교차검토가 함께 꺼진다.
+    // 단계에 Codex를 보조로 켜면(메인이 Claude인 단계의 나란히 비교 · 협의) 보내기도 켜지고, 보내기를 끄면 Codex 보조가 있던 단계는 브레인스토밍 · 협의가 함께 꺼진다.
     const getBrainstormState = () => {
         const { brainstorm, debate, crossReview, allow } = useComposerStore.getState();
 
@@ -502,16 +508,33 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.deepEqual(getBrainstormState(), { brainstorm: ["plan", "design"], debate: ["plan", "design"], crossReview: false, allow: ["large", "send"] });
     composer.setBrainstormMode("plan", "compare");
     assert.deepEqual(getBrainstormState().debate, ["design"]);
-    composer.setBrainstormMode("design", "claude");
+    composer.setBrainstormMode("design", "none");
     assert.deepEqual(getBrainstormState(), { brainstorm: ["plan"], debate: [], crossReview: false, allow: ["large", "send"] });
     composer.setBrainstormMode("plan", "debate");
     composer.toggleAllow("send");
     assert.deepEqual(getBrainstormState(), { brainstorm: [], debate: [], crossReview: false, allow: ["large"] });
     composer.setBrainstormMode("plan", "compare");
     composer.setCrossReview(true);
-    composer.setBrainstormMode("plan", "claude");
+    composer.setBrainstormMode("plan", "none");
     assert.deepEqual(getBrainstormState(), { brainstorm: [], debate: [], crossReview: false, allow: ["large", "send"] });
-    composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"] }, ["mode", "gates", "allow"]);
+
+    // 단계의 메인을 바꾸면 보조는 반대쪽 AI가 된다. 메인이 Codex이면 보조는 Claude라서 보내기와 상관없고, 보내기를 꺼도 그 단계의 보조는 남는다.
+    const keys = ["allow", "mains", "brainstorm", "debate", "crossReview"];
+
+    composer.loadSettings({ allow: ["large"], mains: {}, brainstorm: [], debate: [], crossReview: false }, keys);
+    composer.setPhaseMain("plan", "codex");
+    assert.deepEqual(useComposerStore.getState().mains, { plan: "codex" });
+    composer.setBrainstormMode("plan", "compare");
+    assert.deepEqual(getBrainstormState(), { brainstorm: ["plan"], debate: [], crossReview: false, allow: ["large"] });
+    composer.setBrainstormMode("design", "debate");
+    composer.setCrossReview(true);
+    assert.deepEqual(getBrainstormState(), { brainstorm: ["plan", "design"], debate: ["design"], crossReview: true, allow: ["large", "send"] }, "메인이 Claude인 디자인의 Codex 보조는 보내기를 켠다");
+    composer.toggleAllow("send");
+    assert.deepEqual(getBrainstormState(), { brainstorm: ["plan"], debate: [], crossReview: true, allow: ["large"] }, "Codex 보조 단계만 빠지고 Claude 보조(메인이 Codex)는 남는다");
+    composer.setPhaseMain("plan", "claude");
+    assert.deepEqual(useComposerStore.getState().mains, {}, "기본(Claude)인 단계는 맵에 남기지 않는다");
+    assert.deepEqual(getBrainstormState().allow, ["large", "send"], "메인이 Claude가 되면 보조가 Codex라 보내기가 켜진다");
+    composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"], mains: {}, brainstorm: [], debate: [], crossReview: false }, ["mode", "gates", ...keys]);
 
     calls.length = 0;
     accountStore.useAccountStore.setState({

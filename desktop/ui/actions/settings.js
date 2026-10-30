@@ -134,7 +134,7 @@ const settings = {
     restoreDefaults: async () => {
         const isConfirmed = await modal.confirm({
             title: "설정을 기본값으로 되돌릴까요?",
-            message: "전역 기본값과 프로젝트별로 기억한 작업·모델·Effort 같은 값이 모두 기본값으로 돌아가요. 계정·Claude 데이터 폴더·선택한 프로젝트·로그인 자동 실행·예약은 그대로예요.",
+            message: "전역 기본값과 프로젝트별로 기억한 작업·모델·노력 같은 값이 모두 기본값으로 돌아가요. 계정·Claude 데이터 폴더·선택한 프로젝트·로그인 자동 실행·예약은 그대로예요.",
             confirmLabel: "되돌리기",
             tone: "danger"
         });
