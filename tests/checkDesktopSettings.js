@@ -142,6 +142,9 @@ const checkNormalize = () => {
     assert.equal(normalizeSettings({}).sleepBlock, "always");
     assert.equal(normalizeSettings({ sleepBlock: "plugged" }).sleepBlock, "plugged");
     assert.equal(normalizeSettings({ sleepBlock: "sometimes" }).sleepBlock, "always", "허용되지 않은 값은 기본값");
+    assert.equal(normalizeSettings({}).theme, "system");
+    assert.equal(normalizeSettings({ theme: "dark" }).theme, "dark");
+    assert.equal(normalizeSettings({ theme: "sepia" }).theme, "system", "허용되지 않은 테마는 기본값");
     assert.equal(normalizeSettings({ notifyFinish: false }).notifyFinish, false);
     assert.equal(normalizeSettings({ notifyFocused: "yes" }).notifyFocused, false, "불리언이 아니면 기본값");
 

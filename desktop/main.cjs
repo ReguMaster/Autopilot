@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
 const path = require("node:path");
 const {
     registerIpc,
+    getWindowBackground,
     confirmClose,
     isOwnedEngineRunning,
     isTrayResident,
@@ -20,8 +21,6 @@ const { applyLoginShellPath } = require("./loginShellPath.cjs");
 const WINDOW_SIZE = { width: 600, height: 800 };
 const WINDOW_MIN_SIZE = { width: 480, height: 640 };
 const WINDOW_SCREEN_MARGIN = 40;
-// 화면이 그려지기 전에 비치는 창 바탕색. 화면 바탕과 같은 흰색이다.
-const WINDOW_BACKGROUND = "#ffffff";
 const SMOKE_TEST_TIMEOUT_MS = 15000;
 
 const IS_DEV = process.argv.includes("-dev") || process.argv.includes("--dev");
@@ -121,7 +120,7 @@ const createWindow = () => {
         ...getWindowSize(),
         minWidth: WINDOW_MIN_SIZE.width,
         minHeight: WINDOW_MIN_SIZE.height,
-        backgroundColor: WINDOW_BACKGROUND,
+        backgroundColor: getWindowBackground(),
         icon: path.join(__dirname, process.platform === "win32" ? "../docs/icon.ico" : "../docs/icon.png"),
         frame: false,
         show: false,

@@ -401,7 +401,7 @@ body[data-view="ready"] .course {
     left: calc(var(--from) * 1% + 1.5px);
     width: max(2px, calc((var(--to) - var(--from)) * 1% - 3px));
     border-radius: 2px;
-    background: #c3c7d6;
+    background: var(--hair-strong);
 }
 
 .track .seg.live {

@@ -24,6 +24,11 @@ const SLEEP_BLOCK_OPTIONS = [
     { value: "plugged", label: "전원 연결 때만", hint: "배터리로 돌 때는 PC가 잠들 수 있어요" },
     { value: "never", label: "하지 않음", hint: "PC가 잠들면 회차가 멈춰요" }
 ];
+const THEME_OPTIONS = [
+    { value: "system", label: "시스템 설정", hint: "운영체제의 밝게·어둡게를 따라가요" },
+    { value: "light", label: "밝게" },
+    { value: "dark", label: "어둡게" }
+];
 const POST_RUN_OPTIONS = [
     { value: "none", label: "아무것도 안 함" },
     { value: "sleep", label: "PC 절전", hint: "끝나고 1분 안에 취소할 수 있어요" },
@@ -144,11 +149,18 @@ const ProjectGroup = () => {
 
 // 로그인 자동 실행을 켜면 트레이 상주는 반드시 켜져 있어야 하므로 끌 수 없게 잠근다. 개발 실행처럼 등록할 수 없는 환경은 켜는 쪽을 막는다.
 const SystemGroup = () => {
-    const { keepInTray, launchAtLogin, checkUpdates, sleepBlock, postRunAction } = useAppStore((store) => store.settings);
+    const { keepInTray, launchAtLogin, checkUpdates, sleepBlock, postRunAction, theme } = useAppStore((store) => store.settings);
     const canLaunchAtLogin = useAppStore((store) => store.canLaunchAtLogin);
 
     return (
         <SettingsGroup id="group-system" title="시스템">
+            <div className="row version-row">
+                <span className="row-body">
+                    <b id="theme-label">화면 테마</b>
+                    <small id="theme-note">어둡게는 밤에 눈이 덜 부셔요.</small>
+                </span>
+                <Select value={theme || "system"} options={THEME_OPTIONS} labelId="theme-label" onChange={(next) => settings.setPreferences({ theme: next })} />
+            </div>
             <SwitchRow
                 id="keep-in-tray"
                 noteId="keep-in-tray-note"

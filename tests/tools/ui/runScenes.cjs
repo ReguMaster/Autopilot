@@ -1,6 +1,6 @@
-// Electron으로 실행한다: electron tests/tools/ui/runScenes.cjs -- --root <저장소 폴더> --page <html> --out <폴더> [--scenes a,b] [--reduced]
+// Electron으로 실행한다: electron tests/tools/ui/runScenes.cjs -- --root <저장소 폴더> --page <html> --out <폴더> [--scenes a,b] [--reduced] [--theme light|dark]
 // 장면마다 화면을 새로 띄워 가짜 preload로 데이터를 흘리고, 진짜 마우스·키보드 입력을 보내고, 영역별로 PNG와 정규화한 DOM을 저장한다.
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, nativeTheme } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -16,7 +16,9 @@ const PAGE = readArgument("page", "index.html");
 const OUT = readArgument("out");
 const ONLY = readArgument("scenes") ? readArgument("scenes").split(",") : null;
 const IS_REDUCED = process.argv.includes("--reduced");
-const DEFAULT_SIZE = [600, 800];
+// 화면 테마(system·light·dark). 앱처럼 nativeTheme으로 정해 화면의 prefers-color-scheme이 따른다.
+const THEME = readArgument("theme", "light");
+const DEFAULT_SIZE = [1160, 800];
 
 app.disableHardwareAcceleration();
 app.on("window-all-closed", () => {});
@@ -292,9 +294,11 @@ setTimeout(
     Number(readArgument("timeout", "900000"))
 );
 
-app.whenReady().then(() =>
-    main().catch((error) => {
+app.whenReady().then(() => {
+    nativeTheme.themeSource = THEME;
+
+    return main().catch((error) => {
         console.log("실행 오류", error);
         app.exit(1);
-    })
-);
+    });
+});

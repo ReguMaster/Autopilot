@@ -34,6 +34,8 @@ const EXTEND_LIMIT_CHOICES = [0, 60, 180, 360, 720, 1440];
 // 지난 실행의 로그·리포트를 보관하는 기간(일)
 const LOG_RETENTION_CHOICES = [7, 14, 30, 90, 180];
 const SLEEP_BLOCK_CHOICES = ["always", "plugged", "never"];
+// 화면 테마. system은 운영체제 설정을 따른다(메인이 nativeTheme.themeSource로 정한다).
+const THEME_CHOICES = ["system", "light", "dark"];
 // 저장하는 종료 시각은 HH:mm뿐이다. 날짜를 붙인 값은 다음 시작에 이미 지났을 수 있어 기억하지 않는다(autopilotIpc.launchRun).
 const END_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RECOVERY_NOTICES = {
@@ -68,7 +70,7 @@ const LINKED_REPOS_KEY = "linkedRepos";
 const LOCAL_PROJECT_KEYS = [ACCOUNT_KEY, LINKED_REPOS_KEY];
 const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
-const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction"];
+const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
 const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin"];
 // PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
@@ -110,7 +112,8 @@ const DEFAULT_SETTINGS = {
     notifyFocused: false,
     checkUpdates: true,
     sleepBlock: "always",
-    postRunAction: "none"
+    postRunAction: "none",
+    theme: "system"
 };
 
 // modelVersions는 계열(opus 등)마다 고정한 모델 ID이고, 없으면 그 계열의 최신 별칭을 쓴다.
@@ -156,7 +159,8 @@ const SETTING_VALIDATORS = {
     notifyFocused: (value) => typeof value === "boolean",
     checkUpdates: (value) => typeof value === "boolean",
     sleepBlock: (value) => SLEEP_BLOCK_CHOICES.includes(value),
-    postRunAction: (value) => POST_RUN_ACTIONS.includes(value)
+    postRunAction: (value) => POST_RUN_ACTIONS.includes(value),
+    theme: (value) => THEME_CHOICES.includes(value)
 };
 
 // MIGRATIONS[n]은 버전 n의 저장 내용을 n+1 형식으로 바꾼다. 키 이름이나 의미를 바꿀 때 여기에 더한다. context.writeProject는 프로젝트 파일에 쓰는 함수다.

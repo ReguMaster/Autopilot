@@ -3,7 +3,7 @@
     position: fixed;
     inset: 48px 0 0;
     z-index: 5;
-    background: rgb(26 31 54 / 0.14);
+    background: var(--scrim);
     opacity: 0;
     visibility: hidden;
     transition:
@@ -13,7 +13,7 @@
 
 /* 스크림은 헤더 아래만 덮는다. 헤더에 덧씌우면 끌기 영역이 버튼 클릭을 가로채므로 배경색으로 맞춘다 */
 body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .titlebar {
-    background: rgb(26 31 54 / 0.14);
+    background: var(--scrim);
 }
 
 body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .scrim {
@@ -147,7 +147,7 @@ body.profile-open #profile {
 }
 
 .tag.warn {
-    background: #fdf1de;
+    background: var(--warn-wash);
     color: var(--warn);
 }
 
@@ -654,7 +654,7 @@ body.profile-open #profile {
     height: 44px;
     border-radius: 50%;
     background: var(--ink);
-    color: #fff;
+    color: var(--bg);
     font-size: var(--text-xl);
     font-weight: 650;
 }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, powerMonitor, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -683,10 +683,27 @@ const handleRestoreDefaults = () => {
     return { status: STATUS_OK, data: getSettingsView() };
 };
 
+// 화면이 그려지기 전에 비치는 창 바탕색. 화면 바탕(--page)과 같다.
+const WINDOW_BACKGROUNDS = { light: "#f4f6fa", dark: "#0e131d" };
+
+const getWindowBackground = () => {
+    return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUNDS.dark : WINDOW_BACKGROUNDS.light;
+};
+
+// 테마는 nativeTheme이 정한다. 화면의 prefers-color-scheme·스크롤 막대·입력 칸과 창 바탕이 함께 따라간다.
+const applyTheme = () => {
+    nativeTheme.themeSource = readSettings().theme;
+
+    for (const window of BrowserWindow.getAllWindows()) {
+        window.setBackgroundColor(getWindowBackground());
+    }
+};
+
 // 환경설정이 바뀌면 바로 반영한다. 새 버전 확인은 켜면 지금 확인하고 끄면 알고 있던 안내를 거두고, 절전 방지는 실행 중이어도 다시 판단한다.
 const applyPreferenceChanges = () => {
     updateCheck.check();
     refreshSleepBlocker();
+    applyTheme();
 };
 
 // 알림처럼 실행과 무관하게 언제든 바꾸는 전역 환경설정을 저장한다.
@@ -1317,6 +1334,7 @@ const registerIpc = () => {
     settingsStore.recover();
     settingsStore.upgrade();
     configureSystem({ getPreferences: readSettings });
+    applyTheme();
 
     ipcMain.handle("autopilot:get-state", handleGetState);
     ipcMain.handle("autopilot:select-project", handleSelectProject);
@@ -1416,6 +1434,7 @@ const startUpdateWatch = () => {
 
 module.exports = {
     registerIpc,
+    getWindowBackground,
     confirmClose,
     isOwnedEngineRunning,
     isTrayResident,

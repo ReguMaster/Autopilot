@@ -27,15 +27,15 @@
 }
 
 .notice[data-tone="warn"] {
-    background: #fff7ec;
-    color: #6f4100;
-    box-shadow: inset 0 0 0 1px #f3dcb8;
+    background: var(--warn-wash);
+    color: var(--warn);
+    box-shadow: inset 0 0 0 1px var(--warn-line);
 }
 
 .notice[data-tone="ok"] {
-    background: #eef8f2;
-    color: #14603a;
-    box-shadow: inset 0 0 0 1px #cfe8da;
+    background: var(--ok-wash);
+    color: var(--add);
+    box-shadow: inset 0 0 0 1px var(--ok-line);
 }
 
 .notice .button {
@@ -63,9 +63,9 @@
     height: 34px;
     padding: 0 14px;
     border: 0;
-    border-radius: 9px;
+    border-radius: var(--r-sm);
     background: var(--bg);
-    box-shadow: inset 0 0 0 1px var(--hair);
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
     font-size: var(--text-sm);
     font-weight: 500;
     white-space: nowrap;
@@ -98,12 +98,12 @@
 .button.primary {
     background: var(--accent);
     color: #fff;
-    box-shadow: none;
+    box-shadow: var(--glow);
 }
 
 .button.primary:hover:not(:disabled) {
     background: var(--accent-hover);
-    box-shadow: none;
+    box-shadow: var(--glow);
 }
 
 .button.danger {

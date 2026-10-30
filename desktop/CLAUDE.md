@@ -177,7 +177,8 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 
 ## 시각 규칙
 
-- 화면은 흰 바탕 한 벌이다. 파랑(--accent) 하나를 지금 진행 중인 것(상태 점·진행선·캐럿·성과의 이후 숫자·시작 버튼)에만 쓴다.
+- 화면은 "구름" 디자인 시스템이다(Paneloom과 같은 토큰 이름, styles/base.css :root). 옅은 하늘색 바탕(--page) 위에 흰 면(--bg)이 그림자로 뜬다. 페이지에 바로 놓인 카드(컴포저·패널·시트)는 헤어라인 대신 그림자(--shadow-1, 들리면 --shadow-2, 팝오버·패널·대화상자는 --shadow)로 띄우고 카드 안쪽 항목은 헤어라인을 쓴다. 파랑(--accent) 하나를 주요 동작(시작 버튼은 --glow)·진행 중인 것·포커스에만 쓰고, 강조색 글자·아이콘은 --accent-ink, 상태 바탕은 --ok-wash·--warn-wash를 쓴다. 모서리는 --r-sm 9·--r-md 11·--r-lg 14·--r-xl 18과 알약(999px)이다. 색은 토큰으로만 쓴다(모델 알약의 계열 색 --tone만 예외이고 바탕은 color-mix로 --bg에 섞는다). 잉크로 채운 단추의 글자는 #fff가 아니라 var(--bg)다(다크에서 뒤집힌다).
+- 다크: 전역 환경설정 theme(system·light·dark, 기본 system, settingsStore의 THEME_CHOICES, 설정 패널 "시스템 > 화면 테마")을 메인이 nativeTheme.themeSource로 정한다(autopilotIpc.applyTheme, 앱을 켤 때와 환경설정이 바뀔 때). 화면은 base.css의 `@media (prefers-color-scheme: dark)` 한 곳에서 토큰만 바꾸므로 첫 화면부터 깜빡이지 않고, 창 바탕(getWindowBackground: --page와 같은 색)·스크롤 막대·입력 칸도 함께 따른다. tests/tools/ui의 runScenes는 `--theme dark`로 같은 방식으로 찍는다.
 - 글자 크기는 styles/base.css :root의 열 단계(--text-xs 12 ~ --display 56)만 쓴다.
 - 서체는 desktop/fonts/의 Pretendard(OFL, 라이선스 파일 동봉)를 fonts/pretendard.css의 @font-face로 넣어 오프라인에서도 같게 보이게 한다. 글꼴과 라이선스를 한 폴더에 두고 docs/mockups도 그 파일을 쓰므로 번들에 넣지 않고 index.html이 직접 불러온다. 숫자는 body의 tabular-nums(Pretendard 고정폭 숫자)로 써서 시계가 바뀌어도 흔들리지 않게 한다.
 - 고정폭 서체(--mono, Windows의 Cascadia Mono)는 코드·경로·해시·전체 로그에만 쓴다(한글이 섞인 숫자 문구에 쓰면 글자 사이가 벌어진다).

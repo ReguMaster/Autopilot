@@ -180,7 +180,7 @@
 
 .seg-option input:checked + span {
     background: var(--ink);
-    color: #fff;
+    color: var(--bg);
     box-shadow: none;
 }
 

@@ -2,14 +2,14 @@
 .composer {
     flex: none;
     margin: 0 16px 16px;
-    border-radius: 16px;
-    background: var(--surface);
-    box-shadow: inset 0 0 0 1px var(--hair);
+    border-radius: var(--r-xl);
+    background: var(--bg);
+    box-shadow: var(--shadow-1);
     transition: box-shadow 0.25s var(--ease-out);
 }
 
 .composer:focus-within {
-    box-shadow: inset 0 0 0 1px var(--hair-strong);
+    box-shadow: var(--shadow-2);
 }
 
 .tasks {
@@ -19,7 +19,7 @@
     padding: 14px 16px 0;
     border: 0;
     border-bottom: 1px solid var(--hair);
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
     background: none;
     font-size: var(--text-md);
     line-height: 1.55;
@@ -123,9 +123,7 @@ body[data-view="run"] .tasks {
 body[data-view="run"] .composer {
     margin-bottom: 12px;
     background: var(--bg);
-    box-shadow:
-        inset 0 0 0 1px var(--hair),
-        0 12px 32px -14px rgb(26 31 54 / 0.32);
+    box-shadow: var(--shadow-1);
 }
 
 body[data-view="run"] .composer-bar {
@@ -153,8 +151,8 @@ body[data-view="run"] #policy-chip {
     padding: 0 9px;
     border: 0;
     border-radius: 999px;
-    background: var(--bg);
-    box-shadow: inset 0 0 0 1px var(--hair);
+    background: var(--chip);
+    box-shadow: none;
     font-size: var(--text-sm);
     font-weight: 600;
     white-space: nowrap;
@@ -166,7 +164,7 @@ body[data-view="run"] #policy-chip {
 
 .chip:hover:not(:disabled),
 .chip[aria-expanded="true"] {
-    box-shadow: inset 0 0 0 1px var(--hair-strong);
+    background: var(--hair);
 }
 
 .chip:active:not(:disabled) {
@@ -280,22 +278,19 @@ body[data-view="run"] #policy-chip {
 
 /* 모델 알약은 고른 모델의 색으로 옅게 물든다 */
 #model-chip {
-    --tint: #ecedfb;
     --tone: #5b5fd3;
+    --tint: color-mix(in srgb, var(--tone) 13%, var(--bg));
 }
 
 #model-chip[data-model="opus"] {
-    --tint: #fbeee0;
     --tone: #d9822b;
 }
 
 #model-chip[data-model="sonnet"] {
-    --tint: #e0f2f3;
     --tone: #1f8a90;
 }
 
 #model-chip[data-model="haiku"] {
-    --tint: #e5f2e1;
     --tone: #4a9a3d;
 }
 
@@ -431,18 +426,26 @@ body[data-view="run"] #policy-chip {
     border: 0;
     border-radius: 999px;
     background: var(--accent);
+    box-shadow: var(--glow);
     color: #fff;
     font-size: var(--text-md);
     font-weight: 650;
     white-space: nowrap;
-    transition: background-color 0.2s var(--ease-out);
+    transition:
+        background-color 0.2s var(--ease-out),
+        translate 0.28s var(--ease-out);
 }
 
 .main-action:hover:not(:disabled) {
     background: var(--accent-hover);
 }
 
+.main-action:not(:disabled):hover {
+    translate: 0 -1px;
+}
+
 .main-action:disabled {
+    box-shadow: none;
     background: var(--hair-strong);
     cursor: not-allowed;
 }
@@ -456,10 +459,11 @@ body[data-view="run"] #policy-chip {
 
 .main-action[data-action="stop"] {
     background: var(--ink);
+    color: var(--bg);
 }
 
 .main-action[data-action="stop"]:hover:not(:disabled) {
-    background: #2b3152;
+    background: color-mix(in srgb, var(--ink) 86%, var(--bg));
 }
 
 .main-action[data-action="kill"] {
@@ -467,7 +471,7 @@ body[data-view="run"] #policy-chip {
 }
 
 .main-action[data-action="kill"]:hover:not(:disabled) {
-    background: #a92e27;
+    background: color-mix(in srgb, var(--del) 86%, black);
 }
 
 .main-action:is([data-action="stop"], [data-action="kill"]) i {
@@ -512,7 +516,7 @@ body[data-view="run"] #policy-chip {
     margin: 8px 0;
     padding: 16px;
     border: 0;
-    border-radius: 16px;
+    border-radius: var(--r-lg);
     background: var(--bg);
     color: var(--ink);
     box-shadow: var(--shadow);
