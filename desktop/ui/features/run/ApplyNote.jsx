@@ -1,12 +1,18 @@
-import { formatOptions } from "../../../viewFormat.js";
+import { formatAgentOptions } from "../../../viewFormat.js";
 import { SwapText } from "../../components/SwapText.jsx";
 import { useRunStore } from "../../stores/runStore.js";
 
-// 실행 중에 고른 모델·Effort가 아직 엔진에 적용되기 전이면(다음 회차부터 적용) 그 사실을 알린다.
-const getApplyNote = (state) => {
-    const isPending = state.status !== "idle" && (state.requested.model !== state.model || state.requested.effort !== state.effort);
+// 다음 회차에 쓸 값. Codex를 고르면 Codex의 model·effort가 회차 값이다.
+const getRequestedAgent = (requested) => {
+    return requested.runner === "codex" ? { runner: "codex", model: requested.codexModel, effort: requested.codexEffort } : { runner: "claude", model: requested.model, effort: requested.effort };
+};
 
-    return isPending ? `적용 대기: 다음 회차부터 ${formatOptions(state.requested.model, state.requested.effort)} (지금 ${formatOptions(state.model, state.effort)})` : "";
+// 실행 중에 고른 에이전트·모델·Effort가 아직 엔진에 적용되기 전이면(다음 회차부터 적용) 그 사실을 알린다.
+const getApplyNote = (state) => {
+    const next = getRequestedAgent(state.requested);
+    const isPending = state.status !== "idle" && (next.runner !== state.runner || next.model !== state.model || next.effort !== state.effort);
+
+    return isPending ? `적용 대기: 다음 회차부터 ${formatAgentOptions(next.runner, next.model, next.effort)} (지금 ${formatAgentOptions(state.runner, state.model, state.effort)})` : "";
 };
 
 const ApplyNote = () => {

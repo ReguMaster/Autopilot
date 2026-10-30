@@ -25,6 +25,11 @@ const BRAINSTORM_PROVIDERS = ["codex"];
 // Codex에 넘기는 model(Codex가 쓰는 이름)과 reasoning effort. 엔진 config.js의 CODEX_MODEL_PATTERN·CODEX_EFFORT_LEVELS와 같고, 비우면 Codex 설정을 따른다.
 const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+// 인자로 빈 값을 넘길 수 없어 Codex 설정을 따르게 되돌릴 때 쓰는 값(엔진 config.js의 CODEX_DEFAULT_VALUE)
+const CODEX_DEFAULT_VALUE = "default";
+// 회차를 실행하는 에이전트(엔진 config.js의 RUNNERS·DEFAULT_RUNNER). 기본값이면 인자를 생략한다.
+const RUNNERS = ["claude", "codex"];
+const DEFAULT_RUNNER = "claude";
 // 협의에서 주고받는 최대 횟수(엔진 config.js의 DEBATE_DEFAULT_TURNS·DEBATE_TURNS_LIMIT와 같다). 기본값과 같으면 인자를 생략한다.
 const DEBATE_DEFAULT_TURNS = 8;
 const DEBATE_TURNS_LIMIT = 20;
@@ -76,21 +81,23 @@ const getEndTimeError = (endTime, now = Date.now()) => {
     return deadline.getTime() - now > MAX_RUN_DAYS * DAY_MS ? `종료 시각은 ${MAX_RUN_DAYS}일 뒤까지 정할 수 있어요.` : "";
 };
 
+const isBrainstorming = ({ mode, brainstorm = [], allow = [] }) => {
+    return mode === "build" && brainstorm.length > 0 && allow.includes("send");
+};
+
+// Codex를 쓰는 실행(회차를 돌리거나 브레인스토밍)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다). 비어 있으면 Codex 설정을 따르므로 생략한다.
+const getCodexArgs = ({ runner = DEFAULT_RUNNER, codexModel = "", codexEffort = "", ...buildOptions }) => {
+    const args = runner === DEFAULT_RUNNER ? [] : ["--runner", runner];
+
+    if (runner === "codex" || isBrainstorming(buildOptions)) {
+        args.push(...(codexModel ? ["--codex-model", codexModel] : []), ...(codexEffort ? ["--codex-effort", codexEffort] : []));
+    }
+
+    return args;
+};
+
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({
-    mode,
-    gates = [],
-    allow = [],
-    designFormat,
-    qaOnFail,
-    securityOnFail,
-    brainstorm = [],
-    crossReview = false,
-    debate = [],
-    debateTurns = DEBATE_DEFAULT_TURNS,
-    codexModel = "",
-    codexEffort = ""
-}) => {
+const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, brainstorm = [], crossReview = false, debate = [], debateTurns = DEBATE_DEFAULT_TURNS }) => {
     if (mode !== "build") {
         return [];
     }
@@ -119,19 +126,10 @@ const getBuildArgs = ({
 
     // 다른 AI에게 프로젝트 내용을 보내므로 보내기를 허용했을 때만 넘긴다. 제공자는 엔진 기본값(codex)이다.
     // 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
-    // Codex의 model·effort는 비어 있으면(Codex 설정을 따름) 생략한다.
-    if (brainstorm.length && allow.includes("send")) {
+    if (isBrainstorming({ mode: mode, brainstorm: brainstorm, allow: allow })) {
         const hasCompare = brainstorm.some((phase) => !debate.includes(phase));
 
         args.push("--brainstorm", brainstorm.map((phase) => (debate.includes(phase) ? `${phase}:debate` : phase)).join(","), ...(crossReview && hasCompare ? ["--cross-review"] : []));
-
-        if (codexModel) {
-            args.push("--codex-model", codexModel);
-        }
-
-        if (codexEffort) {
-            args.push("--codex-effort", codexEffort);
-        }
 
         // 엔진은 협의하는 단계가 없을 때의 --debate-turns를 거부하므로 협의 단계가 있을 때만 넘긴다.
         if (debateTurns !== DEBATE_DEFAULT_TURNS && brainstorm.some((phase) => debate.includes(phase))) {
@@ -189,7 +187,7 @@ const getCliArgs = ({
         args.push("--link-project", linkedRepo);
     }
 
-    args.push(...getBuildArgs(buildOptions));
+    args.push(...getBuildArgs(buildOptions), ...getCodexArgs(buildOptions));
 
     if (configDir) {
         args.push("--config-dir", configDir);
@@ -219,6 +217,9 @@ module.exports = {
     BRAINSTORM_PROVIDERS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
+    CODEX_DEFAULT_VALUE,
+    RUNNERS,
+    DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS,
     DEBATE_TURNS_LIMIT,
     MAX_RUN_DAYS

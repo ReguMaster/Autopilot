@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { formatOptions, formatRoundTime, getRoundTone } from "../../../viewFormat.js";
+import { formatAgentOptions, formatRoundTime, getRoundTone } from "../../../viewFormat.js";
 import { Button } from "../../components/Button.jsx";
 import { Tag } from "../../components/Tag.jsx";
 import { clearLogs, useRunStore } from "../../stores/runStore.js";
@@ -62,7 +62,7 @@ const RoundItem = ({ round }) => {
             <span className="round-no num">{round.round}</span>
             <div className="round-body">
                 <span className="num">{formatRoundTime(round)}</span>
-                <small>{formatOptions(round.model, round.effort)}</small>
+                <small>{formatAgentOptions(round.runner, round.model, round.effort)}</small>
             </div>
             <Tag tone={getRoundTone(round.outcome)}>{round.outcome || "진행 중"}</Tag>
         </li>

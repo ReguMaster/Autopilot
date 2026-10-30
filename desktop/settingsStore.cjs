@@ -23,6 +23,8 @@ const {
     BRAINSTORM_PHASES,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
+    RUNNERS,
+    DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS,
     DEBATE_TURNS_LIMIT
 } = require("./engineArgs.cjs");
@@ -66,6 +68,7 @@ const OVERRIDABLE_KEYS = [
     "model",
     "modelVersions",
     "effort",
+    "runner",
     "mode",
     "gates",
     "allow",
@@ -111,6 +114,8 @@ const DEFAULT_SETTINGS = {
     model: "opus",
     modelVersions: {},
     effort: "high",
+    // 회차를 돌리는 에이전트. codex면 Codex가 codexModel·codexEffort로 회차를 돌린다.
+    runner: DEFAULT_RUNNER,
     mode: "maintain",
     gates: ["plan", "design"],
     allow: ["deps", "large"],
@@ -171,6 +176,7 @@ const SETTING_VALIDATORS = {
     model: (value) => MODEL_CHOICES.includes(value),
     modelVersions: isModelVersions,
     effort: (value) => EFFORT_CHOICES.includes(value),
+    runner: (value) => RUNNERS.includes(value),
     mode: (value) => MODES.includes(value),
     gates: (value) => isChoiceList(value, GATE_PHASES),
     allow: (value) => isChoiceList(value, ALLOW_KEYS),

@@ -232,23 +232,33 @@ const checkCodexStatus = async (testDir) => {
     // 고를 수 있는 모델은 Codex가 캐시한 목록(visibility list)에서 읽고, 못 읽으면 빈 목록이다.
     const codexHome = path.join(testDir, "codex-home");
     const cacheModels = [
-        { slug: "gpt-6.1-sol", display_name: "GPT-6.1-Sol", visibility: "list" },
+        { slug: "gpt-6.1-sol", display_name: "GPT-6.1-Sol", visibility: "list", default_reasoning_level: "low" },
         { slug: "gpt-reserve", display_name: "GPT-Reserve", visibility: "hide" },
         { slug: "bad slug; rm", display_name: "위험", visibility: "list" },
-        { slug: "gpt-6-luna", visibility: "list" }
+        { slug: "gpt-6-luna", visibility: "list", default_reasoning_level: "turbo" }
     ];
+    const noDefaults = { model: "", effort: "" };
 
     fs.mkdirSync(codexHome, { recursive: true });
-    assert.deepEqual(await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome }), { available: true, reason: "", models: [] });
+    assert.deepEqual(await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome }), { available: true, reason: "", models: [], defaults: noDefaults });
     fs.writeFileSync(path.join(codexHome, "models_cache.json"), JSON.stringify({ models: cacheModels }));
     assert.deepEqual(await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome }), {
         available: true,
         reason: "",
         models: [
-            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
-            { id: "gpt-6-luna", label: "gpt-6-luna" }
-        ]
+            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", defaultEffort: "low" },
+            { id: "gpt-6-luna", label: "gpt-6-luna", defaultEffort: "" }
+        ],
+        defaults: noDefaults
     });
+
+    // Codex 설정의 기본 model·effort는 맨 위(표 밖)의 값만 읽고, 형식이 틀리면 비운다.
+    fs.writeFileSync(path.join(codexHome, "config.toml"), 'model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\n\n[profiles.fast]\nmodel = "gpt-6-luna"\n');
+    assert.deepEqual((await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome })).defaults, { model: "gpt-6.1-sol", effort: "high" });
+    fs.writeFileSync(path.join(codexHome, "config.toml"), '[profiles.fast]\nmodel = "gpt-6-luna"\n');
+    assert.deepEqual((await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome })).defaults, noDefaults);
+    fs.writeFileSync(path.join(codexHome, "config.toml"), "model = 'gpt 6; rm'\nmodel_reasoning_effort = \"ultra\"\n");
+    assert.deepEqual((await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome })).defaults, noDefaults);
     fs.writeFileSync(path.join(codexHome, "models_cache.json"), "not json");
     assert.deepEqual((await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome })).models, []);
     assert.deepEqual(await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome, AP_CODEX_LOGIN: "0" }), { available: false, reason: "Codex 로그인이 필요해요" });

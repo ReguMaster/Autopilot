@@ -52,8 +52,10 @@ import autopilotUtil from "../utils/autopilotUtil.js";
 import phaseUtil from "../utils/phaseUtil.js";
 import providerUtil from "../utils/providerUtil.js";
 import debateUtil from "../utils/debateUtil.js";
+import streamUtil from "../utils/streamUtil.js";
 
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+const CODEX_RUNNER = "codex";
 
 const writeRunHeader = (context) => {
     const { options, env, runState, writeLog } = context;
@@ -65,7 +67,10 @@ const writeRunHeader = (context) => {
         `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
         `Policy : ${runState.policy} (${runState.policySource})`,
         ...(runState.mode === MODE_BUILD ? [`Mode : 신규 개발 (${PHASE_LABELS[runState.phase]} 단계부터)`] : []),
-        ...(runState.brainstormWith?.length && (options.codexModel || options.codexEffort) ? [`Codex : model ${options.codexModel || "기본값"}, effort ${options.codexEffort || "기본값"}`] : []),
+        ...(options.runner === CODEX_RUNNER ? ["Runner : Codex"] : []),
+        ...((runState.brainstormWith?.length || options.runner === CODEX_RUNNER) && (options.codexModel || options.codexEffort)
+            ? [`Codex : model ${options.codexModel || "기본값"}, effort ${options.codexEffort || "기본값"}`]
+            : []),
         `Log : ${runState.logFile}`,
         `Report : ${runState.reportFile}`,
         ...runState.repos.filter((repo) => repo.isLinked).map((repo) => `Linked : ${repo.name} (${repo.dir})`)
@@ -328,9 +333,30 @@ const waitUntil = async (context, loopState, until) => {
     }
 };
 
+// 회차를 돌릴 실행 파일·인자와 출력 해석기. Claude는 stream-json, Codex는 exec --json 이벤트다.
+const getSessionCommand = (context, agent) => {
+    const { options, command, runState } = context;
+    const addDirs = runState.repos.filter((repo) => repo.isLinked).map((repo) => repo.dir);
+
+    if (agent.runner !== CODEX_RUNNER) {
+        return {
+            command: command,
+            args: options.commandArgs || autopilotUtil.getClaudeArgs({ model: agent.model, effort: agent.effort, unsupportedFlags: context.unsupportedFlags, addDirs: addDirs }),
+            handleLine: streamUtil.handleStreamEvent
+        };
+    }
+
+    return {
+        command: agent.ready.command,
+        args: [...agent.ready.baseArgs, ...providerUtil.PROVIDERS.codex.getRoundArgs(agent.ready.settingArgs, addDirs)],
+        handleLine: streamUtil.handleCodexEvent
+    };
+};
+
 // 세션이 실행되는 동안 리포트를 주기적으로 갱신한다.
-const executeSession = async (context, loopState, { round, prompt, roundDeadline, sessionStats, roundOptions }) => {
-    const { options, command, env, runState, writeLog } = context;
+const executeSession = async (context, loopState, { round, prompt, roundDeadline, sessionStats, agent }) => {
+    const { env, runState, writeLog } = context;
+    const session = getSessionCommand(context, agent);
     const updateLiveReport = () => {
         reportUtil.writeRunReport(runState, `${round}회차 진행 중 · 시한 ${dateUtil.getTimeString(new Date(roundDeadline))}`, true);
     };
@@ -340,28 +366,23 @@ const executeSession = async (context, loopState, { round, prompt, roundDeadline
     const reportTimer = setInterval(updateLiveReport, REPORT_REFRESH_MS);
 
     try {
-        return await processUtil.runClaudeSession(
-            command,
-            options.commandArgs ||
-                autopilotUtil.getClaudeArgs({ ...roundOptions, unsupportedFlags: context.unsupportedFlags, addDirs: runState.repos.filter((repo) => repo.isLinked).map((repo) => repo.dir) }),
-            prompt,
-            {
-                projectDir: runState.projectDir,
-                processEnv: env,
-                roundDeadline: roundDeadline,
-                writeLog: writeLog,
-                sessionStats: sessionStats,
-                onProcessChange: (childProcess) => {
-                    loopState.activeProcess = childProcess;
-                }
+        return await processUtil.runSession(session.command, session.args, prompt, {
+            projectDir: runState.projectDir,
+            processEnv: env,
+            roundDeadline: roundDeadline,
+            writeLog: writeLog,
+            sessionStats: sessionStats,
+            handleLine: session.handleLine,
+            onProcessChange: (childProcess) => {
+                loopState.activeProcess = childProcess;
             }
-        );
+        });
     } finally {
         clearInterval(reportTimer);
     }
 };
 
-// 회차를 시작할 때마다 실행 중 변경 파일을 읽어 이번 회차의 model·effort를 정한다.
+// 회차를 시작할 때마다 실행 중 변경 파일을 읽어 이번 회차의 실행 에이전트와 model·effort를 정한다.
 const getRoundOptions = (context) => {
     let savedOptions = {};
 
@@ -427,6 +448,34 @@ const collectRoundCommits = (runState, roundStart, recordedCommitHashes) => {
     });
 };
 
+// 이번 회차를 돌릴 에이전트와 그 model·effort. Codex를 쓸 수 없으면(설치·로그인 안 됨) 이번 회차는 Claude로 돌린다.
+const getRoundAgent = async (context, roundOptions) => {
+    const claude = { runner: PROVIDER_CLAUDE, model: roundOptions.model, effort: roundOptions.effort };
+
+    if (roundOptions.runner !== CODEX_RUNNER) {
+        return claude;
+    }
+
+    const ready = await getProviderCheck(context, CODEX_RUNNER);
+
+    if (ready.error) {
+        context.writeLog(`[설정] Codex를 쓸 수 없어 이번 회차는 Claude로 돌립니다: ${ready.error}`);
+
+        return claude;
+    }
+
+    return { runner: CODEX_RUNNER, model: roundOptions.codexModel, effort: roundOptions.codexEffort, ready: ready };
+};
+
+// 회차 시작 줄의 실행 값. Claude는 지금까지의 형식 그대로이고, Codex는 앞에 이름을 붙이며 비운 값은 기본값이라고 쓴다(앱 파서가 읽는다).
+const getAgentLabel = (agent) => {
+    if (agent.runner !== CODEX_RUNNER) {
+        return `model ${agent.model}, effort ${agent.effort}`;
+    }
+
+    return `Codex, model ${agent.model || "기본값"}, effort ${agent.effort || "기본값"}`;
+};
+
 const runRound = async (context, loopState, remainingMinutes) => {
     const { runConfig, runState, writeLog, recordedCommitHashes } = context;
     const progressCleanupPrompt = getProgressCleanupPrompt(context);
@@ -435,12 +484,12 @@ const runRound = async (context, loopState, remainingMinutes) => {
     const previousHeads = runState.repos.map((repo) => gitUtil.getHeadHash(repo.runGitCommand));
     const roundDeadline = Math.min(+runState.deadline, Date.now() + runConfig.maxRoundMinutes * MINUTE_MS);
     const sessionStats = { limitHit: false, isError: false };
-    const prompt = promptUtil.getRoundPrompt(runState, round, Math.floor(remainingMinutes), progressCleanupPrompt, runConfig.maxTasks);
-    const roundOptions = getRoundOptions(context);
+    const agent = await getRoundAgent(context, getRoundOptions(context));
+    const prompt = promptUtil.getRoundPrompt(runState, round, Math.floor(remainingMinutes), progressCleanupPrompt, runConfig.maxTasks, agent.runner);
 
-    writeLog(`[${round}회차] 시작 - 남은 시간 ${Math.floor(remainingMinutes)}분 (model ${roundOptions.model}, effort ${roundOptions.effort})`);
+    writeLog(`[${round}회차] 시작 - 남은 시간 ${Math.floor(remainingMinutes)}분 (${getAgentLabel(agent)})`);
 
-    const sessionResult = await executeSession(context, loopState, { round: round, prompt: prompt, roundDeadline: roundDeadline, sessionStats: sessionStats, roundOptions: roundOptions });
+    const sessionResult = await executeSession(context, loopState, { round: round, prompt: prompt, roundDeadline: roundDeadline, sessionStats: sessionStats, agent: agent });
     const isFailed = sessionResult.exitCode !== EXIT_CODE_SUCCESS || sessionStats.isError;
     const isRateLimited = !loopState.isInterrupted && !sessionResult.timedOut && sessionStats.limitHit && isFailed && sessionStats.resetAt > Date.now();
 
@@ -465,8 +514,9 @@ const runRound = async (context, loopState, remainingMinutes) => {
     runState.rounds.push({
         round: round,
         start: roundStart,
-        model: roundOptions.model,
-        effort: roundOptions.effort,
+        runner: agent.runner,
+        model: agent.model,
+        effort: agent.effort,
         minutes: dateUtil.getMinutesFromMs(Date.now() - roundStart),
         ...sessionStats,
         ...sessionResult,
@@ -539,18 +589,16 @@ const waitForRetry = async (context, loopState, round) => {
     return false;
 };
 
-// 다른 AI를 쓸 수 있는지 한 번만 확인해 두고, 그 실행의 model·effort 설정을 함께 둔다. 지금 제공자는 Codex뿐이다.
+// 다른 AI를 쓸 수 있는지는 한 번만 확인한다. model·effort는 실행 중 set으로 바뀔 수 있어 부를 때마다 지금 값으로 붙인다. 지금 제공자는 Codex뿐이다.
 const getProviderCheck = async (context, provider) => {
     const { options, env, runState } = context;
 
-    context.providerChecks[provider] ??= await providerUtil.checkProvider(provider, {
-        cwd: runState.projectDir,
-        processEnv: env,
-        override: options.providerCommands?.[provider],
-        settings: { model: options.codexModel, effort: options.codexEffort }
-    });
+    context.providerChecks[provider] ??= await providerUtil.checkProvider(provider, { cwd: runState.projectDir, processEnv: env, override: options.providerCommands?.[provider] });
 
-    return context.providerChecks[provider];
+    const ready = context.providerChecks[provider];
+    const { codexModel, codexEffort } = getRoundOptions(context);
+
+    return ready.error ? ready : { ...ready, settingArgs: providerUtil.PROVIDERS[provider].getSettingArgs({ model: codexModel, effort: codexEffort }) };
 };
 
 // 다른 AI에게 묻고 답을 돌려준다. 못 쓰거나 실패하면 이유를 로그로 남기고 null이다(회차 실패로 세지 않는다).

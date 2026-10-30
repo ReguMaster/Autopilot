@@ -198,20 +198,47 @@ const checkComposer = async ({ runStore, composerStore }) => {
     composer.chooseEffort(0);
     composer.chooseEffort(1);
     assert.equal(sent.length, 1, "전달 중에 또 바뀌어도 바로 또 보내지 않는다");
-    assert.deepEqual(sent[0], { model: "haiku", effort: "xhigh" }, "처음 바뀐 시점의 선택이 먼저 나간다");
+    assert.deepEqual(sent[0], { model: "haiku", effort: "xhigh", runner: "claude", codexModel: "", codexEffort: "" }, "처음 바뀐 시점의 선택이 먼저 나간다");
 
     release();
     await wait(10);
     assert.equal(sent.length, 2, "끝난 뒤 마지막 선택만 한 번 더 보낸다");
-    assert.deepEqual(sent[1], { model: "haiku", effort: "medium" });
+    assert.deepEqual(sent[1], { model: "haiku", effort: "medium", runner: "claude", codexModel: "", codexEffort: "" });
 
     release();
     await wait(10);
 
-    // 전달이 끝나면 엔진이 받은 값(requested)을 기준으로 선택이 맞춰진다.
+    // Codex 모델을 고르면 Codex가 회차를 돌리고, Codex Effort도 실행 중에 바로 보낸다. Claude 모델을 고르면 다시 Claude다.
+    composer.chooseCodexModel("gpt-6.1-sol");
+    release();
+    await wait(10);
+    composer.chooseCodexEffort("high");
+    release();
+    await wait(10);
+    assert.deepEqual(
+        sent.slice(2).map((options) => [options.runner, options.codexModel, options.codexEffort]),
+        [
+            ["codex", "gpt-6.1-sol", ""],
+            ["codex", "gpt-6.1-sol", "high"]
+        ]
+    );
+
+    composer.chooseModel("haiku");
+    release();
+    await wait(10);
+    assert.equal(sent.at(-1).runner, "claude");
+    sent.length = 2;
+
+    // 전달이 끝나면 엔진이 받은 값(requested)을 기준으로 선택이 맞춰진다. 실행 에이전트 값이 없는 옛 상태는 지금 고른 값을 둔다.
     runStore.applyRunState(createState({ status: "running", requested: { model: "claude-haiku-4-5", effort: "medium" } }));
     composer.syncFromRun(runStore.useRunStore.getState().state);
     assert.equal(useComposerStore.getState().model, "haiku");
+    assert.equal(useComposerStore.getState().runner, "claude");
+
+    runStore.applyRunState(createState({ status: "running", requested: { runner: "codex", model: "claude-haiku-4-5", effort: "medium", codexModel: "", codexEffort: "low" } }));
+    composer.syncFromRun(runStore.useRunStore.getState().state);
+    assert.deepEqual([useComposerStore.getState().runner, useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["codex", "", "low"]);
+    composer.setSelectedOptions({ model: "claude-haiku-4-5", effort: "medium", runner: "claude", codexModel: "", codexEffort: "" });
 
     runStore.applyRunState(createState({ status: "idle" }));
     composer.chooseModel("opus");

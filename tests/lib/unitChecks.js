@@ -156,6 +156,34 @@ const checkCommandArgs = () => {
         assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
     }
 
+    // 실행 에이전트와 Codex의 model·effort도 실행 중에 바꾼다. default는 Codex 설정을 따르라는 빈 값이다.
+    assert.deepEqual(parseSetArgs([...project, "--runner", "codex", "--codex-model", "gpt-6.1-sol", "--codex-effort", "default"]), {
+        projectDir: "C:\\work\\demo project",
+        runner: "codex",
+        codexModel: "gpt-6.1-sol",
+        codexEffort: ""
+    });
+    assert.deepEqual(parseSetArgs([...project, "--codex-model", "default"]), { projectDir: "C:\\work\\demo project", codexModel: "" });
+
+    for (const invalidArgs of [
+        [...project, "--runner", "gemini"],
+        [...project, "--codex-model", "gpt 6"],
+        [...project, "--codex-effort", "ultra"]
+    ]) {
+        assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
+    }
+
+    // Codex가 회차를 돌리면 유지 보수에서도 Codex의 model·effort를 받는다. 그 밖에는 브레인스토밍과 함께만 받는다.
+    assert.deepEqual(parseRunArgs([...project, "--runner", "codex", "--codex-model", "gpt-6.1-sol", "--codex-effort", "high"]), {
+        projectDir: "C:\\work\\demo project",
+        runner: "codex",
+        codexModel: "gpt-6.1-sol",
+        codexEffort: "high"
+    });
+    assert.equal(parseRunArgs([...project, "--runner", "claude"]).runner, "claude");
+    assert.throws(() => parseRunArgs([...project, "--runner", "claude", "--codex-model", "gpt-6.1-sol"]), /--runner codex/);
+    assert.throws(() => parseRunArgs([...project, "--runner", "gemini"]), /--runner/);
+
     // 신규 개발 인자: 목록은 쉼표로 고르고, 테스트/QA·보안검토 실패 처리는 되돌릴 횟수(stop은 0)로 바꾼다. 유지 보수 모드에는 줄 수 없다.
     assert.deepEqual(
         parseRunArgs([...project, "--mode", "build", "--gate", "plan,design", "--allow", "deps,send", "--design-format", "figma", "--qa-on-fail", "retry:2", "--security-on-fail", "retry:4"]),
@@ -236,7 +264,21 @@ const checkBrainstormRules = (context) => {
         assert.throws(() => parseRunArgs(invalidArgs), undefined, invalidArgs.join(" "));
     }
 
-    const { getSettingArgs, getAskArgs, getResumeArgs } = providerUtil.PROVIDERS.codex;
+    const { getSettingArgs, getAskArgs, getResumeArgs, getRoundArgs } = providerUtil.PROVIDERS.codex;
+
+    // Codex 회차는 JSONL로 받고 Claude 회차와 같은 권한으로 돈다. 연결 저장소는 --add-dir로 붙이고 프롬프트는 stdin(-)이다.
+    assert.deepEqual(getRoundArgs(["-m", "gpt-6.1-sol"], ["/a b"]), [
+        "exec",
+        "--json",
+        "--color",
+        "never",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-6.1-sol",
+        "--add-dir",
+        "/a b",
+        "-"
+    ]);
     const sessionId = "01a18d02-d1e7-7b20-831e-d85c25a2b4f2";
     const settingArgs = getSettingArgs({ model: "gpt-6.1-sol", effort: "high" });
 
@@ -577,6 +619,12 @@ const checkPhaseRules = (context) => {
     assert(maintainPrompt.includes(getAutopilotGuide("[ap]")));
     assert(!maintainPrompt.includes("<PHASE>"));
 
+    // Codex 회차에는 CLAUDE.md가 자동으로 로드되지 않으므로 직접 읽게 한다. 나머지 프롬프트는 같다.
+    const codexPrompt = promptUtil.getRoundPrompt({ ...buildState, mode: "maintain" }, 1, 60, "", 2, "codex");
+
+    assert.match(codexPrompt, /^작업 전에 프로젝트 루트의 `CLAUDE\.md`를 직접 읽어/);
+    assert.equal(codexPrompt.slice(codexPrompt.indexOf("중요사항!")), maintainPrompt.slice(maintainPrompt.indexOf("중요사항!")));
+
     // 신규 개발 지침은 유지 보수용 절만 바꾸고 나머지 절은 글자 하나 다르지 않다.
     const getSections = (guide) => new Map(guide.split(/\n(?=## )/).map((section) => [section.split("\n")[0], section.trimEnd()]));
     const maintainSections = getSections(getAutopilotGuide("[ap]"));
@@ -733,6 +781,60 @@ const checkStreamEvent = () => {
     for (const ignoredLine of ["null", "123", "not json"]) {
         handleStreamEvent(ignoredLine, sessionStats, () => {});
     }
+
+    // Codex 회차의 JSONL은 Claude와 같은 로그 형식으로 바꾼다. 셸로 감싼 명령은 안쪽 명령만, 파일 변경은 Write·Edit·Delete로 쓴다.
+    const { handleCodexEvent, getCodexCommand } = streamUtil;
+    const codexStats = { limitHit: false, isError: false };
+    const codexLines = [];
+    const writeCodexLog = (line) => codexLines.push(line.replace(/^\d{2}:\d{2}:\d{2}/, "T"));
+
+    assert.equal(getCodexCommand("bash -lc 'npm test'"), "npm test");
+    assert.equal(getCodexCommand('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "git status"'), "git status");
+    assert.equal(getCodexCommand("git status"), "git status");
+
+    for (const event of [
+        { type: "thread.started", thread_id: "0199a213-81c0-7800-8aa1-bbab2a035a53" },
+        { type: "turn.started" },
+        { type: "item.started", item: { id: "item_0", type: "command_execution", command: "bash -lc 'npm test'", status: "in_progress" } },
+        { type: "item.completed", item: { id: "item_0", type: "command_execution", command: "bash -lc 'npm test'", exit_code: 0 } },
+        { type: "item.completed", item: { id: "item_1", type: "reasoning", text: "생각" } },
+        {
+            type: "item.completed",
+            item: {
+                id: "item_2",
+                type: "file_change",
+                changes: [
+                    { path: "src/a.js", kind: "update" },
+                    { path: "src/b.js", kind: "add" }
+                ]
+            }
+        },
+        { type: "item.completed", item: { id: "item_3", type: "agent_message", text: "테스트를 고쳤어요." } },
+        { type: "error", message: "Reconnecting... 1/5" },
+        { type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 2 } },
+        { type: "unknown.event" }
+    ]) {
+        handleCodexEvent(JSON.stringify(event), codexStats, writeCodexLog);
+    }
+
+    assert.deepEqual(codexLines, [
+        "T [세션] 0199a213-81c0-7800-8aa1-bbab2a035a53 (codex resume 으로 전체 기록 확인)",
+        "T   > Bash npm test",
+        "T   > Edit src/a.js",
+        "T   > Write src/b.js",
+        "T 테스트를 고쳤어요.",
+        "T [오류] Reconnecting... 1/5",
+        "T [결과] 완료 · 입력 10 · 출력 2 토큰"
+    ]);
+    assert.deepEqual(codexStats, { limitHit: false, isError: false, session: "0199a213-81c0-7800-8aa1-bbab2a035a53", summary: "테스트를 고쳤어요." });
+
+    // turn.failed만 회차 실패이고, 한도 문구면 한도 도달로 표시한다(리셋 시각이 없어 실패 재시도로 처리된다).
+    handleCodexEvent(JSON.stringify({ type: "turn.failed", error: { message: "You've hit your usage limit." } }), codexStats, writeCodexLog);
+
+    assert.equal(codexStats.isError, true);
+    assert.equal(codexStats.limitHit, true);
+    assert.equal(codexStats.resetAt, undefined);
+    assert.deepEqual(codexLines.slice(-2), ["T [결과] 실패 · You've hit your usage limit.", "T [사용량 한도] Codex You've hit your usage limit."]);
 };
 
 // 커밋 로그 줄의 +/− 줄 수는 git shortstat에서 읽는다. 단수형이나 빠진 항목은 0이다.

@@ -29,6 +29,8 @@ import {
     BRAINSTORM_PROVIDERS as UI_BRAINSTORM_PROVIDERS,
     PROVIDER_LABELS as UI_PROVIDER_LABELS,
     CODEX_EFFORT_LEVELS as UI_CODEX_EFFORT_LEVELS,
+    DEFAULT_RUNNER as UI_DEFAULT_RUNNER,
+    CODEX_RUNNER as UI_CODEX_RUNNER,
     DEFAULT_DEBATE_TURNS as UI_DEFAULT_DEBATE_TURNS,
     DEBATE_TURNS_LIMIT as UI_DEBATE_TURNS_LIMIT,
     DEBATE_TURN_CHOICES as UI_DEBATE_TURN_CHOICES,
@@ -61,6 +63,9 @@ import {
     PROVIDER_LABELS as ENGINE_PROVIDER_LABELS,
     CODEX_MODEL_PATTERN as ENGINE_CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS as ENGINE_CODEX_EFFORT_LEVELS,
+    CODEX_DEFAULT_VALUE as ENGINE_CODEX_DEFAULT_VALUE,
+    RUNNERS as ENGINE_RUNNERS,
+    DEFAULT_RUNNER as ENGINE_DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS as ENGINE_DEBATE_DEFAULT_TURNS,
     DEBATE_TURNS_LIMIT as ENGINE_DEBATE_TURNS_LIMIT
 } from "../autopilot/src/utils/config.js";
@@ -107,10 +112,18 @@ const {
     BRAINSTORM_PROVIDERS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
+    CODEX_DEFAULT_VALUE,
+    RUNNERS,
+    DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS,
     DEBATE_TURNS_LIMIT,
     MAX_RUN_DAYS
 } = require("../desktop/engineArgs.cjs");
+
+// 러너 상태의 요청 값. 실행 에이전트와 Codex 값을 따로 주지 않으면 Claude·빈 값이다.
+const getRequested = (values) => {
+    return { runner: "claude", model: "", effort: "", codexModel: "", codexEffort: "", ...values };
+};
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
 const FAKE_CLI_SOURCE = String.raw`
@@ -366,17 +379,23 @@ const checkStopSignal = async (testDir) => {
     assert.equal(readTestFile("ARGS_start"), ["--project", launch.projectDir, "--no-open"].join("\n"));
 
     assert.equal(runner.getState().status, "running");
-    assert.deepEqual(runner.getState().requested, { model: "opus", effort: "high" });
+    assert.deepEqual(runner.getState().requested, getRequested({ model: "opus", effort: "high" }));
     assert.equal(runner.getState().model, "opus");
 
     // 변경은 요청 값만 바꾸고, 다음 회차 로그가 올 때 적용 값이 바뀐다.
     const failedSet = await runner.setRoundOptions({ model: "gpt", effort: "low" });
 
     assert.equal(failedSet.error.code, "SET_OPTIONS_FAILED");
-    assert.deepEqual(runner.getState().requested, { model: "opus", effort: "high" });
+    assert.deepEqual(runner.getState().requested, getRequested({ model: "opus", effort: "high" }));
     assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low" })).status, STATUS_OK);
-    assert.deepEqual(runner.getState().requested, { model: "sonnet", effort: "low" });
-    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --model sonnet --effort low`);
+    assert.deepEqual(runner.getState().requested, getRequested({ model: "sonnet", effort: "low" }));
+    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --runner claude --model sonnet --effort low --codex-model default --codex-effort default`);
+
+    // Codex로 바꾸면 Codex 값을 넘긴다. 비운 Codex 값은 인자로 줄 수 없어 default다. 다시 Claude로 돌려 2회차 기대값을 지킨다.
+    assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low", runner: "codex", codexModel: "gpt-6.1-sol", codexEffort: "" })).status, STATUS_OK);
+    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --runner codex --model sonnet --effort low --codex-model gpt-6.1-sol --codex-effort default`);
+    assert.deepEqual(runner.getState().requested, getRequested({ runner: "codex", model: "sonnet", effort: "low", codexModel: "gpt-6.1-sol" }));
+    assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low" })).status, STATUS_OK);
     assert.equal(readTestFile("ENV_set"), "from-runner");
 
     await waitFor(() => runner.getState().round === 2, "2회차 시작");
@@ -471,7 +490,7 @@ const checkAttachToRunningEngine = async (testDir) => {
         assert.equal(state.policy, "자율개선 (기본값)");
         assert.equal(state.round, 1);
         assert.equal(state.rounds[0].timesKnown, false);
-        assert.deepEqual({ ...state.requested }, { model: "opus", effort: "high" });
+        assert.deepEqual({ ...state.requested }, getRequested({ model: "opus", effort: "high" }));
         assert(logs.some((entry) => entry.stream === "out" && entry.text === "[1회차] 시작 - 남은 시간 300분 (model opus, effort high)"));
         assert.equal(runner.isRunning(), true);
         assert.equal(runner.isAttached(), true);
@@ -495,7 +514,7 @@ const checkAttachToRunningEngine = async (testDir) => {
         await waitFor(() => runner.getState().round === 2, "2회차 따라가기");
 
         assert.deepEqual([runner.getState().model, runner.getState().effort], ["sonnet", "low"]);
-        assert.deepEqual({ ...runner.getState().requested }, { model: "sonnet", effort: "low" });
+        assert.deepEqual({ ...runner.getState().requested }, getRequested({ model: "sonnet", effort: "low" }));
         assert.equal(runner.getState().rounds[0].outcome, "완료");
         assert.equal(runner.getState().rounds[1].timesKnown, true);
 
@@ -1058,6 +1077,19 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...codexBase, brainstorm: [], codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs({ ...codexBase, brainstorm: [] }));
     assert.deepEqual(getCliArgs({ ...codexBase, mode: "maintain", codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs(base));
 
+    // Codex가 회차를 돌리면 작업 모드와 상관없이 --runner codex와 Codex의 model·effort를 넘긴다. 기본 실행 에이전트(Claude)는 인자를 생략한다.
+    assert.deepEqual(getCliArgs({ ...base, runner: "codex", codexModel: "gpt-6.1-sol", codexEffort: "high" }).slice(-6), [
+        "--runner",
+        "codex",
+        "--codex-model",
+        "gpt-6.1-sol",
+        "--codex-effort",
+        "high"
+    ]);
+    assert.deepEqual(getCliArgs({ ...base, runner: "codex", codexModel: "", codexEffort: "" }).slice(-2), ["--runner", "codex"]);
+    assert.deepEqual(getCliArgs({ ...base, runner: "claude" }), getCliArgs(base));
+    assert.deepEqual(getCliArgs({ ...codexBase, runner: "codex", codexModel: "gpt-6.1-sol" }).slice(-6), ["--brainstorm", "plan", "--runner", "codex", "--codex-model", "gpt-6.1-sol"]);
+
     // 종료 시각: HH:mm은 그대로, 날짜를 붙인 값은 엔진처럼 지났거나 없는 날짜이거나 7일보다 뒤면 거부한다.
     const now = new Date(2026, 9, 30, 22, 10).getTime();
 
@@ -1072,6 +1104,36 @@ const checkCliArgs = () => {
 };
 
 // 신규 개발: 로그의 Mode 헤더와 단계 줄을 상태로 읽고, 엔진 status의 단계 상태를 검증해 읽는다.
+// Codex가 돌린 회차 시작 줄은 실행 에이전트를 codex로 읽고, 기본값(Codex 설정을 따름)은 빈 값으로 둔다. 실행 값이 없는 옛 줄은 앞 회차 값을 이어 쓴다.
+const checkRunnerLogs = () => {
+    const state = createInitialState();
+
+    parseLine(state, "[1회차] 시작 - 남은 시간 300분 (model opus, effort high)");
+    parseLine(state, "[2회차] 시작 - 남은 시간 299분 (Codex, model gpt-6.1-sol, effort 기본값)");
+    parseLine(state, "[3회차] 시작 - 남은 시간 298분 (Codex, model 기본값, effort low)");
+    parseLine(state, "[4회차] 시작 - 남은 시간 297분");
+
+    assert.deepEqual(
+        state.rounds.map((round) => [round.runner, round.model, round.effort]),
+        [
+            ["claude", "opus", "high"],
+            ["codex", "gpt-6.1-sol", ""],
+            ["codex", "", "low"],
+            ["codex", "", "low"]
+        ]
+    );
+    assert.equal(state.runner, "codex");
+    assert.deepEqual(state.requested, getRequested({}), "앱이 시작한 엔진은 로그로 요청 값을 바꾸지 않는다");
+
+    // 연결한 엔진은 회차가 실제로 쓴 값을 요청 값으로 본다. Codex 회차는 Claude 값을 그대로 둔다.
+    const attached = { ...createInitialState(), attached: true };
+
+    parseLine(attached, "[1회차] 시작 - 남은 시간 300분 (model sonnet, effort low)");
+    parseLine(attached, "[2회차] 시작 - 남은 시간 299분 (Codex, model gpt-6.1-sol, effort high)");
+
+    assert.deepEqual(attached.requested, getRequested({ runner: "codex", model: "sonnet", effort: "low", codexModel: "gpt-6.1-sol", codexEffort: "high" }));
+};
+
 const checkBuildLogs = () => {
     const state = createInitialState();
 
@@ -1528,6 +1590,9 @@ const checkChoiceSync = () => {
         [BRAINSTORM_PROVIDERS, UI_BRAINSTORM_PROVIDERS, ENGINE_BRAINSTORM_PROVIDERS],
         [ENGINE_PROVIDER_LABELS, UI_PROVIDER_LABELS, ENGINE_PROVIDER_LABELS],
         [CODEX_EFFORT_LEVELS, UI_CODEX_EFFORT_LEVELS, ENGINE_CODEX_EFFORT_LEVELS],
+        [DEFAULT_RUNNER, UI_DEFAULT_RUNNER, ENGINE_DEFAULT_RUNNER],
+        [RUNNERS, [UI_DEFAULT_RUNNER, UI_CODEX_RUNNER], ENGINE_RUNNERS],
+        [CODEX_DEFAULT_VALUE, CODEX_DEFAULT_VALUE, ENGINE_CODEX_DEFAULT_VALUE],
         [DEBATE_DEFAULT_TURNS, UI_DEFAULT_DEBATE_TURNS, ENGINE_DEBATE_DEFAULT_TURNS],
         [DEBATE_TURNS_LIMIT, UI_DEBATE_TURNS_LIMIT, ENGINE_DEBATE_TURNS_LIMIT]
     ]) {
@@ -1645,6 +1710,7 @@ const runChecks = async () => {
     try {
         checkChoiceSync();
         checkCliArgs();
+        checkRunnerLogs();
         checkBuildLogs();
         checkGitNameSync();
         checkProjectError(testDir);

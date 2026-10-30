@@ -294,6 +294,10 @@ body[data-view="run"] #policy-chip {
     --tone: #4a9a3d;
 }
 
+#model-chip[data-model="codex"] {
+    --tone: #5b6472;
+}
+
 #model-chip:not(:disabled) {
     background: var(--tint);
     box-shadow: none;
@@ -328,6 +332,10 @@ body[data-view="run"] #policy-chip {
 #model-chip[data-model="haiku"] {
     --enter-translate: -3px 3px;
     --enter-rotate: -15deg;
+}
+
+#model-chip[data-model="codex"] {
+    --enter-translate: -4px 0;
 }
 
 #model-chip.model-swap .mark {
@@ -649,13 +657,7 @@ body[data-view="run"] #policy-chip {
     --level-color: var(--del);
 }
 
-/* 모델 목록은 2×2 카드로 보여준다 */
-#model-popover {
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
-    width: min(280px, calc(100vw - 32px));
-}
-
+/* Claude 모델은 2×2 카드로 보여준다 */
 #model-popover .choice-option {
     display: flex;
     flex-direction: column;
@@ -675,6 +677,202 @@ body[data-view="run"] #policy-chip {
 
 #model-popover .choice-option:has(input:checked) {
     box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+/* 모델 팝오버: 위에 회차를 돌릴 AI 탭, 아래에 그 AI의 모델. 탭을 바꿔도 높이가 출렁이지 않게 목록 칸의 최소 높이를 Claude 카드에 맞춘다 */
+#model-popover {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: min(296px, calc(100vw - 32px));
+    padding: 8px;
+}
+
+.runner-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--chip);
+}
+
+.runner-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 30px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background-color 0.2s var(--ease-out),
+        color 0.2s var(--ease-out),
+        box-shadow 0.2s var(--ease-out);
+}
+
+.runner-tab:hover {
+    color: var(--ink-2);
+}
+
+.runner-tab[aria-selected="true"] {
+    background: var(--bg);
+    box-shadow: var(--shadow-1);
+    color: var(--ink);
+}
+
+.runner-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* 지금 회차를 돌리는 AI의 탭에 붙는 점 */
+.runner-tab[data-active]::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+#model-popover [role="radiogroup"] {
+    min-height: 196px;
+}
+
+.model-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+}
+
+.codex-list {
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    max-height: 264px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.codex-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background-color 0.2s var(--ease-out);
+}
+
+.codex-row:hover {
+    background: var(--surface);
+}
+
+.codex-row:has(input:checked) {
+    background: var(--chip);
+    color: var(--ink);
+}
+
+.codex-row:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.codex-row:has(input:disabled) {
+    cursor: not-allowed;
+}
+
+.codex-row input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+}
+
+.codex-row-text {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+}
+
+.codex-row-text b {
+    overflow: hidden;
+    font-weight: 600;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.codex-row-text small {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+}
+
+.codex-row-check {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--accent-ink);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0;
+    transition: opacity 0.2s var(--ease-out);
+}
+
+.codex-row:has(input:checked) .codex-row-check {
+    opacity: 1;
+}
+
+.codex-empty {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    min-height: 196px;
+    padding: 12px;
+    text-align: center;
+}
+
+.codex-empty .mark {
+    width: 24px;
+    height: 24px;
+    margin-bottom: 6px;
+    color: var(--faint);
+}
+
+.codex-empty b {
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.codex-empty small {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+/* Codex 설정을 따르는 Effort는 파형을 점선으로 그려 고른 단계와 구별한다 */
+.wave.is-auto path {
+    stroke-dasharray: 2.4 2.2;
+}
+
+.choice-divider {
+    height: 1px;
+    margin: 3px 8px;
+    background: var(--hair);
 }
 
 .time-popover-title {

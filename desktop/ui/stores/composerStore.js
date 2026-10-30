@@ -12,6 +12,8 @@ import {
     DEFAULT_MODEL,
     DEFAULT_POLICY,
     DEFAULT_QA_ON_FAIL,
+    DEFAULT_RUNNER,
+    CODEX_RUNNER,
     DEFAULT_SECURITY_ON_FAIL,
     EFFORT_LEVELS,
     GATE_PHASES,
@@ -20,9 +22,11 @@ import {
 import { getRunState } from "./runStore.js";
 import { ui } from "./uiStore.js";
 
-// 시작 전에 고르는 값(모델·Effort·정책·종료 시각·작업·한도 연장·작업 모드와 신규 개발 설정). 실행 중에는 엔진에 전달된 값을 따라간다.
+// 시작 전에 고르는 값(실행 에이전트·모델·Effort·정책·종료 시각·작업·한도 연장·작업 모드와 신규 개발 설정). 실행 중에는 엔진에 전달된 값을 따라간다.
 // model은 계열이고, modelId는 알약에 보여줄 값(계열 별칭이거나 엔진이 쓰는 모델 ID)이다. endTime은 HH:mm이거나 yyyy-MM-dd HH:mm(날짜 지정)이다.
+// runner가 codex면 회차를 Codex가 codexModel·codexEffort(빈 값은 Codex 설정을 따름)로 돌린다. Claude의 model·effort는 협의의 Claude 발언에 그대로 쓴다.
 const useComposerStore = create(() => ({
+    runner: DEFAULT_RUNNER,
     model: DEFAULT_MODEL,
     modelId: DEFAULT_MODEL,
     effort: DEFAULT_EFFORT_LEVEL,
@@ -53,13 +57,21 @@ let isApplying = false;
 let isApplyQueued = false;
 
 const getSelectedOptions = () => {
-    const { model, effort } = useComposerStore.getState();
+    const { model, effort, runner, codexModel, codexEffort } = useComposerStore.getState();
 
-    return { model: model, effort: EFFORT_LEVELS[effort] };
+    return { model: model, effort: EFFORT_LEVELS[effort], runner: runner, codexModel: codexModel, codexEffort: codexEffort };
 };
 
-const setSelectedOptions = ({ model, effort }) => {
-    useComposerStore.setState((current) => ({ model: getModelFamily(model) || current.model, modelId: model, effort: Math.max(0, EFFORT_LEVELS.indexOf(effort)) }));
+// 엔진에 전달된 값으로 맞춘다. 옛 상태처럼 실행 에이전트 값이 없으면 지금 고른 값을 그대로 둔다.
+const setSelectedOptions = ({ model, effort, runner, codexModel, codexEffort }) => {
+    useComposerStore.setState((current) => ({
+        model: getModelFamily(model) || current.model,
+        modelId: model,
+        effort: Math.max(0, EFFORT_LEVELS.indexOf(effort)),
+        runner: runner ?? current.runner,
+        codexModel: codexModel ?? current.codexModel,
+        codexEffort: codexEffort ?? current.codexEffort
+    }));
 };
 
 // 실행 중에는 엔진에 전달된 값을 기준으로 선택을 맞춘다. 전달 중인 값은 덮어쓰지 않는다.
@@ -109,6 +121,7 @@ const COMPOSER_KEYS = [
     "extendOnLimit",
     "model",
     "effort",
+    "runner",
     "mode",
     "gates",
     "allow",
@@ -162,12 +175,21 @@ const loadSettings = (settings, keys = COMPOSER_KEYS) => {
 };
 
 const composer = {
+    // Claude 모델을 고르면 Claude가, Codex 모델(빈 값은 Codex 설정)을 고르면 Codex가 회차를 돌린다.
     chooseModel: (family) => {
-        useComposerStore.setState({ model: family, modelId: family });
+        useComposerStore.setState({ runner: DEFAULT_RUNNER, model: family, modelId: family });
+        handleOptionChange();
+    },
+    chooseCodexModel: (codexModel) => {
+        useComposerStore.setState({ runner: CODEX_RUNNER, codexModel: codexModel });
         handleOptionChange();
     },
     chooseEffort: (level) => {
         useComposerStore.setState({ effort: level });
+        handleOptionChange();
+    },
+    chooseCodexEffort: (codexEffort) => {
+        useComposerStore.setState({ codexEffort: codexEffort });
         handleOptionChange();
     },
     setPolicy: (policy) => useComposerStore.setState({ policy: policy }),

@@ -23,6 +23,7 @@ const getUnsavedValues = (saved) => {
         extendOnLimit: current.extendOnLimit,
         model: current.model,
         effort: EFFORT_LEVELS[current.effort],
+        runner: current.runner,
         ...composer.getModeOptions()
     };
 

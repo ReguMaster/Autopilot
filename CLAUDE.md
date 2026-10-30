@@ -51,18 +51,18 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--codex-model <모델>] [--codex-effort <e>] [--debate-turns <N>] [--cross-review] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--runner claude|codex] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--codex-model <모델>] [--codex-effort <e>] [--debate-turns <N>] [--cross-review] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
     - stop: 중단 요청
-    - set --model <m> --effort <e>: 실행 중 model·effort 변경
+    - set --model <m> --effort <e> [--runner claude|codex] [--codex-model <모델>|default] [--codex-effort <e>|default]: 실행 중 회차 실행 값(실행 에이전트, Claude·Codex의 model·effort) 변경. 하나 이상 필요하고, default는 Codex 설정을 따르는 빈 값이다(인자로 빈 값을 넘길 수 없어서).
     - reset-progress: 진행 기록 초기화(신규 개발의 단계 상태 PHASE.json도 지운다)
     - status: 실행 상태 확인. 한 줄 JSON `{"running":true,"pid":N,"logFile":"..."}` 또는 `{"running":false}`. 신규 개발을 한 적 있는 프로젝트는 `"phase":{"phase":"plan|design|build|qa|security|done","awaiting":null|"plan"|"design","qaRetries":N,"securityRetries":N,"proposals":null|{"phase":"plan|design","candidates":["claude","codex"],"picked":null|"claude"|"codex"},"debate":null|{"phase":"plan|design","disputes":[{"id":"d1","title":"…","claude":"…","codex":"…"}],"resolved":null|{"d1":"claude|codex"}}}`가 더해진다.
     - approve [--pick claude|codex] [--resolve d1=claude|codex,...]: 확인을 기다리는 신규 개발 단계를 승인한다(awaiting을 지워 다음 실행이 다음 단계부터 한다). 여러 AI가 안을 낸 단계(proposals.candidates가 둘 이상)는 --pick이 있어야 하고 고른 안을 proposals.picked에 남긴다. 협의한 단계(debate)는 --pick 대신 --resolve로 모든 쟁점을 빠짐없이 골라야 하고(쟁점이 없으면 --resolve 없이) debate.resolved에 남긴다. 실행 중이거나 기다리는 단계가 없거나, 고를 안·쟁점이 없는데 --pick·--resolve를 주거나, 둘을 함께 주면 거부한다.
 - 앱은 stdout 로그를 줄 맨 앞의 형식으로 해석한다. 엔진은 로그 기록 호출 한 번을 제어 줄 한 줄로만 쓰고(헤더도 줄마다 호출), 줄바꿈 뒤의 본문(Claude 출력·stderr·오류 메시지)은 logUtil이 4칸 들여써서 제어 줄을 흉내 내지 못하게 한다.
 - 앱이 해석하는 줄은 형식을 지킨다.
-    - `[N회차] 시작 - 남은 시간 N분 (model X, effort Y)`: 회차 시작.
+    - `[N회차] 시작 - 남은 시간 N분 (model X, effort Y)`: 회차 시작. Codex가 돌린 회차는 `(Codex, model X, effort Y)`이고 Codex 설정을 따른 값은 `기본값`이다(앱 파서는 빈 값으로 읽는다).
     - `[커밋] <짧은 hash> +<추가 줄> -<삭제 줄> <제목>`: 회차가 끝나면 결과 줄보다 먼저 새 commit마다 한 줄. 앱이 열린 회차에 붙인다. 줄 수는 git show --shortstat에서 읽는다(gitUtil.getLineCounts).
     - `[N회차] <결과>`: 회차 결과.
     - `[사용량 한도] 종료 시각 연장 yyyy-MM-dd HH:mm:ss (+N분)`: 앱 파서가 이 줄로 종료 예정 시각을 갱신한다.
@@ -121,7 +121,8 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 ### 세션 실행과 프롬프트
 
-- 실제 세션은 claude -p로 실행한다.
+- 실제 세션은 claude -p로 실행한다. --runner codex(앱의 모델 고르기에서 Codex 모델을 고름)면 회차를 `codex exec --json --color never --dangerously-bypass-approvals-and-sandbox [-m 모델] [-c model_reasoning_effort=값] [--add-dir 연결 저장소]... -`로 돌린다(providerUtil의 getRoundArgs, Claude 회차의 --dangerously-skip-permissions와 같은 권한). 실행 에이전트와 Codex의 model·effort는 회차마다 ROUND_OPTIONS.json을 반영해 정하므로 실행 중에 Claude↔Codex를 바꿀 수 있다. Codex를 쓸 수 없으면(설치·로그인 안 됨, 실행당 한 번 확인) 그 회차는 Claude로 돌리고 `[설정] Codex를 쓸 수 없어 이번 회차는 Claude로 돌립니다: <이유>`를 남긴다. 헤더에는 `Runner : Codex` 줄이 더해진다.
+- Codex 회차의 JSONL(streamUtil.handleCodexEvent)은 Claude 세션과 같은 로그 형식으로 바꾼다. agent_message는 시각 뒤 본문, command_execution은 셸 감싸기를 걷은 `  > Bash <명령>`, file_change는 `  > Write|Edit|Delete <경로>`, thread.started는 `[세션] <id> (codex resume ...)`, turn.completed는 `[결과] 완료 · 입력 N · 출력 N 토큰`이다. turn.failed만 회차 실패로 세고(error 이벤트는 `[오류]` 줄만 남긴다), 실패 문구가 사용량 한도면 `[사용량 한도] Codex <문구>`를 남긴다. Codex는 리셋 시각을 주지 않아 한도는 대기하지 않고 실패 재시도로 처리한다. CLAUDE.md는 Codex 세션에 자동으로 로드되지 않으므로 Codex 회차 프롬프트의 첫 줄이 직접 읽게 한다.
 - 선택 옵션(config.js의 OPTIONAL_CLAUDE_FLAGS: --effort·--fallback-model·--autocompact)은 실행을 시작할 때 `claude --help`에 있는지 확인해(processUtil.getUnsupportedFlags) 없으면 빼고 `[설정]` 줄로 알린다. 오래된 Claude Code가 모르는 옵션을 받으면 CLI가 시작하자마자 실패해 모든 회차가 실패한다. 도움말을 읽지 못하면 아무것도 빼지 않고, 사용자 지정 명령(검증용 command·commandArgs)은 확인하지 않는다. 옵션을 더하면 이 목록에도 넣는다.
 - 프롬프트는 UTF-8 stdin으로 전달한다. shell에는 사용자 프롬프트를 삽입하지 않는다. Windows .cmd 래퍼 실행 인자도 검증한다.
 - 세션은 대상 프로젝트의 CLAUDE.md를 기본 지침으로 사용한다. 프롬프트에 프로젝트 루트·예약 작업·진행 기록 경로·정책·남은 시간·작업 수 상한을 명시한다.
@@ -136,7 +137,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 - STOP: 시작 시 지우고, 있으면 현재 회차 후 종료한다. 대기 중에도 감지한다.
 - TODO_COMPLETE: 실제 경로는 progress/<실행 시작 날짜>/TODO_COMPLETE다. 시작 시 이전 마커를 지우고, 성공한 지시개선 회차 뒤에만 완료 신호로 인정한다.
-- ROUND_OPTIONS.json: set이 RUNNING 잠금의 pid가 살아 있을 때만 model·effort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES(별칭, 최신 버전)·MODEL_ID_PATTERN(특정 버전의 모델 ID, 예: claude-opus-4-8)·EFFORT_LEVELS이고 깨진 파일·허용되지 않은 값은 무시한다.
+- ROUND_OPTIONS.json: set이 RUNNING 잠금의 pid가 살아 있을 때만 model·effort·runner·codexModel·codexEffort를 병합해 기록하고(임시 파일 교체), 매 회차 시작 때 읽어 실행 인자보다 우선 적용한다. 시작 시 이전 파일을 지운다. 허용 값은 config.js의 MODEL_CHOICES(별칭, 최신 버전)·MODEL_ID_PATTERN(특정 버전의 모델 ID, 예: claude-opus-4-8)·EFFORT_LEVELS·RUNNERS·CODEX_MODEL_PATTERN·CODEX_EFFORT_LEVELS(Codex 값은 빈 값도 받는다)이고 깨진 파일·허용되지 않은 값은 무시한다. Codex의 model·effort는 Codex 회차와 브레인스토밍 · 검토 · 협의 호출 모두에 다음 호출부터 반영된다.
 - RUNNING: 첫 줄에 실행 중인 pid, 둘째 줄에 실행 파일 이름, 셋째 줄에 이번 실행의 로그 파일(로그 위치가 정해진 직후 임시 파일 교체로 덧붙인다)을 적어 같은 프로젝트의 동시 실행을 막고 앱이 연결할 수 있게 한다. status는 이 잠금을 아래 판정으로 해석한 결과다.
     - 잠금을 얻기 전에는 STOP·완료 신호 같은 실행 상태를 건드리지 않고, 잠금은 종료 때 지운다.
     - 기록된 pid가 살아 있지 않거나(강제 종료로 잠금이 남은 경우), 살아 있어도 실행 파일 이름이 다르면(다른 프로그램이 pid를 재사용) 낡은 잠금으로 보고 덮어쓴다.
@@ -155,7 +156,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
     - 단계 시작(그 단계의 첫 회차 전, 돌려보낸 단계는 다시)에 엔진이 같은 단계의 틀로 만든 프롬프트(promptUtil.getProposalPrompt, 파일 대신 최종 답변으로 출력)로 안을 받아 대상 저장소의 docs/autopilot/proposals/<단계>-<제공자>.md(디자인을 HTML로 받으면 .html)에 쓴다. 이어서 하는 단계는 이미 있는 파일을 그대로 쓴다. Claude의 회차 프롬프트에는 그 단계가 끝날 때까지 proposals/를 열지 말고 독립적으로 쓰라는 지시와, 받은 안을 고치지 말고 commit하라는 지시(--cross-review면 그 안을 읽고 proposals/<단계>-review-claude.md에 검토를 쓰라는 지시)가 들어간다.
     - 안을 받은 단계를 마치면 --gate와 상관없이 proposals {phase, candidates: [claude, 제공자…], picked: null}을 남기고 `<단계> 확인 대기`로 끝낸다. --cross-review면 그 전에 제공자가 Claude의 산출물을 검토해 proposals/<단계>-review-<제공자>.md에 쓴다(엔진이 쓴 이 파일과 안 파일은 다음 실행이 commit한다). approve --pick으로 고르면 다음 실행의 첫 회차 프롬프트 맨 앞에 확정 지시(promptUtil.getAdoptionPrompt: 다른 AI 안이면 Claude 안을 proposals/<단계>-claude.*로 옮기고 그 안을 plan.md 또는 design.md·design/index.html로 확정, Claude 안이면 남은 파일만 commit)가 들어가고, 그 회차가 성공하면 proposals를 지운다. 승인 없이 다시 시작하면 proposals를 지우고 그 단계와 다른 AI의 안을 다시 한다. 기획안을 다른 AI 것으로 골랐으면 확정 전이라도 디자인 안을 받는 프롬프트가 그 안을 따르게 한다.
     - 단계마다 방식을 고른다. --brainstorm의 단계 뒤에 :compare(기본, 나란히 비교)나 :debate(협의)를 붙이고, 협의 단계는 options.debate에 담긴다. --cross-review는 나란히 비교하는 단계가 있을 때만 받는다(협의는 이미 서로 검토한다).
-    - Codex의 model·effort: --codex-model(Codex가 쓰는 이름, config.js의 CODEX_MODEL_PATTERN)과 --codex-effort(CODEX_EFFORT_LEVELS)는 --brainstorm과 함께만 받고(유지 보수에는 거부), 없으면 인자를 넘기지 않아 Codex 설정(~/.codex/config.toml)을 따른다. providerUtil의 getSettingArgs가 `-m <모델>`과 `-c model_reasoning_effort=<값>`으로 바꿔 안 · 검토 · 협의 발언(exec와 resume 모두)의 호출마다 붙이고(checkProvider가 실행당 한 번 만들어 ready.settingArgs에 둔다), 하나라도 있으면 헤더에 `Codex : model X, effort Y` 줄이 더해진다. 실행 중 set으로는 바꾸지 않는다. 협의의 Claude 발언은 회차 세션과 같은 model·effort(실행 중 set 반영)를 쓴다.
+    - Codex의 model·effort: --codex-model(Codex가 쓰는 이름, config.js의 CODEX_MODEL_PATTERN)과 --codex-effort(CODEX_EFFORT_LEVELS)는 --brainstorm이나 --runner codex와 함께만 받고(그 밖에는 거부), 없으면 인자를 넘기지 않아 Codex 설정(~/.codex/config.toml)을 따른다. providerUtil의 getSettingArgs가 `-m <모델>`과 `-c model_reasoning_effort=<값>`으로 바꿔 안 · 검토 · 협의 발언(exec와 resume 모두)의 호출마다 붙이고(getProviderCheck가 호출마다 지금 값으로 만들어 ready.settingArgs에 둔다), 하나라도 있으면 헤더에 `Codex : model X, effort Y` 줄이 더해진다. 실행 중 set으로 바꾸면 다음 호출부터 쓴다. 협의의 Claude 발언은 회차 세션과 같은 model·effort(실행 중 set 반영)를 쓴다.
     - 협의(debateUtil, 엔진의 runDebate): 안을 받는 것까지는 나란히 비교와 같다. Claude가 그 단계의 PHASE_DONE을 남기면 엔진이 회차 밖에서 협의를 돌린다. 한 번은 Claude가 말하고 Codex가 답하는 것이고 최대 횟수는 --debate-turns(1~DEBATE_TURNS_LIMIT=20의 정수, 기본 DEBATE_DEFAULT_TURNS=8, 협의하는 단계가 있을 때만 받고 runState.debateTurns로 로그 · 프롬프트에 쓴다)이며, 같은 번에 둘 다 합의(반대도 `improve`로 남긴 더 개선할 점도 없음)하면 일찍 끝낸다. 개선할 점이 남은 동안은 상한까지 이어가고 상한에 닿으면 남은 반대는 쟁점으로 넘어간다. Claude 발언은 도구 · 사용자 설정 · MCP 없는 `claude -p --output-format json`이고 첫 답의 session_id로 `--resume`해 같은 대화를 잇는다(첫 발언에는 두 안을 본문으로 넣는다). Codex 발언은 첫 번이 `codex exec -s read-only`, 그다음은 stderr 머리말의 `session id`로 `codex exec resume <id> -c sandbox_mode=read-only -`이며(resume은 -s를 받지 않는다), 세션 아이디를 못 찾으면 지금까지 주고받은 말을 다시 보낸다. 답의 형식(message·agree·disagree[{point, reason}]·improve·changes·consensus)은 --json-schema·--output-schema 대신 프롬프트로 정하고 debateUtil.parseTurn이 둘레의 글을 걷어 JSON 하나를 읽어 길이를 묶는다(스키마 인자는 CMD 래퍼 인자 검사를 통과하지 못한다). 반대나 더 개선할 점이 남은 합의는 합의로 보지 않는다. 발언마다 시한은 min(전체 종료 시각, 지금 + DEBATE_TURN_MINUTES)이고 중단 요청이면 끝낸다. 어느 쪽이든 답을 못 받으면 `[협의] 건너뜀` 줄을 남기고 나란히 비교(후보 둘, --pick)로 넘어간다. 협의 호출은 회차 · idle로 세지 않는다.
     - 협의를 마치면 엔진이 협의 기록을 proposals/<단계>-debate.md에 쓰고 PHASE_DONE을 지운 뒤 다음 회차를 정리 회차로 돌린다(promptUtil.getDebateSynthesisPrompt: 합의를 반영해 산출물을 합의안으로 고치고, 못 맞춘 쟁점만 proposals/<단계>-disputes.json([{title, claude, codex}])에 쓰고, 합의안 · 협의 기록 · 쟁점 · Codex 안을 commit한 뒤 PHASE_DONE). 엔진은 쟁점 파일을 debateUtil.parseDisputes로 걸러 d1, d2…를 붙여 PHASE.json의 debate {phase, disputes, resolved: null}로 옮기고 `[협의] 합의했어요` 또는 `[협의] 쟁점 N개를 남기고 끝냈어요`를 남긴 뒤 --gate와 상관없이 `<단계> 확인 대기`로 끝낸다. approve --resolve 뒤 다음 실행의 첫 회차 프롬프트 맨 앞에 쟁점마다 고른 입장을 합의안에 확정하라는 지시(`<접두어> <단계>: 쟁점 확정`, 쟁점이 없었으면 `합의안 확정`)가 들어가고 그 회차가 성공하면 debate를 지운다. 정리 회차 전에 실행이 끝나면 다음 실행이 그 단계와 협의를 다시 한다. 승인 없이 다시 시작하면 debate도 지우고 다시 한다.
 
@@ -170,7 +171,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 ### 설정과 기본값
 
-- 우선순위는 실행 인자 > 기본값이다(model·effort는 실행 중 set > 실행 인자 > 기본값).
+- 우선순위는 실행 인자 > 기본값이다(model·effort·runner·Codex의 model·effort는 실행 중 set > 실행 인자 > 기본값). runner 기본값은 claude(DEFAULT_RUNNER)이고 앱은 기본값이면 --runner를 생략한다.
 - 기본값과 상한(종료 시각·정책·model·effort·최소 남은 시간·회차 수·회차 시한·재시도·idle·회차당 작업 수·진행 기록 줄 수·보관 기간)은 autopilot/src/utils/config.js가 원본이다. 값을 바꾸면 README·지침·검증을 함께 맞춘다.
 - model은 별칭 또는 모델 ID를 그대로 --model에 넘긴다. fallback은 sonnet 별칭이며 같은 모델이면 생략한다. commit 접두어(기본 [ap], --commit-prefix)와 작업 브랜치(기본 ai/autopilot, --branch)는 실행 인자로 바꾸며 지침과 정책에 끼워 넣는다(엔진이 브랜치를 직접 다루지는 않고 세션이 지침대로 전환·생성한다). 접두어는 앞뒤 공백·백틱·제어 문자가 없고 `--`로 시작하지 않는 1~20자, 브랜치는 영문·숫자·._-와 /로 된 100자 이하 이름(`..`·`.lock`·끝 점 금지)이고, AI가 기본 브랜치에 직접 커밋하지 않도록 main·master·HEAD는 쓸 수 없다. 검증의 원본은 util.js(isValidCommitPrefix·isValidWorkBranch)이고 앱의 desktop/engineArgs.cjs가 같은 규칙을 갖는다(tests/checkDesktopRunner.js가 대조). 값이 있어도 기본값과 같으면 앱은 인자를 생략한다.
 - 종료 시각은 HH:mm 또는 "yyyy-MM-dd HH:mm"이다. HH:mm만 주면 다음에 오는 그 시각(이미 지났으면 다음 날)이고, 날짜를 붙이면 그 날짜의 시각이다. 날짜를 붙인 값은 이미 지났거나 없는 날짜이거나 MAX_RUN_DAYS(7일)보다 뒤면 거부한다. 회차 상한(maxRounds)은 하루 몫이라 실행 기간의 일수(올림)만큼 곱한다(검증의 limits가 정하면 그 값 그대로). 앱은 종료 시각을 비우면 인자를 생략해 기본값을 쓴다.

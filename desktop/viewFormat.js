@@ -212,6 +212,15 @@ const formatOptions = (model, effort) => {
     return model ? `${formatModelName(model)} · ${formatEffort(effort)}` : "-";
 };
 
+// 회차를 돌린 에이전트까지 담은 실행 값. Codex는 앞에 이름을 붙이고, 비운 값(Codex 설정을 따름)은 기본이라고 쓴다.
+const formatAgentOptions = (runner, model, effort) => {
+    if (runner !== "codex") {
+        return formatOptions(model, effort);
+    }
+
+    return `Codex ${model ? formatModelName(model) : "기본"} · ${effort ? formatEffort(effort) : "기본"}`;
+};
+
 const formatRemaining = (ms) => {
     const totalMinutes = Math.max(0, Math.round(ms / 60000));
     const days = Math.floor(totalMinutes / 1440);
@@ -1451,6 +1460,7 @@ export {
     getModelFamily,
     formatModelName,
     formatOptions,
+    formatAgentOptions,
     formatRemaining,
     formatUsageReset,
     describeLoginExpiry,

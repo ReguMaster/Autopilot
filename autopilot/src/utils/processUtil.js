@@ -190,7 +190,8 @@ const openFile = (file) => {
     childProcess.unref();
 };
 
-const runClaudeSession = (command, args, prompt, { projectDir, processEnv, roundDeadline, writeLog, sessionStats, onProcessChange }) => {
+// 회차 세션을 실행한다. stdout은 줄 단위 이벤트이고 handleLine이 해석한다(기본은 Claude의 stream-json, Codex는 streamUtil.handleCodexEvent).
+const runSession = (command, args, prompt, { projectDir, processEnv, roundDeadline, writeLog, sessionStats, onProcessChange, handleLine = streamUtil.handleStreamEvent }) => {
     return new Promise((resolve, reject) => {
         const childProcess = spawnCommand(command, args, { cwd: projectDir, env: processEnv, detached: !IS_WINDOWS, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
         let stderr = "";
@@ -202,7 +203,7 @@ const runClaudeSession = (command, args, prompt, { projectDir, processEnv, round
 
         const lines = createInterface({ input: childProcess.stdout, crlfDelay: Infinity });
 
-        lines.on("line", (line) => streamUtil.handleStreamEvent(line, sessionStats, writeLog));
+        lines.on("line", (line) => handleLine(line, sessionStats, writeLog));
 
         childProcess.stderr.setEncoding("utf8");
         childProcess.stderr.on("data", (text) => {
@@ -300,4 +301,4 @@ const getUnsupportedFlags = (command, flags, processEnv) => {
     });
 };
 
-export default { getExecutablePath, spawnCommand, killProcessTree, isProcessRunning, isSameProcess, openFile, runClaudeSession, getUnsupportedFlags };
+export default { getExecutablePath, spawnCommand, killProcessTree, isProcessRunning, isSameProcess, openFile, runSession, getUnsupportedFlags };

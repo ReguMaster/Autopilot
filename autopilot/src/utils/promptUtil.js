@@ -374,9 +374,12 @@ const getProgressCleanupPrompt = (progressFile, archivePath) => {
     ].join(" ");
 };
 
-const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt, maxTasks) => {
+// runner가 codex면 CLAUDE.md가 세션에 자동으로 로드되지 않으므로 직접 읽게 한다.
+const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt, maxTasks, runner = PROVIDER_CLAUDE) => {
     const roundPrompt = [
-        "CLAUDE.md를 기본 프로젝트 지침으로 사용하고, 아래 <AUTOPILOT.md>의 작업 지침에 따라 자율 개발을 수행하라.",
+        runner === PROVIDER_CLAUDE
+            ? "CLAUDE.md를 기본 프로젝트 지침으로 사용하고, 아래 <AUTOPILOT.md>의 작업 지침에 따라 자율 개발을 수행하라."
+            : "작업 전에 프로젝트 루트의 `CLAUDE.md`를 직접 읽어(이 세션에는 자동으로 로드되지 않는다) 기본 프로젝트 지침으로 사용하고, 아래 <AUTOPILOT.md>의 작업 지침에 따라 자율 개발을 수행하라.",
         "중요사항!: 아래 <AUTOPILOT_POLICY.md>의 모든 금지사항과 안전정책을 반드시 최우선으로 준수하라.",
         `정책의 작업 범위인 프로젝트 루트는 ${runState.projectDir} 이다.`,
         getLinkedReposPrompt(runState),

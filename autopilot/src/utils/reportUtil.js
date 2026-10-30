@@ -35,10 +35,15 @@ const getCommitItemHtml = (commitInfo) => {
     return `<li><code>${escapeHtml(commitInfo.hash)}</code> ${escapeHtml(commitInfo.subject)} <span class="meta">${escapeHtml(commitInfo.stat)}</span></li>`;
 };
 
+// Codex 회차는 턴 수·비용을 알려 주지 않으므로 실행 값만 쓴다. 비운 Codex 값은 Codex 설정을 따른 것이다.
 const getRoundCardHtml = (roundInfo) => {
-    const meta = `${dateUtil.getTimeString(roundInfo.start)} · ${roundInfo.minutes}분 · ${roundInfo.turns ?? 0}턴 · $${util.formatCost(roundInfo.cost)} · ${roundInfo.model} ${roundInfo.effort}`;
+    const isCodex = roundInfo.runner === "codex";
+    const usage = isCodex
+        ? `Codex ${roundInfo.model || "기본값"} ${roundInfo.effort || "기본값"}`
+        : `${roundInfo.turns ?? 0}턴 · $${util.formatCost(roundInfo.cost)} · ${roundInfo.model} ${roundInfo.effort}`;
+    const meta = `${dateUtil.getTimeString(roundInfo.start)} · ${roundInfo.minutes}분 · ${escapeHtml(usage)}`;
     const commitItems = roundInfo.commits.map(getCommitItemHtml).join("");
-    const sessionHtml = roundInfo.session ? `<p class="meta">claude --resume ${escapeHtml(roundInfo.session)}</p>` : "";
+    const sessionHtml = roundInfo.session ? `<p class="meta">${isCodex ? "codex resume" : "claude --resume"} ${escapeHtml(roundInfo.session)}</p>` : "";
     const summaryHtml = roundInfo.summary ? getDetailsHtml("세션 요약", roundInfo.summary) : "";
     const stderrHtml = roundInfo.stderr ? getDetailsHtml("stderr", roundInfo.stderr) : "";
 

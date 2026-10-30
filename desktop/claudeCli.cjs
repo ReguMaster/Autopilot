@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
-const { CODEX_MODEL_PATTERN } = require("./engineArgs.cjs");
+const { CODEX_MODEL_PATTERN, CODEX_EFFORT_LEVELS } = require("./engineArgs.cjs");
 
 const IS_WINDOWS = process.platform === "win32";
 const WINDOWS_SCRIPT_PATTERN = /\.(cmd|bat)$/i;
@@ -342,22 +342,47 @@ const startLogin = (configDir, handlers, options = {}) => {
 
 const MAX_CODEX_MODELS = 30;
 
-// Codex가 목록에 보이는 모델로 캐시해 둔 것(~/.codex/models_cache.json의 visibility가 list인 항목). 비공식 형식이라 읽지 못하면 빈 목록이고, 화면은 기본값만 보인다.
+const getCodexHome = (processEnv) => {
+    return processEnv.CODEX_HOME || path.join(os.homedir(), ".codex");
+};
+
+const getCodexEffort = (value) => {
+    return CODEX_EFFORT_LEVELS.includes(value) ? value : "";
+};
+
+// Codex가 목록에 보이는 모델로 캐시해 둔 것(~/.codex/models_cache.json의 visibility가 list인 항목)과 모델마다의 기본 Effort. 비공식 형식이라 읽지 못하면 빈 목록이고, 화면은 기본값만 보인다.
 const readCodexModels = (processEnv) => {
     try {
-        const codexHome = processEnv.CODEX_HOME || path.join(os.homedir(), ".codex");
-        const { models } = JSON.parse(fs.readFileSync(path.join(codexHome, "models_cache.json"), "utf8"));
+        const { models } = JSON.parse(fs.readFileSync(path.join(getCodexHome(processEnv), "models_cache.json"), "utf8"));
 
         return models
             .filter((model) => model.visibility === "list" && CODEX_MODEL_PATTERN.test(model.slug))
             .slice(0, MAX_CODEX_MODELS)
-            .map((model) => ({ id: model.slug, label: String(model.display_name || model.slug).slice(0, 40) }));
+            .map((model) => ({ id: model.slug, label: String(model.display_name || model.slug).slice(0, 40), defaultEffort: getCodexEffort(model.default_reasoning_level) }));
     } catch {
         return [];
     }
 };
 
-// 여러 AI 브레인스토밍에 쓸 Codex가 설치 · 로그인돼 있는지(`codex login status`의 종료 코드). 쓸 수 있으면 고를 수 있는 모델도 함께 준다. launch는 검증용 가짜 실행 파일이다.
+// Codex 설정(config.toml) 맨 위의 model·model_reasoning_effort. 화면이 "기본"이 지금 무엇인지 보이는 데만 쓴다. 표(섹션) 안의 값은 다른 프로필이라 읽지 않는다.
+// shortcut: TOML을 줄 단위로 읽어 따옴표 문자열만 받는다. 설정이 여러 줄 문자열·인라인 표를 쓰게 되면 TOML 파서로 바꾼다.
+const readCodexDefaults = (processEnv) => {
+    let text = "";
+
+    try {
+        text = fs.readFileSync(path.join(getCodexHome(processEnv), "config.toml"), "utf8");
+    } catch {
+        return { model: "", effort: "" };
+    }
+
+    const topLevel = text.split(/^\s*\[/m)[0];
+    const readValue = (key) => topLevel.match(new RegExp(`^\\s*${key}\\s*=\\s*["']([^"'\\r\\n]*)["']`, "m"))?.[1] || "";
+    const model = readValue("model");
+
+    return { model: CODEX_MODEL_PATTERN.test(model) ? model : "", effort: getCodexEffort(readValue("model_reasoning_effort")) };
+};
+
+// 회차 실행·여러 AI 브레인스토밍에 쓸 Codex가 설치 · 로그인돼 있는지(`codex login status`의 종료 코드). 쓸 수 있으면 고를 수 있는 모델과 Codex 설정의 기본값도 함께 준다. launch는 검증용 가짜 실행 파일이다.
 const getCodexStatus = (launch = null, processEnv = process.env) => {
     const command = launch?.command || findExecutable("codex", processEnv);
 
@@ -387,7 +412,9 @@ const getCodexStatus = (launch = null, processEnv = process.env) => {
         });
         child.once("exit", (code) => {
             clearTimeout(timer);
-            resolve(code === 0 ? { available: true, reason: "", models: readCodexModels(processEnv) } : { available: false, reason: "Codex 로그인이 필요해요" });
+            resolve(
+                code === 0 ? { available: true, reason: "", models: readCodexModels(processEnv), defaults: readCodexDefaults(processEnv) } : { available: false, reason: "Codex 로그인이 필요해요" }
+            );
         });
     });
 };

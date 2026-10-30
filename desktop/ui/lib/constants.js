@@ -30,6 +30,9 @@ const BRAINSTORM_PROVIDERS = ["codex"];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 // Codex에 넘기는 reasoning effort(엔진 config.js의 CODEX_EFFORT_LEVELS). 비우면 Codex 설정을 따른다.
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+// 회차를 돌리는 에이전트(엔진 config.js의 RUNNERS·DEFAULT_RUNNER)
+const DEFAULT_RUNNER = "claude";
+const CODEX_RUNNER = "codex";
 // 협의에서 주고받는 최대 횟수(엔진 config.js의 DEBATE_DEFAULT_TURNS·DEBATE_TURNS_LIMIT). 선택 상자에는 자주 쓰는 값만 둔다.
 const DEFAULT_DEBATE_TURNS = 8;
 const DEBATE_TURNS_LIMIT = 20;
@@ -73,6 +76,8 @@ export {
     BRAINSTORM_PROVIDERS,
     PROVIDER_LABELS,
     CODEX_EFFORT_LEVELS,
+    DEFAULT_RUNNER,
+    CODEX_RUNNER,
     DEFAULT_DEBATE_TURNS,
     DEBATE_TURNS_LIMIT,
     DEBATE_TURN_CHOICES,

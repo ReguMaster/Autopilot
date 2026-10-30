@@ -8,6 +8,22 @@ const CHIPS = [
     ["main", "#main-action"]
 ];
 
+// 모델 목록에는 Claude·Codex 묶음 제목이 섞여 있어 순서 대신 값으로 고른다.
+const SONNET_OPTION = '#model-popover label:has(input[value="sonnet"])';
+const CODEX_PROVIDERS = {
+    codex: {
+        available: true,
+        reason: "",
+        models: [
+            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", defaultEffort: "low" },
+            { id: "gpt-6.1-sol-mini", label: "GPT-6.1-Sol-Mini", defaultEffort: "medium" },
+            { id: "gpt-6-luna", label: "GPT-6-Luna", defaultEffort: "medium" }
+        ],
+        defaults: { model: "gpt-6.1-sol", effort: "" }
+    }
+};
+const CODEX_TAB = "#model-popover .runner-tab:nth-child(2)";
+
 const noteCalls = async (t, key = "calls") => {
     await t.note(key, JSON.stringify(await t.calls()));
 };
@@ -42,12 +58,50 @@ const SCENES = [
             await t.click("#model-chip");
             await t.shot("popover-open", "#model-popover");
             await t.shot("chip-open", "#model-chip");
-            await t.click("#model-popover label:nth-child(3)");
+            await t.click(SONNET_OPTION);
             await t.wait(500);
             await t.shot("chip-sonnet", "#model-chip");
             await t.shot("popover-after-pick", "#model-popover", { skipDom: true });
             await t.click("#model-chip");
             await t.shot("popover-sonnet", "#model-popover");
+        }
+    },
+    {
+        // Codex 모델을 고르면 알약이 Codex 마크와 모델 이름으로 바뀌고, Effort 목록은 Codex 설정을 따르는 기본을 맨 앞에 둔다.
+        name: "composer-model-codex",
+        init: { ...withProject, model: { providers: CODEX_PROVIDERS } },
+        run: async (t) => {
+            await t.click("#model-chip");
+            await t.wait(300);
+            await t.shot("popover-claude", "#model-popover");
+            await t.click(CODEX_TAB);
+            await t.wait(300);
+            await t.shot("popover-codex", "#model-popover");
+            await t.click('#model-popover label:has(input[value="codex:"])');
+            await t.wait(500);
+            await t.shot("chips-codex-default", ".composer-bar");
+            await t.click("#model-chip");
+            await t.wait(300);
+            await t.shot("popover-codex-picked", "#model-popover");
+            await t.click('#model-popover label:has(input[value="codex:gpt-6.1-sol-mini"])');
+            await t.wait(500);
+            await t.click("#effort-control");
+            await t.wait(300);
+            await t.shot("effort-codex", "#effort-popover");
+            await t.click("#effort-popover button:nth-of-type(4)");
+            await t.wait(500);
+            await t.shot("chips-codex", ".composer-bar");
+        }
+    },
+    {
+        name: "composer-model-codex-unavailable",
+        init: { ...withProject, model: { providers: { codex: { available: false, reason: "Codex 로그인이 필요해요" } } } },
+        run: async (t) => {
+            await t.click("#model-chip");
+            await t.wait(300);
+            await t.click(CODEX_TAB);
+            await t.wait(300);
+            await t.shot("popover-unavailable", "#model-popover");
         }
     },
     {
@@ -159,7 +213,7 @@ const SCENES = [
         run: async (t) => {
             await t.clearCalls();
             await t.click("#model-chip");
-            await t.click("#model-popover label:nth-child(3)");
+            await t.click(SONNET_OPTION);
             await t.wait(500);
             await t.click("#effort-control");
             await t.click("#effort-popover button:nth-child(1)");

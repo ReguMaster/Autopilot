@@ -116,8 +116,15 @@ const isValidRoundOptions = ({ model, effort }) => {
     return MODEL_CHOICES.includes(model) && EFFORT_CHOICES.includes(effort);
 };
 
-// 작업 모드와 신규 개발 설정. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate", "debateTurns", "codexModel", "codexEffort"];
+// 회차를 돌리는 에이전트와 Codex의 model·effort(Codex가 회차를 돌리거나 브레인스토밍할 때 쓴다)
+const AGENT_KEYS = ["runner", "codexModel", "codexEffort"];
+
+const isValidAgentOptions = (options) => {
+    return AGENT_KEYS.every((key) => SETTING_VALIDATORS[key](options[key]));
+};
+
+// 작업 모드·신규 개발 설정과 실행 에이전트. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
+const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "crossReview", "debate", "debateTurns", ...AGENT_KEYS];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
@@ -506,7 +513,7 @@ const launchRun = async (session, settings, startOptions, { remember, keepTasks 
                 tasksFile: tasksFile,
                 configDir: runAccount.data.configDir
             }),
-            roundOptions: { model: model, effort: startOptions.effort }
+            roundOptions: { model: model, effort: startOptions.effort, runner: startOptions.runner, codexModel: startOptions.codexModel, codexEffort: startOptions.codexEffort }
         });
     } finally {
         session.isLaunching = false;
@@ -532,10 +539,10 @@ const handleStart = async (event, options = {}) => {
     );
 };
 
-// 실행 중인 엔진에 다음 회차부터 쓸 model·effort를 전달하고, 성공하면 다음 시작의 기본값으로도 저장한다.
+// 실행 중인 엔진에 다음 회차부터 쓸 실행 에이전트와 Claude·Codex의 model·effort를 전달하고, 성공하면 다음 시작의 기본값으로도 저장한다.
 const handleSetOptions = async (event, options = {}) => {
-    if (!isValidRoundOptions(options)) {
-        return createFailure("INVALID_OPTIONS", "model 또는 effort 값이 올바르지 않아요.");
+    if (!isValidRoundOptions(options) || !isValidAgentOptions(options)) {
+        return createFailure("INVALID_OPTIONS", "모델 또는 Effort 값이 올바르지 않아요.");
     }
 
     const session = sessionPool.get(options.projectDir);
@@ -545,10 +552,11 @@ const handleSetOptions = async (event, options = {}) => {
     }
 
     const settings = readEffective(session.projectDir);
-    const result = await session.runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort });
+    const agentOptions = Object.fromEntries(AGENT_KEYS.map((key) => [key, options[key]]));
+    const result = await session.runner.setRoundOptions({ model: resolveModel(options.model, settings.modelVersions), effort: options.effort, ...agentOptions });
 
     if (result.status === STATUS_OK) {
-        settingsStore.remember(settings.projectDir, { model: options.model, effort: options.effort });
+        settingsStore.remember(settings.projectDir, { model: options.model, effort: options.effort, ...agentOptions });
     }
 
     return result;

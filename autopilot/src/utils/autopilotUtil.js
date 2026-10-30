@@ -3,9 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import {
+    CODEX_EFFORT_LEVELS,
+    CODEX_MODEL_PATTERN,
     DEFAULT_EFFORT,
     DEFAULT_MODEL,
+    DEFAULT_RUNNER,
     EFFORT_LEVELS,
+    RUNNERS,
     EXIT_CODE_FAILED,
     EXIT_CODE_INTERRUPTED,
     EXIT_CODE_SUCCESS,
@@ -173,7 +177,8 @@ const getRunEnv = (options) => {
     return env;
 };
 
-// 회차마다 읽는 model·effort 변경 파일. 허용된 값만 돌려주고, JSON이 깨져 있으면 예외를 던진다.
+// 회차마다 읽는 실행 값 변경 파일(실행 에이전트, Claude·Codex의 model·effort). 허용된 값만 돌려주고, JSON이 깨져 있으면 예외를 던진다.
+// Codex의 빈 값은 Codex 설정을 따르라는 뜻이라 그대로 둔다.
 const readRoundOptions = (roundOptionsFile) => {
     const text = fileUtil.readTextFile(roundOptionsFile);
 
@@ -182,10 +187,14 @@ const readRoundOptions = (roundOptionsFile) => {
     }
 
     const savedOptions = JSON.parse(text);
+    const codexModel = savedOptions?.codexModel;
 
     return {
         ...(util.isValidModel(savedOptions?.model) ? { model: savedOptions.model } : {}),
-        ...(EFFORT_LEVELS.includes(savedOptions?.effort) ? { effort: savedOptions.effort } : {})
+        ...(EFFORT_LEVELS.includes(savedOptions?.effort) ? { effort: savedOptions.effort } : {}),
+        ...(RUNNERS.includes(savedOptions?.runner) ? { runner: savedOptions.runner } : {}),
+        ...(typeof codexModel === "string" && (codexModel === "" || CODEX_MODEL_PATTERN.test(codexModel)) ? { codexModel: codexModel } : {}),
+        ...(savedOptions?.codexEffort === "" || CODEX_EFFORT_LEVELS.includes(savedOptions?.codexEffort) ? { codexEffort: savedOptions.codexEffort } : {})
     };
 };
 
@@ -207,9 +216,15 @@ const writeRoundOptions = (roundOptionsFile, roundOptions) => {
     return nextOptions;
 };
 
-// 우선순위: 실행 중 변경 파일 > 실행 인자 > 기본값
+// 우선순위: 실행 중 변경 파일 > 실행 인자 > 기본값. Codex의 model·effort 기본값은 빈 값(Codex 설정을 따름)이다.
 const getRoundOptions = (startOptions, savedOptions) => {
-    return { model: savedOptions.model || startOptions.model || DEFAULT_MODEL, effort: savedOptions.effort || startOptions.effort || DEFAULT_EFFORT };
+    return {
+        model: savedOptions.model || startOptions.model || DEFAULT_MODEL,
+        effort: savedOptions.effort || startOptions.effort || DEFAULT_EFFORT,
+        runner: savedOptions.runner || startOptions.runner || DEFAULT_RUNNER,
+        codexModel: savedOptions.codexModel ?? startOptions.codexModel ?? "",
+        codexEffort: savedOptions.codexEffort ?? startOptions.codexEffort ?? ""
+    };
 };
 
 // 선택 인자는 오래된 Claude Code가 모르는 옵션이면 CLI가 시작하자마자 실패하므로 unsupportedFlags에 든 것은 뺀다.

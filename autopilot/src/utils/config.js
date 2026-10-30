@@ -50,6 +50,11 @@ const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 // Codex에 넘기는 model(Codex가 쓰는 이름, 예: gpt-6.1-sol)과 reasoning effort. 비우면 Codex 설정(~/.codex/config.toml)을 따른다.
 const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+// 인자로는 빈 값을 넘길 수 없어서 Codex 설정을 따르게 되돌릴 때 쓰는 값(--codex-model default). 엔진 안에서는 빈 문자열이다.
+const CODEX_DEFAULT_VALUE = "default";
+// 회차를 실행하는 에이전트(--runner). 실행 중 set으로 다음 회차부터 바꿀 수 있다.
+const RUNNERS = [PROVIDER_CLAUDE, "codex"];
+const DEFAULT_RUNNER = PROVIDER_CLAUDE;
 const PROPOSALS_DIR = "docs/autopilot/proposals";
 const PROVIDER_TIMEOUT_MINUTES = 30;
 // 브레인스토밍 방식. compare는 두 안을 나란히 보여 주고 사용자가 고르고, debate는 두 AI가 주고받아 합의안과 못 맞춘 쟁점을 남긴다.
@@ -152,6 +157,9 @@ export {
     PROVIDER_LABELS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
+    CODEX_DEFAULT_VALUE,
+    RUNNERS,
+    DEFAULT_RUNNER,
     PROPOSALS_DIR,
     PROVIDER_TIMEOUT_MINUTES,
     BRAINSTORM_COMPARE,

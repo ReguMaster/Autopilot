@@ -87,9 +87,10 @@ const runCli = async (args = process.argv.slice(2)) => {
             return EXIT_CODE_FAILED;
         }
 
-        const { model, effort } = requestRoundOptionsResult.data.roundOptions;
+        const { model, effort, runner, codexModel, codexEffort } = requestRoundOptionsResult.data.roundOptions;
+        const codexText = codexModel === undefined && codexEffort === undefined ? "" : `, Codex model ${codexModel || "(default)"}, effort ${codexEffort || "(default)"}`;
 
-        log.info(`AutoPilot will use model ${model ?? "(default)"}, effort ${effort ?? "(default)"} from the next round.`);
+        log.info(`AutoPilot will use ${runner ?? "(default runner)"}, model ${model ?? "(default)"}, effort ${effort ?? "(default)"}${codexText} from the next round.`);
 
         return EXIT_CODE_SUCCESS;
     }

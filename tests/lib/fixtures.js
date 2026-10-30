@@ -97,6 +97,13 @@ process.stdin.on('end', () => {
     fs.writeFileSync(marker, phaseResult + '\n');
   } else if (mode === 'stop') fs.writeFileSync('.autopilot/progress/STOP', '');
   else if (mode === 'options') fs.writeFileSync('.autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ model: 'sonnet', effort: 'low' }));
+  else if (mode === 'to-codex') {
+    // 다음 회차부터 Codex가 돌도록 바꾸고 commit해 idle로 끝나지 않게 한다.
+    fs.writeFileSync('.autopilot/progress/ROUND_OPTIONS.json', JSON.stringify({ runner: 'codex', codexEffort: 'low' }));
+    fs.appendFileSync('work.txt', 'claude\n');
+    execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
+    execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] claude']);
+  }
   if (mode === 'failure') process.exitCode = 1;
   if (!mode.startsWith('limit')) emit({ type: 'result', subtype: 'success', is_error: mode === 'is-error', num_turns: 1, duration_ms: 10, total_cost_usd: 0.25, result: '검증 <script>' });
   console.error('fake stderr 한글\nReport : /forged-stderr');
@@ -105,8 +112,10 @@ process.stdin.on('end', () => {
 
 // 실제 Codex 대신 쓰는 가짜 codex. login status는 AP_CODEX_LOGIN=0이면 실패하고, exec는 받은 프롬프트를 AP_CODEX_LOG에 남긴 뒤
 // 검토 요청이면 목록을, 아니면 코드 블록으로 감싼 안을 stdout으로 낸다. AP_CODEX_FAIL=1이면 한도 오류로 끝난다.
+// --json이면 회차 실행이다. JSONL 이벤트를 내고 commit하며, AP_CODEX_ROUND=limit이면 사용량 한도로 실패한다.
 const FAKE_CODEX_SOURCE = String.raw`
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 const args = process.argv.slice(2);
 if (args[0] === "login") process.exit(process.env.AP_CODEX_LOGIN === "0" ? 1 : 0);
 let prompt = "";
@@ -114,6 +123,24 @@ process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => (prompt += chunk));
 process.stdin.on("end", () => {
   fs.appendFileSync(process.env.AP_CODEX_LOG, "---\n" + args.join(" ") + "\n" + prompt + "\n");
+  if (args.includes("--json")) {
+    if (process.cwd() !== process.env.AP_EXPECTED_CWD) process.exit(99);
+    const emit = (value) => console.log(JSON.stringify(value));
+    emit({ type: "thread.started", thread_id: "0199a213-81c0-7800-8aa1-bbab2a035a53" });
+    emit({ type: "turn.started" });
+    emit({ type: "item.started", item: { id: "item_0", type: "command_execution", command: "bash -lc 'npm test'", status: "in_progress" } });
+    emit({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: "한글 출력 Codex\n성과: 응답 시간 1초 → 0.5초" } });
+    if (process.env.AP_CODEX_ROUND === "limit") {
+      emit({ type: "turn.failed", error: { message: "You've hit your usage limit." } });
+      process.exit(1);
+    }
+    fs.appendFileSync("work.txt", "codex\n");
+    execFileSync(process.env.AP_GIT, ["add", "--", "work.txt"]);
+    execFileSync(process.env.AP_GIT, ["commit", "-m", "[ap] codex"]);
+    emit({ type: "item.completed", item: { id: "item_2", type: "file_change", changes: [{ path: "work.txt", kind: "update" }] } });
+    emit({ type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 2 } });
+    return;
+  }
   if (process.env.AP_CODEX_FAIL === "1") {
     console.error("progress\nusage limit reached");
     process.exit(1);

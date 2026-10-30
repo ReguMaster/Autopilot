@@ -19,6 +19,9 @@ const Symbols = () => {
             <symbol id="mark-haiku" viewBox="0 0 24 24">
                 <path d="M5 19C5 10.5 9.5 5 19 5c0 9.5-5.5 14-14 14ZM5 19l8-8" />
             </symbol>
+            <symbol id="mark-codex" viewBox="0 0 24 24">
+                <path d="m5.5 7.5 4.5 4.5-4.5 4.5M12.5 16.5H18.5" />
+            </symbol>
             <symbol id="icon-policy-auto" viewBox="0 0 20 20">
                 <path d="M6.2 13.4a4 4 0 1 1 0-6.8l7.6 6.8a4 4 0 1 0 0-6.8l-7.6 6.8" />
             </symbol>

@@ -9,6 +9,7 @@ import {
     PROVIDER_CLAUDE,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
+    CODEX_DEFAULT_VALUE,
     DESIGN_FORMATS,
     EFFORT_LEVELS,
     GATE_PHASES,
@@ -18,7 +19,8 @@ import {
     MAX_FAIL_RETRIES,
     MODE_BUILD,
     MODES,
-    MODEL_CHOICES
+    MODEL_CHOICES,
+    RUNNERS
 } from "./config.js";
 import debateUtil from "./debateUtil.js";
 import phaseUtil from "./phaseUtil.js";
@@ -26,14 +28,14 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
-    "AutoPilot set --project <dir> [--model opus] [--effort high]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--brainstorm-with codex] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
+    "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol|default] [--codex-effort high|default]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
-const SET_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--model": "model", "--effort": "effort" };
+const SET_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--model": "model", "--effort": "effort", "--runner": "runner", "--codex-model": "codexModel", "--codex-effort": "codexEffort" };
 const RUN_OPTION_KEYS = {
     ...SET_OPTION_KEYS,
     "--config-dir": "configDir",
@@ -52,13 +54,11 @@ const RUN_OPTION_KEYS = {
     "--security-on-fail": "securityOnFail",
     "--brainstorm": "brainstorm",
     "--brainstorm-with": "brainstormWith",
-    "--codex-model": "codexModel",
-    "--codex-effort": "codexEffort",
     "--debate-turns": "debateTurns"
 };
 const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
-// 신규 개발에서만 뜻이 있는 인자
-const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "codexModel", "codexEffort", "debateTurns", "crossReview"];
+// 신규 개발에서만 뜻이 있는 인자. Codex의 model·effort는 Codex가 회차를 돌릴 때(--runner codex)도 쓴다.
+const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "brainstorm", "brainstormWith", "debateTurns", "crossReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
 const ON_FAIL_OPTIONS = [
     ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
@@ -77,13 +77,32 @@ const parseOptionValue = (args, index) => {
     return value;
 };
 
-const assertModelAndEffort = (options) => {
+// 회차 실행 값. Codex의 model·effort는 default를 빈 문자열(Codex 설정을 따름)로 바꾼다.
+const parseRoundOptions = (options) => {
     if (options.model && !util.isValidModel(options.model)) {
         throw new Error(`잘못된 model 값입니다 (${MODEL_CHOICES.join(" | ")} 또는 claude-로 시작하는 모델 ID).`);
     }
 
     if (options.effort && !EFFORT_LEVELS.includes(options.effort)) {
         throw new Error("잘못된 effort 값입니다.");
+    }
+
+    if (options.runner !== undefined && !RUNNERS.includes(options.runner)) {
+        throw new Error(`--runner 값은 ${RUNNERS.join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    for (const key of ["codexModel", "codexEffort"]) {
+        if (options[key] === CODEX_DEFAULT_VALUE) {
+            options[key] = "";
+        }
+    }
+
+    if (options.codexModel && !CODEX_MODEL_PATTERN.test(options.codexModel)) {
+        throw new Error(`--codex-model 값은 영문으로 시작하는 Codex 모델 이름이나 ${CODEX_DEFAULT_VALUE}여야 합니다 (예: gpt-6.1-sol).`);
+    }
+
+    if (options.codexEffort && !CODEX_EFFORT_LEVELS.includes(options.codexEffort)) {
+        throw new Error(`--codex-effort 값은 ${[...CODEX_EFFORT_LEVELS, CODEX_DEFAULT_VALUE].join(" | ")} 중 하나여야 합니다.`);
     }
 };
 
@@ -103,7 +122,7 @@ const parseOptions = (args, optionKeys) => {
         throw new Error(`--project 값이 필요합니다.\n${HELP_TEXT}`);
     }
 
-    assertModelAndEffort(options);
+    parseRoundOptions(options);
 
     return options;
 };
@@ -179,8 +198,12 @@ const parseModeOptions = (options) => {
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
         throw new Error(
-            "--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --brainstorm · --brainstorm-with · --codex-model · --codex-effort · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다."
+            "--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --brainstorm · --brainstorm-with · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다."
         );
+    }
+
+    if ((options.codexModel !== undefined || options.codexEffort !== undefined) && !options.brainstorm && options.runner !== "codex") {
+        throw new Error("--codex-model · --codex-effort 는 --runner codex 나 --brainstorm 과 함께 씁니다.");
     }
 
     if (options.gates !== undefined) {
@@ -199,20 +222,12 @@ const parseModeOptions = (options) => {
         options.brainstormWith = parseListOption("--brainstorm-with", options.brainstormWith, BRAINSTORM_PROVIDERS);
     }
 
-    if (options.codexModel !== undefined && !CODEX_MODEL_PATTERN.test(options.codexModel)) {
-        throw new Error("--codex-model 값은 영문으로 시작하는 Codex 모델 이름이어야 합니다 (예: gpt-6.1-sol).");
-    }
-
-    if (options.codexEffort !== undefined && !CODEX_EFFORT_LEVELS.includes(options.codexEffort)) {
-        throw new Error(`--codex-effort 값은 ${CODEX_EFFORT_LEVELS.join(" | ")} 중 하나여야 합니다.`);
-    }
-
     if (options.debateTurns !== undefined) {
         options.debateTurns = parseDebateTurns(options.debateTurns);
     }
 
-    if (!options.brainstorm && (options.brainstormWith || options.codexModel || options.codexEffort || options.debateTurns || options.crossReview)) {
-        throw new Error("--brainstorm-with · --codex-model · --codex-effort · --debate-turns · --cross-review 는 --brainstorm 과 함께 씁니다.");
+    if (!options.brainstorm && (options.brainstormWith || options.debateTurns || options.crossReview)) {
+        throw new Error("--brainstorm-with · --debate-turns · --cross-review 는 --brainstorm 과 함께 씁니다.");
     }
 
     if (options.debateTurns && !options.debate) {
@@ -325,12 +340,12 @@ const parseApproveArgs = (args) => {
     return options;
 };
 
-// 실행 중인 AutoPilot에 전달할 값이므로 프로젝트와 model·effort만 받는다.
+// 실행 중인 AutoPilot에 전달할 값이므로 프로젝트와 회차 실행 값(실행 에이전트, Claude·Codex의 model·effort)만 받는다.
 const parseSetArgs = (args) => {
     const options = parseOptions(args, SET_OPTION_KEYS);
 
-    if (!options.model && !options.effort) {
-        throw new Error(`set에는 --model 또는 --effort가 필요합니다.\n${HELP_TEXT}`);
+    if (["model", "effort", "runner", "codexModel", "codexEffort"].every((key) => options[key] === undefined)) {
+        throw new Error(`set에는 --model · --effort · --runner · --codex-model · --codex-effort 중 하나가 필요합니다.\n${HELP_TEXT}`);
     }
 
     return options;

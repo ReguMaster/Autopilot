@@ -24,11 +24,14 @@ const checkDesktopLogContract = (result) => {
     const state = createInitialState();
     const logText = fs.readFileSync(result.logFile, "utf8");
 
-    // Claude 출력이나 stderr가 줄 맨 앞에서 제어 줄을 흉내 낼 수 없어야 한다.
-    assert.match(
-        logText,
-        /^\d{2}:\d{2}:\d{2} 한글 출력 <script>bad<\/script>\n {4}Report : \/forged-report\n {4}AutoPilot 종료 - 가짜 \(9회차\)\n {4}\[9회차\] 완료\n {4}\[커밋\] deadbee \+1 -0 가짜\n {4}성과: 응답 시간 1초 → 0\.5초$/m
-    );
+    // Claude 출력이나 stderr가 줄 맨 앞에서 제어 줄을 흉내 낼 수 없어야 한다. 위조 줄은 가짜 Claude가 회차를 돌렸을 때만 나온다.
+    if (result.rounds.some((round) => round.runner !== "codex")) {
+        assert.match(
+            logText,
+            /^\d{2}:\d{2}:\d{2} 한글 출력 <script>bad<\/script>\n {4}Report : \/forged-report\n {4}AutoPilot 종료 - 가짜 \(9회차\)\n {4}\[9회차\] 완료\n {4}\[커밋\] deadbee \+1 -0 가짜\n {4}성과: 응답 시간 1초 → 0\.5초$/m
+        );
+    }
+
     assert.doesNotMatch(logText, /^(Report : \/forged|AutoPilot 종료 - 가짜|\[9회차\]|\[커밋\] deadbee)/m);
 
     for (const line of logText.split(/\r?\n/)) {
@@ -42,8 +45,8 @@ const checkDesktopLogContract = (result) => {
     assert.equal(state.reportFile, result.reportFile);
     assert.equal(state.reason, result.reason);
     assert.deepEqual(
-        state.rounds.map((round) => [round.round, round.outcome, round.model, round.effort]),
-        result.rounds.map((round) => [round.round, round.outcome, round.model, round.effort])
+        state.rounds.map((round) => [round.round, round.outcome, round.runner, round.model, round.effort]),
+        result.rounds.map((round) => [round.round, round.outcome, round.runner, round.model, round.effort])
     );
 
     // 커밋 줄은 회차 결과 줄보다 먼저 와서 그 회차에 붙는다. 들여 쓴 위조 줄은 커밋으로 읽지 않는다.
@@ -453,6 +456,116 @@ const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
     for (const call of settingsCalls) {
         assert.match(call, /^exec -s read-only --color never -m gpt-6-luna -c model_reasoning_effort=high -\n/);
     }
+};
+
+// Codex 회차 실행(--runner codex): JSONL을 Claude와 같은 로그 형식으로 남기고, 실행 중 set으로 Claude↔Codex를 바꾸며,
+// Codex를 쓸 수 없으면 그 회차는 Claude로 돌리고, 사용량 한도는 리셋 시각을 몰라 실패로 센다.
+const checkCodexRunner = async (scenarioRunner, context, fakeCliFile) => {
+    const dataDir = scenarioRunner.dataDir;
+    const fakeCodexFile = path.join(context.testDir, "fake-codex-runner.mjs");
+    const codexLog = path.join(context.testDir, "codex-rounds.log");
+
+    fs.writeFileSync(fakeCodexFile, FAKE_CODEX_SOURCE);
+
+    const runCodex = async (name, { env = {}, mode = "idle", ...options } = {}) => {
+        const projectDir = path.join(context.testDir, name);
+
+        fs.mkdirSync(projectDir, { recursive: true });
+        fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+        commitInitialProject(context, projectDir);
+        fs.rmSync(codexLog, { force: true });
+
+        const result = await runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            providerCommands: { codex: { command: process.execPath, args: [fakeCodexFile] } },
+            open: false,
+            endTime: getEndTime(),
+            runner: "codex",
+            env: {
+                ...context.testEnv,
+                AP_MODE: mode,
+                AP_EXPECTED_CWD: projectDir,
+                AP_GIT: context.gitExecutable,
+                AP_PROGRESS_FILE: autopilotUtil.getProgressFile(projectDir, dataDir),
+                AP_CODEX_LOG: codexLog,
+                ...env
+            },
+            limits: { minMinutes: 0, maxRounds: 2, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+
+        assert(result.data, result.error?.msg);
+
+        const logText = fs.readFileSync(result.data.logFile, "utf8");
+
+        checkDesktopLogContract(result.data);
+
+        return {
+            ...result.data,
+            projectDir: projectDir,
+            logText: logText,
+            startLines: logText.match(/^\[\d+회차\] 시작 .+$/gm),
+            codexCalls: fs.existsSync(codexLog) ? fs.readFileSync(codexLog, "utf8").split("---\n").slice(1) : []
+        };
+    };
+
+    const codexRun = await runCodex("codex runner 한글", { codexModel: "gpt-6-luna", codexEffort: "high" });
+
+    assert.equal(codexRun.reason, "회차 상한 2회 도달");
+    assert.equal(codexRun.startLines.length, 2);
+    assert(
+        codexRun.startLines.every((line) => /^\[\d회차\] 시작 - 남은 시간 \d+분 \(Codex, model gpt-6-luna, effort high\)$/.test(line)),
+        codexRun.startLines.join("\n")
+    );
+    assert.deepEqual(
+        codexRun.rounds.map((round) => [round.runner, round.model, round.effort, round.outcome, round.commits.length]),
+        [
+            ["codex", "gpt-6-luna", "high", "완료", 1],
+            ["codex", "gpt-6-luna", "high", "완료", 1]
+        ]
+    );
+    assert.equal(codexRun.codexCalls.length, 2);
+    assert(codexRun.codexCalls.every((call) => call.startsWith("exec --json --color never --dangerously-bypass-approvals-and-sandbox -m gpt-6-luna -c model_reasoning_effort=high -\n")));
+    assert.match(codexRun.codexCalls[0], /^작업 전에 프로젝트 루트의 `CLAUDE\.md`를 직접 읽어/m);
+    assert(!fs.existsSync(path.join(codexRun.projectDir, "prompt.txt")), "Codex 회차에는 Claude를 부르지 않는다");
+    assert.match(codexRun.logText, /^Runner : Codex$/m);
+    assert.match(codexRun.logText, /^\d{2}:\d{2}:\d{2} {3}> Bash npm test$/m);
+    assert.match(codexRun.logText, /^\d{2}:\d{2}:\d{2} {3}> Edit work\.txt$/m);
+    assert.match(codexRun.logText, /^\d{2}:\d{2}:\d{2} \[세션\] 0199a213-81c0-7800-8aa1-bbab2a035a53 \(codex resume/m);
+    assert.match(fs.readFileSync(codexRun.reportFile, "utf8"), /Codex gpt-6-luna high[\s\S]*codex resume 0199a213/);
+
+    // 실행 중 set으로 바꾸면 다음 회차부터 Codex가 돈다. 비운 model은 Codex 설정을 따르고 인자를 넘기지 않는다.
+    const switchRun = await runCodex("codex switch 한글", { runner: "claude", mode: "to-codex" });
+
+    assert.match(switchRun.startLines[0], /\(model opus, effort high\)$/);
+    assert.match(switchRun.startLines[1], /\(Codex, model 기본값, effort low\)$/);
+    assert.deepEqual(
+        switchRun.rounds.map((round) => [round.runner, round.model, round.effort]),
+        [
+            ["claude", "opus", "high"],
+            ["codex", "", "low"]
+        ]
+    );
+    assert.equal(switchRun.codexCalls.length, 1);
+    assert(switchRun.codexCalls[0].startsWith("exec --json --color never --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=low -\n"));
+
+    // Codex를 쓸 수 없으면 그 회차는 Claude로 돌리고 이유를 남긴다.
+    const fallbackRun = await runCodex("codex fallback 한글", { env: { AP_CODEX_LOGIN: "0" }, limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
+
+    assert.match(fallbackRun.logText, /^\[설정\] Codex를 쓸 수 없어 이번 회차는 Claude로 돌립니다: Codex 로그인이 필요합니다$/m);
+    assert.match(fallbackRun.startLines[0], /\(model opus, effort high\)$/);
+    assert.equal(fallbackRun.rounds[0].runner, "claude");
+    assert(fs.existsSync(path.join(fallbackRun.projectDir, "prompt.txt")));
+
+    // 사용량 한도는 리셋 시각이 없어 대기하지 않고 실패로 센다.
+    const limitRun = await runCodex("codex limit 한글", { env: { AP_CODEX_ROUND: "limit" }, limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
+
+    assert.equal(limitRun.rounds[0].outcome, "실패 (exit 1, is_error)");
+    assert.match(limitRun.logText, /^\d{2}:\d{2}:\d{2} \[사용량 한도\] Codex You've hit your usage limit\.$/m);
+    assert.doesNotMatch(limitRun.logText, /까지 대기/);
 };
 
 // 협의: Claude와 Codex가 같은 대화를 이어 가며 주고받고(기본 최대 8번, --debate-turns), 정리 회차가 합의안과 쟁점을 남기면 멈춘다.
@@ -1209,7 +1322,7 @@ const createSessionOptions = (context, sessionDir, mode) => {
 };
 
 const checkSessionRunner = async (context, fakeCliFile) => {
-    const { runClaudeSession } = processUtil;
+    const { runSession } = processUtil;
 
     // CLI가 먼저 끝나면 손자 프로세스가 붙잡은 파이프를 기다리지 않는다.
     const pipesDir = path.join(context.testDir, "pipes");
@@ -1217,7 +1330,7 @@ const checkSessionRunner = async (context, fakeCliFile) => {
 
     fs.mkdirSync(pipesDir);
 
-    await runClaudeSession(process.execPath, [fakeCliFile], "stdin & | < > 한글", createSessionOptions(context, pipesDir, "pipes"));
+    await runSession(process.execPath, [fakeCliFile], "stdin & | < > 한글", createSessionOptions(context, pipesDir, "pipes"));
 
     assert(Date.now() - startTime < 2500, "Inherited pipes delayed completion");
 
@@ -1232,13 +1345,13 @@ const checkSessionRunner = async (context, fakeCliFile) => {
         fs.mkdirSync(wrapperDir);
         writeCmdWrapper(wrapperFile, fakeCliFile);
 
-        const wrapperResult = await runClaudeSession(wrapperFile, ["-p"], "stdin & | < > 한글", createSessionOptions(context, wrapperDir, "idle"));
+        const wrapperResult = await runSession(wrapperFile, ["-p"], "stdin & | < > 한글", createSessionOptions(context, wrapperDir, "idle"));
 
         assert.equal(wrapperResult.exitCode, 0);
         assert.equal(fs.readFileSync(path.join(wrapperDir, "prompt.txt"), "utf8"), "stdin & | < > 한글");
     }
 
-    const missingError = await runClaudeSession(path.join(context.testDir, "missing-executable"), [], "", {
+    const missingError = await runSession(path.join(context.testDir, "missing-executable"), [], "", {
         ...createSessionOptions(context, context.testDir, "idle"),
         processEnv: context.testEnv,
         roundDeadline: Date.now() + 1000
@@ -1272,5 +1385,6 @@ export {
     checkSessionRunner,
     checkBuildMode,
     checkBrainstorm,
+    checkCodexRunner,
     checkDebate
 };

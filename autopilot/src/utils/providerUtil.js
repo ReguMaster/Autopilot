@@ -5,12 +5,23 @@ import { PROVIDER_LABELS } from "./config.js";
 // 사용자 텍스트는 stdin으로만 넘겨 CMD 래퍼에서도 인자 검사를 통과한다. 최종 답변은 stdout으로 받는다(진행 표시는 stderr).
 // 협의는 같은 대화를 이어 가야 하므로 stderr 머리말의 세션 아이디로 resume한다. resume은 -s를 받지 않아 설정 덮어쓰기로 읽기 전용을 건다.
 // model·effort는 비우면 인자를 넘기지 않아 Codex 설정을 따른다. effort는 설정 덮어쓰기(-c)로만 넘길 수 있다.
+// 회차 실행(--runner codex)은 Claude 회차의 --dangerously-skip-permissions와 같은 권한으로 돌고, 진행을 JSONL 이벤트로 받는다(streamUtil.handleCodexEvent).
 const PROVIDERS = {
     codex: {
         executable: "codex",
         statusArgs: ["login", "status"],
         getSettingArgs: ({ model, effort }) => [...(model ? ["-m", model] : []), ...(effort ? ["-c", `model_reasoning_effort=${effort}`] : [])],
         getAskArgs: (settingArgs) => ["exec", "-s", "read-only", "--color", "never", ...settingArgs, "-"],
+        getRoundArgs: (settingArgs, addDirs) => [
+            "exec",
+            "--json",
+            "--color",
+            "never",
+            "--dangerously-bypass-approvals-and-sandbox",
+            ...settingArgs,
+            ...addDirs.flatMap((dir) => ["--add-dir", dir]),
+            "-"
+        ],
         getResumeArgs: (sessionId, settingArgs) => ["exec", "resume", sessionId, "-c", "sandbox_mode=read-only", ...settingArgs, "-"],
         sessionPattern: /^session id: ([0-9a-f-]{36})$/im,
         // codex exec(0.164)는 stderr에 실행한 명령 앞에 `exec`, 한 말 앞에 `codex` 줄을 둔다. 형식이 바뀌면 활동이 비어 보일 뿐 동작에는 영향이 없다.
@@ -111,8 +122,9 @@ const runCommand = (command, args, { cwd, processEnv, input = "", deadline, shou
     });
 };
 
-// 실행 파일을 찾고 로그인돼 있는지 확인한다. 쓸 수 없으면 { error }. override는 검증용 가짜 실행 파일({ command, args })이고, settings({ model, effort })는 이 실행에서 매번 넘길 값이다.
-const checkProvider = async (name, { cwd, processEnv, override, settings = {} }) => {
+// 실행 파일을 찾고 로그인돼 있는지 확인한다. 쓸 수 없으면 { error }. override는 검증용 가짜 실행 파일({ command, args })이다.
+// model·effort 인자(settingArgs)는 실행 중에 바뀔 수 있어 부르는 쪽이 호출마다 getSettingArgs로 붙인다.
+const checkProvider = async (name, { cwd, processEnv, override }) => {
     const label = PROVIDER_LABELS[name];
     let command;
 
@@ -129,7 +141,7 @@ const checkProvider = async (name, { cwd, processEnv, override, settings = {} })
         return { error: `${label} 로그인이 필요합니다` };
     }
 
-    return { command: command, baseArgs: baseArgs, settingArgs: PROVIDERS[name].getSettingArgs(settings) };
+    return { command: command, baseArgs: baseArgs };
 };
 
 // 프롬프트를 보내고 최종 답변을 받는다. 앞뒤를 감싼 코드 블록 표시 하나는 걷어낸다.
