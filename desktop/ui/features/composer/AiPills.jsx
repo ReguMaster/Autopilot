@@ -120,6 +120,7 @@ const CodexModels = ({ codex, codexModel, isStopping, onPick }) => {
     }
 
     const defaultLabel = getCodexDefaults(codex).modelLabel;
+    const defaultDesc = defaultLabel ? `Codex 설정 · ${defaultLabel}` : "Codex 설정을 따라요";
 
     return (
         <div className="model-list">
@@ -132,7 +133,7 @@ const CodexModels = ({ codex, codexModel, isStopping, onPick }) => {
                     isDisabled={isStopping}
                     lockedTitle={OPTIONS_LOCKED_TITLE}
                     title={option.label}
-                    desc={option.value ? "" : defaultLabel ? `Codex 설정 · ${defaultLabel}` : "Codex 설정을 따라요"}
+                    desc={option.value ? "" : defaultDesc}
                     onPick={() => onPick(option.value)}
                 />
             ))}
@@ -217,7 +218,8 @@ const AiPill = ({ provider }) => {
     // 노력(추론) 단계와 알약에 보일 이름. Codex 설정을 따를 때는 설정이나 모델의 기본 단계를 보이고 파형은 점선이다.
     const defaultEffort = getCodexDefaults(codex, codexModel).effort;
     const isAuto = !isClaude && codexEffort === "";
-    const shownEffort = isClaude ? EFFORT_LEVELS[effort] : isAuto ? defaultEffort : codexEffort;
+    const codexShownEffort = isAuto ? defaultEffort : codexEffort;
+    const shownEffort = isClaude ? EFFORT_LEVELS[effort] : codexShownEffort;
     const levelIndex = isClaude ? effort : CODEX_EFFORT_LEVELS.indexOf(shownEffort);
     const level = levelIndex < 0 ? DEFAULT_EFFORT_LEVEL : levelIndex;
     const levelName = isAuto && !defaultEffort ? "기본" : formatEffort(shownEffort, provider);

@@ -28,9 +28,17 @@ const getFlowState = (index, current) => {
     return index < current ? "done" : undefined;
 };
 
+const getFlowCurrent = (isWriting, isCreating) => {
+    if (isCreating) {
+        return 2;
+    }
+
+    return isWriting ? 0 : 1;
+};
+
 // 초안을 쓰는 동안은 두 번째 칸이, 만들기를 누르면 세 번째 칸이 켜진다.
 const Flow = ({ isWriting, isCreating }) => {
-    const current = isCreating ? 2 : isWriting ? 0 : 1;
+    const current = getFlowCurrent(isWriting, isCreating);
 
     return (
         <ol className="np-flow" aria-label="만드는 순서">
@@ -74,6 +82,7 @@ const Examples = () => {
     const { suggestions, isSuggesting, suggestError } = useNewProjectStore(
         useShallow((store) => ({ suggestions: store.suggestions, isSuggesting: store.isSuggesting, suggestError: store.suggestError }))
     );
+    const suggestLabel = suggestions.length ? "다시 받기" : "추천 예시 받기";
 
     return (
         <div className="np-examples">
@@ -94,7 +103,7 @@ const Examples = () => {
                 ))}
                 <button type="button" className="np-suggest" disabled={isSuggesting} onClick={suggestExamples}>
                     {isSuggesting ? <span className="ring" aria-hidden="true" /> : <Icon symbol="icon-refresh" />}
-                    {isSuggesting ? "받는 중" : suggestions.length ? "다시 받기" : "추천 예시 받기"}
+                    {isSuggesting ? "받는 중" : suggestLabel}
                 </button>
                 {suggestError ? (
                     <span className="np-error" role="status">
@@ -289,12 +298,20 @@ const DocSkeleton = () => {
     );
 };
 
+const getDraftMode = (isDrafting, isRevealing) => {
+    if (isDrafting) {
+        return "waiting";
+    }
+
+    return isRevealing ? "revealing" : undefined;
+};
+
 // 2단계: 초안(또는 빈 칸)을 칩으로 넣고 빼며 다듬는다. 자주 고치는 칸(기본 정보 · 사용자와 기능)만 펴 두고, 하지 않을 것 · 기술 스택 · 참고할 것은 "더 정하기"에 접어 둔다.
 // 오른쪽은 만들 brief.md를 그대로 보여 준다. 초안을 쓰는 동안(waiting)은 같은 틀에 반짝이는 자리 표시가 깔리고, 응답이 오면(revealing) 칸이 위에서부터 차례로 채워진다.
 const RefineStep = () => {
     const state = useNewProjectStore();
     const { draft, platforms, info, author, notice, isCreating, isRefsOpen, isMoreOpen, isDrafting, isRevealing } = state;
-    const mode = isDrafting ? "waiting" : isRevealing ? "revealing" : undefined;
+    const mode = getDraftMode(isDrafting, isRevealing);
     const nameError = draft.name ? getProjectNameError(draft.name) : "";
     const isAuthorMissing = info.isLoaded && !info.author;
     const isAuthorReady = !isAuthorMissing || (Boolean(author.name.trim()) && EMAIL_PATTERN.test(author.email.trim()));
@@ -419,6 +436,18 @@ const RefineStep = () => {
     );
 };
 
+const getSubtitleKey = (isDrafting, isWriting, isDrafted) => {
+    if (isDrafting) {
+        return "drafting";
+    }
+
+    if (isWriting) {
+        return "write";
+    }
+
+    return isDrafted ? "drafted" : "manual";
+};
+
 // 새 프로젝트 만들기: 한두 줄 적기 → 초안 다듬기 → 만들기(폴더·Git·brief.md 첫 커밋, 신규 개발 탭). 레일의 "새 프로젝트"가 연다.
 // 초안을 쓰는 동안에는 다음 단계(다듬기)의 틀을 미리 보여 준다.
 const NewProjectView = () => {
@@ -426,7 +455,7 @@ const NewProjectView = () => {
         useShallow((store) => ({ step: store.step, isDrafted: store.isDrafted, isCreating: store.isCreating, isDrafting: store.isDrafting }))
     );
     const isWriting = step === "write" && !isDrafting;
-    const subtitle = isDrafting ? SUBTITLES.drafting : isWriting ? SUBTITLES.write : SUBTITLES[isDrafted ? "drafted" : "manual"];
+    const subtitle = SUBTITLES[getSubtitleKey(isDrafting, isWriting, isDrafted)];
 
     return (
         <section id="new-project" className={cx("new-project", `is-${isWriting ? "write" : "refine"}`)} aria-labelledby="new-project-title">

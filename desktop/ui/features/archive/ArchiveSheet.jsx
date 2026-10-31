@@ -170,10 +170,21 @@ const DetailPane = ({ detail, view, hidden }) => {
                 </div>
             </div>
             <ol id="archive-chat" ref={chatRef} className="chat" aria-label="그날의 작업 대화">
-                {view ? view.items.length ? view.items.map((item, index) => <ChatItem key={index} item={item} />) : <ChatItem item={EMPTY_NOTE} /> : null}
+                {view?.items.map((item, index) => (
+                    <ChatItem key={index} item={item} />
+                ))}
+                {view && !view.items.length ? <ChatItem item={EMPTY_NOTE} /> : null}
             </ol>
         </div>
     );
+};
+
+const getCount = (isDetail, description, isListLoaded, list) => {
+    if (isDetail) {
+        return description ? [description.duration, description.status.label].filter(Boolean).join(" · ") : "";
+    }
+
+    return isListLoaded && list.length ? `${list.length}개` : "";
 };
 
 // 지난 실행 시트: 목록과 그날의 작업 대화(채팅처럼 이어지는 상세)를 한 시트에 담는다.
@@ -184,7 +195,7 @@ const ArchiveSheet = () => {
     const description = view?.description;
     const isDetail = pane === "detail";
     const title = isDetail && description ? `${description.day} ${description.time}`.trim() : "지난 실행";
-    const count = isDetail ? (description ? [description.duration, description.status.label].filter(Boolean).join(" · ") : "") : isListLoaded && list.length ? `${list.length}개` : "";
+    const count = getCount(isDetail, description, isListLoaded, list);
 
     return (
         <section id="archive" className="archive" aria-label="지난 실행 기록" inert={!open}>

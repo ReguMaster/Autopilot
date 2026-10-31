@@ -263,7 +263,7 @@ const readPhaseDoc = (projectDir, phase) => {
     try {
         const size = fs.readSync(fd, buffer, 0, buffer.length, 0);
 
-        // stream \uB514\uCF54\uB529\uC740 256KB \uACBD\uACC4\uC5D0\uC11C \uC798\uB9B0 \uB9C8\uC9C0\uB9C9 \uAE00\uC790\uB97C \uAE68\uC9C4 \uBB38\uC790\uB85C \uB0A8\uAE30\uC9C0 \uC54A\uACE0 \uBC84\uB9B0\uB2E4.
+        // stream 디코딩은 256KB 경계에서 잘린 마지막 글자를 깨진 문자로 남기지 않고 버린다.
         const text = new TextDecoder("utf-8", { ignoreBOM: false }).decode(buffer.subarray(0, Math.min(size, MAX_PHASE_DOC_BYTES)), { stream: true });
 
         return { kind: "file", path: doc.path, text: text, isPartial: size > MAX_PHASE_DOC_BYTES };

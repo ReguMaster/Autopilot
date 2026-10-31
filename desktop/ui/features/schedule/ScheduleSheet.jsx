@@ -44,13 +44,14 @@ const ScheduleSheet = () => {
     const { payload, pane, editing, note } = useScheduleStore();
     const { schedules: list, statuses, maxSchedules } = payload;
     const isForm = pane === "form";
+    const formTitle = editing ? "예약 수정" : "예약 추가";
     const slot = useClock((now) => (open && !isForm ? Math.floor(now / SCHEDULE_REFRESH_MS) : 0));
     const nowMs = useMemo(() => Date.now(), [slot, list, statuses]);
 
     return (
         <section id="schedule" className="schedule" aria-label="예약" inert={!open}>
             <div className="archive-head">
-                <h2 id="schedule-title">{isForm ? (editing ? "예약 수정" : "예약 추가") : "예약"}</h2>
+                <h2 id="schedule-title">{isForm ? formTitle : "예약"}</h2>
                 <span id="schedule-count" className="num">
                     {list.length ? `${list.length}개` : ""}
                 </span>

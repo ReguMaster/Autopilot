@@ -106,9 +106,8 @@ const ApprovalView = ({ phase, side = null }) => {
                 <h1 id="approval-title">{text.title}</h1>
                 <p className="lead">{text.lead}</p>
             </div>
-            {debate ? (
-                <DebateReview phase={phase} debate={debate} nextPhase={NEXT_PHASES[phase]} doc={doc} docName={text.docName} isStarting={isStarting} feedbackArea={feedbackArea} />
-            ) : proposals ? (
+            {debate ? <DebateReview phase={phase} debate={debate} nextPhase={NEXT_PHASES[phase]} doc={doc} docName={text.docName} isStarting={isStarting} feedbackArea={feedbackArea} /> : null}
+            {!debate && proposals ? (
                 <>
                     <ProposalCompare phase={phase} proposals={proposals} nextPhase={NEXT_PHASES[phase]} isStarting={isStarting} />
                     <details className="approval-revise">
@@ -116,7 +115,8 @@ const ApprovalView = ({ phase, side = null }) => {
                         <div className="approval-revise-row">{feedbackArea}</div>
                     </details>
                 </>
-            ) : (
+            ) : null}
+            {!debate && !proposals ? (
                 <div className="approval-grid">
                     <DocPreview doc={doc.data} isLoading={doc.isLoading} />
                     <div className="approval-card">
@@ -135,7 +135,7 @@ const ApprovalView = ({ phase, side = null }) => {
                         </p>
                     </div>
                 </div>
-            )}
+            ) : null}
         </>
     );
 };
