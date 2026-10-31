@@ -107,7 +107,8 @@ const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], d
     const retryKey = RETRY_KEYS[state.phase];
 
     // 세션이 `fail`을 꾸미거나(백틱·굵게) 뒤에 이유를 붙여도 실패로 본다. 정확히 일치만 보면 실패가 통과로 넘어간다.
-    if (retryKey && /^\W*fail/i.test(result)) {
+    // \W는 한글도 꾸밈 문자로 건너뛰어 `통과 (fail 0건)`을 실패로 읽으므로 글자·숫자가 아닌 것만 건너뛴다.
+    if (retryKey && /^[^\p{L}\p{N}]*(?:fail|실패)/iu.test(result)) {
         if (state[retryKey] < maxRetries[state.phase]) {
             return { state: { ...state, phase: "build", awaiting: null, [retryKey]: state[retryKey] + 1 }, event: "retry" };
         }
