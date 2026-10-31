@@ -1,5 +1,17 @@
 const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+const isSmokeTest = process.argv.includes("--smoke-test");
+
+// 스모크 테스트가 이 PC의 실제 설정·계정·예약을 읽거나 복구·새 형식 저장으로 고치지 않게 빈 임시 폴더에서 시작한다. 설정을 읽는 모듈을 불러오기 전에 정해야 한다.
+// Chromium 캐시와 맞춤법 사전(약 25MB, 꺼 두어도 받는다)은 실행마다 새로 받지 않게 고정 폴더에 둔다.
+if (isSmokeTest) {
+    app.setPath("userData", fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-smoke-")));
+    app.setPath("sessionData", path.join(os.tmpdir(), "autopilot-smoke-session"));
+}
+
 const {
     registerIpc,
     getWindowBackground,
@@ -41,8 +53,6 @@ app.enableSandbox();
 // 개발 실행(electron.exe)이 알림을 띄우면 Electron이 같은 ID로 시작 메뉴에 Electron.lnk를 만들고, 작업표시줄은 그 바로가기 아이콘을 쓴다. 패키지 앱과 ID를 나눠 충돌을 막는다.
 app.setAppUserModelId(app.isPackaged ? "com.autopilot.desktop" : "com.autopilot.desktop.dev");
 
-const isSmokeTest = process.argv.includes("--smoke-test");
-
 // GPU가 없는 CI 러너에서는 숨긴 창의 화면 캡처가 UnknownVizError로 실패하므로 스모크 테스트는 소프트웨어로 그린다.
 if (isSmokeTest) {
     app.disableHardwareAcceleration();
@@ -80,6 +90,15 @@ const SMOKE_CHECK_SCRIPT = `(async () => {
 
     return ${JSON.stringify(SMOKE_BRIDGE_APIS)}.every((name) => typeof window.autopilot?.[name] === "function") && typeof window.appWindow?.close === "function" && ${JSON.stringify(SMOKE_SELECTORS)}.every((selector) => Boolean(document.querySelector(selector)));
 })()`;
+
+// 앱 데이터만 실행마다 새로 만들고 지운다. Chromium이 잠그는 캐시는 sessionData라 여기에 없고, 지우지 못해도 결과는 그대로 낸다.
+const exitSmokeTest = (code) => {
+    try {
+        fs.rmSync(app.getPath("userData"), { recursive: true, force: true });
+    } catch {}
+
+    app.exit(code);
+};
 
 // 헤더를 화면에서 직접 그리므로 창 버튼 동작을 받는다. 요청한 창에만 적용하고, 닫기는 일반 close라 실행 중 확인을 그대로 거친다.
 const registerWindowControls = () => {
@@ -192,7 +211,7 @@ const createWindow = () => {
     window.on("unmaximize", sendWindowState);
 
     if (isSmokeTest) {
-        const timeout = setTimeout(() => app.exit(1), SMOKE_TEST_TIMEOUT_MS);
+        const timeout = setTimeout(() => exitSmokeTest(1), SMOKE_TEST_TIMEOUT_MS);
         const consoleErrors = [];
 
         // 진짜 메인·preload로 부팅하는 동안 화면이 콘솔 오류를 하나라도 남기면 실패한다(IPC 응답 모양이 어긋난 경우 등).
@@ -204,7 +223,7 @@ const createWindow = () => {
             }
         });
 
-        window.webContents.once("did-fail-load", () => app.exit(1));
+        window.webContents.once("did-fail-load", () => exitSmokeTest(1));
         window.webContents.once("did-finish-load", async () => {
             clearTimeout(timeout);
 
@@ -218,7 +237,7 @@ const createWindow = () => {
                 console.error("스모크 테스트는 창을 화면에 띄우지 않아야 해요.");
             }
 
-            app.exit(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && isCardReady && consoleErrors.length === 0 && !window.isVisible() ? 0 : 1);
+            exitSmokeTest(window.getTitle() === "AutoPilot" && isBridgeReady && isEngineReady && isCardReady && consoleErrors.length === 0 && !window.isVisible() ? 0 : 1);
         });
     }
 

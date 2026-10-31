@@ -33,7 +33,7 @@ npm run build:linux           # dist/linux-unpacked/autopilot
 npm run dist:linux            # AppImage·deb(x64·arm64)
 ```
 
-- 스모크 테스트(`npm test`, --smoke-test)는 창을 화면에 띄우지 않는다. 숨긴 창이 화면 로드·마운트·preload 다리·엔진 응답을 확인한 뒤 종료하고, 창이 보이면 실패로 처리한다(main.cjs). 개발 중 검증을 돌릴 때마다 창이 깜빡이지 않게 하는 정책이다. 화면 모양을 눈으로 확인할 때는 창을 띄우지 말고 tests/tools/ui의 offscreen 도구(runScenes)를 쓴다.
+- 스모크 테스트(`npm test`, --smoke-test)는 창을 화면에 띄우지 않는다. 숨긴 창이 화면 로드·마운트·preload 다리·엔진 응답을 확인한 뒤 종료하고, 창이 보이면 실패로 처리한다(main.cjs). 개발 중 검증을 돌릴 때마다 창이 깜빡이지 않게 하는 정책이다. 이 PC의 실제 설정·계정·예약을 읽거나 고치지 않게 앱 데이터(userData)는 실행마다 빈 임시 폴더에서 시작해 끝날 때 지우고, Chromium 캐시·맞춤법 사전(sessionData)은 다시 받지 않게 고정 임시 폴더(autopilot-smoke-session)에 둔다. 화면 모양을 눈으로 확인할 때는 창을 띄우지 말고 tests/tools/ui의 offscreen 도구(runScenes)를 쓴다.
 - 검증은 임시 Git 저장소와 가짜 CLI만 사용한다. 실제 Claude 세션은 실행하지 않는다. 가짜 CLI는 cwd가 임시 프로젝트인지 확인한 뒤 Git을 사용한다.
 - 검증 시간 단축은 runAutopilot()의 limits 옵션으로만 한다. 사용자 CLI에 테스트 설정을 노출하지 않는다.
 - 검증은 runAutopilot의 dataDir 옵션(CLI는 APPDATA 환경 변수)으로 진행 기록 위치를 격리한다.
