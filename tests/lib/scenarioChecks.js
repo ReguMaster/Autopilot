@@ -1141,8 +1141,9 @@ const checkHugeWorkTree = async (context, fakeCliFile) => {
 
     commitInitialProject(context, projectDir);
 
-    for (let index = 0; index < 20000; index++) {
-        fs.writeFileSync(path.join(projectDir, `${"x".repeat(60)}${index}.txt`), "");
+    // 파일을 만드는 시간이 검증 시간의 대부분이라 이름을 길게 해 파일 수를 줄인다. 전체 경로는 Windows MAX_PATH(260)보다 짧게 둔다.
+    for (let index = 0; index < 8000; index++) {
+        fs.writeFileSync(path.join(projectDir, `${"x".repeat(140)}${index}.txt`), "");
     }
 
     const result = await runAutopilot({
