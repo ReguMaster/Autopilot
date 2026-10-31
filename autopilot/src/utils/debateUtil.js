@@ -102,21 +102,30 @@ const formatTranscript = (phaseLabel, turns, isConsensus) => {
         .trimEnd();
 };
 
-// 합의 정리 회차가 쓴 쟁점 파일(JSON 배열 [{ title, claude, codex }]). 읽을 수 없으면 쟁점이 없는 것으로 본다. 아이디는 순서대로 d1, d2…로 다시 붙인다.
+// 합의 정리 회차가 쓴 쟁점 파일(JSON 배열 [{ title, claude, codex }]). 형식이 틀린 항목은 버리고 아이디는 순서대로 d1, d2…로 다시 붙인다.
+// 파일이 없거나 JSON 배열이 아니거나 항목이 있는데 하나도 읽을 수 없으면 null이다(쟁점이 없는 []와 구분한다).
 const parseDisputes = (text) => {
     let value;
 
     try {
         value = JSON.parse(String(text || "").replace(/^\uFEFF/, ""));
     } catch {
-        return [];
+        return null;
     }
 
-    return (Array.isArray(value) ? value : [])
+    if (!Array.isArray(value)) {
+        return null;
+    }
+
+    const disputes = value
         .map((item) => ({ title: clean(item?.title, MAX_TITLE_LENGTH), claude: clean(item?.claude, MAX_POSITION_LENGTH), codex: clean(item?.codex, MAX_POSITION_LENGTH) }))
-        .filter((item) => item.title && item.claude && item.codex)
-        .slice(0, MAX_DISPUTES)
-        .map((item, index) => ({ id: `d${index + 1}`, ...item }));
+        .filter((item) => item.title && item.claude && item.codex);
+
+    if (value.length && !disputes.length) {
+        return null;
+    }
+
+    return disputes.slice(0, MAX_DISPUTES).map((item, index) => ({ id: `d${index + 1}`, ...item }));
 };
 
 const isDispute = (dispute) => {

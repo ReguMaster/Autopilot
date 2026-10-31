@@ -530,8 +530,11 @@ const checkDebateRules = (context) => {
             { id: "d2", title: "화면", claude: "6개", codex: "4개" }
         ]
     );
-    assert.deepEqual(debateUtil.parseDisputes('{"title": "배열 아님"}'), []);
-    assert.deepEqual(debateUtil.parseDisputes("깨짐"), []);
+    assert.deepEqual(debateUtil.parseDisputes("[]"), []);
+    assert.equal(debateUtil.parseDisputes('{"title": "배열 아님"}'), null);
+    assert.equal(debateUtil.parseDisputes("깨짐"), null);
+    assert.equal(debateUtil.parseDisputes(""), null);
+    assert.equal(debateUtil.parseDisputes('[{"Title": "키 다름", "Claude": "a", "Codex": "b"}]'), null);
 
     const disputes = [{ id: "d1", title: "결제", claude: "빼요", codex: "넣어요" }];
     const debate = { phase: "plan", disputes: disputes, resolved: null };
@@ -588,7 +591,8 @@ const checkDebateRules = (context) => {
     assert.match(roundPrompt, /네 산출물을 마치면 앱이 두 AI의 협의를 진행한다/);
     assert.doesNotMatch(roundPrompt, /Codex 안 보관|plan-review-claude/);
     assert.match(synthesisPrompt, /\[기획\] 협의가 끝났다[\s\S]*plan-debate\.md[\s\S]*plan-disputes\.json[\s\S]*\[ap\] 기획: 협의 결과/);
-    assert.doesNotMatch(synthesisPrompt, /열지 말고 독립적으로/);
+    assert.doesNotMatch(synthesisPrompt, /열지 말고 독립적으로|읽을 수 없었다/);
+    assert.match(promptUtil.getRoundPrompt({ ...runState, debateStage: "synthesis", isDisputesRetry: true }, 2, 60, "", 2), /plan-disputes\.json`를 JSON 배열로 읽을 수 없었다/);
 
     const claudeOpening = promptUtil.getDebateOpeningPrompt(runState, "claude", { docs: { claude: "# 내 안", codex: "x".repeat(70000) } });
 

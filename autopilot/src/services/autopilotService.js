@@ -280,6 +280,7 @@ const prepareRun = (options) => {
 
     runState.adoption = modeSettings.mode === MODE_BUILD ? getAdoption(projectDir, modeSettings.proposals, modeSettings.debateState) : null;
     runState.debateStage = null;
+    runState.isDisputesRetry = false;
     runState.phaseAgents = null;
     runState.proposalReady = readyProposals;
     runState.proposalPhase = Object.keys(readyProposals).length ? modeSettings.phase : null;
@@ -912,16 +913,26 @@ const applyPhaseDone = async (context, loopState) => {
         return false;
     }
 
+    const isSynthesis = runState.debateStage === "synthesis";
+    const disputes = isSynthesis ? debateUtil.parseDisputes(fileUtil.readTextFile(path.join(runState.projectDir, phaseUtil.getDisputesPath(phase)))) : null;
+
+    // 정리 회차가 쟁점 파일을 읽을 수 없게 남겼으면 쟁점을 버리고 합의로 넘기지 않고 한 번 더 그 파일을 쓰게 한다. 또 틀리면 쟁점 없이 넘긴다.
+    if (isSynthesis && !disputes && !runState.isDisputesRetry) {
+        runState.isDisputesRetry = true;
+        fileUtil.removeFiles([phaseDoneFile]);
+        loopState.idleCount = 0;
+
+        return false;
+    }
+
     // 협의를 정리한 회차가 남긴 쟁점을 상태로 옮긴다. 사용자는 합의안을 확인하고 쟁점마다 한쪽을 고른다.
-    const debateResult =
-        runState.debateStage === "synthesis"
-            ? { phase: phase, disputes: debateUtil.parseDisputes(fileUtil.readTextFile(path.join(runState.projectDir, phaseUtil.getDisputesPath(phase)))), resolved: null }
-            : null;
+    const debateResult = isSynthesis ? { phase: phase, disputes: disputes || [], resolved: null } : null;
     const candidates = !debateResult && readyProviders.length ? [main, ...readyProviders] : [];
     const reviewState = { ...runState };
     const { state, event } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult);
 
     runState.debateStage = null;
+    runState.isDisputesRetry = false;
 
     if (debateResult) {
         writeLog(debateResult.disputes.length ? `[협의] 쟁점 ${debateResult.disputes.length}개를 남기고 끝냈어요` : "[협의] 합의했어요");

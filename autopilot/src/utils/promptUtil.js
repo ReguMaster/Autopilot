@@ -207,13 +207,19 @@ const getDebateSynthesisPrompt = (runState) => {
     const label = PHASE_LABELS[runState.phase];
     const assistantFile = runState.proposalReady?.[runState.phaseAgents.assistant];
     const disputesPath = phaseUtil.getDisputesPath(runState.phase);
+    const retry = runState.isDisputesRetry
+        ? `앞 회차가 남긴 \`${disputesPath}\`를 JSON 배열로 읽을 수 없었다(파일이 없거나 형식이 틀림). 아래에서 이미 한 일은 다시 하지 말고 쟁점 파일을 형식대로 다시 써서 commit한 뒤 완료 신호를 남긴다.`
+        : "";
 
     return [
         `[${label}] 협의가 끝났다. 엔진이 두 AI의 협의 기록을 \`${phaseUtil.getDebatePath(runState.phase)}\`에 남겼다. 이번 회차는 <PHASE>의 산출물을 새로 쓰지 않고 협의 결과만 정리한다.`,
+        retry,
         `1) 협의 기록과 두 안(${getArtefactText(runState.phase)}, \`${assistantFile}\`)을 읽고 두 AI가 합의한 내용을 반영해 ${getArtefactText(runState.phase)}을 합의안으로 고친다.`,
-        `2) 끝까지 맞추지 못한 쟁점만 \`${disputesPath}\`에 JSON 배열로 쓴다. 형식: [{"title": "쟁점 제목", "claude": "Claude 쪽 입장과 이유", "codex": "Codex 쪽 입장과 이유"}]. 쟁점이 없으면 []를 쓴다. 합의안에서 쟁점 부분은 어느 쪽으로도 확정하지 말고 쟁점이라고 표시만 해 둔다(사용자가 고른다).`,
+        `2) 끝까지 맞추지 못한 쟁점만 \`${disputesPath}\`에 JSON 배열로 쓴다. 형식: [{"title": "쟁점 제목", "claude": "Claude 쪽 입장과 이유", "codex": "Codex 쪽 입장과 이유"}]. 쟁점이 없으면 []를 쓴다. 쓴 뒤 JSON으로 읽히는지 확인한다. 합의안에서 쟁점 부분은 어느 쪽으로도 확정하지 말고 쟁점이라고 표시만 해 둔다(사용자가 고른다).`,
         `3) 합의안 · 협의 기록 · 쟁점 파일 · \`${assistantFile}\`를 함께 commit한다(\`${runState.commitPrefix} ${label}: 협의 결과\`). 그다음 <PHASE>의 완료 신호를 남긴다.`
-    ].join(" ");
+    ]
+        .filter(Boolean)
+        .join(" ");
 };
 
 const DEBATE_FORMAT =

@@ -801,6 +801,26 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.doesNotMatch(fs.readFileSync(resumeRun.data.logFile, "utf8"), /Codex 기획 안 받는 중/);
     assert.equal(resumeRun.data.reason, "기획 확인 대기");
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)).debate, { phase: "plan", disputes: [], resolved: null });
+
+    // 정리 회차가 쟁점 파일을 배열이 아닌 JSON으로 남기면 쟁점을 버리고 합의로 넘기지 않고 한 번 더 그 파일을 쓰게 한다. 또 틀리면 쟁점 없이 넘긴다.
+    const brokenLimits = { minMinutes: 0, maxRounds: 4, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] };
+    const brokenDir = createProject("debate disputes broken 한글");
+    const brokenRun = await runDebate(brokenDir, { env: { AP_DISPUTES: "once" }, debateTurns: 1, limits: brokenLimits });
+
+    assert.equal(brokenRun.status, STATUS_OK, brokenRun.error?.msg);
+    assert.equal(brokenRun.data.rounds.length, 3);
+    assert.match(readPrompt(brokenDir), /plan-disputes\.json`를 JSON 배열로 읽을 수 없었다/);
+    assert.equal(phaseUtil.readPhase(getPhaseFile(brokenDir)).debate.disputes.length, 2);
+    assert.match(fs.readFileSync(brokenRun.data.logFile, "utf8"), /^\[협의\] 쟁점 2개를 남기고 끝냈어요$/m);
+    checkDesktopLogContract(brokenRun.data);
+
+    const alwaysDir = createProject("debate disputes always 한글");
+    const alwaysRun = await runDebate(alwaysDir, { env: { AP_DISPUTES: "always" }, debateTurns: 1, limits: brokenLimits });
+
+    assert.equal(alwaysRun.status, STATUS_OK, alwaysRun.error?.msg);
+    assert.equal(alwaysRun.data.reason, "기획 확인 대기");
+    assert.equal(alwaysRun.data.rounds.length, 3);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(alwaysDir)).debate, { phase: "plan", disputes: [], resolved: null });
 };
 
 // 하이브리드: 단계마다 메인 AI(그 단계의 회차를 돌린다)를 고르고, 보조는 늘 반대쪽 AI다. Claude가 보조일 때도 안 · 검토 · 협의가 같은 흐름이다.
