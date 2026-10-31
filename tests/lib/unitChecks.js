@@ -16,6 +16,7 @@ import debateUtil from "../../autopilot/src/utils/debateUtil.js";
 import promptUtil from "../../autopilot/src/utils/promptUtil.js";
 import providerUtil from "../../autopilot/src/utils/providerUtil.js";
 import util from "../../autopilot/src/utils/util.js";
+import logUtil from "../../autopilot/src/utils/logUtil.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -1162,7 +1163,27 @@ const checkDeadlineTimer = async () => {
     assert.deepEqual(fired, ["soon", "slept"]);
 };
 
+// 로그 파일을 쓰지 못해도 기록 함수는 예외를 던지지 않고 실패가 이어지는 동안 한 번만 알리며, 다시 쓸 수 있게 되면 이어서 쓴다.
+const checkFileLogger = (context, errorMessages) => {
+    const logDir = path.join(context.testDir, "missing-log-dir");
+    const logFile = path.join(logDir, "autopilot.log");
+    const writeLog = logUtil.createFileLogger(logFile);
+    const errorCount = errorMessages.length;
+
+    writeLog("첫 줄");
+    writeLog("둘째 줄");
+
+    assert.equal(errorMessages.length, errorCount + 1);
+    assert.match(errorMessages.at(-1), /^\[로그\] 로그 파일에 쓰지 못해/);
+
+    fs.mkdirSync(logDir);
+    writeLog("셋째 줄");
+
+    assert.equal(fs.readFileSync(logFile, "utf8"), "셋째 줄\n");
+};
+
 export {
+    checkFileLogger,
     checkDeadlineTimer,
     checkProcessIdentity,
     checkInvalidProject,

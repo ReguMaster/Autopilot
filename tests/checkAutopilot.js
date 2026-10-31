@@ -5,6 +5,7 @@ import path from "node:path";
 import { FAKE_CLI_SOURCE, createTestContext } from "./lib/fixtures.js";
 import {
     checkProcessIdentity,
+    checkFileLogger,
     checkDeadlineTimer,
     checkInvalidProject,
     checkRunFilePrune,
@@ -64,6 +65,7 @@ const checkAutopilot = async () => {
         await checkInvalidProject(context, errorMessages);
 
         checkProcessIdentity();
+        checkFileLogger(context, errorMessages);
         await checkDeadlineTimer();
         checkRunSettings();
         checkCommandArgs();
