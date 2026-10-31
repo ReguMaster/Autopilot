@@ -821,6 +821,20 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(alwaysRun.data.reason, "기획 확인 대기");
     assert.equal(alwaysRun.data.rounds.length, 3);
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(alwaysDir)).debate, { phase: "plan", disputes: [], resolved: null });
+
+    // 같은 단계를 다시 협의하면 앞선 협의의 쟁점 파일이 저장소에 남아 있다. 정리 회차가 새로 쓰지 않았으면 옛 쟁점을 이번 결과로 읽지 않고 한 번 더 쓰게 한다.
+    const staleDir = path.join(context.testDir, "debate disputes stale 한글");
+
+    fs.mkdirSync(path.join(staleDir, "docs/autopilot/proposals"), { recursive: true });
+    fs.writeFileSync(path.join(staleDir, "docs/autopilot/proposals/plan-disputes.json"), JSON.stringify([{ title: "옛 쟁점", claude: "빼요", codex: "넣어요" }]));
+    createProject("debate disputes stale 한글");
+
+    const staleRun = await runDebate(staleDir, { env: { AP_DEBATE: "consensus", AP_DISPUTES: "skip" }, debateTurns: 1, limits: brokenLimits });
+
+    assert.equal(staleRun.status, STATUS_OK, staleRun.error?.msg);
+    assert.equal(staleRun.data.rounds.length, 3);
+    assert.match(readPrompt(staleDir), /plan-disputes\.json`를 JSON 배열로 읽을 수 없었다/);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(staleDir)).debate, { phase: "plan", disputes: [], resolved: null });
 };
 
 // 하이브리드: 단계마다 메인 AI(그 단계의 회차를 돌린다)를 고르고, 보조는 늘 반대쪽 AI다. Claude가 보조일 때도 안 · 검토 · 협의가 같은 흐름이다.

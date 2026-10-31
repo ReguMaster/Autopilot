@@ -96,8 +96,8 @@ process.stdin.on('end', () => {
     execFileSync(process.env.AP_GIT, ['add', '--', 'work.txt']);
     execFileSync(process.env.AP_GIT, ['commit', '-m', '[ap] phase']);
     // 협의를 정리하는 회차는 쟁점 파일을 쓴다. 형식이 틀린 항목은 엔진이 걸러야 한다.
-    // AP_DISPUTES=once면 첫 정리 회차만, always면 매번 배열이 아닌 JSON을 쓴다.
-    if (prompt.includes('협의가 끝났다')) {
+    // AP_DISPUTES=once면 첫 정리 회차만, always면 매번 배열이 아닌 JSON을 쓴다. skip이면 첫 정리 회차는 쓰지 않는다(앞선 협의의 파일이 남은 경우).
+    if (prompt.includes('협의가 끝났다') && !(process.env.AP_DISPUTES === 'skip' && !prompt.includes('읽을 수 없었다'))) {
       const disputes = ['consensus', 'improve'].includes(process.env.AP_DEBATE) ? [] : [{ title: '결제', claude: '이번엔 빼요', codex: '카드 결제를 넣어요' }, { title: '화면 수', claude: '6개', codex: '4개' }, { title: '' }];
       const isBroken = process.env.AP_DISPUTES === 'always' || (process.env.AP_DISPUTES === 'once' && !prompt.includes('읽을 수 없었다'));
       fs.writeFileSync('docs/autopilot/proposals/plan-disputes.json', JSON.stringify(isBroken ? { disputes: disputes } : disputes));

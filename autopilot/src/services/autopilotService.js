@@ -887,13 +887,25 @@ const startDebate = async (context, loopState) => {
         return false;
     }
 
-    writeProposalFile(runState.projectDir, phaseUtil.getDebatePath(runState.phase), debateUtil.formatTranscript(PHASE_LABELS[runState.phase], debate.turns, debate.isConsensus));
+    const debatePath = phaseUtil.getDebatePath(runState.phase);
+
+    writeProposalFile(runState.projectDir, debatePath, debateUtil.formatTranscript(PHASE_LABELS[runState.phase], debate.turns, debate.isConsensus));
     fileUtil.removeFiles([phaseDoneFile]);
     runState.debateStage = "synthesis";
+    // 쟁점 파일이 정리 회차가 새로 쓴 것인지 같은 파일 시스템의 시각으로 가린다. 시각 단위가 거친 파일 시스템(FAT 2초)도 있다.
+    runState.debateEndedAt = fs.statSync(path.join(runState.projectDir, debatePath)).mtimeMs;
     // 협의와 정리는 같은 단계의 일이라 정리 회차가 commit 없이 끝나도 idle로 몰지 않는다.
     loopState.idleCount = 0;
 
     return true;
+};
+
+// 같은 단계를 다시 협의하면 앞선 협의의 쟁점 파일이 저장소에 남아 있으므로 협의를 마친 뒤 새로 쓴 파일만 읽는다. 아니면 null이다.
+const readDisputes = (runState) => {
+    const file = path.join(runState.projectDir, phaseUtil.getDisputesPath(runState.phase));
+    const isFresh = fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs >= runState.debateEndedAt;
+
+    return debateUtil.parseDisputes(isFresh ? fileUtil.readTextFile(file) : "");
 };
 
 // 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA·보안검토 실패로 실행을 끝내야 하면 true를 반환한다.
@@ -914,7 +926,7 @@ const applyPhaseDone = async (context, loopState) => {
     }
 
     const isSynthesis = runState.debateStage === "synthesis";
-    const disputes = isSynthesis ? debateUtil.parseDisputes(fileUtil.readTextFile(path.join(runState.projectDir, phaseUtil.getDisputesPath(phase)))) : null;
+    const disputes = isSynthesis ? readDisputes(runState) : null;
 
     // 정리 회차가 쟁점 파일을 읽을 수 없게 남겼으면 쟁점을 버리고 합의로 넘기지 않고 한 번 더 그 파일을 쓰게 한다. 또 틀리면 쟁점 없이 넘긴다.
     if (isSynthesis && !disputes && !runState.isDisputesRetry) {

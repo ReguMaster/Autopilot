@@ -208,7 +208,7 @@ const getDebateSynthesisPrompt = (runState) => {
     const assistantFile = runState.proposalReady?.[runState.phaseAgents.assistant];
     const disputesPath = phaseUtil.getDisputesPath(runState.phase);
     const retry = runState.isDisputesRetry
-        ? `앞 회차가 남긴 \`${disputesPath}\`를 JSON 배열로 읽을 수 없었다(파일이 없거나 형식이 틀림). 아래에서 이미 한 일은 다시 하지 말고 쟁점 파일을 형식대로 다시 써서 commit한 뒤 완료 신호를 남긴다.`
+        ? `앞 회차가 남긴 \`${disputesPath}\`를 JSON 배열로 읽을 수 없었다(이번 정리에서 새로 쓰지 않았거나 형식이 틀림. 앞선 협의의 파일이 남아 있어도 이번 결과로 다시 쓴다). 아래에서 이미 한 일은 다시 하지 말고 쟁점 파일을 형식대로 다시 써서 commit한 뒤 완료 신호를 남긴다.`
         : "";
 
     return [
