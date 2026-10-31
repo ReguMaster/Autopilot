@@ -15,6 +15,7 @@ import { getAutopilotGuide, getAutopilotPolicy } from "../../autopilot/src/utils
 import debateUtil from "../../autopilot/src/utils/debateUtil.js";
 import promptUtil from "../../autopilot/src/utils/promptUtil.js";
 import providerUtil from "../../autopilot/src/utils/providerUtil.js";
+import util from "../../autopilot/src/utils/util.js";
 
 const BOM = String.fromCodePoint(0xfeff);
 
@@ -1128,7 +1129,30 @@ const checkProcessIdentity = () => {
     assert.equal(processUtil.isSameProcess(2 ** 22 + 12345, ownName), false);
 };
 
+// 시한은 벽시계 기준이다. 절전으로 타이머 시계가 멈춰도 깨어나 시한이 지났으면 곧바로 걸린다(Date.now를 앞당겨 흉내 낸다).
+const checkDeadlineTimer = async () => {
+    const realNow = Date.now;
+    const fired = [];
+
+    util.setDeadlineTimer(realNow() + 30, () => fired.push("soon"));
+    util.setDeadlineTimer(realNow() + 3600000, () => fired.push("slept"));
+    util.setDeadlineTimer(realNow(), () => fired.push("cleared"))();
+
+    await util.sleep(300);
+    assert.deepEqual(fired, ["soon"]);
+
+    try {
+        Date.now = () => realNow() + 3600000;
+        await util.sleep(600);
+    } finally {
+        Date.now = realNow;
+    }
+
+    assert.deepEqual(fired, ["soon", "slept"]);
+};
+
 export {
+    checkDeadlineTimer,
     checkProcessIdentity,
     checkInvalidProject,
     checkRunFilePrune,

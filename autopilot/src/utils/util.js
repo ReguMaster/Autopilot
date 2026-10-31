@@ -1,4 +1,4 @@
-import { MODEL_CHOICES, MODEL_ID_PATTERN } from "./config.js";
+import { MODEL_CHOICES, MODEL_ID_PATTERN, WAIT_POLL_MS } from "./config.js";
 
 const HTML_ESCAPE_MAP = {
     "&": "&amp;",
@@ -10,6 +10,28 @@ const HTML_ESCAPE_MAP = {
 
 const sleep = (ms) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+// 타이머는 절전 동안 멈추는 시계(macOS·Linux)로 재서 긴 타이머 하나는 잠든 시간만큼 늦게 걸리므로, 짧게 끊어 벽시계로 다시 확인한다.
+const setDeadlineTimer = (deadline, onExpire) => {
+    let timer;
+
+    const scheduleCheck = () => {
+        timer = setTimeout(
+            () => {
+                if (Date.now() >= deadline) {
+                    onExpire();
+                } else {
+                    scheduleCheck();
+                }
+            },
+            Math.max(1, Math.min(deadline - Date.now(), WAIT_POLL_MS))
+        );
+    };
+
+    scheduleCheck();
+
+    return () => clearTimeout(timer);
 };
 
 const formatError = (error) => {
@@ -51,4 +73,4 @@ const isValidWorkBranch = (value) => {
     );
 };
 
-export default { sleep, formatError, formatCost, escapeHtml, isValidModel, isValidCommitPrefix, isValidWorkBranch };
+export default { sleep, setDeadlineTimer, formatError, formatCost, escapeHtml, isValidModel, isValidCommitPrefix, isValidWorkBranch };

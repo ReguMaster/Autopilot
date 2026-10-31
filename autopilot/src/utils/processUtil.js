@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { MAX_STDERR_LENGTH } from "./config.js";
 import streamUtil from "./streamUtil.js";
+import util from "./util.js";
 
 const HELP_TIMEOUT_MS = 10000;
 const IS_WINDOWS = process.platform === "win32";
@@ -198,7 +199,7 @@ const runSession = (command, args, prompt, { projectDir, processEnv, roundDeadli
         let stderr = "";
         let timedOut = false;
         let isSettled = false;
-        let timer;
+        let clearDeadlineTimer = () => {};
 
         onProcessChange(childProcess);
 
@@ -218,7 +219,7 @@ const runSession = (command, args, prompt, { projectDir, processEnv, roundDeadli
 
             isSettled = true;
 
-            clearTimeout(timer);
+            clearDeadlineTimer();
             lines.close();
             childProcess.stdout.destroy();
             childProcess.stderr.destroy();
@@ -257,7 +258,7 @@ const runSession = (command, args, prompt, { projectDir, processEnv, roundDeadli
             }
         };
 
-        timer = setTimeout(handleTimeout, Math.max(1, roundDeadline - Date.now()));
+        clearDeadlineTimer = util.setDeadlineTimer(roundDeadline, handleTimeout);
 
         childProcess.once("error", (error) => finishSession(error));
 

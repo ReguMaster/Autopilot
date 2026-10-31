@@ -1,4 +1,5 @@
 import processUtil from "./processUtil.js";
+import util from "./util.js";
 import { PROVIDER_LABELS } from "./config.js";
 
 // Claude와 따로 안을 내는 AI 제공자. 새 제공자는 실행 파일 이름과 인자만 더한다.
@@ -80,7 +81,7 @@ const runCommand = (command, args, { cwd, processEnv, input = "", deadline, shou
 
             isSettled = true;
 
-            clearTimeout(deadlineTimer);
+            clearDeadlineTimer();
             clearInterval(stopTimer);
             clearTimeout(graceTimer);
             onProcessChange(null);
@@ -95,7 +96,7 @@ const runCommand = (command, args, { cwd, processEnv, input = "", deadline, shou
             } catch {}
         };
 
-        const deadlineTimer = setTimeout(() => stop("시간 초과"), Math.max(1, deadline - Date.now()));
+        const clearDeadlineTimer = util.setDeadlineTimer(deadline, () => stop("시간 초과"));
         const stopTimer = setInterval(() => shouldStop() && stop("중단 요청"), STOP_POLL_MS);
 
         onProcessChange(childProcess);
