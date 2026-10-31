@@ -75,8 +75,11 @@ const collectNewCommits = (runGitCommand, since, recordedHashes) => {
 };
 
 // 회차 전후로 HEAD의 파일 내용이 달라지지 않았으면 작업이 없는 것으로 본다. 진행 기록은 저장소 밖에 있어 commit에 포함되지 않는다.
+// 트리 해시만 비교한다. 바뀐 파일 목록을 읽으면 큰 commit(예: node_modules)에서 출력 한도(1MB)를 넘어 실행이 끝난다.
 const hasWorkChanges = (runGitCommand, previousHash) => {
-    return Boolean(runGitCommand(["diff", "--name-only", previousHash, "HEAD"]));
+    const [previousTree, headTree] = runGitCommand(["rev-parse", `${previousHash}^{tree}`, "HEAD^{tree}"]).split("\n");
+
+    return previousTree !== headTree;
 };
 
 const getRecentLog = (runGitCommand) => {
