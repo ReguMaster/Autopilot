@@ -529,6 +529,13 @@ process.stdin.on("end", () => {
         console.log(JSON.stringify({ type: "result", is_error: true, result: "Not logged in" }));
         process.exit(1);
     }
+    if (input.includes("조각")) {
+        const bytes = Buffer.from(JSON.stringify({ type: "result", is_error: false, result: "한글 조각" }));
+        const cut = bytes.indexOf(Buffer.from("한")) + 1;
+        process.stdout.write(bytes.subarray(0, cut));
+        setTimeout(() => process.stdout.write(bytes.subarray(cut)), 200);
+        return;
+    }
     console.log(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify({ args: process.argv.slice(2), input: input, config: process.env.CLAUDE_CONFIG_DIR }) }));
 });
 `;
@@ -548,6 +555,7 @@ const checkAskClaude = async (testDir) => {
     assert(!echo.args.some((arg) => arg.includes("미용실")), "질문은 명령줄에 넣지 않는다");
 
     assert.match((await askClaude(testDir, "실패", fake).promise).error, /Not logged in/);
+    assert.equal((await askClaude(testDir, "조각", fake).promise).text, "한글 조각", "글자 중간에서 나뉜 출력도 깨지지 않는다");
 
     const pending = askClaude(testDir, "멈춤", fake);
 

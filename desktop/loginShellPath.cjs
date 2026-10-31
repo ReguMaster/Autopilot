@@ -64,6 +64,7 @@ const runLoginShell = (shell, processEnv, timeoutMs) => {
             settle("");
         }, timeoutMs);
 
+        child.stdout.setEncoding("utf8");
         child.stdout.on("data", (chunk) => {
             output += chunk;
         });

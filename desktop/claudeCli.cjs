@@ -112,6 +112,7 @@ const getAuthStatus = (configDir, options = {}) => {
         const timer = setTimeout(() => killProcessTree(child), AUTH_STATUS_TIMEOUT_MS);
         let stdout = "";
 
+        child.stdout.setEncoding("utf8");
         child.stdout.on("data", (chunk) => {
             stdout += chunk;
         });
@@ -224,6 +225,7 @@ const askClaude = (configDir, prompt, options = {}) => {
         const timer = setTimeout(() => killProcessTree(child), options.timeoutMs || ASK_TIMEOUT_MS);
         let stdout = "";
 
+        child.stdout.setEncoding("utf8");
         child.stdout.on("data", (chunk) => {
             stdout += chunk;
         });
