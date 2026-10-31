@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
@@ -451,19 +451,19 @@ const createAccountIpc = ({
         return applyBaseDirChange();
     };
 
-    const register = () => {
-        ipcMain.handle("autopilot:get-accounts", handleGetAccounts);
-        ipcMain.handle("autopilot:refresh-account", handleRefresh);
-        ipcMain.handle("autopilot:get-models", handleGetModels);
-        ipcMain.handle("autopilot:select-account", handleSelect);
-        ipcMain.handle("autopilot:add-account", handleAdd);
-        ipcMain.handle("autopilot:login-account", handleLogin);
-        ipcMain.handle("autopilot:submit-login-code", handleSubmitCode);
-        ipcMain.handle("autopilot:cancel-login", handleCancelLogin);
-        ipcMain.handle("autopilot:open-login-url", handleOpenLoginUrl);
-        ipcMain.handle("autopilot:remove-account", handleRemove);
-        ipcMain.handle("autopilot:select-claude-dir", handleSelectClaudeDir);
-        ipcMain.handle("autopilot:reset-claude-dir", handleResetClaudeDir);
+    const register = (handle) => {
+        handle("autopilot:get-accounts", handleGetAccounts);
+        handle("autopilot:refresh-account", handleRefresh);
+        handle("autopilot:get-models", handleGetModels);
+        handle("autopilot:select-account", handleSelect);
+        handle("autopilot:add-account", handleAdd);
+        handle("autopilot:login-account", handleLogin);
+        handle("autopilot:submit-login-code", handleSubmitCode);
+        handle("autopilot:cancel-login", handleCancelLogin);
+        handle("autopilot:open-login-url", handleOpenLoginUrl);
+        handle("autopilot:remove-account", handleRemove);
+        handle("autopilot:select-claude-dir", handleSelectClaudeDir);
+        handle("autopilot:reset-claude-dir", handleResetClaudeDir);
     };
 
     // 앱을 켤 때 모든 계정을 한 번 조회하고 이후 주기적으로 다시 읽는다. 스모크 테스트는 네트워크를 쓰지 않도록 호출하지 않는다.

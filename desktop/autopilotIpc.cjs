@@ -1644,7 +1644,7 @@ const registerIpc = () => {
     registerHandler("autopilot:save-schedule", handleSaveSchedule);
     registerHandler("autopilot:delete-schedule", handleDeleteSchedule);
     registerHandler("autopilot:toggle-schedule", handleToggleSchedule);
-    accounts.register();
+    accounts.register(registerHandler);
 
     // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.
     app.on("before-quit", () => accounts.cancelLogin());
