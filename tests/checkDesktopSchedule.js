@@ -543,6 +543,64 @@ const checkSchedulerTargets = async () => {
     }
 };
 
+// 바쁨을 확인하는 사이 사용자가 예약을 끄거나 고치면, 옛 목록으로 시작하지 않고 바꾼 쪽이 걸어 둔 다음 판단이 새 목록을 본다.
+const checkSchedulerStaleFire = async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-schedule-"));
+    const starts = [];
+    let schedules = [];
+    let onBusy = null;
+    const scheduler = createScheduler({
+        stateFile: path.join(dir, "state.json"),
+        readSchedules: () => schedules,
+        writeSchedules: (list) => {
+            schedules = list;
+        },
+        getUsage: () => makeUsage({ session: { percent: 0 }, weekly: { percent: 0 } }),
+        refreshUsage: async () => {},
+        isBusy: async () => {
+            const action = onBusy;
+
+            onBusy = null;
+
+            if (action) {
+                await action();
+            }
+
+            return false;
+        },
+        startRun: async (schedule) => {
+            starts.push({ id: schedule.id, duration: schedule.duration });
+
+            return { ok: true, message: "시작했어요" };
+        },
+        notify: () => {},
+        onChange: () => {},
+        now: () => at(23, 1)
+    });
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    const statusOf = (id) => scheduler.getPayload().statuses.find((status) => status.id === id)?.code;
+
+    try {
+        const { schedule } = await scheduler.save({ ...getDefaultSchedule("time"), time: "23:00", duration: 60, enabled: false });
+
+        onBusy = () => scheduler.setEnabled(schedule.id, false);
+        await scheduler.setEnabled(schedule.id, true);
+        await flush();
+
+        assert.deepEqual(starts, [], "판단 도중 끈 예약은 옛 목록으로 시작하지 않는다");
+        assert.equal(statusOf(schedule.id), "disabled");
+
+        onBusy = () => scheduler.save({ ...schedules[0], enabled: true, duration: 90 });
+        await scheduler.setEnabled(schedule.id, true);
+        await flush();
+
+        assert.deepEqual(starts, [{ id: schedule.id, duration: 90 }], "판단 도중 고친 예약은 고친 내용으로 한 번만 시작한다");
+        assert.equal(statusOf(schedule.id), "started");
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+};
+
 checkParse();
 checkNormalize();
 checkOccurrences();
@@ -556,5 +614,6 @@ await checkSchedulerFailureAndBusy();
 await checkSchedulerLimits();
 await checkSchedulerScope();
 await checkSchedulerTargets();
+await checkSchedulerStaleFire();
 
 console.log("Desktop schedule checks passed.");

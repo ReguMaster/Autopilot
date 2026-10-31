@@ -78,6 +78,12 @@ const createScheduler = ({ stateFile, readSchedules, writeSchedules, getKnownIds
         return { code: outcome.ok ? "started" : "failed", last: last };
     };
 
+    const isUnchanged = (schedule) => {
+        const current = readSchedules().find((item) => item.id === schedule.id);
+
+        return current !== undefined && JSON.stringify(current) === JSON.stringify(schedule);
+    };
+
     const run = async () => {
         const schedules = readSchedules();
 
@@ -99,6 +105,11 @@ const createScheduler = ({ stateFile, readSchedules, writeSchedules, getKnownIds
             const busy = startedKeys.has(getTargetKey(schedule)) || (await isBusy(schedule));
             const result = evaluateSchedule(schedule, states[schedule.id] || createState(), { now: now(), usage: getUsage(schedule), isBusy: busy });
             let status = result.status;
+
+            // 사용량·바쁨을 기다리는 사이 사용자가 끄거나 지우거나 고친 예약은 옛 목록으로 시작하지 않는다. 바꾼 쪽이 다시 판단을 걸어 둔다.
+            if (result.decision === "fire" && !isUnchanged(schedule)) {
+                continue;
+            }
 
             states[schedule.id] = result.state;
 
