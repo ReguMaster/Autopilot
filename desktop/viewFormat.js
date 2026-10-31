@@ -1163,7 +1163,9 @@ const describePastRun = (run, nowMs) => {
 const TRANSCRIPT_LIMIT = 1500;
 const TRANSCRIPT_TEXT_LENGTH = 600;
 const TRANSCRIPT_ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
-const TRANSCRIPT_ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \(model (\S+), effort (\S+)\))?/;
+// Codex가 돌린 회차는 괄호 앞에 "Codex, "가 붙고, Codex 설정을 따른 값은 "기본값"이다(러너 파서와 같다).
+const TRANSCRIPT_ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \((Codex, )?model (\S+), effort (\S+)\))?/;
+const TRANSCRIPT_CODEX_DEFAULT_LABEL = "기본값";
 const TRANSCRIPT_COMMIT_PATTERN = /^\[커밋\] (\S+) \+(\d+) -(\d+) ?(.*)$/;
 const TRANSCRIPT_LIMIT_PATTERN = /^\[사용량 한도\] (.+)$/;
 const TRANSCRIPT_FINISH_PATTERN = /^AutoPilot 종료 - (.+) \(\d+회차\)$/;
@@ -1211,11 +1213,16 @@ const buildTranscript = (lines) => {
         if (round) {
             const start = round[2].match(TRANSCRIPT_ROUND_START_PATTERN);
 
-            pushItem(
-                start
-                    ? { kind: "round", round: Number(round[1]), options: start[1] ? formatOptions(start[1], start[2]) : "" }
-                    : { kind: "result", round: Number(round[1]), outcome: round[2], tone: getRoundTone(round[2]) }
-            );
+            if (!start) {
+                pushItem({ kind: "result", round: Number(round[1]), outcome: round[2], tone: getRoundTone(round[2]) });
+
+                continue;
+            }
+
+            const runner = start[1] ? "codex" : "claude";
+            const readValue = (value) => (start[1] && value === TRANSCRIPT_CODEX_DEFAULT_LABEL ? "" : value);
+
+            pushItem({ kind: "round", round: Number(round[1]), options: start[2] ? formatAgentOptions(runner, readValue(start[2]), readValue(start[3])) : "" });
 
             continue;
         }

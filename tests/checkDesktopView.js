@@ -487,6 +487,18 @@ const checkPastRuns = ({ describePastRun, buildTranscript }) => {
     assert.deepEqual({ ...transcript.items[4] }, { kind: "commit", hash: "abc1234", insertions: 3, deletions: 1, subject: "검색 인덱스 사용" });
     assert.equal(transcript.items[5].tone, "ok");
 
+    // Codex가 돌린 회차는 이름을 붙이고, Codex 설정을 따른 값(기본값)은 기본이라고 쓴다.
+    const codexRounds = buildTranscript([
+        "[1회차] 시작 - 남은 시간 60분 (Codex, model gpt-6.1-sol, effort high)",
+        "[2회차] 시작 - 남은 시간 50분 (Codex, model 기본값, effort 기본값)",
+        "[3회차] 시작 - 남은 시간 40분"
+    ]);
+
+    assert.deepEqual(
+        Array.from(codexRounds.items, (item) => item.options),
+        ["Codex gpt-6.1-sol · High", "Codex 기본 · 기본", ""]
+    );
+
     // 깨진 입력은 건너뛰고, 길거나 많은 입력은 자른다.
     const broken = buildTranscript([null, 42, undefined, "", "�����", "[ㅁㅁ회차] 시작", "99:99:99 형식만 맞는 줄", "    들여 쓴 줄만 있어요"]);
 
