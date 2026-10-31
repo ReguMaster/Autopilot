@@ -105,7 +105,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
 
 ### 예약 작업
 
-- 앱이 userData/tasks.md에 쓰고 --tasks-file로 넘긴다(긴 텍스트라 인자로 넘기지 않는다). 엔진이 시작할 때 한 번 읽어 매 회차 프롬프트의 <TASKS> 블록에 넣는다.
+- 앱이 userData/tasks/<프로젝트 키>.md(settingsStore.getProjectKey)에 쓰고 --tasks-file로 넘긴다(긴 텍스트라 인자로 넘기지 않는다. 잇달아 시작한 다른 프로젝트가 엔진이 읽기 전에 덮어쓰지 않게 프로젝트마다 따로 쓰고, 같은 프로젝트는 시작 중이면 다시 시작하지 않는다). 엔진이 시작할 때 한 번 읽어 매 회차 프롬프트의 <TASKS> 블록에 넣는다.
 - 지시개선은 작업이 비어 있으면 시작하지 않는다.
 
 ### 진행 기록

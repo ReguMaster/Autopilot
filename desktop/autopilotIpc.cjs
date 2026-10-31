@@ -25,7 +25,7 @@ const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, PLATFORM_K
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
 const SCHEDULE_RESUME_DELAY_MS = 5000;
-const TASKS_FILE_NAME = "tasks.md";
+const TASKS_DIR_NAME = "tasks";
 const SETTINGS_FILE_FILTERS = [{ name: "AutoPilot 설정", extensions: ["json"] }];
 const MAX_SETTINGS_IMPORT_BYTES = 2 * 1024 * 1024;
 
@@ -457,6 +457,11 @@ const launchRun = async (session, settings, startOptions, { remember, keepTasks 
         return createNoSessionFailure();
     }
 
+    // 예약 시작과 수동 시작이 겹치면 늦은 쪽이 먼저 시작한 엔진이 읽을 작업 파일을 덮어쓰고 그 값을 기본값으로 저장하므로 받지 않는다.
+    if (session.runner.isRunning() || session.isLaunching) {
+        return createFailure("ALREADY_RUNNING", "이미 실행 중이에요.");
+    }
+
     const startError = getStartError(settings, startOptions);
 
     if (startError) {
@@ -486,10 +491,10 @@ const launchRun = async (session, settings, startOptions, { remember, keepTasks 
             }
         }
 
-        // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽는다.
-        const tasksFile = path.join(app.getPath("userData"), TASKS_FILE_NAME);
+        // 작업은 긴 텍스트라 인자로 넘기지 않고 파일로 전달한다. 엔진이 시작할 때 한 번 읽으므로, 잇달아 시작한 다른 프로젝트가 덮어쓰지 않게 프로젝트마다 따로 쓴다.
+        const tasksFile = path.join(app.getPath("userData"), TASKS_DIR_NAME, `${getProjectKey(settings.projectDir)}.md`);
 
-        fs.mkdirSync(app.getPath("userData"), { recursive: true });
+        fs.mkdirSync(path.dirname(tasksFile), { recursive: true });
         fs.writeFileSync(tasksFile, startOptions.tasks, "utf8");
 
         // 날짜를 붙인 종료 시각과 단계 수정 요청(keepTasks, 작업 칸의 만들 것을 지키려고)은 다음 시작의 기본값으로 저장하지 않는다.
