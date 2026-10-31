@@ -597,7 +597,7 @@ const checkDebateRules = (context) => {
 
     // 협의하는 두 AI도 정책을 받지 않으므로 기획 협의의 첫 호출에 허용 범위를 적는다.
     assert.match(claudeOpening, /허용하지 않음: 새 라이브러리\(패키지\) 추가[\s\S]*<TASKS>/);
-    assert.match(codexOpening, /허용하지 않음: 새 라이브러리\(패키지\) 추가/);
+    assert.match(codexOpening, /허용하지 않음: 새 라이브러리\(패키지\) 추가[\s\S]*<TASKS>[\s\S]*지금까지 주고받은 말/, "Codex의 협의도 안을 낸 세션과 다른 새 세션이라 만들 것을 직접 받는다");
     assert.doesNotMatch(promptUtil.getDebateOpeningPrompt({ ...runState, phase: "design" }, "codex", {}), /허용 범위/);
     assert.match(promptUtil.getDebateReplyPrompt(runState, lastTurn, 3), /^Claude의 답: [\s\S]*3\/3번째 주고받기다\. 이번이 마지막 주고받기다/);
     assert.doesNotMatch(promptUtil.getDebateReplyPrompt(runState, lastTurn, 2), /마지막/);

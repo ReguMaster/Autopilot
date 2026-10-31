@@ -266,7 +266,15 @@ const getDebateOpeningPrompt = (runState, provider, { docs = {}, lastTurn = null
             .join("\n\n");
     }
 
-    return [intro, `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 않는다. 두 안을 읽고 ${task}`, DEBATE_RULES, getProposalScopePrompt(runState), ...history]
+    // 협의는 안을 낸 세션과 다른 새 세션이고 <TASKS>는 저장소 파일이 아니므로 Codex에도 직접 준다.
+    return [
+        intro,
+        `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 않는다. 두 안을 읽고 ${task}`,
+        DEBATE_RULES,
+        getProposalScopePrompt(runState),
+        runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : "",
+        ...history
+    ]
         .filter(Boolean)
         .join("\n\n");
 };
