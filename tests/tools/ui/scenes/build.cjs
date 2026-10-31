@@ -188,7 +188,7 @@ const DEBATE_SCENES = [
                 rounds: [round(1, { commits: [commit("5d0c2aa", 182, "[ap] 기획서 초안")] })],
                 round: 1,
                 phase: "1회차 완료",
-                debate: { phaseLabel: "기획", maxTurns: 3, status: "running", turns: DEBATE_TURNS, disputes: 0, reason: "" }
+                debate: { phaseLabel: "기획", maxTurns: 3, status: "running", turns: DEBATE_TURNS, turnCount: DEBATE_TURNS.length, disputes: 0, reason: "" }
             }),
             model: { buildPhase: { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null } }
         },
@@ -212,7 +212,7 @@ const DEBATE_SCENES = [
                 rounds: [round(1, { commits: [commit("5d0c2aa", 182, "[ap] 기획서 초안")] })],
                 round: 1,
                 phase: "1회차 완료",
-                debate: { phaseLabel: "기획", maxTurns: 3, status: "running", turns: DEBATE_TURNS, disputes: 0, reason: "" }
+                debate: { phaseLabel: "기획", maxTurns: 3, status: "running", turns: DEBATE_TURNS, turnCount: DEBATE_TURNS.length, disputes: 0, reason: "" }
             }),
             model: { buildPhase: { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null } }
         },
@@ -232,7 +232,7 @@ const DEBATE_SCENES = [
             await t.shot("synthesis");
             await t.eval("document.querySelector('.now').scrollTop = 9999");
             await t.shot("synthesis-scrolled");
-            await t.state({ debate: { phaseLabel: "기획", maxTurns: 3, status: "consensus", turns: DEBATE_TURNS, disputes: 0, reason: "" } });
+            await t.state({ debate: { phaseLabel: "기획", maxTurns: 3, status: "consensus", turns: DEBATE_TURNS, turnCount: DEBATE_TURNS.length, disputes: 0, reason: "" } });
             await t.wait(150);
             t.note(
                 "leaving",

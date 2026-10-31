@@ -203,12 +203,12 @@ const applyRound = (state, round, text, isReplay) => {
     state.phase = `${round}회차 ${text}`;
 };
 
-// Claude·Codex 협의의 진행. 발언의 at은 받은 시각이고 로그를 다시 읽는 중이면 알 수 없어 0이다. 시작 줄이 대화를 열고, 발언은 쌓이며, 끝 줄이 합의·쟁점 수를, 건너뜀 줄이 이유를 남긴다. 협의 줄이면 true다.
+// Claude·Codex 협의의 진행. turns는 최근 MAX_DEBATE_TURNS마디만 두고 turnCount가 받은 발언 수 전체다. 발언의 at은 받은 시각이고 로그를 다시 읽는 중이면 알 수 없어 0이다. 시작 줄이 대화를 열고, 발언은 쌓이며, 끝 줄이 합의·쟁점 수를, 건너뜀 줄이 이유를 남긴다. 협의 줄이면 true다.
 const applyDebateLine = (state, line, isReplay) => {
     const start = line.match(DEBATE_START_PATTERN);
 
     if (start) {
-        state.debate = { phaseLabel: start[1], maxTurns: Number(start[2]), status: "running", turns: [], disputes: 0, reason: "" };
+        state.debate = { phaseLabel: start[1], maxTurns: Number(start[2]), status: "running", turns: [], turnCount: 0, disputes: 0, reason: "" };
 
         return true;
     }
@@ -217,6 +217,7 @@ const applyDebateLine = (state, line, isReplay) => {
 
     if (turn && state.debate) {
         state.debate.turns = [...state.debate.turns, { provider: turn[1].toLowerCase(), message: turn[2], at: isReplay ? 0 : Date.now() }].slice(-MAX_DEBATE_TURNS);
+        state.debate.turnCount += 1;
 
         return true;
     }
@@ -233,7 +234,7 @@ const applyDebateLine = (state, line, isReplay) => {
 
     // 협의를 시작하기 전에(Codex를 쓸 수 없어서) 건너뛸 수도 있다.
     if (skip) {
-        state.debate = { ...(state.debate || { phaseLabel: "", maxTurns: 0, turns: [], disputes: 0 }), status: "skipped", reason: skip[1] };
+        state.debate = { ...(state.debate || { phaseLabel: "", maxTurns: 0, turns: [], turnCount: 0, disputes: 0 }), status: "skipped", reason: skip[1] };
 
         return true;
     }

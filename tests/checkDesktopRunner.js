@@ -1289,9 +1289,20 @@ const checkBuildLogs = () => {
             ["codex", "넣어요", true]
         ]
     );
-    assert.deepEqual({ ...debateState.debate, turns: [] }, { phaseLabel: "기획", maxTurns: 3, status: "running", turns: [], disputes: 0, reason: "" });
+    assert.deepEqual({ ...debateState.debate, turns: [] }, { phaseLabel: "기획", maxTurns: 3, status: "running", turns: [], turnCount: 2, disputes: 0, reason: "" });
     parseLine(debateState, "[협의] Claude: 다시 읽은 말", true);
     assert.equal(debateState.debate.turns.at(-1).at, 0, "로그를 다시 읽은 발언은 시각을 알 수 없다");
+
+    // 발언은 최근 것만 두지만 주고받은 횟수는 전체 발언 수로 센다.
+    const longDebate = createInitialState();
+
+    parseLine(longDebate, "[협의] 기획 시작 (최대 8번)");
+
+    for (let index = 1; index <= 15; index += 1) {
+        parseLine(longDebate, `[협의] ${index % 2 ? "Claude" : "Codex"}: ${index}번째 말`);
+    }
+
+    assert.deepEqual([longDebate.debate.turns.length, longDebate.debate.turnCount, longDebate.debate.turns[0].message], [12, 15, "4번째 말"]);
     parseLine(debateState, "[협의] 쟁점 2개를 남기고 끝냈어요");
     assert.deepEqual([debateState.debate.status, debateState.debate.disputes], ["disputes", 2]);
     parseLine(debateState, "[협의] 합의했어요");

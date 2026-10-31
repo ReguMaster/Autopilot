@@ -56,7 +56,8 @@ const Bubble = ({ message }) => {
 // 두 AI가 주고받은 말. 카카오톡처럼 Claude는 왼쪽, Codex는 오른쪽에 프로필 사진과 이름을 단 말풍선이고 말풍선 옆에 시각, 날짜가 바뀌는 곳에 날짜 구분선이 붙는다.
 // 시각을 모르는 발언(협의 기록 파일, 다시 읽은 로그)은 시각과 날짜를 보이지 않는다. hasRounds를 주면 협의 기록처럼 주고받기마다 구분선을 둔다.
 // notes는 협의 기록 파일에서 읽은 동의 · 반대 · 바꾼 점이다. typing을 주면 그쪽 차례의 빈 말풍선을 맨 아래에 둔다.
-const DebateBubbles = ({ turns, typing = "", hasRounds = false }) => {
+// firstIndex는 turns[0]이 대화 전체에서 몇 번째 발언인지다. 앞쪽 발언이 잘려 나가도 말풍선이 같은 발언에 붙어 있게 key로 쓴다.
+const DebateBubbles = ({ turns, typing = "", hasRounds = false, firstIndex = 0 }) => {
     return (
         <>
             {turns.map((turn, index) => {
@@ -65,7 +66,7 @@ const DebateBubbles = ({ turns, typing = "", hasRounds = false }) => {
                 const time = formatChatTime(turn.at);
 
                 return (
-                    <Fragment key={index}>
+                    <Fragment key={firstIndex + index}>
                         {isNewDay ? (
                             <li className="debate-divider">
                                 <span>{formatChatDate(turn.at)}</span>
@@ -135,7 +136,7 @@ const DebateChat = () => {
     const debate = useRunStore((store) => store.state.debate);
     const [shown, setShown] = useState(null);
     const listRef = useRef(null);
-    const turnCount = shown?.turns.length || 0;
+    const turnCount = shown?.turnCount || 0;
     const isRunning = debate?.status === "running";
     const isLeaving = !isRunning && shown !== null;
     const hasChat = shown !== null;
@@ -197,7 +198,7 @@ const DebateChat = () => {
                 <span className="num">{`${exchange} / ${shown.maxTurns}번째 주고받기`}</span>
             </header>
             <ol ref={listRef} className="debate-list" aria-live="polite">
-                <DebateBubbles turns={shown.turns} typing={typing} />
+                <DebateBubbles turns={shown.turns} typing={typing} firstIndex={turnCount - shown.turns.length} />
             </ol>
         </section>
     );
