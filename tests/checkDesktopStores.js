@@ -434,6 +434,18 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.equal(await run.approvePhase(), true);
     assert.equal(readPhase().awaiting, null);
 
+    const picks = [];
+
+    window.autopilot.approvePhase = async (projectDir, pick) => {
+        picks.push(pick);
+        await wait(5);
+
+        return OK({ phase: { phase: "design", awaiting: null, qaRetries: 0 } });
+    };
+    assert.deepEqual(await Promise.all([run.approvePhase("claude"), run.approvePhase("codex")]), [true, false], "승인하는 동안 다시 누른 승인은 보내지 않는다");
+    assert.deepEqual(picks, ["claude"]);
+    assert.equal(await run.approvePhase("codex"), true, "승인이 끝나면 다시 승인할 수 있다");
+
     window.autopilot.approvePhase = async () => ({ status: "FAILED", error: { code: "APPROVE_FAILED", msg: "확인을 기다리는 단계가 없습니다." } });
     assert.equal(await run.approvePhase(), false);
     assert.equal(useUiStore.getState().notice.message, "확인을 기다리는 단계가 없습니다.");

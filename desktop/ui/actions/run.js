@@ -14,6 +14,7 @@ import { applyProjectSwitch, confirmGitInit } from "./tabs.js";
 const STOP_CONFIRM_MS = 4000;
 
 let stopArmTimer = 0;
+let isApproving = false;
 
 // 시작은 선택한 값을 엔진에 넘기고, 로그인이 필요하면 안내 줄에 로그인 버튼을 보여준다. 응답을 기다리는 동안 다시 누르지 못하게 한다.
 // overrides는 컴포저 값 대신 넘길 값이다(단계 수정 요청의 작업과 keepTasks).
@@ -143,9 +144,22 @@ const resetProgress = async () => {
 // 확인을 기다리는 신규 개발 단계를 승인한다. 성공하면 다음 실행이 다음 단계부터 하고, 단계 상태를 메인이 돌려준 값으로 바꾼다.
 // pick은 여러 AI가 안을 낸 단계에서 고른 안(claude·codex)이고, resolutions는 협의한 단계의 쟁점마다 고른 쪽({ d1: "codex" })이다.
 // 승인하는 동안 다른 탭으로 옮길 수 있으므로 프로젝트는 승인 전에 정해 둔다.
+// 엔진 승인은 수백 ms 걸려 그동안 다시 누르면 고른 안을 덮어쓰거나 "기다리는 단계가 없다"는 실패가 뜨므로 무시한다.
 const approvePhase = async (pick, resolutions) => {
+    if (isApproving) {
+        return false;
+    }
+
     const { projectDir } = getSettings();
-    const result = await window.autopilot.approvePhase(projectDir || undefined, pick, resolutions);
+    let result = null;
+
+    isApproving = true;
+
+    try {
+        result = await window.autopilot.approvePhase(projectDir || undefined, pick, resolutions);
+    } finally {
+        isApproving = false;
+    }
 
     ui.showFailure(result);
 
