@@ -718,6 +718,8 @@ const checkPhaseRules = (context) => {
         assert.doesNotMatch(prompt, /작업은 최대|작업 탐색과 선택|개선 정책/, phase);
     }
 
+    // 디자인은 화면을 몇 개씩 나누지 않고 공통 규칙부터 정해 한 회차에 모든 화면을 목표로 한다(회차마다 다시 읽는 비용과 뒤늦은 규칙으로 화면을 고치는 일을 줄인다).
+    assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "design" }, 1, 60, "", 2), /공통 규칙\(색 · 글자 · 간격 · 컴포넌트\)을 먼저 정하고[^\n]*한 회차에 모든 화면/);
     assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "build", securityRetries: 1 }, 1, 60, "", 2), /테스트\/QA · 보안검토가 되돌린 것이다/);
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "build" }, 1, 60, "", 2), /되돌린 것이다/);
 
