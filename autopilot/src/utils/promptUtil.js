@@ -122,6 +122,10 @@ const getArtefactText = (phase) => {
     return phase === "plan" ? "`docs/autopilot/plan.md`" : "디자인 산출물(`docs/autopilot/design.md`와 `docs/autopilot/design/`)";
 };
 
+const getChoiceText = (choices) => {
+    return choices.map((choice, index) => `${index + 1}) ${choice.title} → ${PROVIDER_LABELS[choice.side]} 쪽: ${choice.position}`).join(" ");
+};
+
 // 협의를 마친 단계를 사용자가 확인했으면 이번 실행의 첫 일로 쟁점마다 고른 입장을 합의안에 확정한다.
 const getDebateAdoptionPrompt = (runState) => {
     const { phase, choices } = runState.adoption;
@@ -131,10 +135,8 @@ const getDebateAdoptionPrompt = (runState) => {
         return `사용자가 [${label}] 협의의 합의안을 확인했다. 지금 단계의 일을 하기 전에 아직 commit하지 않은 \`${PROPOSALS_DIR}/\` 파일이 있으면 commit한다(\`${runState.commitPrefix} ${label}: 합의안 확정\`).`;
     }
 
-    const choiceText = choices.map((choice, index) => `${index + 1}) ${choice.title} → ${PROVIDER_LABELS[choice.side]} 쪽: ${choice.position}`).join(" ");
-
     return [
-        `사용자가 [${label}] 협의에서 못 맞춘 쟁점을 정했다. 지금 단계의 일을 하기 전에 먼저 ${getArtefactText(phase)}에서 쟁점으로 표시한 부분을 아래 고른 입장으로 확정하고 쟁점 표시를 지운다. ${choiceText}`,
+        `사용자가 [${label}] 협의에서 못 맞춘 쟁점을 정했다. 지금 단계의 일을 하기 전에 먼저 ${getArtefactText(phase)}에서 쟁점으로 표시한 부분을 아래 고른 입장으로 확정하고 쟁점 표시를 지운다. ${getChoiceText(choices)}`,
         `아직 commit하지 않은 \`${PROPOSALS_DIR}/\` 파일과 함께 commit한다(\`${runState.commitPrefix} ${label}: 쟁점 확정\`). 이후 단계는 확정한 안을 따른다.`
     ].join(" ");
 };
@@ -325,6 +327,19 @@ const getProposalScopePrompt = (runState) => {
         .join(" ");
 };
 
+// 디자인 안은 사용자가 고른 기획을 메인의 첫 회차가 plan.md에 확정하기 전에 받으므로 고른 내용을 직접 알린다.
+const getPlanAdoptionPrompt = (adoption) => {
+    if (adoption?.phase !== "plan") {
+        return "";
+    }
+
+    if (adoption.choices) {
+        return adoption.choices.length ? `\`docs/autopilot/plan.md\`에서 쟁점으로 표시한 부분은 사용자가 아래 입장으로 정했다(plan.md에는 아직 반영 전이다). ${getChoiceText(adoption.choices)}` : "";
+    }
+
+    return adoption.picked === adoption.main ? "" : `기획서는 \`docs/autopilot/plan.md\` 대신 사용자가 고른 \`${adoption.file}\`를 따른다.`;
+};
+
 // 다른 AI에게 같은 단계의 독립된 안을 받는다. 읽기 전용으로 돌리므로 파일 대신 최종 답변으로 받는다.
 const getProposalPrompt = (runState) => {
     const brief = getPhaseBrief(runState);
@@ -333,10 +348,7 @@ const getProposalPrompt = (runState) => {
         `너는 ${brief.role}`,
         `이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 말고, 결과는 최종 답변으로만 낸다.`,
         `읽을 것: ${brief.read}`,
-        // 사용자가 다른 AI의 기획안을 골랐으면 plan.md로 옮기기 전이라도 그 안을 따른다.
-        runState.adoption?.phase === "plan" && runState.adoption.picked !== runState.adoption.main
-            ? `기획서는 \`docs/autopilot/plan.md\` 대신 사용자가 고른 \`${runState.adoption.file}\`를 따른다.`
-            : "",
+        getPlanAdoptionPrompt(runState.adoption),
         `산출물: ${brief.output} 단, 파일에 쓰지 말고 그 문서 전체를 최종 답변으로 출력한다.`,
         getProposalScopePrompt(runState),
         getProposalFormatPrompt(runState),

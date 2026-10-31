@@ -633,6 +633,10 @@ const checkDebateRules = (context) => {
         /못 맞춘 쟁점을 정했다[\s\S]*1\) 결제 → Codex 쪽: 넣어요[\s\S]*`\[ap\] 기획: 쟁점 확정`/
     );
     assert.match(promptUtil.getRoundPrompt({ ...runState, phase: "design", adoption: { ...adoption, choices: [] } }, 1, 60, "", 2), /협의의 합의안을 확인했다[\s\S]*`\[ap\] 기획: 합의안 확정`/);
+
+    // 디자인 안은 메인이 쟁점을 plan.md에 확정하기 전에 받으므로 고른 입장을 직접 받는다.
+    assert.match(promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: adoption }), /쟁점으로 표시한 부분은 사용자가 아래 입장으로 정했다[\s\S]*1\) 결제 → Codex 쪽: 넣어요/);
+    assert.doesNotMatch(promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: { ...adoption, choices: [] } }), /쟁점|사용자가 고른/);
 };
 
 // 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA·보안검토 실패는 단계마다 정한 횟수까지 개발로 되돌린다.
