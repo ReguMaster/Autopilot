@@ -24,7 +24,6 @@ const {
     MAX_DURATION
 } = rules;
 
-const MINUTE_MS = 60 * 1000;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 // 2026-10-14는 수요일이다. 모든 시각은 지역 시각으로 만든다.
 const at = (hour, minute, dayOffset = 0) => new Date(2026, 9, 14 + dayOffset, hour, minute, 0, 0).getTime();
