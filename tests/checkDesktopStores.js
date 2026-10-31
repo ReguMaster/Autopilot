@@ -615,6 +615,21 @@ const checkSchedules = async ({ schedules, scheduleStore, composerStore }) => {
     assert.deepEqual(lastSave.options.model, "sonnet", "저장하는 순간의 모델·Effort를 담는다");
     assert.equal(scheduleStore.useScheduleStore.getState().note.message, "예약을 저장했어요.");
 
+    const saveSchedule = window.autopilot.saveSchedule;
+    let saveCalls = 0;
+
+    window.autopilot.saveSchedule = async (request) => {
+        saveCalls += 1;
+        await wait(5);
+
+        return saveSchedule(request);
+    };
+    await Promise.all([schedules.schedules.save({ kind: "time" }), schedules.schedules.save({ kind: "time" })]);
+    assert.equal(saveCalls, 1, "저장 중에 다시 누른 저장은 보내지 않는다");
+    await schedules.schedules.save({ kind: "time" });
+    assert.equal(saveCalls, 2, "저장이 끝나면 다시 저장할 수 있다");
+    window.autopilot.saveSchedule = saveSchedule;
+
     await schedules.schedules.remove("sch-1");
     assert.equal(scheduleStore.useScheduleStore.getState().payload.schedules.length, 0);
 

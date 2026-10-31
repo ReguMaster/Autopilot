@@ -6,6 +6,7 @@ import { ui } from "../stores/uiStore.js";
 const SCHEDULE_NOTICE_MS = 4000;
 
 let noticeTimer = 0;
+let isSaving = false;
 
 const setNote = (message, tone = "") => {
     clearTimeout(noticeTimer);
@@ -26,12 +27,25 @@ const schedules = {
     openForm: (schedule) => useScheduleStore.setState({ pane: "form", editing: schedule }),
     closeForm: () => useScheduleStore.setState({ pane: "list", editing: null }),
     // 저장하는 순간의 작업·정책·모델·Effort를 예약에 담는다. 실패하면 메시지를 돌려줘 폼이 보여준다.
+    // 새 예약은 저장할 때마다 새 id를 받으므로, 저장 중에 다시 누르면 같은 예약이 두 개 생기지 않게 무시한다.
     save: async (schedule) => {
+        if (isSaving) {
+            return "";
+        }
+
         const { tasks, policy, extendOnLimit } = useComposerStore.getState();
-        const result = await window.autopilot.saveSchedule({
-            schedule: schedule,
-            options: { tasks: tasks, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions(), ...composer.getModeOptions() }
-        });
+        let result = null;
+
+        isSaving = true;
+
+        try {
+            result = await window.autopilot.saveSchedule({
+                schedule: schedule,
+                options: { tasks: tasks, policy: policy, extendOnLimit: extendOnLimit, ...composer.getSelectedOptions(), ...composer.getModeOptions() }
+            });
+        } finally {
+            isSaving = false;
+        }
 
         if (result.status !== STATUS_OK) {
             return result.error.msg;
