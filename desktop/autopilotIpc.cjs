@@ -238,6 +238,9 @@ const sessionPool = createSessionPool({
 const isAnyRunning = () => sessionPool.getAll().some((session) => session.runner.isRunning());
 const isProjectRunning = (projectDir) => Boolean(sessionPool.get(projectDir)?.runner.isRunning());
 
+// 세션을 버려도 되는지. 엔진 연결 확인 중에 버리면 풀 밖에 남은 러너가 엔진을 따라가 종료 확인·끝난 뒤 동작이 그 실행을 보지 못한다.
+const isSessionBusy = (session) => session.runner.isRunning() || session.isLaunching || session.isCheckingEngine;
+
 // 프로젝트(탭)가 고른 계정. 고르지 않았으면 전역 계정을 따른다. 프로젝트가 없으면 전역에 저장한다.
 // 열린 탭과 각 탭의 실행 상태(status), 신규 개발이면 모드와 지금 단계(mode "build"·step "plan" 등, 없으면 빈 문자열). 화면은 이 요약으로 레일의 프로젝트 목록을 그린다(탭 이름은 폴더 이름).
 const getTabsPayload = () => {
@@ -823,6 +826,11 @@ const getSelectionFailure = (selectedDir, kind) => {
 
 // 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 가고, 아니면 지금 탭의 프로젝트를 바꾼다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
 const selectProjectDir = (selectedDir) => {
+    // 대화상자를 여는 동안 예약 실행이 시작됐을 수 있어 바꾸기 직전에 다시 확인한다.
+    if (isSessionBusy(sessionPool.get())) {
+        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
+    }
+
     const settings = readSettings();
     const opened = settingsStore.openTab(selectedDir, { replaceDir: settings.projectDir });
 
@@ -849,7 +857,7 @@ const openTabDir = (selectedDir) => {
 };
 
 const handleSelectProject = async (event) => {
-    if (sessionPool.get().runner.isRunning()) {
+    if (isSessionBusy(sessionPool.get())) {
         return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
     }
 
@@ -897,7 +905,7 @@ const handleInitGitRepo = async () => {
         return createFailure("INVALID_PROJECT", "새 저장소를 만들 폴더를 다시 골라 주세요.");
     }
 
-    if (pending.kind === "select" && sessionPool.get().runner.isRunning()) {
+    if (pending.kind === "select" && isSessionBusy(sessionPool.get())) {
         return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
     }
 
@@ -1065,7 +1073,7 @@ const handleCloseTab = async (event, requestedDir) => {
         return createNoSessionFailure();
     }
 
-    if (session.runner.isRunning() || session.isLaunching) {
+    if (isSessionBusy(session)) {
         return createFailure("RUNNING", "실행 중인 탭은 닫을 수 없어요. 먼저 종료해 주세요.");
     }
 
