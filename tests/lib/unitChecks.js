@@ -920,13 +920,13 @@ const checkStreamEvent = () => {
 
     assert.equal(sessionStats.limitHit, true);
 
-    // 백그라운드 작업 알림으로 같은 세션이 이어지면 result가 한 번 더 온다. 턴은 더하고 비용은 누적값을 그대로 쓴다.
+    // 백그라운드 작업 알림으로 같은 세션이 이어지면 result가 한 번 더 온다. 턴은 더하고 비용은 누적값을 그대로 쓰며, 요약은 이어 붙인다.
     handleStreamEvent(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 90, duration_ms: 1000, total_cost_usd: 4.3, result: "첫 결과" }), sessionStats, () => {});
     handleStreamEvent(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 7, duration_ms: 100, total_cost_usd: 4.5, result: "이어진 결과" }), sessionStats, () => {});
 
     assert.equal(sessionStats.turns, 97);
     assert.equal(sessionStats.cost, 4.5);
-    assert.equal(sessionStats.summary, "이어진 결과");
+    assert.equal(sessionStats.summary, "첫 결과\n\n이어진 결과");
 
     // 사용량 한도로 끝난 세션은 subtype이 success여도 is_error라 실패로 쓴다.
     const resultLines = [];
