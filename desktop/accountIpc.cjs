@@ -144,7 +144,12 @@ const createAccountIpc = ({
             }
         } else if (isNew) {
             dropReader(accountId);
-            store.removeAccountDir(accountId);
+
+            // 방금 끝난 로그인 프로세스가 폴더를 잡고 있으면(Windows EBUSY) 못 지운다. 그래도 목록 정리와 결과 알림은 해야 화면이 로그인 대기에 멈추지 않는다.
+            try {
+                store.removeAccountDir(accountId);
+            } catch {}
+
             writeSettings({ ...settings, accounts: accounts.filter((account) => account.id !== accountId) });
         }
 
