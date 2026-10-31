@@ -5,8 +5,7 @@ import { changeSystemSettings, openReport, resetProgress, selectProject } from "
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Panel } from "../../components/Panel.jsx";
-import { Select } from "../../components/Select.jsx";
-import { NavRow, SettingsGroup, SwitchRow } from "../../components/SettingsGroup.jsx";
+import { NavRow, SelectRow, SettingsGroup, SwitchRow } from "../../components/SettingsGroup.jsx";
 import { settings } from "../../actions/settings.js";
 import { useAnyRunning } from "../../hooks/useAnyRunning.js";
 import { useAccountStore } from "../../stores/accountStore.js";
@@ -154,13 +153,15 @@ const SystemGroup = () => {
 
     return (
         <SettingsGroup id="group-system" title="시스템">
-            <div className="row version-row">
-                <span className="row-body">
-                    <b id="theme-label">화면 테마</b>
-                    <small id="theme-note">어둡게는 밤에 눈이 덜 부셔요.</small>
-                </span>
-                <Select value={theme || "system"} options={THEME_OPTIONS} labelId="theme-label" onChange={(next) => settings.setPreferences({ theme: next })} />
-            </div>
+            <SelectRow
+                labelId="theme-label"
+                noteId="theme-note"
+                title="화면 테마"
+                note="어둡게는 밤에 눈이 덜 부셔요."
+                value={theme || "system"}
+                options={THEME_OPTIONS}
+                onChange={(next) => settings.setPreferences({ theme: next })}
+            />
             <SwitchRow
                 id="keep-in-tray"
                 noteId="keep-in-tray-note"
@@ -179,20 +180,24 @@ const SystemGroup = () => {
                 disabled={!canLaunchAtLogin && !launchAtLogin}
                 onChange={(isOn) => changeSystemSettings({ launchAtLogin: isOn })}
             />
-            <div className="row version-row">
-                <span className="row-body">
-                    <b id="sleep-block-label">실행 중 절전 방지</b>
-                    <small id="sleep-block-note">PC가 잠들면 회차가 멈춰요. 노트북은 배터리일 때만 풀 수 있어요.</small>
-                </span>
-                <Select value={sleepBlock} options={SLEEP_BLOCK_OPTIONS} labelId="sleep-block-label" onChange={(next) => settings.setPreferences({ sleepBlock: next })} />
-            </div>
-            <div className="row version-row">
-                <span className="row-body">
-                    <b id="post-run-label">실행이 끝난 뒤</b>
-                    <small id="post-run-note">스스로 끝나면 알려 주고 1분 뒤에 해요. 종료 신호·강제 종료 뒤에는 하지 않아요.</small>
-                </span>
-                <Select value={postRunAction} options={POST_RUN_OPTIONS} labelId="post-run-label" onChange={settings.setPostRunAction} />
-            </div>
+            <SelectRow
+                labelId="sleep-block-label"
+                noteId="sleep-block-note"
+                title="실행 중 절전 방지"
+                note="PC가 잠들면 회차가 멈춰요. 노트북은 배터리일 때만 풀 수 있어요."
+                value={sleepBlock}
+                options={SLEEP_BLOCK_OPTIONS}
+                onChange={(next) => settings.setPreferences({ sleepBlock: next })}
+            />
+            <SelectRow
+                labelId="post-run-label"
+                noteId="post-run-note"
+                title="실행이 끝난 뒤"
+                note="스스로 끝나면 알려 주고 1분 뒤에 해요. 종료 신호·강제 종료 뒤에는 하지 않아요."
+                value={postRunAction}
+                options={POST_RUN_OPTIONS}
+                onChange={settings.setPostRunAction}
+            />
             <SwitchRow
                 id="check-updates"
                 noteId="check-updates-note"
@@ -258,21 +263,18 @@ const LimitGroup = () => {
                 disabled={!isIdle}
                 onChange={(isOn) => settings.update({ extendOnLimit: isOn })}
             />
-            <div className="row version-row">
-                <span className="row-body">
-                    <b id="extend-limit-label">연장 상한</b>
-                    <small id="extend-limit-note">한 번의 실행에서 늘릴 수 있는 시간의 합이에요. 연장을 켰을 때만 적용돼요.</small>
-                    <ScopeNote settingKey="extendLimitMinutes" disabled={!isIdle} />
-                </span>
-                <Select
-                    value={limit}
-                    options={EXTEND_LIMIT_OPTIONS}
-                    disabled={!isIdle}
-                    disabledReason="실행 중에는 바꿀 수 없어요"
-                    labelId="extend-limit-label"
-                    onChange={(next) => settings.update({ extendLimitMinutes: next })}
-                />
-            </div>
+            <SelectRow
+                labelId="extend-limit-label"
+                noteId="extend-limit-note"
+                title="연장 상한"
+                note="한 번의 실행에서 늘릴 수 있는 시간의 합이에요. 연장을 켰을 때만 적용돼요."
+                extra={<ScopeNote settingKey="extendLimitMinutes" disabled={!isIdle} />}
+                value={limit}
+                options={EXTEND_LIMIT_OPTIONS}
+                disabled={!isIdle}
+                disabledReason="실행 중에는 바꿀 수 없어요"
+                onChange={(next) => settings.update({ extendLimitMinutes: next })}
+            />
         </SettingsGroup>
     );
 };

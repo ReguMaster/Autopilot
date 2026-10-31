@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatBytes } from "../../../viewFormat.js";
 import { settings } from "../../actions/settings.js";
-import { Select } from "../../components/Select.jsx";
-import { NavRow, SettingsGroup } from "../../components/SettingsGroup.jsx";
+import { NavRow, SelectRow, SettingsGroup } from "../../components/SettingsGroup.jsx";
 import { STATUS_OK } from "../../lib/constants.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { useRunStore } from "../../stores/runStore.js";
@@ -64,21 +63,18 @@ const StorageGroup = () => {
 
     return (
         <SettingsGroup id="group-storage" sectionId="storage-group" title="로그 보관">
-            <div className="row version-row">
-                <span className="row-body">
-                    <b id="retention-label">보관 기간</b>
-                    <small id="retention-note">이 기간이 지난 로그·리포트는 실행을 시작할 때 지워져요.</small>
-                    <ScopeNote settingKey="logRetentionDays" disabled={!isIdle} />
-                </span>
-                <Select
-                    value={retentionDays}
-                    options={RETENTION_OPTIONS}
-                    disabled={!isIdle}
-                    disabledReason="실행 중에는 바꿀 수 없어요"
-                    labelId="retention-label"
-                    onChange={(next) => settings.update({ logRetentionDays: next })}
-                />
-            </div>
+            <SelectRow
+                labelId="retention-label"
+                noteId="retention-note"
+                title="보관 기간"
+                note="이 기간이 지난 로그·리포트는 실행을 시작할 때 지워져요."
+                extra={<ScopeNote settingKey="logRetentionDays" disabled={!isIdle} />}
+                value={retentionDays}
+                options={RETENTION_OPTIONS}
+                disabled={!isIdle}
+                disabledReason="실행 중에는 바꿀 수 없어요"
+                onChange={(next) => settings.update({ logRetentionDays: next })}
+            />
             <p id="storage-usage" className="row-note storage-usage">
                 {getUsageNote(usage)}
             </p>

@@ -1,4 +1,5 @@
 import { cx } from "../lib/cx.js";
+import { Select } from "./Select.jsx";
 
 // 설정 패널의 묶음: 제목과 흰 카드.
 const SettingsGroup = ({ id, sectionId, title, children, ...props }) => {
@@ -26,9 +27,23 @@ const SwitchRow = ({ id, title, note, noteId, extra = null, checked, disabled, o
     );
 };
 
+// 고르는 줄: 제목과 설명, 오른쪽에 선택 상자. 나머지 props는 Select로 넘어간다.
+const SelectRow = ({ labelId, title, note = "", noteId, extra = null, ...props }) => {
+    return (
+        <div className="row version-row">
+            <span className="row-body">
+                <b id={labelId}>{title}</b>
+                {note ? <small id={noteId}>{note}</small> : null}
+                {extra}
+            </span>
+            <Select labelId={labelId} {...props} />
+        </div>
+    );
+};
+
 // 눌러서 다른 화면을 열거나 동작을 하는 줄.
 const NavRow = ({ danger = false, className = "", ...props }) => {
     return <button type="button" className={cx("row nav-row", danger && "danger", className)} {...props} />;
 };
 
-export { SettingsGroup, SwitchRow, NavRow };
+export { SettingsGroup, SwitchRow, SelectRow, NavRow };

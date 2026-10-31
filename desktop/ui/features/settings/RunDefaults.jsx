@@ -1,7 +1,6 @@
 import { MODEL_LABELS, formatEffort } from "../../../viewFormat.js";
 import { settings } from "../../actions/settings.js";
-import { Select } from "../../components/Select.jsx";
-import { SettingsGroup } from "../../components/SettingsGroup.jsx";
+import { SelectRow, SettingsGroup } from "../../components/SettingsGroup.jsx";
 import { EFFORT_LEVELS, POLICY_LABELS } from "../../lib/constants.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { ScopeNote, useScopedValue } from "./ScopeControls.jsx";
@@ -17,16 +16,18 @@ const POLICY_OPTIONS = [
 const DefaultRow = ({ settingKey, title, options }) => {
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const { value } = useScopedValue(settingKey);
-    const labelId = `default-label-${settingKey}`;
 
     return (
-        <div className="row version-row">
-            <span className="row-body">
-                <b id={labelId}>{title}</b>
-                <ScopeNote settingKey={settingKey} disabled={!isIdle} />
-            </span>
-            <Select value={value} options={options} disabled={!isIdle} disabledReason={LOCKED_REASON} labelId={labelId} onChange={(next) => settings.update({ [settingKey]: next })} />
-        </div>
+        <SelectRow
+            labelId={`default-label-${settingKey}`}
+            title={title}
+            extra={<ScopeNote settingKey={settingKey} disabled={!isIdle} />}
+            value={value}
+            options={options}
+            disabled={!isIdle}
+            disabledReason={LOCKED_REASON}
+            onChange={(next) => settings.update({ [settingKey]: next })}
+        />
     );
 };
 

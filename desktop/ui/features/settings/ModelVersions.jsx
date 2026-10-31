@@ -1,11 +1,11 @@
 import { MODEL_LABELS, formatModelName } from "../../../viewFormat.js";
 import { settings } from "../../actions/settings.js";
-import { Select } from "../../components/Select.jsx";
+import { SelectRow } from "../../components/SettingsGroup.jsx";
 import { getModelsNote, useModels } from "../../hooks/useModels.js";
 import { composer } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
-import { ScopeNote, useScopedValue } from "./ScopeControls.jsx";
+import { useScopedValue } from "./ScopeControls.jsx";
 
 const FAMILIES = Object.keys(MODEL_LABELS);
 const LATEST_OPTION = { value: "", label: "최신 버전 (기본)", hint: "새 모델이 나오면 따라가요" };
@@ -44,19 +44,16 @@ const ModelVersions = () => {
         <>
             <div className="versions">
                 {FAMILIES.map((family) => (
-                    <div key={family} className="row version-row">
-                        <span className="row-body">
-                            <b id={`version-label-${family}`}>{MODEL_LABELS[family]}</b>
-                        </span>
-                        <Select
-                            value={versions[family] || ""}
-                            options={getOptions(family, versions[family] || "", models)}
-                            disabled={!isIdle}
-                            disabledReason={LOCKED_REASON}
-                            labelId={`version-label-${family}`}
-                            onChange={(version) => handleChange(family, version)}
-                        />
-                    </div>
+                    <SelectRow
+                        key={family}
+                        labelId={`version-label-${family}`}
+                        title={MODEL_LABELS[family]}
+                        value={versions[family] || ""}
+                        options={getOptions(family, versions[family] || "", models)}
+                        disabled={!isIdle}
+                        disabledReason={LOCKED_REASON}
+                        onChange={(version) => handleChange(family, version)}
+                    />
                 ))}
             </div>
             <p className="row-note version-note" hidden={!note}>
