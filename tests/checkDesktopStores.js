@@ -1274,7 +1274,12 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     newProject.restart();
     assert.equal(read().step, "write");
     assert.equal(read().what, "가계부 앱");
+
+    // 만들 위치·작성자를 읽지 못하면 만들기가 꺼진 채로 두지 않고 이유를 알린다.
+    window.autopilot.getCreateInfo = async () => ({ status: "FAILED", error: { code: "UNEXPECTED_ERROR", msg: "처리하지 못했어요: EPERM" } });
     newProjectActions.openNewProject();
+    await wait(0);
+    assert.equal(useUiStore.getState().notice.message, "처리하지 못했어요: EPERM");
     await tabs.activateTab("D:\\work\\hanbit-booking");
     assert.equal(useUiStore.getState().newProject, false, "같은 탭을 눌러도 새 프로젝트 화면은 닫힌다");
 };

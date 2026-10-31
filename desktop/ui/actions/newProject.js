@@ -30,6 +30,8 @@ const startReveal = () => {
 const loadCreateInfo = async () => {
     const result = await window.autopilot.getCreateInfo();
 
+    ui.showFailure(result);
+
     if (result.status === STATUS_OK) {
         newProject.set({ info: { ...result.data, isLoaded: true } });
     }
@@ -43,6 +45,8 @@ const openNewProject = () => {
 
 const pickParentDir = async () => {
     const result = await window.autopilot.pickCreateDir();
+
+    ui.showFailure(result);
 
     if (result.status === STATUS_OK && !result.data.canceled) {
         newProject.set({ info: { ...newProject.get().info, parentDir: result.data.parentDir } });
