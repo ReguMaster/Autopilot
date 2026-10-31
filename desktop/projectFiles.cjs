@@ -54,10 +54,13 @@ const runGitSteps = async (git, steps, options) => {
 // main 브랜치로 시작하는 저장소 만들기. init -b는 git 2.28부터라 옛 git도 되게 HEAD를 직접 main으로 돌린다.
 const INIT_MAIN_STEPS = [["init"], ["symbolic-ref", "HEAD", "refs/heads/main"]];
 
+// 설정이 없으면 git은 EMAIL 환경 변수나 도메인이 붙은 호스트 이름(macOS의 *.local)으로 작성자를 지어내 commit한다.
+const COMMIT = ["-c", "user.useConfigOnly=true", "commit"];
+
 // main 브랜치로 새 저장소를 만들고 빈 첫 commit을 남긴다(작업 브랜치가 main에서 갈라진다). 실패하면 git이 알려준 이유를, 성공하면 빈 문자열을 돌려준다.
 // commit 작성자가 설정되지 않았으면 지어내지 않고 git의 안내를 그대로 알린다.
 const initGitRepo = async (dir, { git = "git", env = process.env } = {}) => {
-    return runGitSteps(git, [...INIT_MAIN_STEPS, ["commit", "--allow-empty", "-m", "init"]], { cwd: dir, env: env });
+    return runGitSteps(git, [...INIT_MAIN_STEPS, [...COMMIT, "--allow-empty", "-m", "init"]], { cwd: dir, env: env });
 };
 
 const readGitConfig = (git, key, env) => {
@@ -142,7 +145,7 @@ const createProject = async ({ parentDir, name, brief, author = null, git = "git
             git,
             [
                 ["add", "--", BRIEF_PATH],
-                ["commit", "-m", "init: 프로젝트 초안(brief.md)"]
+                [...COMMIT, "-m", "init: 프로젝트 초안(brief.md)"]
             ],
             options
         );

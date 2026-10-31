@@ -1374,6 +1374,17 @@ const checkGitInit = async (testDir) => {
     assert.equal(head.stdout.trim(), "main");
     assert.equal(fs.readFileSync(path.join(repoDir, "keep.txt"), "utf8"), "기존 파일\n", "기존 파일은 그대로 둔다");
     assert.notEqual(await initGitRepo(path.join(testDir, "missing"), { env: env }), "", "실패하면 git이 알려준 이유를 돌려준다");
+
+    const guessDir = path.join(testDir, "no-author repo");
+    const emptyConfig = path.join(testDir, "git-init-empty.gitconfig");
+
+    fs.mkdirSync(guessDir);
+    fs.writeFileSync(emptyConfig, "");
+    assert.notEqual(
+        await initGitRepo(guessDir, { env: { ...process.env, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: "1", EMAIL: "guessed@example.invalid" } }),
+        "",
+        "작성자 설정이 없으면 EMAIL로 지어내지 않고 실패한다"
+    );
 };
 
 // 새 프로젝트 초안: 폴더 이름 규칙, Claude 답 해석(코드 블록·잡음·개수·길이·모르는 값), brief.md 만들기와 다듬기.
@@ -1512,7 +1523,8 @@ const checkCreateProject = async (testDir) => {
     const parentDir = path.join(testDir, "create parent 한글");
     const emptyConfig = path.join(testDir, "create-empty.gitconfig");
     const userConfig = path.join(testDir, "create-user.gitconfig");
-    const bareEnv = { ...process.env, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: "1" };
+    // EMAIL이 있으면 설정 없이도 git이 작성자를 지어낸다(macOS는 호스트 이름으로도). 어느 OS에서나 그 경우를 재현한다.
+    const bareEnv = { ...process.env, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: "1", EMAIL: "guessed@example.invalid" };
     const userEnv = { ...process.env, GIT_CONFIG_GLOBAL: userConfig, GIT_CONFIG_NOSYSTEM: "1" };
     const git = (cwd, ...args) => spawnSync("git", args, { cwd: cwd, env: bareEnv, encoding: "utf8" }).stdout.trim();
     const brief = "# hanbit-booking\n\n미용실 예약\u0000 웹앱\n";
