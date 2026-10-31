@@ -21,6 +21,7 @@ const loadUi = async () => {
         import { StepCard } from "./features/steps/StepCard.jsx";
         import { DocPreview } from "./features/approval/DocPreview.jsx";
         import { TagChips } from "./features/create/TagChips.jsx";
+        import { DetailPane } from "./features/archive/ArchiveSheet.jsx";
         export * from "./selectKeys.js";
         export * from "./lib/buildSteps.js";
         export { ALLOW_KEYS, ON_FAIL_CHOICES, PHASE_LABELS } from "./lib/constants.js";
@@ -35,6 +36,7 @@ const loadUi = async () => {
         export const renderStepCard = (props) => renderToStaticMarkup(createElement(StepCard, props));
         export const renderDocPreview = (props) => renderToStaticMarkup(createElement(DocPreview, props));
         export const renderTagChips = (props) => renderToStaticMarkup(createElement(TagChips, props));
+        export const renderDetailPane = (props) => renderToStaticMarkup(createElement(DetailPane, props));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -562,6 +564,15 @@ const checkTagChips = ({ renderTagChips }) => {
     assert.doesNotMatch(renderTagChips({ label: "어디서", items: [], onToggle: () => {} }), /<input/, "더할 수 없는 묶음에는 입력 칸이 없다");
 };
 
+// 지난 실행을 읽는 동안(detail이 null) 로그 열기·삭제를 누르면 없는 기록의 id를 읽다 오류가 나므로 리포트처럼 꺼 둔다.
+const checkArchiveDetailButtons = ({ renderDetailPane }) => {
+    const getDisabled = (html) => ["archive-report", "archive-log", "archive-delete"].map((id) => new RegExp(`id="${id}" disabled=""`).test(html));
+
+    assert.deepEqual(getDisabled(renderDetailPane({ detail: null, view: null, hidden: false })), [true, true, true], "읽는 중에는 기록 버튼을 모두 끈다");
+    assert.deepEqual(getDisabled(renderDetailPane({ detail: { run: { id: "r1", hasReport: true } }, view: null, hidden: false })), [false, false, false]);
+    assert.deepEqual(getDisabled(renderDetailPane({ detail: { run: { id: "r1", hasReport: true, isUnreadable: true, isActive: true } }, view: null, hidden: false })), [false, true, true]);
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
@@ -577,6 +588,7 @@ const checkUi = async () => {
     checkInlineControls(ui);
     checkRunSteps(ui);
     checkTagChips(ui);
+    checkArchiveDetailButtons(ui);
     checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");

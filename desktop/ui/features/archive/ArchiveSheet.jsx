@@ -160,11 +160,11 @@ const DetailPane = ({ detail, view, hidden }) => {
                         <Icon symbol="icon-out" />
                         리포트 열기
                     </Button>
-                    <Button id="archive-log" disabled={Boolean(run?.isUnreadable)} onClick={() => openArchiveFile("log")}>
+                    <Button id="archive-log" disabled={!run || run.isUnreadable} onClick={() => openArchiveFile("log")}>
                         <Icon symbol="icon-lines" />
                         원본 로그 열기
                     </Button>
-                    <Button id="archive-delete" variant="danger" disabled={Boolean(run?.isActive)} onClick={deleteArchiveRun}>
+                    <Button id="archive-delete" variant="danger" disabled={!run || run.isActive} onClick={deleteArchiveRun}>
                         기록 삭제
                     </Button>
                 </div>
@@ -225,4 +225,4 @@ const ArchiveSheet = () => {
     );
 };
 
-export { ArchiveSheet };
+export { ArchiveSheet, DetailPane };
