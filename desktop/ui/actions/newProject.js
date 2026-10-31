@@ -71,15 +71,19 @@ const writeManually = (notice = "") => {
     newProject.set({ step: "refine", isDrafting: false, isRevealing: false, isDrafted: false, notice: notice, draft: createDraft({ summary: what.trim() }) });
 };
 
+// 그만두고 바로 다시 요청하면 앞 요청의 CANCELED가 늦게 와 새 요청을 끝내므로 마지막 요청의 응답만 받는다.
+let draftSeq = 0;
+
 // Claude 초안을 받아 다듬기로 간다. 고른 실행 환경이 없으면 초안이 고른 것을 쓴다. 실패하면 적은 내용을 그대로 두고 직접 채우게 한다.
 const requestDraft = async () => {
     const { what, platforms } = newProject.get();
+    const seq = ++draftSeq;
 
     newProject.set({ isDrafting: true, notice: "" });
 
     const result = await window.autopilot.draftProject({ what: what, platforms: platforms });
 
-    if (!newProject.get().isDrafting) {
+    if (seq !== draftSeq || !newProject.get().isDrafting) {
         return;
     }
 

@@ -1203,9 +1203,18 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     assert.equal(read().step, "write");
     assert.equal(read().isDrafting, false);
 
+    // 그만두고 바로 다시 요청하면 앞 요청의 그만둔 응답이 늦게 와도 새 요청을 끝내지 않는다.
+    const stale = newProjectActions.requestDraft();
+    const resolveStale = pendingDraft;
+
+    newProjectActions.cancelDraft();
+
     // 고른 실행 환경이 없으면 초안의 것을 쓰고, 추천 스택이 있으면 추천대로가 기본이다.
     const drafted = newProjectActions.requestDraft();
 
+    resolveStale({ status: "FAILED", error: { code: "CANCELED", msg: "초안 만들기를 그만뒀어요." } });
+    await stale;
+    assert.equal(read().isDrafting, true);
     pendingDraft(OK({ draft: draft }));
     await drafted;
     assert.deepEqual(requests.at(-1), ["draft", { what: "미용실 예약", platforms: [] }]);
