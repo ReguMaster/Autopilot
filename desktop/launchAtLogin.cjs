@@ -15,8 +15,11 @@ const getLaunchPath = () => {
     return process.env.PORTABLE_EXECUTABLE_FILE || process.env.APPIMAGE || process.execPath;
 };
 
+// 읽는 쪽은 값의 문자열 이스케이프(\\)를 먼저 풀고 필드 코드(%)를 펼친 뒤 인자 따옴표를 푼다. 쓸 때는 그 반대 순서로 감싼다.
 const quoteExecArg = (value) => {
-    return `"${String(value).replace(/(["`$\\])/g, "\\$1")}"`;
+    const quoted = `"${String(value).replace(/(["`$\\])/g, "\\$1")}"`;
+
+    return quoted.replace(/%/g, "%%").replace(/\\/g, "\\\\");
 };
 
 // freedesktop 자동 시작 항목. Exec의 경로는 공백을 위해 따옴표로 감싸고 특수 문자를 이스케이프한다.

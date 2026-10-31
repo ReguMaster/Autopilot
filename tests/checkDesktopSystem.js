@@ -16,9 +16,10 @@ const checkDesktopEntry = () => {
     assert(entry.endsWith("\n"));
     assert.equal(HIDDEN_ARG, "--hidden");
 
-    const escaped = buildDesktopEntry('/home/a"b/$HOME/`x`\\y');
+    // 명세의 예처럼 $는 \\$, 백슬래시는 \\\\로 쓰고 필드 코드로 읽히지 않게 %는 %%로 쓴다.
+    const escaped = buildDesktopEntry('/home/a"b/$HOME/`x`\\y 100%u');
 
-    assert(escaped.includes('Exec="/home/a\\"b/\\$HOME/\\`x\\`\\\\y" --hidden'));
+    assert(escaped.includes('Exec="/home/a\\\\"b/\\\\$HOME/\\\\`x\\\\`\\\\\\\\y 100%%u" --hidden'));
 };
 
 // 알림: 종류별로 끄고 켜며, 창을 보고 있을 때는 따로 켠 경우에만 보낸다. 강제 종료는 알리지 않는다.
