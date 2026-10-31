@@ -216,12 +216,15 @@ const getDebateSynthesisPrompt = (runState) => {
     ].join(" ");
 };
 
+const DEBATE_FORMAT =
+    '답은 인사 · 설명 · 코드 블록 없이 이 JSON 하나만 쓴다: {"message": "1인칭 해요체로 300자 이내의 발언", "agree": ["동의하는 점과 근거"], "disagree": [{"point": "반대하는 점", "reason": "이유"}], "improve": ["더 개선할 점"], "changes": ["네 안에서 바꾸기로 한 점"], "consensus": false}';
+
 // 협의의 규칙과 답의 형식. 근거 없이 상대를 따라가지 않게 한다.
 const DEBATE_RULES = [
     "규칙: 동의하는 점에는 근거를, 반대하는 점에는 이유를 반드시 적는다. 근거 없이 상대 주장을 받아들이거나 양보하지 않는다. 같은 생각이면 억지로 반대하지 않는다.",
     "안의 완성도에 영향을 주는 개선점이 남았으면 improve에 적는다. 표현 · 취향 차이 같은 사소한 것은 적지 않는다. 상대의 개선점은 받아들여 changes에 적거나 이유를 들어 반대한다.",
     "반대할 점이나 개선점이 하나라도 남았으면 consensus는 false다. 둘 다 더 고칠 것이 없다고 할 때까지 이어지고, 협의가 끝나면 사용자는 합의안과 못 맞춘 쟁점만 본다.",
-    '답은 인사 · 설명 · 코드 블록 없이 이 JSON 하나만 쓴다: {"message": "1인칭 해요체로 300자 이내의 발언", "agree": ["동의하는 점과 근거"], "disagree": [{"point": "반대하는 점", "reason": "이유"}], "improve": ["더 개선할 점"], "changes": ["네 안에서 바꾸기로 한 점"], "consensus": false}'
+    DEBATE_FORMAT
 ].join("\n");
 
 const MAX_DEBATE_DOC_LENGTH = 60000;
@@ -286,6 +289,11 @@ const getDebateReplyPrompt = (runState, otherTurn, exchange) => {
     return [`${PROVIDER_LABELS[otherTurn.provider]}의 답: ${JSON.stringify(getTurnBody(otherTurn))}`, `지금은 ${exchange}/${runState.debateTurns}번째 주고받기다.${lastPrompt}`, DEBATE_RULES].join(
         "\n\n"
     );
+};
+
+// 답을 JSON으로 읽지 못했을 때 같은 대화에서 형식만 고쳐 다시 받는다.
+const getDebateFormatPrompt = () => {
+    return `방금 답은 정해진 JSON으로 읽을 수 없었다. 발언 내용은 그대로 두고 형식만 고쳐 다시 답한다. 문자열 안의 큰따옴표는 \\"로 쓴다.\n${DEBATE_FORMAT}`;
 };
 
 // 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
@@ -470,4 +478,4 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
     return `${roundPrompt}\n\n${tasksBlock}${phaseBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix, runState.mode)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch, runState.mode === MODE_BUILD ? runState.allow : null)}\n</AUTOPILOT_POLICY.md>`;
 };
 
-export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt, getDebateOpeningPrompt, getDebateReplyPrompt };
+export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt, getDebateOpeningPrompt, getDebateReplyPrompt, getDebateFormatPrompt };

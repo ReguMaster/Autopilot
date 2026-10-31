@@ -799,7 +799,7 @@ const readPhaseArtefact = (projectDir, phase) => {
 };
 
 // 협의: 메인과 보조(Claude와 Codex)가 각자 같은 대화를 이어 가며 최대 runState.debateTurns번 주고받는다. 한 번은 메인이 말하고 보조가 답하는 것이다.
-// 연달아 둘 다 합의(반대도 남은 개선점도 없음)라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면 null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
+// 연달아 둘 다 합의(반대도 남은 개선점도 없음)라고 하면 일찍 끝낸다. 어느 쪽이든 답을 못 받으면(형식이 틀린 답은 한 번 다시 받는다) null이고, 단계는 나란히 비교로 넘어간다(회차 실패로 세지 않는다).
 const runDebate = async (context, loopState) => {
     const { env, runState, writeLog } = context;
     const { phase, projectDir } = runState;
@@ -831,6 +831,14 @@ const runDebate = async (context, loopState) => {
         return skip(codexReady.error);
     }
 
+    const askTurn = (provider, prompt, sessionId) => {
+        if (provider === PROVIDER_CLAUDE) {
+            return providerUtil.askClaude(getClaudeCall(context, { sessionId: sessionId }), prompt, getCallOptions());
+        }
+
+        return providerUtil.askProvider(PROVIDER_CODEX, codexReady, prompt, getCallOptions(), sessionId);
+    };
+
     writeLog(`[협의] ${PHASE_LABELS[phase]} 시작 (최대 ${runState.debateTurns}번)`);
 
     for (let exchange = 1; exchange <= runState.debateTurns; exchange++) {
@@ -840,18 +848,22 @@ const runDebate = async (context, loopState) => {
             const prompt = sessionIds[provider]
                 ? promptUtil.getDebateReplyPrompt(runState, previous, exchange)
                 : promptUtil.getDebateOpeningPrompt(runState, provider, { docs: docs, lastTurn: previous ?? null, transcript: turns.slice(0, -1) });
-            const answer =
-                provider === PROVIDER_CLAUDE
-                    ? await providerUtil.askClaude(getClaudeCall(context, { sessionId: sessionIds[PROVIDER_CLAUDE] }), prompt, getCallOptions())
-                    : await providerUtil.askProvider(PROVIDER_CODEX, codexReady, prompt, getCallOptions(), sessionIds[PROVIDER_CODEX]);
-            const turn = answer.text ? debateUtil.parseTurn(answer.text) : null;
+            let answer = await askTurn(provider, prompt, sessionIds[provider]);
+            let turn = answer.text ? debateUtil.parseTurn(answer.text) : null;
+            const sessionId = answer.sessionId || sessionIds[provider];
+
+            // 답은 왔는데 형식만 틀렸으면 같은 대화에서 한 번 다시 받는다. 한 번의 형식 실수로 그때까지의 협의를 버리지 않게 한다.
+            if (answer.text && !turn && sessionId) {
+                answer = await askTurn(provider, promptUtil.getDebateFormatPrompt(), sessionId);
+                turn = answer.text ? debateUtil.parseTurn(answer.text) : null;
+            }
 
             // Claude는 세션 아이디가 있어야 같은 대화를 이을 수 있다.
-            if (!turn || (provider === PROVIDER_CLAUDE && !(answer.sessionId || sessionIds[provider]))) {
+            if (!turn || (provider === PROVIDER_CLAUDE && !(answer.sessionId || sessionId))) {
                 return skip(`${PROVIDER_LABELS[provider]} 답을 받지 못했어요(${answer.error || "형식이 맞지 않아요"})`);
             }
 
-            sessionIds[provider] = answer.sessionId || sessionIds[provider];
+            sessionIds[provider] = answer.sessionId || sessionId;
             turns.push({ provider: provider, ...turn });
             writeLog(`[협의] ${PROVIDER_LABELS[provider]}: ${turn.message}`);
 

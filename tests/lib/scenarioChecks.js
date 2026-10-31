@@ -759,6 +759,28 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(failDir)).proposals, { phase: "plan", candidates: ["claude", "codex"], picked: null });
     assert.equal(phaseUtil.readPhase(getPhaseFile(failDir)).debate, null);
 
+    // 답의 형식이 한 번 틀리면 협의를 버리지 않고 같은 대화에서 형식만 고쳐 다시 받는다.
+    const formatDir = createProject("debate format 한글");
+    const formatRun = await runDebate(formatDir, { env: { AP_DEBATE: "consensus", AP_CODEX_DEBATE_BAD_AT: "1" } });
+    const formatCodexCalls = fs
+        .readFileSync(codexLog, "utf8")
+        .split("---\n")
+        .filter((call) => call.startsWith("exec resume"));
+
+    assert.equal(formatRun.status, STATUS_OK, formatRun.error?.msg);
+    assert.deepEqual(getLines(formatRun), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 8번)",
+        "[협의] Claude: 좋아요, Codex 안의 화면 묶기를 받을게요.",
+        "[협의] Codex: 저도 같은 생각이에요.",
+        "[협의] 합의했어요",
+        "[단계] 기획 완료",
+        "[단계] 기획 확인 대기"
+    ]);
+    assert.equal(formatCodexCalls.length, 1);
+    assert.match(formatCodexCalls[0], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 [^\n]*\n방금 답은 정해진 JSON으로 읽을 수 없었다/);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(formatDir)).debate, { phase: "plan", disputes: [], resolved: null });
+
     // 협의 중에 중단하면 나란히 비교로 넘기지 않고 끝내며, 다음 실행이 그 단계와 협의를 다시 한다.
     const stopDir = createProject("debate stop 한글");
     const stopRun = await runDebate(stopDir, { env: { AP_CODEX_DEBATE_STOP_AT: "1" } });
