@@ -786,6 +786,7 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
 
     // 여러 AI 브레인스토밍 줄도 이야기와 지난 실행 대화에 한 문장으로 남는다.
     assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 받는 중"), "Codex가 기획 안을 따로 쓰고 있어요. 끝나면 Claude가 시작해요.");
+    assert.equal(describeStepLine("[브레인스토밍] Claude 기획 안 받는 중"), "Claude가 기획 안을 따로 쓰고 있어요. 끝나면 Codex가 시작해요.");
     assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 진행 3분째 (최대 30분): 명령 5번 실행"), "", "경과 줄은 카드만 보여 준다");
     assert.equal(describeStepLine("[브레인스토밍] Codex 기획 안 진행 2분째 (최대 30분): 마지막으로 안 받음"), "", "활동 글이 상태 줄을 흉내 내도 경과 줄이다");
     assert.equal(describeStepLine("[브레인스토밍] Codex 디자인 안 건너뜀: usage limit reached"), "Codex의 디자인 안은 건너뛸게요. (usage limit reached)");

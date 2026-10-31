@@ -835,10 +835,12 @@ const describeBrainstormLine = (text) => {
 
     const [, provider, label, kind, status, reason] = line;
     const why = reason ? ` (${reason})` : "";
+    // 안을 따로 쓰는 쪽은 보조이고, 받은 뒤 회차를 시작하는 쪽은 그 반대인 메인이다.
+    const main = provider === "Claude" ? "Codex" : "Claude";
     const sentences =
         kind === "안"
             ? {
-                  "받는 중": `${provider}가 ${label} 안을 따로 쓰고 있어요. 끝나면 Claude가 시작해요.`,
+                  "받는 중": `${provider}가 ${label} 안을 따로 쓰고 있어요. 끝나면 ${main}가 시작해요.`,
                   받음: `${provider}의 ${label} 안을 받았어요.`,
                   건너뜀: `${provider}의 ${label} 안은 건너뛸게요.${why}`
               }
