@@ -849,7 +849,7 @@ const checkModal = async ({ modalStore }) => {
 };
 
 // 메인이 projectDir을 단 이벤트: 지금 보는 프로젝트의 것만 반영하고, 프로젝트를 고르면 응답의 상태·로그로 바꾼다.
-const checkProjectEvents = async ({ events, runStore, appStore, run }) => {
+const checkProjectEvents = async ({ events, runStore, runsStore, appStore, run }) => {
     const view = (projectDir) => ({
         settings: { projectDir: projectDir, tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high" },
         overridden: [],
@@ -913,6 +913,30 @@ const checkProjectEvents = async ({ events, runStore, appStore, run }) => {
 
     assert.equal(runStore.getRunState().round, 2, "상태가 없는 응답(파일 선택 취소 등)은 상태·로그를 건드리지 않는다");
     assert.deepEqual(readLogs(), ["B 기록"]);
+
+    // 승인하는 동안 다른 탭으로 옮기면 승인한 프로젝트의 단계로 기억하고, 옮긴 프로젝트를 대신 시작하지 않는다.
+    const approved = { phase: "design", awaiting: null, qaRetries: 0 };
+    const calls = [];
+
+    appStore.applySettingsView(view("/a"));
+    runsStore.useRunsStore.setState({ phases: {}, buildPhase: null });
+    window.autopilot.approvePhase = async (projectDir) => {
+        calls.push(["approvePhase", projectDir]);
+        appStore.applySettingsView(view("/b"));
+
+        return OK({ phase: approved });
+    };
+    window.autopilot.start = async () => {
+        calls.push(["start"]);
+
+        return OK();
+    };
+
+    await run.approveAndStart();
+
+    assert.deepEqual(calls, [["approvePhase", "/a"]]);
+    assert.deepEqual(runsStore.useRunsStore.getState().phases, { "/a": approved });
+    assert.equal(runsStore.useRunsStore.getState().buildPhase, null);
 };
 
 // 탭: 전환하면 그 프로젝트의 설정·상태·로그로 바뀌고, 쓰던 작업은 돌아오면 되살아나며, 다른 탭을 닫아도 보던 화면은 그대로다.
