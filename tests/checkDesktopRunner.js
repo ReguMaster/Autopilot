@@ -1289,7 +1289,13 @@ const checkBuildLogs = () => {
             ["codex", "넣어요", true]
         ]
     );
-    assert.deepEqual({ ...debateState.debate, turns: [] }, { phaseLabel: "기획", maxTurns: 3, status: "running", turns: [], turnCount: 2, disputes: 0, reason: "" });
+    assert.deepEqual({ ...debateState.debate, turns: [] }, { phaseLabel: "기획", maxTurns: 3, firstProvider: "claude", status: "running", turns: [], turnCount: 2, disputes: 0, reason: "" });
+
+    const codexMainDebate = createInitialState();
+
+    parseLine(codexMainDebate, "[1회차] 시작 - 남은 시간 299분 (Codex, model gpt-6.1-sol, effort high)");
+    parseLine(codexMainDebate, "[협의] 기획 시작 (최대 3번)");
+    assert.equal(codexMainDebate.debate.firstProvider, "codex", "Codex가 메인인 단계는 Codex가 먼저 말한다");
     parseLine(debateState, "[협의] Claude: 다시 읽은 말", true);
     assert.equal(debateState.debate.turns.at(-1).at, 0, "로그를 다시 읽은 발언은 시각을 알 수 없다");
 

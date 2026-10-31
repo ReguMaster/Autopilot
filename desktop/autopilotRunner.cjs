@@ -208,7 +208,8 @@ const applyDebateLine = (state, line, isReplay) => {
     const start = line.match(DEBATE_START_PATTERN);
 
     if (start) {
-        state.debate = { phaseLabel: start[1], maxTurns: Number(start[2]), status: "running", turns: [], turnCount: 0, disputes: 0, reason: "" };
+        // 협의는 그 단계의 회차를 돌린 메인이 먼저 말한다.
+        state.debate = { phaseLabel: start[1], maxTurns: Number(start[2]), firstProvider: state.runner, status: "running", turns: [], turnCount: 0, disputes: 0, reason: "" };
 
         return true;
     }

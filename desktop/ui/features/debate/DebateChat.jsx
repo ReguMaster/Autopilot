@@ -4,6 +4,7 @@ import { Blocks, lexMarkdown } from "../../components/Markdown.jsx";
 import { ProviderAvatar } from "../../components/ProviderAvatar.jsx";
 import { PROVIDER_LABELS } from "../../lib/constants.js";
 import { cx } from "../../lib/cx.js";
+import { getOtherProvider } from "../../lib/phaseAgents.js";
 import { useRunStore } from "../../stores/runStore.js";
 import "./Debate.css";
 
@@ -180,7 +181,8 @@ const DebateChat = () => {
         return null;
     }
 
-    const nextProvider = shown.turns.at(-1)?.provider === "claude" ? "codex" : "claude";
+    const lastProvider = shown.turns.at(-1)?.provider;
+    const nextProvider = lastProvider ? getOtherProvider(lastProvider) : shown.firstProvider;
     const typing = isLeaving ? "" : nextProvider;
     const exchange = Math.min(Math.floor(turnCount / 2) + 1, shown.maxTurns);
 
