@@ -750,6 +750,26 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
     assert.match(failCodexCalls[1], /^exec -s read-only --color never -\n[\s\S]*지금까지 주고받은 말:\nClaude: [\s\S]*Codex: /);
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(failDir)).proposals, { phase: "plan", candidates: ["claude", "codex"], picked: null });
     assert.equal(phaseUtil.readPhase(getPhaseFile(failDir)).debate, null);
+
+    // 협의 중에 중단하면 나란히 비교로 넘기지 않고 끝내며, 다음 실행이 그 단계와 협의를 다시 한다.
+    const stopDir = createProject("debate stop 한글");
+    const stopRun = await runDebate(stopDir, { env: { AP_CODEX_DEBATE_STOP_AT: "1" } });
+
+    assert.equal(stopRun.status, STATUS_OK, stopRun.error?.msg);
+    assert.equal(stopRun.data.reason, "중단 요청");
+    assert.deepEqual(getLines(stopRun), [
+        "[단계] 기획 시작",
+        "[협의] 기획 시작 (최대 8번)",
+        "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",
+        "[협의] 건너뜀: Codex 답을 받지 못했어요(중단 요청)"
+    ]);
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)), { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null });
+
+    const resumeRun = await runDebate(stopDir, { env: { AP_DEBATE: "consensus" } });
+
+    assert.equal(resumeRun.status, STATUS_OK, resumeRun.error?.msg);
+    assert.equal(resumeRun.data.reason, "기획 확인 대기");
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)).debate, { phase: "plan", disputes: [], resolved: null });
 };
 
 // 하이브리드: 단계마다 메인 AI(그 단계의 회차를 돌린다)를 고르고, 보조는 늘 반대쪽 AI다. Claude가 보조일 때도 안 · 검토 · 협의가 같은 흐름이다.

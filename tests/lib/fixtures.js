@@ -165,6 +165,7 @@ process.stdin.on("end", () => {
     process.exit(1);
   }
   // 협의 발언. 세션 아이디를 stderr 머리말에 남기고(AP_CODEX_NO_SESSION=1이면 안 남김) AP_CODEX_DEBATE_FAIL_AT번째 발언에서 실패한다.
+  // AP_CODEX_DEBATE_STOP_AT번째 발언에서는 중단 요청을 남기고 엔진이 끝낼 때까지 답하지 않는다.
   if (prompt.includes("협의에 참여한 Codex") || args[1] === "resume") {
     const turnsFile = process.env.AP_CODEX_LOG + ".turns";
     const turn = (fs.existsSync(turnsFile) ? Number(fs.readFileSync(turnsFile, "utf8")) : 0) + 1;
@@ -172,6 +173,11 @@ process.stdin.on("end", () => {
     if (Number(process.env.AP_CODEX_DEBATE_FAIL_AT || 0) === turn) {
       console.error("usage limit reached");
       process.exit(1);
+    }
+    if (Number(process.env.AP_CODEX_DEBATE_STOP_AT || 0) === turn) {
+      fs.writeFileSync(".autopilot/progress/STOP", "");
+      setTimeout(() => process.exit(1), 30000);
+      return;
     }
     if (process.env.AP_CODEX_NO_SESSION !== "1") console.error("OpenAI Codex\nsession id: 01a18d02-d1e7-7b20-831e-d85c25a2b4f2\n--------");
     console.log(JSON.stringify(process.env.AP_DEBATE === "consensus"

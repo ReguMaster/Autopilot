@@ -883,7 +883,8 @@ const applyPhaseDone = async (context, loopState) => {
     const readyProviders = assistant ? Object.keys(runState.proposalReady) : [];
     const isDebatePhase = Boolean(assistant && runState.debate?.includes(phase) && runState.proposalReady?.[assistant]);
 
-    if (isDebatePhase && runState.debateStage !== "synthesis" && (await startDebate(context, loopState))) {
+    // 중단 요청이 있으면 협의를 시작하지 않고, 협의가 중단으로 끊겨도 나란히 비교로 넘기지 않는다. 다음 실행이 그 단계와 협의를 다시 한다.
+    if (isDebatePhase && runState.debateStage !== "synthesis" && (isStopRequested(context, loopState) || (await startDebate(context, loopState)) || isStopRequested(context, loopState))) {
         return false;
     }
 
