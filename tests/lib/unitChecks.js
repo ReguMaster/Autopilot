@@ -663,6 +663,15 @@ const checkPhaseRules = (context) => {
     assert.equal(getPhaseTransition({ ...plan, phase: "qa" }, "fail", [], { qa: 0, security: 3 }).event, "failed");
     assert.deepEqual(getPhaseTransition({ ...plan, phase: "qa", qaRetries: 2 }, "pass", [], limits), { state: { ...plan, phase: "security", qaRetries: 2 }, event: "next" });
 
+    // 첫 줄의 `fail`을 꾸미거나 이유를 붙여도 실패다.
+    ["`fail`", "**FAIL**", "fail: 2건 실패", "fail - 로그인 오류"].forEach((result) => {
+        assert.equal(getPhaseTransition({ ...plan, phase: "qa" }, result, [], limits).event, "retry", result);
+        assert.equal(getPhaseTransition({ ...plan, phase: "security" }, result, [], limits).event, "retry", result);
+    });
+    ["pass", "`pass`", "pass (실패 0건)", "0 failures"].forEach((result) => {
+        assert.equal(getPhaseTransition({ ...plan, phase: "qa" }, result, [], limits).event, "next", result);
+    });
+
     // 보안검토는 테스트/QA와 따로 센다. 테스트/QA를 다 써도 보안검토는 자기 횟수만큼 되돌린다.
     assert.deepEqual(getPhaseTransition({ ...plan, phase: "security", qaRetries: 3 }, "fail", [], limits), { state: { ...plan, phase: "build", qaRetries: 3, securityRetries: 1 }, event: "retry" });
     assert.equal(getPhaseTransition({ ...plan, phase: "security", securityRetries: 2 }, "fail", [], limits).event, "failed");
