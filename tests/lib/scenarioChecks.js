@@ -1132,6 +1132,37 @@ const checkTasksRequired = async (context, fakeCliFile) => {
     }
 };
 
+// commit 안 된 파일이 아주 많아 종료 요약의 git status가 출력 한도(1MB)를 넘어도 실행은 정상 종료하고 종료 리포트를 남긴다.
+const checkHugeWorkTree = async (context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "huge work tree project");
+
+    fs.mkdirSync(projectDir);
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+
+    commitInitialProject(context, projectDir);
+
+    for (let index = 0; index < 20000; index++) {
+        fs.writeFileSync(path.join(projectDir, `${"x".repeat(60)}${index}.txt`), "");
+    }
+
+    const result = await runAutopilot({
+        projectDir: projectDir,
+        dataDir: path.join(context.testDir, "appdata"),
+        tasks: DEFAULT_TASKS,
+        command: process.execPath,
+        commandArgs: [fakeCliFile],
+        open: false,
+        endTime: getEndTime(),
+        env: { ...context.testEnv, AP_MODE: "idle", AP_EXPECTED_CWD: projectDir },
+        limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0], resetGraceMs: 0 }
+    });
+
+    assert.equal(result.status, STATUS_OK, result.error?.msg);
+    assert.equal(result.data.exitCode, 0);
+    assert.match(fs.readFileSync(result.data.logFile, "utf8"), /\[오류\] 작업 트리 상태를 읽지 못했습니다: git status 실패/);
+    assert.match(fs.readFileSync(result.data.reportFile, "utf8"), /<h2>작업 트리<\/h2><pre>읽지 못했습니다: git status 실패/);
+};
+
 // autopilot reset-progress가 쓰는 서비스. 실행 중에는 거부하고, 아니면 원본을 보관하고 초기화한다.
 const checkProgressResetCommand = (context) => {
     const projectDir = path.join(context.testDir, "reset command project");
@@ -1680,6 +1711,7 @@ export {
     checkProgressCreated,
     checkUnsupportedFlags,
     checkTasksRequired,
+    checkHugeWorkTree,
     checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,

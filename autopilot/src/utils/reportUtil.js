@@ -75,6 +75,15 @@ const getStatusHtml = (runState, status, isLive, hasError) => {
     return `<div class="box ${hasError ? "bad" : ""}">${escapeHtml(status)}${guideHtml}</div>`;
 };
 
+// 변경 파일이 아주 많으면 git 출력 한도(1MB)를 넘는다. 그때도 종료 리포트는 남긴다.
+const getWorkTreeText = (runGitCommand) => {
+    try {
+        return gitUtil.getShortStatus(runGitCommand) || "깨끗합니다.";
+    } catch (error) {
+        return `읽지 못했습니다: ${error.message}`;
+    }
+};
+
 const getReportHtml = (runState, status, isLive, hasError) => {
     const roundCards = runState.rounds.map(getRoundCardHtml).join("\n");
     const branchName = gitUtil.getBranchName(runState.runGitCommand);
@@ -87,9 +96,7 @@ const getReportHtml = (runState, status, isLive, hasError) => {
 
         tailHtml = recentLog ? `<pre>${escapeHtml(recentLog)}</pre>` : "";
     } else {
-        const gitStatus = gitUtil.getShortStatus(runState.runGitCommand);
-
-        tailHtml = `<h2>작업 트리</h2><pre>${escapeHtml(gitStatus || "깨끗합니다.")}</pre>`;
+        tailHtml = `<h2>작업 트리</h2><pre>${escapeHtml(getWorkTreeText(runState.runGitCommand))}</pre>`;
     }
 
     return `<!doctype html><html lang="ko"><head><meta charset="utf-8">${isLive ? LIVE_RELOAD_SCRIPT : ""}<meta name="viewport" content="width=device-width,initial-scale=1"><title>AutoPilot 리포트</title><style>${REPORT_STYLE}</style></head><body><main><h1>AutoPilot 리포트</h1><p class="meta">${header}</p>${getStatusHtml(runState, status, isLive, hasError)}<div class="tiles">${getSummaryTilesHtml(runState)}</div><h2>회차</h2>${roundCards || "<p>실행된 회차가 없습니다.</p>"}${tailHtml}<p class="meta">전체 로그: ${escapeHtml(runState.logFile)}</p></main></body></html>`;

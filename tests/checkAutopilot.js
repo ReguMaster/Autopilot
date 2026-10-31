@@ -33,6 +33,7 @@ import {
     checkProgressCreated,
     checkUnsupportedFlags,
     checkTasksRequired,
+    checkHugeWorkTree,
     checkProgressResetCommand,
     checkRoundOptions,
     checkProgressCleanupPrompt,
@@ -96,6 +97,7 @@ const checkAutopilot = async () => {
         await checkProgressCreated(scenarioRunner, context, fakeCliFile);
         await checkUnsupportedFlags(scenarioRunner, context);
         await checkTasksRequired(context, fakeCliFile);
+        await checkHugeWorkTree(context, fakeCliFile);
         await checkBuildMode(scenarioRunner, context, fakeCliFile);
         await checkBrainstorm(scenarioRunner, context, fakeCliFile);
         await checkCodexRunner(scenarioRunner, context, fakeCliFile);

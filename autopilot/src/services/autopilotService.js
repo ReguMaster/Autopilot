@@ -1111,8 +1111,13 @@ const finishRun = (context, loopState) => {
             writeLog(`연결 저장소 ${repo.name}`);
         }
 
-        writeLog(gitUtil.getRecentLog(repo.runGitCommand));
-        writeLog(gitUtil.getStatus(repo.runGitCommand));
+        // 종료 요약일 뿐이라 변경 파일이 아주 많아 git 출력 한도(1MB)를 넘어도 실행 결과를 바꾸지 않는다.
+        try {
+            writeLog(gitUtil.getRecentLog(repo.runGitCommand));
+            writeLog(gitUtil.getStatus(repo.runGitCommand));
+        } catch (error) {
+            writeLog(`[오류] 작업 트리 상태를 읽지 못했습니다: ${error.message}`);
+        }
     }
 
     reportUtil.writeRunReport(runState, reason, false, isAborted);
