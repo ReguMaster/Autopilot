@@ -60,10 +60,13 @@ const handleRateLimitEvent = (event, sessionStats, writeLog, eventTime) => {
 };
 
 // 백그라운드 작업 알림으로 같은 세션이 이어지면 result가 한 번 더 온다. num_turns는 이어진 부분만 세고 total_cost_usd는 세션 누적이다.
+// 사용량 한도·API 오류는 subtype이 success여도 is_error라 회차 실패이므로 Codex 실패 줄처럼 실패로 쓴다.
 const handleResultEvent = (event, sessionStats, writeLog, eventTime) => {
     Object.assign(sessionStats, { isError: Boolean(event.is_error), turns: (sessionStats.turns || 0) + (event.num_turns || 0), cost: event.total_cost_usd, summary: event.result });
 
-    writeLog(`${eventTime} [결과] ${event.subtype} · ${event.num_turns}턴 · ${dateUtil.getMinutesFromMs(event.duration_ms)}분 · $${util.formatCost(event.total_cost_usd)}`);
+    const outcome = event.is_error ? "실패" : event.subtype;
+
+    writeLog(`${eventTime} [결과] ${outcome} · ${event.num_turns}턴 · ${dateUtil.getMinutesFromMs(event.duration_ms)}분 · $${util.formatCost(event.total_cost_usd)}`);
 };
 
 // stream-json 한 줄을 해석해 세션 통계와 로그에 반영한다. 하위 도구 이벤트는 무시한다.

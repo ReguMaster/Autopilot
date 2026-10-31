@@ -318,6 +318,10 @@ const getLineKind = ({ stream, text }) => {
         return "warn";
     }
 
+    if (text.includes("[결과] 실패")) {
+        return "err";
+    }
+
     if (text.includes("[결과]")) {
         return "ok";
     }

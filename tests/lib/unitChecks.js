@@ -927,6 +927,17 @@ const checkStreamEvent = () => {
     assert.equal(sessionStats.cost, 4.5);
     assert.equal(sessionStats.summary, "이어진 결과");
 
+    // 사용량 한도로 끝난 세션은 subtype이 success여도 is_error라 실패로 쓴다.
+    const resultLines = [];
+
+    handleStreamEvent(
+        JSON.stringify({ type: "result", subtype: "success", is_error: true, num_turns: 33, duration_ms: 1000, total_cost_usd: 2.85, result: "You've hit your 5-hour limit" }),
+        {},
+        (line) => resultLines.push(line)
+    );
+
+    assert.match(resultLines[0], /\[결과\] 실패 · 33턴/);
+
     // JSON이지만 이벤트가 아닌 줄은 무시한다.
     for (const ignoredLine of ["null", "123", "not json"]) {
         handleStreamEvent(ignoredLine, sessionStats, () => {});

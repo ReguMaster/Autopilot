@@ -45,6 +45,7 @@ const checkLineKind = ({ getLineKind }) => {
         [{ stream: "out", text: "AutoPilot 종료 - 예정 시각 도달 (3회차)" }, "round"],
         [{ stream: "out", text: "[사용량 한도] 05:30까지 대기" }, "warn"],
         [{ stream: "out", text: "12:00:00 [결과] success · 3턴" }, "ok"],
+        [{ stream: "out", text: "12:00:00 [결과] 실패 · 33턴" }, "err"],
         [{ stream: "out", text: "12:00:00   > Bash ls" }, "tool"],
         [{ stream: "out", text: "12:00:00 일반 출력" }, ""],
         // 들여쓴 이어지는 줄은 제어 줄로 취급하지 않는다.
