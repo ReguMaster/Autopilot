@@ -128,6 +128,21 @@ const openTab = async () => {
     }
 };
 
+// 메인은 엔진 상태를 확인한 뒤 그때 활성인 탭의 설정에 요청한 탭의 상태·로그를 담아 응답한다.
+// 탭을 잇달아 누르면 앞 요청의 응답이 새 탭의 설정에 앞 탭의 상태·로그를 덮으므로 마지막 요청의 응답만 반영한다.
+let switchSeq = 0;
+
+const requestSwitch = async (request) => {
+    const seq = ++switchSeq;
+    const result = await request();
+
+    ui.showFailure(result);
+
+    if (result.status === STATUS_OK && seq === switchSeq) {
+        applyProjectSwitch(result.data);
+    }
+};
+
 // 새 프로젝트 화면을 보고 있었으면 닫고 그 탭을 보인다.
 const activateTab = async (projectDir) => {
     ui.set({ newProject: false });
@@ -136,13 +151,7 @@ const activateTab = async (projectDir) => {
         return;
     }
 
-    const result = await window.autopilot.activateTab(projectDir);
-
-    ui.showFailure(result);
-
-    if (result.status === STATUS_OK) {
-        applyProjectSwitch(result.data);
-    }
+    await requestSwitch(() => window.autopilot.activateTab(projectDir));
 };
 
 const getScheduleCount = (projectDir) => {
@@ -165,13 +174,7 @@ const closeTab = async (projectDir) => {
         }
     }
 
-    const result = await window.autopilot.closeTab(projectDir);
-
-    ui.showFailure(result);
-
-    if (result.status === STATUS_OK) {
-        applyProjectSwitch(result.data);
-    }
+    await requestSwitch(() => window.autopilot.closeTab(projectDir));
 };
 
 export { applyProjectSwitch, confirmGitInit, openTab, activateTab, closeTab };

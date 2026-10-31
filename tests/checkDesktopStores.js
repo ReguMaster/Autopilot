@@ -1158,6 +1158,31 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
     await pendingOpen;
     assert.deepEqual(initCalls, [[]]);
     assert.equal(appStore.useAppStore.getState().settings.projectDir, "/new");
+
+    // 탭을 잇달아 누르면 메인은 두 응답 모두 그때 활성인 /c의 설정에 요청한 탭의 상태를 담는다. 먼저 온 /b의 응답이 /c의 상태·로그로 남지 않는다.
+    const replies = {};
+
+    window.autopilot.activateTab = (dir) => {
+        return new Promise((resolve) => {
+            replies[dir] = () => {
+                resolve(
+                    OK({ ...view("/c"), tabs: list("/c", ["/a", "/b", "/c"]), state: createState({ status: "idle", round: dir === "/b" ? 7 : 3 }), logs: [{ stream: "out", text: `${dir} 기록` }] })
+                );
+            };
+        });
+    };
+
+    const toB = tabs.activateTab("/b");
+    const toC = tabs.activateTab("/c");
+
+    replies["/b"]();
+    await toB;
+    replies["/c"]();
+    await toC;
+
+    assert.equal(appStore.useAppStore.getState().settings.projectDir, "/c");
+    assert.equal(runStore.getRunState().round, 3, "앞 탭의 늦은 응답이 새 탭의 상태를 덮지 않는다");
+    assert.deepEqual(readLogs(), ["/c 기록"]);
 };
 
 const checkStoryView = ({ storyModel }) => {
