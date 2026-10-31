@@ -318,7 +318,7 @@ const checkBrainstormRules = (context) => {
     assert.throws(() => parseApproveArgs([...project, "--pick", "gpt"]), /--pick/);
 
     const { getPhaseTransition, getStartPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
     const limits = { qa: 3, security: 3 };
     const proposals = { phase: "plan", candidates: ["claude", "codex"], picked: null };
 
@@ -547,7 +547,7 @@ const checkDebateRules = (context) => {
 
     // 협의를 마친 단계는 확인받기 설정과 상관없이 멈추고, 돌려보내면 협의도 다시 한다. 협의가 생기기 전의 상태 파일은 debate가 null이다.
     const { getPhaseTransition, getStartPhase, readPhase } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
     const oldPhaseFile = path.join(context.testDir, "old-phase.json");
 
     assert.deepEqual(getPhaseTransition(plan, "pass", [], { qa: 3, security: 3 }, [], debate), { state: { ...plan, phase: "design", awaiting: "plan", debate: debate }, event: "await" });
@@ -648,7 +648,7 @@ const checkDebateRules = (context) => {
 // 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA·보안검토 실패는 단계마다 정한 횟수까지 개발로 되돌린다.
 const checkPhaseRules = (context) => {
     const { getPhaseTransition, getStartPhase, readPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
     const limits = { qa: 3, security: 2 };
 
     assert.deepEqual(getPhaseTransition(plan, "pass", [], limits), { state: { ...plan, phase: "design" }, event: "next" });
@@ -664,8 +664,8 @@ const checkPhaseRules = (context) => {
     assert.equal(getPhaseTransition({ ...plan, phase: "security", securityRetries: 2 }, "fail", [], limits).event, "failed");
     assert.deepEqual(getPhaseTransition({ ...plan, phase: "security", securityRetries: 1 }, "pass", [], limits), { state: { ...plan, phase: "done", securityRetries: 1 }, event: "done" });
 
-    // 승인 없이 다시 시작하면 확인을 기다리던 단계를 다시 한다.
-    assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan" }), { state: plan, isRevision: true });
+    // 승인 없이 다시 시작하면 확인을 기다리던 단계를 다시 한다. 받아 둔 다른 AI의 안도 다시 받는다.
+    assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan", receivedProposal: "plan" }), { state: plan, isRevision: true });
     assert.deepEqual(getStartPhase(plan), { state: plan, isRevision: false });
 
     assert.equal(phaseUtil.parseOnFail("retry:5"), 5);
@@ -675,6 +675,8 @@ const checkPhaseRules = (context) => {
     assert(!isPhaseState({ ...plan, awaiting: "qa" }));
     assert(!isPhaseState({ ...plan, qaRetries: -1 }));
     assert(!isPhaseState({ ...plan, securityRetries: 1.5 }));
+    assert(isPhaseState({ ...plan, receivedProposal: "design" }));
+    assert(!isPhaseState({ ...plan, receivedProposal: "build" }));
     assert.deepEqual(readPhase(path.join(path.sep, "missing", "PHASE.json")), plan);
 
     // 보안검토가 생기기 전에 쓴 PHASE.json(securityRetries 없음)도 그대로 이어받는다.
@@ -682,7 +684,7 @@ const checkPhaseRules = (context) => {
 
     fs.mkdirSync(path.dirname(oldPhaseFile), { recursive: true });
     fs.writeFileSync(oldPhaseFile, JSON.stringify({ phase: "qa", awaiting: null, qaRetries: 2 }));
-    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null, debate: null });
+    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
     fs.writeFileSync(oldPhaseFile, "null");
     assert.deepEqual(readPhase(oldPhaseFile), plan);
 

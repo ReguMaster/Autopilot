@@ -16,7 +16,7 @@ import {
 } from "./config.js";
 import debateUtil from "./debateUtil.js";
 
-const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null };
+const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
 const RETRY_PATTERN = /^retry:(\d+)$/;
 // fail을 남기면 개발로 되돌리는 단계와 그 단계가 되돌린 횟수를 세는 키
 const RETRY_KEYS = { qa: "qaRetries", security: "securityRetries" };
@@ -54,18 +54,28 @@ const isPhaseState = (state) => {
         isCount(state.qaRetries) &&
         isCount(state.securityRetries) &&
         isProposals(state.proposals) &&
-        debateUtil.isDebateState(state.debate)
+        debateUtil.isDebateState(state.debate) &&
+        [null, ...BRAINSTORM_PHASES].includes(state.receivedProposal)
     );
 };
 
 // 파일이 없거나 깨졌으면 처음(기획)부터다. 단계 산출물은 저장소에 commit되어 있어 다시 시작해도 잃는 것이 없다.
-// 보안검토 · 브레인스토밍 · 협의가 생기기 전에 쓴 파일에는 securityRetries · proposals · debate가 없으므로 0 · null로 본다.
+// 보안검토 · 브레인스토밍 · 협의가 생기기 전에 쓴 파일에는 securityRetries · proposals · debate · receivedProposal이 없으므로 0 · null로 본다.
+// receivedProposal은 이 개발이 다른 AI의 안을 받아 둔 단계다. 저장소에 남은 안 파일이 앞선 개발의 것인지 가려 이어서 하는 단계만 그 안을 쓴다.
 const readPhase = (phaseFile) => {
     try {
-        const state = { securityRetries: 0, proposals: null, debate: null, ...JSON.parse(fs.readFileSync(phaseFile, "utf8")) };
+        const state = { securityRetries: 0, proposals: null, debate: null, receivedProposal: null, ...JSON.parse(fs.readFileSync(phaseFile, "utf8")) };
 
         return isPhaseState(state)
-            ? { phase: state.phase, awaiting: state.awaiting, qaRetries: state.qaRetries, securityRetries: state.securityRetries, proposals: state.proposals, debate: state.debate }
+            ? {
+                  phase: state.phase,
+                  awaiting: state.awaiting,
+                  qaRetries: state.qaRetries,
+                  securityRetries: state.securityRetries,
+                  proposals: state.proposals,
+                  debate: state.debate,
+                  receivedProposal: state.receivedProposal
+              }
             : { ...INITIAL_PHASE };
     } catch {
         return { ...INITIAL_PHASE };
@@ -86,7 +96,7 @@ const getStartPhase = (state) => {
         return { state: state, isRevision: false };
     }
 
-    return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null, debate: null }, isRevision: true };
+    return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null, debate: null, receivedProposal: null }, isRevision: true };
 };
 
 // 단계를 마친 세션이 남긴 결과(테스트/QA·보안검토만 pass·fail)로 다음 상태와 일어난 일을 정한다.

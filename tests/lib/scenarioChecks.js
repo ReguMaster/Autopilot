@@ -268,14 +268,14 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(getPhaseLines(firstRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
     assert.match(readLog(firstRun), /^\[설정\] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다\.$/m);
     assert.match(readLog(firstRun), /^Mode : 신규 개발 \(기획 단계부터\)$/m);
-    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null });
+    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
     assert.match(readPrompt(), /지금 단계는 \[디자인\]/);
     assert.match(readPrompt(), /정적 HTML 와이어프레임/);
     assert.match(readPrompt(), /외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(readPrompt(), /개선 정책은/);
     assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, {
         running: false,
-        phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null }
+        phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null }
     });
     checkDesktopLogContract(firstRun.data);
 
@@ -313,7 +313,7 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
         "[단계] 보안검토 완료"
     ]);
     assert.match(readPrompt(), /지금 단계는 \[보안검토\][\s\S]*<PHASE>\n단계: 보안검토 \(5\/5\)/);
-    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null, debate: null });
+    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null, debate: null, receivedProposal: null });
     assert.equal((await runBuild({})).status, STATUS_FAILED);
 
     // 진행 기록 초기화는 단계도 처음(기획)으로 돌린다.
@@ -457,6 +457,14 @@ const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
     for (const call of settingsCalls) {
         assert.match(call, /^exec -s read-only --color never -m gpt-6-luna -c model_reasoning_effort=high -\n/);
     }
+
+    // 진행 기록을 초기화한 뒤의 새 신규 개발은 저장소에 남은 앞선 개발의 안을 이어 쓰지 않고 다시 받는다.
+    assert.equal(requestProgressReset({ projectDir: settingsDir, dataDir: dataDir }).status, STATUS_OK);
+
+    const resetRun = await runBrainstorm(settingsDir);
+
+    assert.equal(resetRun.status, STATUS_OK, resetRun.error?.msg);
+    assert(getLines(resetRun).includes("[브레인스토밍] Codex 기획 안 받는 중"), getLines(resetRun).join("\n"));
 };
 
 // Codex 회차 실행(--runner codex): JSONL을 Claude와 같은 로그 형식으로 남기고, 실행 중 set으로 Claude↔Codex를 바꾸며,
@@ -763,11 +771,12 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
         "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",
         "[협의] 건너뜀: Codex 답을 받지 못했어요(중단 요청)"
     ]);
-    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)), { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null });
+    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)), { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: "plan" });
 
     const resumeRun = await runDebate(stopDir, { env: { AP_DEBATE: "consensus" } });
 
     assert.equal(resumeRun.status, STATUS_OK, resumeRun.error?.msg);
+    assert.doesNotMatch(fs.readFileSync(resumeRun.data.logFile, "utf8"), /Codex 기획 안 받는 중/);
     assert.equal(resumeRun.data.reason, "기획 확인 대기");
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)).debate, { phase: "plan", disputes: [], resolved: null });
 };

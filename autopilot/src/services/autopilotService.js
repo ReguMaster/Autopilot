@@ -151,13 +151,22 @@ const getModeSettings = (options, progressFile, tasks) => {
         debate: options.debate || [],
         debateTurns: options.debateTurns ?? DEBATE_DEFAULT_TURNS,
         proposals: state.proposals,
-        debateState: state.debate
+        debateState: state.debate,
+        receivedProposal: state.receivedProposal
     };
 };
 
 // PHASE.json에 쓸 지금 단계 상태. 확인 대기와 고른 안은 단계를 마치거나 확정할 때만 정한다.
 const getPhaseState = (runState) => {
-    return { phase: runState.phase, awaiting: null, qaRetries: runState.qaRetries, securityRetries: runState.securityRetries, proposals: null, debate: null };
+    return {
+        phase: runState.phase,
+        awaiting: null,
+        qaRetries: runState.qaRetries,
+        securityRetries: runState.securityRetries,
+        proposals: null,
+        debate: null,
+        receivedProposal: runState.receivedProposal
+    };
 };
 
 // 사용자가 고른 안이 있으면 이번 실행의 첫 회차가 정식 산출물로 확정한다. 디자인은 HTML로 받았을 수 있다.
@@ -184,13 +193,13 @@ const getAdoption = (projectDir, proposals, debate) => {
     };
 };
 
-// 이어서 하는 단계면 이미 받아 둔 다른 AI의 안을 그대로 쓴다. 돌려보낸 단계면 다시 받는다.
+// 이 개발이 이 단계의 안을 이미 받아 두었으면(이어서 하는 단계) 그대로 쓴다. 돌려보낸 단계나 진행 기록을 초기화한 뒤 저장소에 남은 앞선 개발의 안이면 다시 받는다.
 const getReadyProposals = (projectDir, modeSettings) => {
     const readyProposals = {};
 
     const { assistant } = phaseUtil.getPhaseAgents({ phase: modeSettings.phase, mains: modeSettings.mains, brainstorm: modeSettings.brainstorm, canSend: modeSettings.allow.includes("send") });
 
-    if (modeSettings.isRevision || !assistant) {
+    if (modeSettings.receivedProposal !== modeSettings.phase || !assistant) {
         return readyProposals;
     }
 
@@ -769,6 +778,9 @@ const requestProposals = async (context, loopState) => {
     if (proposal) {
         writeProposalFile(runState.projectDir, relPath, proposal);
         runState.proposalReady[assistant] = relPath;
+        runState.receivedProposal = phase;
+        // 확정을 기다리는 고른 안 · 쟁점을 지우지 않게 지금 상태에 더한다.
+        phaseUtil.writePhase(runState.phaseFile, { ...phaseUtil.readPhase(runState.phaseFile), receivedProposal: phase });
     }
 };
 
