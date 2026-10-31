@@ -369,15 +369,19 @@ const getProposalPrompt = (runState) => {
         .join("\n");
 };
 
-// 교차검토: 다른 AI가 Claude의 산출물을 읽고 고칠 점만 짧게 낸다.
+// 교차검토: 보조가 메인의 산출물을 읽고 고칠 점만 짧게 낸다. 새 세션이라 빈자리를 가릴 만들 것과 허용 범위를 직접 준다.
 const getReviewPrompt = (runState) => {
     const target = runState.phase === "plan" ? "`docs/autopilot/plan.md`" : "`docs/autopilot/design.md`와 `docs/autopilot/design/`";
 
     return [
         `너는 ${PHASE_LABELS[runState.phase]} 검토자다. 이 저장소(${runState.projectDir})는 읽기만 할 수 있다. 파일을 만들거나 고치지 마라.`,
         `${target}(다른 AI가 쓴 안)를 읽고 빈자리 · 위험 · 더 나은 점을 항목마다 한두 줄로 쓴다. 칭찬은 빼고 고칠 것 위주로 10개 이내.`,
-        "인사 · 설명 없이 마크다운 목록만 최종 답변으로 출력한다."
-    ].join("\n");
+        getProposalScopePrompt(runState),
+        "인사 · 설명 없이 마크다운 목록만 최종 답변으로 출력한다.",
+        runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : ""
+    ]
+        .filter(Boolean)
+        .join("\n");
 };
 
 const getPhaseBlock = (runState) => {

@@ -401,7 +401,13 @@ const checkBrainstormRules = (context) => {
         promptUtil.getProposalPrompt({ ...runState, phase: "design", adoption: { phase: "plan", picked: "codex", main: "claude", file: "docs/autopilot/proposals/plan-codex.md" } }),
         /plan\.md` 대신 사용자가 고른 `docs\/autopilot\/proposals\/plan-codex\.md`/
     );
-    assert.match(promptUtil.getReviewPrompt(runState), /`docs\/autopilot\/plan\.md`\(다른 AI가 쓴 안\)를 읽고 빈자리/);
+    // 검토도 새 세션이라 빈자리를 가릴 만들 것과 기획의 허용 범위를 직접 받는다.
+    const reviewPrompt = promptUtil.getReviewPrompt(runState);
+
+    assert.match(reviewPrompt, /`docs\/autopilot\/plan\.md`\(다른 AI가 쓴 안\)를 읽고 빈자리/);
+    assert.match(reviewPrompt, /<TASKS>\n미용실 예약 웹앱\n<\/TASKS>/);
+    assert.match(reviewPrompt, /허용하지 않음: 새 라이브러리/);
+    assert.doesNotMatch(promptUtil.getReviewPrompt({ ...runState, phase: "design" }), /허용 범위/);
 
     // 메인이 Codex이고 보조가 Claude이면 같은 지시가 방향만 바뀐다. 검토 파일 이름은 메인 기준이고, 고른 안이 메인의 것이면 남은 파일만 commit한다.
     const codexMain = {
