@@ -1578,59 +1578,72 @@ const handleRunPostActionNow = async () => {
     return { status: STATUS_OK };
 };
 
+// 처리기가 던진 오류(설정 파일 쓰기 실패 등)도 실패 결과로 돌려준다. 그대로 던지면 화면은 결과를 받지 못해 아무 안내 없이 멈춘다.
+const registerHandler = (channel, handler) => {
+    ipcMain.handle(channel, async (...args) => {
+        try {
+            return await handler(...args);
+        } catch (error) {
+            console.error(`${channel} 처리 실패:`, error);
+
+            return createFailure("UNEXPECTED_ERROR", `처리하지 못했어요: ${error?.message || error}`);
+        }
+    });
+};
+
 const registerIpc = () => {
     settingsStore.recover();
     settingsStore.upgrade();
     configureSystem({ getPreferences: readSettings });
     applyTheme();
 
-    ipcMain.handle("autopilot:get-state", handleGetState);
-    ipcMain.handle("autopilot:select-project", handleSelectProject);
-    ipcMain.handle("autopilot:open-tab", handleOpenTab);
-    ipcMain.handle("autopilot:activate-tab", handleActivateTab);
-    ipcMain.handle("autopilot:close-tab", handleCloseTab);
-    ipcMain.handle("autopilot:start", handleStart);
-    ipcMain.handle("autopilot:stop", handleStop);
-    ipcMain.handle("autopilot:set-options", handleSetOptions);
-    ipcMain.handle("autopilot:update-settings", handleUpdateSettings);
-    ipcMain.handle("autopilot:reset-settings", handleResetSettings);
-    ipcMain.handle("autopilot:add-linked-repo", handleAddLinkedRepo);
-    ipcMain.handle("autopilot:remove-linked-repo", handleRemoveLinkedRepo);
-    ipcMain.handle("autopilot:set-preferences", handleSetPreferences);
-    ipcMain.handle("autopilot:cancel-post-action", handleCancelPostAction);
-    ipcMain.handle("autopilot:run-post-action-now", handleRunPostActionNow);
-    ipcMain.handle("autopilot:export-settings", handleExportSettings);
-    ipcMain.handle("autopilot:import-settings", handleImportSettings);
-    ipcMain.handle("autopilot:restore-defaults", handleRestoreDefaults);
-    ipcMain.handle("autopilot:kill", handleKill);
-    ipcMain.handle("autopilot:reset-progress", handleResetProgress);
-    ipcMain.handle("autopilot:get-phase", handleGetPhase);
-    ipcMain.handle("autopilot:approve-phase", handleApprovePhase);
-    ipcMain.handle("autopilot:get-providers", handleGetProviders);
-    ipcMain.handle("autopilot:init-git-repo", handleInitGitRepo);
-    ipcMain.handle("autopilot:get-create-info", handleGetCreateInfo);
-    ipcMain.handle("autopilot:pick-create-dir", handlePickCreateDir);
-    ipcMain.handle("autopilot:draft-project", handleDraftProject);
-    ipcMain.handle("autopilot:cancel-draft", handleCancelDraft);
-    ipcMain.handle("autopilot:suggest-examples", handleSuggestExamples);
-    ipcMain.handle("autopilot:create-project", handleCreateProject);
-    ipcMain.handle("autopilot:read-phase-doc", handleReadPhaseDoc);
-    ipcMain.handle("autopilot:open-phase-doc", handleOpenPhaseDoc);
-    ipcMain.handle("autopilot:open-report", handleOpenReport);
-    ipcMain.handle("autopilot:list-runs", handleListRuns);
-    ipcMain.handle("autopilot:read-run", handleReadRun);
-    ipcMain.handle("autopilot:open-run-file", handleOpenRunFile);
-    ipcMain.handle("autopilot:delete-run", handleDeleteRun);
-    ipcMain.handle("autopilot:get-run-usage", handleGetRunUsage);
-    ipcMain.handle("autopilot:get-streak-days", handleGetStreakDays);
-    ipcMain.handle("autopilot:save-card", handleSaveCard);
-    ipcMain.handle("autopilot:prune-runs", handlePruneRuns);
-    ipcMain.handle("autopilot:open-update", handleOpenUpdate);
-    ipcMain.handle("autopilot:set-system", handleSetSystem);
-    ipcMain.handle("autopilot:get-schedules", () => ({ status: STATUS_OK, data: scheduler.getPayload() }));
-    ipcMain.handle("autopilot:save-schedule", handleSaveSchedule);
-    ipcMain.handle("autopilot:delete-schedule", handleDeleteSchedule);
-    ipcMain.handle("autopilot:toggle-schedule", handleToggleSchedule);
+    registerHandler("autopilot:get-state", handleGetState);
+    registerHandler("autopilot:select-project", handleSelectProject);
+    registerHandler("autopilot:open-tab", handleOpenTab);
+    registerHandler("autopilot:activate-tab", handleActivateTab);
+    registerHandler("autopilot:close-tab", handleCloseTab);
+    registerHandler("autopilot:start", handleStart);
+    registerHandler("autopilot:stop", handleStop);
+    registerHandler("autopilot:set-options", handleSetOptions);
+    registerHandler("autopilot:update-settings", handleUpdateSettings);
+    registerHandler("autopilot:reset-settings", handleResetSettings);
+    registerHandler("autopilot:add-linked-repo", handleAddLinkedRepo);
+    registerHandler("autopilot:remove-linked-repo", handleRemoveLinkedRepo);
+    registerHandler("autopilot:set-preferences", handleSetPreferences);
+    registerHandler("autopilot:cancel-post-action", handleCancelPostAction);
+    registerHandler("autopilot:run-post-action-now", handleRunPostActionNow);
+    registerHandler("autopilot:export-settings", handleExportSettings);
+    registerHandler("autopilot:import-settings", handleImportSettings);
+    registerHandler("autopilot:restore-defaults", handleRestoreDefaults);
+    registerHandler("autopilot:kill", handleKill);
+    registerHandler("autopilot:reset-progress", handleResetProgress);
+    registerHandler("autopilot:get-phase", handleGetPhase);
+    registerHandler("autopilot:approve-phase", handleApprovePhase);
+    registerHandler("autopilot:get-providers", handleGetProviders);
+    registerHandler("autopilot:init-git-repo", handleInitGitRepo);
+    registerHandler("autopilot:get-create-info", handleGetCreateInfo);
+    registerHandler("autopilot:pick-create-dir", handlePickCreateDir);
+    registerHandler("autopilot:draft-project", handleDraftProject);
+    registerHandler("autopilot:cancel-draft", handleCancelDraft);
+    registerHandler("autopilot:suggest-examples", handleSuggestExamples);
+    registerHandler("autopilot:create-project", handleCreateProject);
+    registerHandler("autopilot:read-phase-doc", handleReadPhaseDoc);
+    registerHandler("autopilot:open-phase-doc", handleOpenPhaseDoc);
+    registerHandler("autopilot:open-report", handleOpenReport);
+    registerHandler("autopilot:list-runs", handleListRuns);
+    registerHandler("autopilot:read-run", handleReadRun);
+    registerHandler("autopilot:open-run-file", handleOpenRunFile);
+    registerHandler("autopilot:delete-run", handleDeleteRun);
+    registerHandler("autopilot:get-run-usage", handleGetRunUsage);
+    registerHandler("autopilot:get-streak-days", handleGetStreakDays);
+    registerHandler("autopilot:save-card", handleSaveCard);
+    registerHandler("autopilot:prune-runs", handlePruneRuns);
+    registerHandler("autopilot:open-update", handleOpenUpdate);
+    registerHandler("autopilot:set-system", handleSetSystem);
+    registerHandler("autopilot:get-schedules", () => ({ status: STATUS_OK, data: scheduler.getPayload() }));
+    registerHandler("autopilot:save-schedule", handleSaveSchedule);
+    registerHandler("autopilot:delete-schedule", handleDeleteSchedule);
+    registerHandler("autopilot:toggle-schedule", handleToggleSchedule);
     accounts.register();
 
     // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.

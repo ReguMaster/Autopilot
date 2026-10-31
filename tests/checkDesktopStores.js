@@ -617,6 +617,20 @@ const checkSchedules = async ({ schedules, scheduleStore, composerStore }) => {
 
     await schedules.schedules.remove("sch-1");
     assert.equal(scheduleStore.useScheduleStore.getState().payload.schedules.length, 0);
+
+    const failure = { status: "FAILED", error: { code: "UNEXPECTED_ERROR", msg: "처리하지 못했어요: EPERM" } };
+
+    scheduleStore.applySchedulePayload(payload);
+    window.autopilot.deleteSchedule = async () => failure;
+    window.autopilot.toggleSchedule = async () => failure;
+
+    await schedules.schedules.remove("sch-1");
+    assert.equal(scheduleStore.useScheduleStore.getState().payload.schedules.length, 1, "삭제에 실패하면 목록을 그대로 둔다");
+    assert.deepEqual(scheduleStore.useScheduleStore.getState().note, { message: "처리하지 못했어요: EPERM", tone: "warn" }, "삭제 실패를 안내한다");
+
+    scheduleStore.useScheduleStore.setState({ note: { message: "", tone: "" } });
+    await schedules.schedules.toggle("sch-1", false);
+    assert.equal(scheduleStore.useScheduleStore.getState().note.tone, "warn", "켜고 끄기 실패를 안내한다");
 };
 
 // 설정 범위: 패널에서 바꾼 값은 고른 범위로 보내고 컴포저는 바뀐 키만 따라가며, 프로젝트를 바꾸면 컴포저를 새 프로젝트의 값으로 채운다.

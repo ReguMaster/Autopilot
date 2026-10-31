@@ -46,17 +46,25 @@ const schedules = {
     remove: async (id) => {
         const result = await window.autopilot.deleteSchedule(id);
 
-        if (result.status === STATUS_OK) {
-            applySchedulePayload(result.data);
-            setNote("예약을 삭제했어요.", "ok");
+        if (result.status !== STATUS_OK) {
+            setNote(result.error.msg, "warn");
+
+            return;
         }
+
+        applySchedulePayload(result.data);
+        setNote("예약을 삭제했어요.", "ok");
     },
     toggle: async (id, enabled) => {
         const result = await window.autopilot.toggleSchedule(id, enabled);
 
-        if (result.status === STATUS_OK) {
-            applySchedulePayload(result.data);
+        if (result.status !== STATUS_OK) {
+            setNote(result.error.msg, "warn");
+
+            return;
         }
+
+        applySchedulePayload(result.data);
     }
 };
 
