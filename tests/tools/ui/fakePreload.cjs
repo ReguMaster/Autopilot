@@ -109,7 +109,7 @@ const DEFAULT_SCHEDULES = {
 };
 
 const model = {
-    version: "1.4.2",
+    version: "1.5.0",
     platform: "win32",
     canLaunchAtLogin: false,
     update: null,
@@ -266,7 +266,8 @@ const api = {
     getModels: respond("getModels", async () => ok({ models: model.models })),
     kill: respond("kill", async () => ok({})),
     resetProgress: respond("resetProgress", async () => ok({ isReset: true })),
-    getPhase: respond("getPhase", async () => ok({ phase: model.buildPhase ?? null })),
+    // phaseByProject가 있으면 탭마다 다른 단계를 준다(없으면 모든 탭이 buildPhase).
+    getPhase: respond("getPhase", async (projectDir) => ok({ phase: (model.phaseByProject && projectDir ? model.phaseByProject[projectDir] : model.buildPhase) ?? null })),
     // 여러 AI가 안을 낸 단계면 고른 안(pick)을, 협의한 단계면 쟁점마다 고른 쪽(resolutions)을 남긴다.
     approvePhase: respond("approvePhase", async (projectDir, pick, resolutions) =>
         ok({

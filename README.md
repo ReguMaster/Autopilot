@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/running.png" alt="AutoPilot 실행 화면" width="880">
+  <img src="docs/screenshots/running.png" alt="AutoPilot 실행 화면. 신규 개발의 개발 단계 5회차가 진행 중이고, 지금 하는 일과 남긴 커밋을 보여 줍니다." width="880">
 </p>
 
 ## AutoPilot은 무엇인가요?
@@ -75,10 +75,50 @@
 | **유지 보수 · 지시개선** | 지정한 작업만 처리하고 완료되면 종료합니다.                                                           |
 | **신규 개발**           | 기획·디자인·개발·테스트/QA·보안검토를 차례로 하고(테스트/QA와 보안검토에서 고치지 못한 문제가 남으면 개발로 되돌립니다), 확인받기로 둔 단계에서 멈춰 산출물 확인을 기다립니다. 다음 실행이 단계를 이어받습니다. |
 
-<p align="center">
-  <img src="docs/screenshots/ready.png" alt="AutoPilot 신규 개발 시작 화면" width="880">
-  <img src="docs/screenshots/done.png" alt="AutoPilot 결과 화면" width="880">
-</p>
+### 신규 개발: 만들 것만 적으면 보안검토까지
+
+단계마다 메인 AI(Claude 또는 Codex)를 고르고, 기획·디자인은 다른 AI와 협의하거나 두 안을 나란히 받아 고를 수 있습니다. 아래 화면은 가칭 프로젝트 `moa-booking`(공방 클래스 예약 웹앱)으로 한 바퀴를 돈 모습입니다.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/ready.png" alt="신규 개발 시작 화면. 단계마다 메인 AI와 보조 방식을 고르는 카드와 입력창"><br><b>시작</b> · 단계마다 메인 AI와 협의·비교 방식을 고르고 만들 것을 적습니다.</td>
+    <td width="50%"><img src="docs/screenshots/plan.png" alt="기획 단계. Codex와 Claude가 기획안을 두고 주고받는 협의 대화"><br><b>기획</b> · 메인 Codex와 Claude가 합의할 때까지 주고받는 대화를 실시간으로 봅니다.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/approval.png" alt="기획 확인 화면. 협의 기록과 못 맞춘 쟁점 고르기"><br><b>기획 확인</b> · 합의안과 협의 기록을 보고, 끝까지 못 맞춘 쟁점만 고릅니다.</td>
+    <td><img src="docs/screenshots/design.png" alt="디자인 확인 화면. Claude 안과 Codex 안을 나란히 비교"><br><b>디자인</b> · 두 AI가 따로 낸 안을 나란히 보고 마음에 드는 쪽으로 이어 갑니다.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/running.png" alt="개발 단계. 회차마다 고친 내용과 남긴 커밋"><br><b>개발</b> · 회차마다 고치고 검증해 작업 브랜치에 커밋합니다.</td>
+    <td><img src="docs/screenshots/qa.png" alt="테스트/QA 단계. E2E 통과 16에서 18로 늘어난 성과"><br><b>테스트/QA</b> · E2E로 흐름을 확인하고, 고치지 못한 실패가 남으면 개발로 되돌립니다.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/security.png" alt="보안검토 단계. 예약 조회 API의 권한 문제를 찾아 고치는 중"><br><b>보안검토</b> · 점검 목록대로 살펴 심각도와 함께 기록하고 고칩니다.</td>
+    <td><img src="docs/screenshots/done.png" alt="모든 단계를 마친 화면. 회차별 커밋과 테스트 통과 수"><br><b>완료</b> · 회차별 커밋과 성과를 확인하고, 유지 보수로 이어 다듬습니다.</td>
+  </tr>
+</table>
+
+### 유지 보수: 작업을 맡기고, 바뀐 숫자로 확인
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/maintain-ready.png" alt="유지 보수 시작 화면. 인사와 지난 실행 목록"><br><b>시작</b> · 할 일과 종료 시각을 정하고, 지난 실행의 결과를 바로 봅니다.</td>
+    <td width="50%"><img src="docs/screenshots/maintain.png" alt="유지 보수 실행 화면. 검색 응답 시간 1.4초에서 0.2초로 줄어든 성과"><br><b>실행 중</b> · 검증으로 확인한 변화만 성과로 남깁니다.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/maintain-done.png" alt="유지 보수를 마친 화면. 줄어든 응답 시간과 회차별 커밋"><br><b>마침</b> · 회차별 커밋과 성과를 보고, 리포트나 성과 카드로 남깁니다.</td>
+    <td><img src="docs/screenshots/history.png" alt="전체 기록 화면. 회차별 로그와 회차 목록"><br><b>전체 기록</b> · 읽은 파일·고친 파일·돌린 명령이 회차별로 남습니다.</td>
+  </tr>
+</table>
+
+### 새 프로젝트와 설정
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/new-project.png" alt="새 프로젝트 화면. Claude가 쓴 초안을 칩으로 다듬기"><br><b>새 프로젝트</b> · 한두 줄을 적으면 Claude가 초안을 채우고, 칩으로 다듬어 바로 만듭니다.</td>
+    <td width="50%"><img src="docs/screenshots/settings.png" alt="설정 화면. 대상 프로젝트, 연결 저장소, 설정 범위와 실행 기본값"><br><b>설정</b> · 연결 저장소, 전역·프로젝트별 기본값, Git 규칙과 보관 기간을 정합니다.</td>
+  </tr>
+</table>
 
 ## Git 기록을 지키며 작업합니다
 
