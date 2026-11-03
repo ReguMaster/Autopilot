@@ -318,6 +318,7 @@ const checkCodexRemove = async (testDir) => {
     const store = createCodexAccountStore({ accountsRoot: path.join(testDir, "ipc-accounts"), getBaseHome: () => path.join(testDir, "ipc-base") });
     const removed = store.createAccount({ label: "지울 계정" });
     const handlers = {};
+    const events = [];
     let settings = { theme: "system", codexAccounts: [{ id: removed.id, label: removed.label }], codexAccountId: removed.id };
 
     fs.writeFileSync(fakeFile, FAKE_CODEX_SOURCE);
@@ -330,9 +331,10 @@ const checkCodexRemove = async (testDir) => {
         getCodexAccountId: () => settings.codexAccountId,
         setCodexAccountId: () => {},
         resolveProjectDir: () => testDir,
-        broadcast: () => {},
+        broadcast: (channel) => events.push(channel),
         isRunning: () => false,
         isProjectRunning: () => false,
+        onAccountsChange: () => events.push("change"),
         launch: { command: process.execPath, prefixArgs: [fakeFile] },
         store: store
     }).register((channel, handler) => {
@@ -348,6 +350,8 @@ const checkCodexRemove = async (testDir) => {
     assert.deepEqual(settings.codexAccounts, [{ id: "cx-0000000a", label: "새 계정" }], "그 사이 추가한 계정은 남기고 제거한 계정만 뺀다");
     assert.equal(settings.codexAccountId, DEFAULT_CODEX_ACCOUNT_ID);
     assert(!fs.existsSync(removed.home));
+    // 화면이 알림을 받고 Codex 상태를 다시 물을 때 메인이 기억한 옛 값을 주지 않도록 먼저 알린다.
+    assert.deepEqual(events, ["change", "autopilot:codex-accounts"]);
 };
 
 const runChecks = async () => {

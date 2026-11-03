@@ -23,6 +23,7 @@ const createCodexAccountIpc = ({
     broadcast,
     isRunning,
     isProjectRunning,
+    onAccountsChange = () => {},
     launch = undefined,
     store = createCodexAccountStore({ accountsRoot: path.join(app.getPath("userData"), "codex-accounts"), getBaseHome: () => getDefaultCodexHome() })
 }) => {
@@ -100,6 +101,7 @@ const createCodexAccountIpc = ({
     const broadcastPayload = () => {
         const payload = getPayload();
 
+        onAccountsChange();
         broadcast("autopilot:codex-accounts", payload);
 
         return { status: STATUS_OK, data: payload };

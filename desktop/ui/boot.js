@@ -2,7 +2,7 @@ import { STATUS_OK } from "./lib/constants.js";
 import { applyLogin, applyPayload } from "./actions/accounts.js";
 import { handleLogEvent, handleStateEvent } from "./actions/events.js";
 import { settings as settingsActions } from "./actions/settings.js";
-import { loadBuildPhase, loadRecentRuns } from "./actions/runs.js";
+import { loadBuildPhase, loadProviders, loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
 import { applyCodexLogin, applyCodexPayload } from "./actions/codexAccounts.js";
 import { setAccountSnapshot } from "./stores/accountStore.js";
@@ -10,6 +10,7 @@ import { setCodexAccountSnapshot } from "./stores/codexAccountStore.js";
 import { useAppStore } from "./stores/appStore.js";
 import { composer } from "./stores/composerStore.js";
 import { applyRunState, appendEntries, flushNow, getRunState, useRunStore } from "./stores/runStore.js";
+import { useRunsStore } from "./stores/runsStore.js";
 import { applyTabs, useTabsStore } from "./stores/tabsStore.js";
 import { applySchedulePayload } from "./stores/scheduleStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
@@ -111,7 +112,14 @@ const boot = async () => {
     window.autopilot.onAccounts(applyPayload);
     window.autopilot.onAccount(({ id, account }) => setAccountSnapshot(id, account));
     window.autopilot.onLogin(applyLogin);
-    window.autopilot.onCodexAccounts(applyCodexPayload);
+    window.autopilot.onCodexAccounts((payload) => {
+        applyCodexPayload(payload);
+
+        // 계정이 바뀌면 Codex를 쓸 수 있는지도 바뀐다. 아직 읽은 적이 없으면 그 값을 쓰는 화면이 열릴 때 읽는다.
+        if (useRunsStore.getState().providers) {
+            loadProviders();
+        }
+    });
     window.autopilot.onCodexAccount(({ id, account }) => setCodexAccountSnapshot(id, account));
     window.autopilot.onCodexLogin(applyCodexLogin);
     window.autopilot.onSchedules(applySchedulePayload);

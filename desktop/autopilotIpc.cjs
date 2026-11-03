@@ -321,7 +321,11 @@ const codexAccounts = createCodexAccountIpc({
     resolveProjectDir: (requestedDir) => sessionPool.get(requestedDir)?.projectDir ?? null,
     broadcast: broadcast,
     isRunning: isAnyRunning,
-    isProjectRunning: isProjectRunning
+    isProjectRunning: isProjectRunning,
+    // 같은 계정 폴더라도 로그인·로그아웃하면 Codex를 쓸 수 있는지가 바뀌므로 기억한 값을 버린다.
+    onAccountsChange: () => {
+        providerStatus = { at: 0, home: "", data: null };
+    }
 });
 
 const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update), isEnabled: () => readSettings().checkUpdates });
