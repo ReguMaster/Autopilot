@@ -28,7 +28,7 @@ const Dispute = ({ dispute, chosen, onChoose }) => {
 };
 
 // 협의한 단계의 확인: 합의안(단계 산출물)과 협의 기록을 보여 주고, 못 맞춘 쟁점만 쟁점마다 한쪽을 골라 다음 단계를 시작한다.
-const DebateReview = ({ phase, debate, nextPhase, doc, docName, isStarting, feedbackArea }) => {
+const DebateReview = ({ phase, debate, nextPhase, doc, docName, isStarting, skipSuggest, feedbackArea }) => {
     const transcript = usePhaseDoc(`${phase}-debate`);
     const [choices, setChoices] = useState({});
     const [tab, setTab] = useState("plan");
@@ -57,6 +57,7 @@ const DebateReview = ({ phase, debate, nextPhase, doc, docName, isStarting, feed
                 <h2 id="dispute-title" className="dispute-title">
                     {debate.disputes.length ? `못 맞춘 쟁점 ${debate.disputes.length}개` : "쟁점 없이 합의했어요"}
                 </h2>
+                {skipSuggest}
                 {/* 쟁점이 길어도 보이도록 시작 버튼을 쟁점보다 위에 둔다. 모두 고르기 전에는 몇 개 골랐는지 알린다 */}
                 <div className="debate-go">
                     <Button id="approval-approve" variant="primary" size="" disabled={isStarting || !isReady} onClick={() => approveAndStart(undefined, debate.disputes.length ? choices : undefined)}>

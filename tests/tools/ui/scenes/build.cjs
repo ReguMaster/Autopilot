@@ -303,6 +303,27 @@ const DEBATE_SCENES = [
         run: async (t) => {
             await t.shot("approval");
         }
+    },
+    {
+        // 합의안이 화면 없음이면 협의한 기획 확인에서도 디자인 건너뛰기를 제안한다.
+        name: "approval-plan-debate-no-screens",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: { phase: "plan", disputes: [], resolved: null } },
+                phaseDocs: { plan: NO_SCREEN_PLAN_DOC, "plan-debate": DEBATE_DOC }
+            }
+        },
+        run: async (t) => {
+            await t.shot("suggest");
+            await t.click("#approval-skip-design");
+            await t.wait(300);
+            await t.shot("skipped");
+            await t.note("after", await t.eval("document.querySelector('#approval-approve').textContent"));
+            await t.click("#approval-approve");
+            await t.wait(300);
+            await t.note("start", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'start').map((call) => call[1].skip))"));
+        }
     }
 ];
 
@@ -475,6 +496,41 @@ const BUILD_RUN_SCENES = [
                 "calls",
                 await t.eval("JSON.stringify(window.__calls.filter((call) => ['approvePhase', 'start'].includes(call[0])).map((call) => call.slice(0, call[0] === 'approvePhase' ? 3 : 1)))")
             );
+        }
+    },
+    {
+        // 나란히 비교하는 기획안은 두 안이 모두 화면 없음일 때만 디자인 건너뛰기를 제안한다.
+        name: "approval-plan-pick-no-screens",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: PLAN_PROPOSALS },
+                phaseDocs: { plan: NO_SCREEN_PLAN_DOC, "plan-codex": { ...NO_SCREEN_PLAN_DOC, path: "docs/autopilot/proposals/plan-codex.md" } }
+            }
+        },
+        run: async (t) => {
+            await t.shot("suggest");
+            await t.click("#approval-skip-design");
+            await t.wait(300);
+            await t.shot("skipped");
+            await t.note("after", await t.eval("document.querySelector('#approval-pick-codex').textContent"));
+            await t.click("#approval-pick-codex");
+            await t.wait(300);
+            await t.note("start", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'start').map((call) => call[1].skip))"));
+        }
+    },
+    {
+        name: "approval-plan-pick-one-no-screens",
+        init: {
+            ...BUILD,
+            model: {
+                buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: PLAN_PROPOSALS },
+                phaseDocs: { plan: NO_SCREEN_PLAN_DOC, "plan-codex": CODEX_PLAN_DOC }
+            }
+        },
+        run: async (t) => {
+            await t.wait(300);
+            await t.note("suggest", await t.eval("String(Boolean(document.querySelector('#approval-skip-suggest')))"));
         }
     },
     {

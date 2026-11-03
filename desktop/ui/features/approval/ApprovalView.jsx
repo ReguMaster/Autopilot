@@ -6,6 +6,7 @@ import { HeadTag } from "../../components/HeadTag.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { getNextPhase, getReadySteps, hasNoScreens } from "../../lib/buildSteps.js";
 import { PHASE_LABELS } from "../../lib/constants.js";
+import { cx } from "../../lib/cx.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
@@ -64,10 +65,12 @@ const getLeadText = (phase, proposals, debate, nextLabel) => {
 };
 
 // 기획서가 화면 없음이라고 적었으면 디자인을 건너뛰자고 제안한다. 건너뛰기로 정한 뒤에는 그 사실과 되돌리는 길을 보인다.
-const SkipDesignSuggest = ({ planText, isSkipped }) => {
+const SkipDesignSuggest = ({ isNoScreens, isSkipped, isWide = false }) => {
+    const className = cx("approval-suggest", isWide && "is-wide");
+
     if (isSkipped) {
         return (
-            <div id="approval-skip-done" className="approval-suggest">
+            <div id="approval-skip-done" className={className}>
                 <p>디자인은 건너뛰고 바로 개발을 시작해요.</p>
                 <Button size="" onClick={() => composer.toggleSkip("design")}>
                     디자인도 하기
@@ -76,12 +79,12 @@ const SkipDesignSuggest = ({ planText, isSkipped }) => {
         );
     }
 
-    if (!hasNoScreens(planText)) {
+    if (!isNoScreens) {
         return null;
     }
 
     return (
-        <div id="approval-skip-suggest" className="approval-suggest">
+        <div id="approval-skip-suggest" className={className}>
             <p>
                 <b>화면이 없는 프로젝트로 보여요.</b> 기획서에 화면 없음이라고 적혀 있어서, 디자인을 건너뛰고 바로 개발로 갈 수 있어요.
             </p>
@@ -106,6 +109,12 @@ const ApprovalView = ({ phase, side = null }) => {
     const skip = useComposerStore((store) => store.skip);
     const nextPhase = getNextPhase(phase, skip);
     const text = getLeadText(phase, proposals, debate, PHASE_LABELS[nextPhase]);
+    // 나란히 비교하는 기획안은 어느 쪽을 고를지 모르므로 두 안이 모두 화면 없음이어야 제안한다. 협의한 단계의 산출물은 합의안이다.
+    const assistant = phase === "plan" && !debate && proposals ? proposals.candidates[1] : null;
+    const assistantDoc = usePhaseDoc(assistant ? `${phase}-${assistant}` : null);
+    const planTexts = assistant ? [doc.data?.text, assistantDoc.data?.text] : [doc.data?.text];
+    const skipSuggest =
+        phase === "plan" ? <SkipDesignSuggest isNoScreens={planTexts.every((planText) => hasNoScreens(planText))} isSkipped={skip.includes("design")} isWide={Boolean(assistant)} /> : null;
     const feedbackArea = (
         <>
             <label className="approval-feedback">
@@ -140,9 +149,12 @@ const ApprovalView = ({ phase, side = null }) => {
                 <h1 id="approval-title">{text.title}</h1>
                 <p className="lead">{text.lead}</p>
             </div>
-            {debate ? <DebateReview phase={phase} debate={debate} nextPhase={nextPhase} doc={doc} docName={text.docName} isStarting={isStarting} feedbackArea={feedbackArea} /> : null}
+            {debate ? (
+                <DebateReview phase={phase} debate={debate} nextPhase={nextPhase} doc={doc} docName={text.docName} isStarting={isStarting} skipSuggest={skipSuggest} feedbackArea={feedbackArea} />
+            ) : null}
             {!debate && proposals ? (
                 <>
+                    {skipSuggest}
                     <ProposalCompare phase={phase} proposals={proposals} nextPhase={nextPhase} isStarting={isStarting} />
                     <details className="approval-revise">
                         <summary>둘 다 아쉬우면 고칠 점을 적어 주세요</summary>
@@ -154,7 +166,7 @@ const ApprovalView = ({ phase, side = null }) => {
                 <div className="approval-grid">
                     <DocPreview doc={doc.data} isLoading={doc.isLoading} />
                     <div className="approval-card">
-                        {phase === "plan" ? <SkipDesignSuggest planText={doc.data?.text} isSkipped={skip.includes("design")} /> : null}
+                        {skipSuggest}
                         <Button id="approval-approve" variant="primary" size="" disabled={isStarting} onClick={() => approveAndStart()}>
                             {`확인하고 ${PHASE_LABELS[nextPhase]} 시작`}
                         </Button>
