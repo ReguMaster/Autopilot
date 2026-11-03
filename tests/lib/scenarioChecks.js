@@ -405,6 +405,174 @@ const checkBuildSkip = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
 };
 
+// 보안검토가 pass라고 해도 security.md의 점검 결과가 기준에 못 미치면 통과로 받지 않는다.
+// 한 번은 다시 쓰게 하고, 또 모자라면 개발로 되돌리지 않고 보안검토 실패로 끝낸다.
+const checkSecurityDoc = async (scenarioRunner, context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "build security doc project");
+    const dataDir = scenarioRunner.dataDir;
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+    commitInitialProject(context, projectDir);
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+    const phaseFile = phaseUtil.getPhaseFile(progressFile);
+    const runSecurity = (securityDoc) => {
+        phaseUtil.writePhase(phaseFile, { ...phaseUtil.INITIAL_PHASE, phase: "security" });
+        fs.rmSync(path.join(projectDir, phaseUtil.SECURITY_DOC_PATH), { force: true });
+
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            tasks: "CLI 도구",
+            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile, AP_SECURITY_DOC: securityDoc },
+            limits: { minMinutes: 0, maxRounds: 10, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] }
+        });
+    };
+    const readLog = (result) => fs.readFileSync(result.data.logFile, "utf8");
+    const readPrompt = () => fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8");
+
+    // 근거 있는 점검 결과는 그대로 통과한다.
+    const goodRun = await runSecurity("good");
+
+    assert.equal(goodRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.doesNotMatch(readLog(goodRun), /^\[보안검토\]/m);
+    assert.match(readPrompt(), /\| 항목 \| 상태 \| 근거 \|/);
+
+    // 근거 없는 표는 한 번 다시 쓰게 하고, 고쳐 쓰면 통과한다.
+    const onceRun = await runSecurity("once");
+
+    assert.equal(onceRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.equal(readLog(onceRun).match(/^\[보안검토\] .+$/gm).length, 1);
+    assert.match(readLog(onceRun), /^\[보안검토\] security\.md 점검 결과가 기준에 못 미쳐 한 번 더 확인해요: '비밀값'의 근거가 없거나 너무 짧다/m);
+    assert.match(readPrompt(), /앞 회차가 남긴 `docs\/autopilot\/security\.md`의 점검 결과가 기준에 못 미쳐/);
+
+    // 계속 모자라거나 파일이 없으면 보안검토 실패로 끝내고, 단계는 보안검토에 남겨 다음 실행이 다시 한다.
+    for (const securityDoc of ["weak", "none"]) {
+        const failedRun = await runSecurity(securityDoc);
+
+        assert.equal(failedRun.status, STATUS_OK, failedRun.error?.msg);
+        assert.equal(failedRun.data.reason, "보안검토 실패", securityDoc);
+        assert.deepEqual(readLog(failedRun).match(/^\[단계\] .+$/gm), ["[단계] 보안검토 시작", "[단계] 보안검토 실패"], securityDoc);
+        assert.equal(readLog(failedRun).match(/^\[보안검토\] .+$/gm).length, 2, securityDoc);
+        assert.equal(phaseUtil.readPhase(phaseFile).phase, "security", securityDoc);
+        checkDesktopLogContract(failedRun.data);
+    }
+
+    assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+};
+
+// 보안검토의 독립 검토(--security-review): 메인(Claude)의 반대쪽 AI(Codex)가 pass를 다시 확인한다.
+// 심각 · 높음을 찾으면 개발로 되돌리고, 못 쓰거나 답을 읽을 수 없으면 건너뛰고 통과시킨다.
+const checkSecurityReview = async (scenarioRunner, context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "build security review project");
+    const dataDir = scenarioRunner.dataDir;
+    const fakeCodexFile = path.join(context.testDir, "fake-codex-security.mjs");
+    const codexLog = path.join(context.testDir, "codex-security.log");
+
+    fs.writeFileSync(fakeCodexFile, FAKE_CODEX_SOURCE);
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+    commitInitialProject(context, projectDir);
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+    const phaseFile = phaseUtil.getPhaseFile(progressFile);
+    const runSecurity = (env, options = {}) => {
+        phaseUtil.writePhase(phaseFile, { ...phaseUtil.INITIAL_PHASE, phase: "security" });
+        fs.rmSync(codexLog, { force: true });
+        fs.rmSync(path.join(projectDir, "security-review-count.txt"), { force: true });
+        fs.rmSync(path.join(projectDir, phaseUtil.SECURITY_REVIEW_PATH), { force: true });
+
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            providerCommands: { codex: { command: process.execPath, args: [fakeCodexFile] } },
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            allow: ["send"],
+            securityReview: true,
+            tasks: "CLI 도구",
+            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile, AP_CODEX_LOG: codexLog, ...env },
+            limits: { minMinutes: 0, maxRounds: 10, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+    };
+    const readLog = (result) => fs.readFileSync(result.data.logFile, "utf8");
+    const getLines = (result, kind) => readLog(result).match(new RegExp(`^\\[${kind}\\] .+$`, "gm")) ?? [];
+    const readReview = () => fs.readFileSync(path.join(projectDir, phaseUtil.SECURITY_REVIEW_PATH), "utf8");
+
+    // 심각 · 높음이 없으면 통과하고, 그 밖의 지적은 문서에만 남긴다.
+    const cleanRun = await runSecurity({});
+
+    assert.equal(cleanRun.status, STATUS_OK, cleanRun.error?.msg);
+    assert.equal(cleanRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.deepEqual(getLines(cleanRun, "보안검토"), ["[보안검토] Codex 독립 검토에서 심각 · 높음 문제는 없었어요 (그 밖의 지적 1개)"]);
+    assert.deepEqual(getLines(cleanRun, "브레인스토밍"), ["[브레인스토밍] Codex 보안검토 검토 받는 중", "[브레인스토밍] Codex 보안검토 검토 받음"]);
+    assert.match(readReview(), /^# 보안검토 독립 검토 \(Codex\)$/m);
+    assert.match(readReview(), /\| 낮음 \| README\.md \|/);
+    assert.match(fs.readFileSync(codexLog, "utf8"), /보안 검토자다[\s\S]*docs\/autopilot\/security\.md[\s\S]*비밀값/);
+    checkDesktopLogContract(cleanRun.data);
+
+    // 심각 · 높음을 찾으면 개발로 되돌려 고친 뒤 다시 하고, 다시 한 검토가 깨끗하면 통과한다. 결과 문서는 개발이 읽고, 표의 `|`는 이스케이프한다.
+    const blockingRun = await runSecurity({ AP_SECURITY_REVIEW: "blocking-once" });
+
+    assert.equal(blockingRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.deepEqual(readLog(blockingRun).match(/^\[단계\] .+$/gm), [
+        "[단계] 보안검토 시작",
+        "[단계] 보안검토 실패 - 개발로 되돌림 (1/3)",
+        "[단계] 개발 시작",
+        "[단계] 개발 완료",
+        "[단계] 테스트/QA 시작",
+        "[단계] 테스트/QA 완료",
+        "[단계] 보안검토 시작",
+        "[단계] 보안검토 완료"
+    ]);
+    assert.match(getLines(blockingRun, "보안검토")[0], /Codex 독립 검토가 심각 · 높음 문제 1개를 찾았어요$/);
+    assert.match(readReview(), /낮음/);
+    assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /`docs\/autopilot\/security-review\.md`의 심각 · 높음 항목도 같은 기준으로 다룬다/);
+
+    // 계속 찾으면 보안검토 실패 횟수까지 되돌리고 실패로 끝난다. 결과 문서에는 높음이 남는다.
+    const stuckRun = await runSecurity({ AP_SECURITY_REVIEW: "blocking" }, { maxSecurityRetries: 1 });
+
+    assert.equal(stuckRun.data.reason, "보안검토 실패");
+    assert.equal(getLines(stuckRun, "보안검토").length, 2);
+    assert.match(readReview(), /\| 높음 \| src\/api\.js:10 \| 예약 조회에 권한 확인이 없다 \\\| 다른 사람 예약이 보인다 \|/);
+
+    // 답을 읽을 수 없거나 Codex를 쓸 수 없거나 보내기를 허용하지 않았으면 검토를 건너뛰고 메인의 판정대로 통과한다.
+    const badRun = await runSecurity({ AP_SECURITY_REVIEW: "bad" });
+
+    assert.equal(badRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.deepEqual(getLines(badRun, "보안검토"), ["[보안검토] Codex 독립 검토의 답을 읽을 수 없어 건너뜁니다."]);
+    assert(!fs.existsSync(path.join(projectDir, phaseUtil.SECURITY_REVIEW_PATH)));
+
+    const missingRun = await runSecurity({ AP_CODEX_LOGIN: "0" });
+
+    assert.equal(missingRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.match(getLines(missingRun, "브레인스토밍").at(-1), /^\[브레인스토밍\] Codex 보안검토 검토 건너뜀: /);
+
+    const blockedRun = await runSecurity({ AP_SECURITY_REVIEW: "blocking" }, { allow: [] });
+
+    assert.equal(blockedRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.deepEqual(getLines(blockedRun, "보안검토"), ["[보안검토] 외부 서비스로 보내기를 허용하지 않아 독립 검토를 건너뜁니다."]);
+    assert(!fs.existsSync(codexLog));
+
+    // 메인이 Codex면 반대쪽인 Claude가 읽기 전용으로 검토하고, 보내기를 허용하지 않아도 된다(내용이 이미 Codex에 간다).
+    const claudeReviewRun = await runSecurity({ AP_CODEX_ROUND: "build", AP_SECURITY_REVIEW: "blocking-once" }, { allow: [], mains: { security: "codex" } });
+
+    assert.equal(claudeReviewRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.match(getLines(claudeReviewRun, "보안검토")[0], /Claude 독립 검토가 심각 · 높음 문제 1개를 찾았어요$/);
+
+    assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+};
+
 // 여러 AI 브레인스토밍: Codex가 단계 시작 전에 따로 안을 내고 교차검토를 하면, 확인받기를 켜지 않아도 사용자가 고르도록 멈춘다.
 // 고른 안은 다음 실행의 첫 회차가 확정한다. Codex가 실패하거나 보내기를 허용하지 않았으면 건너뛰고 Claude 안으로 진행한다.
 const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
@@ -1810,6 +1978,8 @@ export {
     checkSessionRunner,
     checkBuildMode,
     checkBuildSkip,
+    checkSecurityDoc,
+    checkSecurityReview,
     checkBrainstorm,
     checkCodexRunner,
     checkDebate,

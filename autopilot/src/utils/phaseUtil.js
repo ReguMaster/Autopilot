@@ -99,6 +99,138 @@ const getStartPhase = (state) => {
     return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null, debate: null, receivedProposal: null }, isRevision: true };
 };
 
+const SECURITY_DOC_PATH = "docs/autopilot/security.md";
+const SECURITY_STATUSES = ["확인함", "해당 없음", "못 함"];
+const MIN_EVIDENCE_LENGTH = 10;
+// 보안검토가 security.md의 점검 결과 표에 한 행씩 남겨야 하는 항목. 프롬프트의 점검 목록과 엔진의 검사가 같은 목록을 쓴다.
+const SECURITY_CHECKS = [
+    { key: "비밀값", detail: "코드 · 설정 파일 · `git log -p` 이력의 키 · 토큰 · 비밀번호" },
+    { key: "패키지 취약점", detail: "프로젝트의 audit 명령(예: `npm audit`, `pip-audit`, `cargo audit`). 네트워크를 쓸 수 없으면 lockfile 검토로 대신하고 그 사실을 근거에 적는다" },
+    { key: "입력 검증과 인젝션", detail: "SQL · 명령 · 경로 · XSS" },
+    { key: "인증 · 권한 · 세션", detail: "" },
+    { key: "파일 업로드와 경로", detail: "" },
+    { key: "오류 · 로그의 민감정보", detail: "오류 메시지 · 로그에 드러나는 민감정보" },
+    { key: "CORS와 보안 헤더", detail: "웹이 아니면 `해당 없음`" },
+    { key: "기본 · 디버그 설정", detail: "기본 계정 · 디버그 설정 · 개발용 설정이 남았는지" }
+];
+
+const normalizeCell = (text) => {
+    return text.replace(/[\s·`*_]/g, "");
+};
+
+// security.md의 점검 결과 표가 점검 항목마다 상태와 근거를 갖췄는지 본다. 빠졌거나 근거 없는 항목을 문장으로 돌려준다(없으면 빈 배열).
+// shortcut: 근거는 길이로만 가린다. 내용이 맞는지까지는 보지 않으므로 교차검토(독립 AI)가 생기면 그쪽으로 넘긴다.
+const getSecurityDocProblems = (text) => {
+    const rows = text
+        .split(/\r?\n/)
+        .filter((line) => line.trim().startsWith("|"))
+        .map((line) =>
+            line
+                .trim()
+                .replace(/^\||\|$/g, "")
+                .split("|")
+                .map((cell) => cell.trim())
+        );
+
+    return SECURITY_CHECKS.flatMap(({ key }) => {
+        const row = rows.find((cells) => normalizeCell(cells[0]).includes(normalizeCell(key)));
+
+        if (!row) {
+            return [`'${key}' 행이 없다`];
+        }
+
+        const status = (row[1] ?? "")
+            .replace(/[^\p{L}\p{N} ]/gu, "")
+            .replace(/\s+/g, " ")
+            .trim();
+        const evidence = row.slice(2).join("|").trim();
+
+        if (!SECURITY_STATUSES.includes(status)) {
+            return [`'${key}'의 상태가 ${SECURITY_STATUSES.join(" · ")} 중 하나가 아니다`];
+        }
+
+        return evidence.length < MIN_EVIDENCE_LENGTH ? [`'${key}'의 근거가 없거나 너무 짧다`] : [];
+    });
+};
+
+const SECURITY_REVIEW_PATH = "docs/autopilot/security-review.md";
+const SECURITY_SEVERITIES = ["심각", "높음", "중간", "낮음"];
+// 개발로 되돌리는 심각도. 보안검토 자신의 pass·fail 기준과 같다.
+const BLOCKING_SEVERITIES = ["심각", "높음"];
+const MAX_REVIEW_FINDINGS = 20;
+const MAX_REVIEW_TEXT_LENGTH = 400;
+
+// 보안검토의 독립 검토자. 메인의 반대쪽 AI다. Codex가 검토하면 프로젝트 내용을 보내야 하므로 보내기를 허용하지 않았으면 검토하지 못한다(isBlocked).
+const getSecurityReviewer = ({ main, canSend = false }) => {
+    const reviewer = getOtherProvider(main);
+
+    return { reviewer: reviewer, isBlocked: reviewer === PROVIDER_CODEX && !canSend };
+};
+
+const cleanReviewText = (value) => {
+    return typeof value === "string"
+        ? value
+              .replace(/[\u0000-\u001f\u007f]+/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, MAX_REVIEW_TEXT_LENGTH)
+        : "";
+};
+
+// 독립 검토자의 답에서 JSON 객체 하나를 꺼내 {findings: [{severity, location, description, recommendation}]}로 읽는다. 읽을 수 없거나 심각도가 틀린 항목이 있으면 null이다.
+// 모르는 심각도를 낮게 읽으면 심각한 문제가 통과하므로 항목을 버리지 않고 답 전체를 거부한다.
+const parseSecurityReview = (text) => {
+    const source = String(text || "");
+    const start = source.indexOf("{");
+    const end = source.lastIndexOf("}");
+    let value;
+
+    try {
+        value = JSON.parse(source.slice(start, end + 1));
+    } catch {
+        return null;
+    }
+
+    if (!Array.isArray(value?.findings) || value.findings.length > MAX_REVIEW_FINDINGS) {
+        return null;
+    }
+
+    const findings = value.findings.map((item) => ({
+        severity: cleanReviewText(item?.severity).replace(/[^\p{L}]/gu, ""),
+        location: cleanReviewText(item?.location),
+        description: cleanReviewText(item?.description),
+        recommendation: cleanReviewText(item?.recommendation)
+    }));
+
+    return findings.every((finding) => SECURITY_SEVERITIES.includes(finding.severity) && finding.description) ? { findings: findings } : null;
+};
+
+const getBlockingFindings = (review) => {
+    return review.findings.filter((finding) => BLOCKING_SEVERITIES.includes(finding.severity));
+};
+
+// 독립 검토 결과 문서. 심각도 순이고, 개발과 다시 하는 보안검토가 읽는다.
+const formatSecurityReview = (review, reviewerLabel) => {
+    const cell = (text) => (text || "-").replace(/\|/g, "\\|");
+    const rows = [...review.findings]
+        .sort((a, b) => SECURITY_SEVERITIES.indexOf(a.severity) - SECURITY_SEVERITIES.indexOf(b.severity))
+        .map((finding) => `| ${finding.severity} | ${cell(finding.location)} | ${cell(finding.description)} | ${cell(finding.recommendation)} |`);
+
+    return [
+        `# 보안검토 독립 검토 (${reviewerLabel})`,
+        "",
+        `${reviewerLabel}가 \`security.md\`와 따로 코드를 읽고 낸 결과다. ${BLOCKING_SEVERITIES.join(" · ")}은 개발이 고쳐야 한다.`,
+        "",
+        ...(rows.length ? ["| 심각도 | 위치 | 설명 | 권장 조치 |", "|---|---|---|---|", ...rows] : ["찾은 문제 없음"])
+    ].join("\n");
+};
+
+// 세션이 `fail`을 꾸미거나(백틱·굵게) 뒤에 이유를 붙여도 실패로 본다. 정확히 일치만 보면 실패가 통과로 넘어간다.
+// \W는 한글도 꾸밈 문자로 건너뛰어 `통과 (fail 0건)`을 실패로 읽으므로 글자·숫자가 아닌 것만 건너뛴다.
+const isFailResult = (result) => {
+    return /^[^\p{L}\p{N}]*(?:fail|실패)/iu.test(result);
+};
+
 // 건너뛰는 단계에 서 있으면 처음으로 할 단계까지 앞으로 옮긴다. 거쳐 간 단계는 skipped에 담는다. 끝까지 건너뛰면 phase는 done이다.
 const skipForward = (phase, skip = []) => {
     const skipped = [];
@@ -120,9 +252,7 @@ const skipForward = (phase, skip = []) => {
 const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], debate = null, skip = []) => {
     const retryKey = RETRY_KEYS[state.phase];
 
-    // 세션이 `fail`을 꾸미거나(백틱·굵게) 뒤에 이유를 붙여도 실패로 본다. 정확히 일치만 보면 실패가 통과로 넘어간다.
-    // \W는 한글도 꾸밈 문자로 건너뛰어 `통과 (fail 0건)`을 실패로 읽으므로 글자·숫자가 아닌 것만 건너뛴다.
-    if (retryKey && /^[^\p{L}\p{N}]*(?:fail|실패)/iu.test(result)) {
+    if (retryKey && isFailResult(result)) {
         if (state[retryKey] < maxRetries[state.phase]) {
             return { state: { ...state, phase: "build", awaiting: null, [retryKey]: state[retryKey] + 1 }, event: "retry" };
         }
@@ -222,6 +352,17 @@ export default {
     writePhase,
     getStartPhase,
     skipForward,
+    SECURITY_DOC_PATH,
+    SECURITY_STATUSES,
+    SECURITY_CHECKS,
+    getSecurityDocProblems,
+    SECURITY_REVIEW_PATH,
+    SECURITY_SEVERITIES,
+    getSecurityReviewer,
+    parseSecurityReview,
+    getBlockingFindings,
+    formatSecurityReview,
+    isFailResult,
     getPhaseTransition,
     getActivePhases,
     getOtherProvider,

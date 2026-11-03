@@ -159,6 +159,7 @@ const getModeSettings = (options, progressFile, tasks) => {
         brainstorm: brainstorm,
         isBrainstormBlocked: BRAINSTORM_PHASES.some((phase) => phaseUtil.getPhaseAgents({ phase: phase, mains: mains, brainstorm: brainstorm, canSend: canSend }).isBlocked),
         crossReview: Boolean(options.crossReview),
+        securityReview: Boolean(options.securityReview),
         debate: options.debate || [],
         debateTurns: options.debateTurns ?? DEBATE_DEFAULT_TURNS,
         proposals: state.proposals,
@@ -298,6 +299,7 @@ const prepareRun = (options) => {
     runState.adoption = modeSettings.mode === MODE_BUILD ? getAdoption(projectDir, modeSettings.proposals, modeSettings.debateState) : null;
     runState.debateStage = null;
     runState.isDisputesRetry = false;
+    runState.securityDocProblems = null;
     runState.phaseAgents = null;
     runState.proposalReady = readyProposals;
     runState.proposalPhase = Object.keys(readyProposals).length ? modeSettings.phase : null;
@@ -925,11 +927,74 @@ const readDisputes = (runState) => {
     return debateUtil.parseDisputes(isFresh ? fileUtil.readTextFile(file) : "");
 };
 
+// 보안검토가 pass라고 했어도 security.md의 점검 결과가 기준에 못 미치면 한 번 다시 쓰게 하고, 또 모자라면 보안검토 실패로 끝낸다.
+// 개발로 되돌리지 않는 것은 고칠 코드가 아니라 점검 기록이 모자란 것이기 때문이다. 다음 실행이 보안검토부터 다시 한다. 실행을 끝내야 하면 true를 반환한다.
+const handleIncompleteSecurityDoc = (context, loopState, problems) => {
+    const { runState, phaseDoneFile, writeLog } = context;
+    const summary = problems.join(" / ");
+
+    fileUtil.removeFiles([phaseDoneFile]);
+    loopState.idleCount = 0;
+
+    if (!runState.securityDocProblems) {
+        runState.securityDocProblems = problems;
+        writeLog(`[보안검토] security.md 점검 결과가 기준에 못 미쳐 한 번 더 확인해요: ${summary}`);
+
+        return false;
+    }
+
+    runState.securityDocProblems = null;
+    writeLog(`[보안검토] security.md 점검 결과가 다시 기준에 못 미쳐요: ${summary}`);
+    writeLog(`[단계] ${PHASE_LABELS.security} 실패`);
+    loopState.reason = `${PHASE_LABELS.security} 실패`;
+
+    return true;
+};
+
+// 보안검토 pass를 메인의 반대쪽 AI가 독립적으로 다시 확인한다. 심각 · 높음 문제를 찾았으면 true(개발로 되돌린다)다.
+// 못 쓰거나 실패하거나 답을 읽을 수 없으면 이유를 남기고 false다(회차 실패로 세지 않는다). 결과는 docs/autopilot/security-review.md에 쓰고 다음 실행이 commit한다.
+const runSecurityReview = async (context, loopState) => {
+    const { runState, writeLog } = context;
+    const { reviewer, isBlocked } = phaseUtil.getSecurityReviewer({ main: runState.phaseAgents.main, canSend: runState.allow.includes("send") });
+    const label = PROVIDER_LABELS[reviewer];
+
+    if (isBlocked) {
+        writeLog("[보안검토] 외부 서비스로 보내기를 허용하지 않아 독립 검토를 건너뜁니다.");
+
+        return false;
+    }
+
+    const answer = await askProvider(context, loopState, reviewer, promptUtil.getSecurityReviewPrompt(runState), `${PHASE_LABELS.security} 검토`);
+
+    if (answer === null) {
+        return false;
+    }
+
+    const review = phaseUtil.parseSecurityReview(answer);
+
+    if (!review) {
+        writeLog(`[보안검토] ${label} 독립 검토의 답을 읽을 수 없어 건너뜁니다.`);
+
+        return false;
+    }
+
+    const blocking = phaseUtil.getBlockingFindings(review);
+
+    writeProposalFile(runState.projectDir, phaseUtil.SECURITY_REVIEW_PATH, phaseUtil.formatSecurityReview(review, label));
+    writeLog(
+        blocking.length
+            ? `[보안검토] ${label} 독립 검토가 심각 · 높음 문제 ${blocking.length}개를 찾았어요`
+            : `[보안검토] ${label} 독립 검토에서 심각 · 높음 문제는 없었어요 (그 밖의 지적 ${review.findings.length}개)`
+    );
+
+    return blocking.length > 0;
+};
+
 // 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA·보안검토 실패로 실행을 끝내야 하면 true를 반환한다.
 // 다른 AI의 안을 받은 단계는 교차검토를 받고, 사용자가 안을 고르도록 멈춘다. 다른 AI의 검토는 다음 실행이 commit한다.
 const applyPhaseDone = async (context, loopState) => {
     const { runState, phaseDoneFile, writeLog } = context;
-    const result = fileUtil.readTextFile(phaseDoneFile).trim().split(/\r?\n/)[0].trim().toLowerCase();
+    let result = fileUtil.readTextFile(phaseDoneFile).trim().split(/\r?\n/)[0].trim().toLowerCase();
     const phase = runState.phase;
     const label = PHASE_LABELS[phase];
     const maxRetries = { qa: runState.maxQaRetries, security: runState.maxSecurityRetries };
@@ -940,6 +1005,26 @@ const applyPhaseDone = async (context, loopState) => {
     // 중단 요청이 있으면 협의를 시작하지 않고, 협의가 중단으로 끊겨도 나란히 비교로 넘기지 않는다. 다음 실행이 그 단계와 협의를 다시 한다.
     if (isDebatePhase && runState.debateStage !== "synthesis" && (isStopRequested(context, loopState) || (await startDebate(context, loopState)) || isStopRequested(context, loopState))) {
         return false;
+    }
+
+    const securityProblems =
+        phase === "security" && !phaseUtil.isFailResult(result) ? phaseUtil.getSecurityDocProblems(fileUtil.readTextFile(path.join(runState.projectDir, phaseUtil.SECURITY_DOC_PATH))) : [];
+
+    if (securityProblems.length) {
+        return handleIncompleteSecurityDoc(context, loopState, securityProblems);
+    }
+
+    if (phase === "security" && runState.securityReview && !phaseUtil.isFailResult(result)) {
+        const isBlocking = await runSecurityReview(context, loopState);
+
+        // 중단으로 검토가 끊기면 통과로 넘기지 않는다. 다음 실행이 보안검토를 다시 한다.
+        if (isStopRequested(context, loopState)) {
+            return false;
+        }
+
+        if (isBlocking) {
+            result = "fail";
+        }
     }
 
     const isSynthesis = runState.debateStage === "synthesis";
@@ -962,6 +1047,7 @@ const applyPhaseDone = async (context, loopState) => {
 
     runState.debateStage = null;
     runState.isDisputesRetry = false;
+    runState.securityDocProblems = null;
 
     if (debateResult) {
         writeLog(debateResult.disputes.length ? `[협의] 쟁점 ${debateResult.disputes.length}개를 남기고 끝냈어요` : "[협의] 합의했어요");

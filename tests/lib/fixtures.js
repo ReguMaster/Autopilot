@@ -13,6 +13,17 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 if (process.cwd() !== process.env.AP_EXPECTED_CWD) process.exit(99);
 let prompt = '';
+// 보안검토의 독립 검토 답. AP_SECURITY_REVIEW가 blocking이면 매번 높음 문제를, blocking-once면 첫 검토만 높음 문제를 낸다. bad면 JSON이 아닌 답을, 그 밖에는 낮음 하나만 낸다.
+const getSecurityReviewAnswer = (reviewPrompt) => {
+  const countFile = 'security-review-count.txt';
+  const count = (fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0) + 1;
+  fs.writeFileSync(countFile, String(count));
+  const mode = process.env.AP_SECURITY_REVIEW;
+  if (mode === 'bad') return '문제는 없어 보여요.';
+  const high = { severity: '높음', location: 'src/api.js:10', description: '예약 조회에 권한 확인이 없다 | 다른 사람 예약이 보인다', recommendation: '조회할 때 예약 번호와 소유자를 함께 확인한다' };
+  const low = { severity: '낮음', location: 'README.md', description: '보안 안내가 없다', recommendation: '안내를 추가한다' };
+  return JSON.stringify({ findings: mode === 'blocking' || (mode === 'blocking-once' && count === 1) ? [high] : [low] });
+};
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => prompt += chunk);
 process.stdin.on('end', () => {
@@ -24,6 +35,10 @@ process.stdin.on('end', () => {
     if (process.env.AP_CLAUDE_ASSIST_FAIL === '1') {
       console.log(JSON.stringify({ type: 'result', subtype: 'error', is_error: true, session_id: '11111111-2222-3333-4444-555555555555', result: 'usage limit reached' }));
       process.exitCode = 1;
+      return;
+    }
+    if (prompt.includes('보안 검토자')) {
+      console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: '11111111-2222-3333-4444-555555555555', result: getSecurityReviewAnswer(prompt) }));
       return;
     }
     const answer = prompt.includes('검토자') ? '- Claude 검토: 빈자리 하나' : '\x60\x60\x60markdown\n# Claude 기획안\n\n1) 한 줄 요약\n\x60\x60\x60';
@@ -102,6 +117,14 @@ process.stdin.on('end', () => {
       const isBroken = process.env.AP_DISPUTES === 'always' || (process.env.AP_DISPUTES === 'once' && !prompt.includes('읽을 수 없었다'));
       fs.writeFileSync('docs/autopilot/proposals/plan-disputes.json', JSON.stringify(isBroken ? { disputes: disputes } : disputes));
     }
+    // 보안검토 회차는 점검 결과 표를 남긴다. AP_SECURITY_DOC=weak면 근거 없는 표를, once면 첫 회차만 그 표를, none이면 파일을 남기지 않는다.
+    if (prompt.includes('지금 단계는 [보안검토]') && process.env.AP_SECURITY_DOC !== 'none') {
+      const isWeak = process.env.AP_SECURITY_DOC === 'weak' || (process.env.AP_SECURITY_DOC === 'once' && !prompt.includes('기준에 못 미쳐'));
+      const keys = ['비밀값', '패키지 취약점', '입력 검증과 인젝션', '인증 · 권한 · 세션', '파일 업로드와 경로', '오류 · 로그의 민감정보', 'CORS와 보안 헤더', '기본 · 디버그 설정'];
+      const rows = keys.map((key) => '| ' + key + ' | 확인함 | ' + (isWeak ? '문제 없음' : 'npm audit 실행, 취약점 0건 확인') + ' |');
+      fs.mkdirSync('docs/autopilot', { recursive: true });
+      fs.writeFileSync('docs/autopilot/security.md', ['## 점검 결과', '', '| 항목 | 상태 | 근거 |', '|---|---|---|', ...rows, ''].join('\n'));
+    }
     const marker = prompt.match(/파일 \x60(\.autopilot\/progress\/[^\x60]+\/PHASE_DONE)\x60/)[1];
     let phaseResult = 'pass';
     for (const [label, countFile, failCount] of [['테스트/QA', 'qa-count.txt', process.env.AP_QA_FAILS], ['보안검토', 'security-count.txt', process.env.AP_SECURITY_FAILS]]) {
@@ -155,6 +178,11 @@ process.stdin.on("end", () => {
     execFileSync(process.env.AP_GIT, ["commit", "-m", "[ap] codex"]);
     // AP_CODEX_ROUND=build면 신규 개발의 한 단계를 마친다: 협의를 정리하는 회차는 쟁점 파일을 쓰고, 단계 완료 신호를 남긴다.
     if (process.env.AP_CODEX_ROUND === "build") {
+      if (prompt.includes("지금 단계는 [보안검토]")) {
+        const keys = ["비밀값", "패키지 취약점", "입력 검증과 인젝션", "인증 · 권한 · 세션", "파일 업로드와 경로", "오류 · 로그의 민감정보", "CORS와 보안 헤더", "기본 · 디버그 설정"];
+        fs.mkdirSync("docs/autopilot", { recursive: true });
+        fs.writeFileSync("docs/autopilot/security.md", ["| 항목 | 상태 | 근거 |", "|---|---|---|", ...keys.map((key) => "| " + key + " | 확인함 | npm audit 실행, 취약점 0건 확인 |"), ""].join("\n"));
+      }
       if (prompt.includes("협의가 끝났다")) fs.writeFileSync("docs/autopilot/proposals/plan-disputes.json", JSON.stringify([{ title: "결제", claude: "이번엔 빼요", codex: "카드 결제를 넣어요" }]));
       fs.writeFileSync(prompt.match(/파일 \x60(\.autopilot\/progress\/[^\x60]+\/PHASE_DONE)\x60/)[1], "pass\n");
     }
@@ -191,6 +219,20 @@ process.stdin.on("end", () => {
       : process.env.AP_DEBATE === "improve"
         ? { message: "좋아요, 결제 흐름을 반영할게요.", agree: ["결제 흐름: 필요해요"], disagree: [], improve: [], changes: ["결제 흐름 보강"], consensus: true }
       : { message: "결제는 처음부터 넣는 게 좋아요.", agree: [], disagree: [{ point: "결제 빼기", reason: "노쇼를 막아요" }], changes: [], consensus: false }));
+    return;
+  }
+  // 보안검토의 독립 검토는 가짜 claude와 같은 규칙(AP_SECURITY_REVIEW)으로 답한다.
+  if (prompt.includes("보안 검토자")) {
+    const count = (fs.existsSync("security-review-count.txt") ? Number(fs.readFileSync("security-review-count.txt", "utf8")) : 0) + 1;
+    fs.writeFileSync("security-review-count.txt", String(count));
+    const mode = process.env.AP_SECURITY_REVIEW;
+    if (mode === "bad") {
+      console.log("문제는 없어 보여요.");
+      return;
+    }
+    const high = { severity: "높음", location: "src/api.js:10", description: "예약 조회에 권한 확인이 없다 | 다른 사람 예약이 보인다", recommendation: "조회할 때 예약 번호와 소유자를 함께 확인한다" };
+    const low = { severity: "낮음", location: "README.md", description: "보안 안내가 없다", recommendation: "안내를 추가한다" };
+    console.log(JSON.stringify({ findings: mode === "blocking" || (mode === "blocking-once" && count === 1) ? [high] : [low] }));
     return;
   }
   // AP_CODEX_SLOW=ms이면 실제 Codex처럼 stderr에 한 일을 남기고 그만큼 늦게 답한다.

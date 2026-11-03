@@ -29,9 +29,18 @@ const isSkipped = (runState, phase) => {
     return Boolean(runState.skip?.includes(phase));
 };
 
+// 독립 검토를 켰으면 되돌린 개발과 다시 하는 보안검토가 그 결과 문서의 심각 · 높음도 본다.
+const getReviewDocNote = (runState) => {
+    return runState.securityReview ? ` 다른 AI의 독립 검토 결과 \`${phaseUtil.SECURITY_REVIEW_PATH}\`의 심각 · 높음 항목도 같은 기준으로 다룬다.` : "";
+};
+
 // 개발이 읽을 문서. 건너뛴 단계의 산출물은 없으므로 빼고, 디자인이 없으면 화면은 기획서의 목록과 저장소의 기존 스타일을 따르게 한다.
 const getBuildRead = (runState) => {
-    const failureDocs = [isSkipped(runState, "qa") ? "" : "`docs/autopilot/qa.md`", isSkipped(runState, "security") ? "" : "`docs/autopilot/security.md`"].filter(Boolean);
+    const failureDocs = [
+        isSkipped(runState, "qa") ? "" : "`docs/autopilot/qa.md`",
+        isSkipped(runState, "security") ? "" : "`docs/autopilot/security.md`",
+        isSkipped(runState, "security") || !runState.securityReview ? "" : `\`${phaseUtil.SECURITY_REVIEW_PATH}\``
+    ].filter(Boolean);
     const parts = [
         "`docs/autopilot/plan.md`의 개발 순서와 완료 조건",
         isSkipped(runState, "design")
@@ -97,7 +106,9 @@ const getPhaseBrief = (runState) => {
             read: getBuildRead(runState),
             output: "동작하는 코드와 자동 테스트. 저장소에 빌드 · 테스트 · 실행 방법이 아직 없으면 첫 회차에 프로젝트 뼈대와 함께 `CLAUDE.md`(실행 · 검증 명령, 폴더 구조, 코드 규칙. 개발이 끝난 뒤 유지 보수 모드가 이 파일을 지침으로 쓴다)와 `README.md`(설치 · 실행 방법)를 만든다.",
             perRound: `개발 순서에서 아직 끝나지 않은 다음 단위 1~2개. 단위마다 구현 → 테스트 → 실제 실행으로 확인 → commit → 진행 기록 갱신 순서를 지킨다.${
-                isReturned ? " 이번 개발은 테스트/QA · 보안검토가 되돌린 것이다. 새 단위보다 `qa.md`의 실패 항목과 `security.md`의 고치지 못한 심각 · 높음 항목을 먼저 고친다." : ""
+                isReturned
+                    ? " 이번 개발은 테스트/QA · 보안검토가 되돌린 것이다. 새 단위보다 `qa.md`의 실패 항목과 `security.md`의 고치지 못한 심각 · 높음 항목을 먼저 고친다." + getReviewDocNote(runState)
+                    : ""
             }`,
             criteria: ["개발 순서의 모든 단위가 끝났다.", "빌드와 전체 테스트가 통과한다.", "필수 기능의 완료 조건을 실제로 실행해 확인했다.", "`README.md` · `CLAUDE.md`가 지금 코드와 맞다."],
             avoid: `plan.md에 없는 기능 추가(필요하면 plan.md를 먼저 고치고 이유를 적는다), ${isSkipped(runState, "design") ? "저장소의 기존 화면 스타일과 다른 임의 변경" : "디자인과 다른 화면으로 임의 변경"}, 검증하지 않은 코드 commit.`
@@ -123,23 +134,16 @@ const getPhaseBrief = (runState) => {
     return {
         role: "보안 엔지니어다. 공격자와 실수의 눈으로 배포 전의 코드와 설정을 점검한다.",
         read: "저장소의 코드 · 설정 · 커밋 이력, `docs/autopilot/plan.md`의 기술 선택과 데이터 구조.",
-        output: "`docs/autopilot/security.md`에 발견 사항을 표로 남긴다(심각도: 심각 · 높음 · 중간 · 낮음, 위치, 설명, 조치: 고침 · 남김). 고칠 수 있는 문제는 바로 고치고 검증한 뒤 commit한다. 남긴 문제는 이유와 권장 조치를 적는다.",
+        output: `\`docs/autopilot/security.md\`에 표 둘을 남긴다. 1) \`## 점검 결과\`: 아래 점검 목록의 항목마다 한 행, 열은 \`| 항목 | 상태 | 근거 |\`다. 항목 칸에는 점검 목록의 항목 이름(콜론 앞)을 그대로 쓰고, 상태는 ${phaseUtil.SECURITY_STATUSES.map((status) => `\`${status}\``).join(" · ")} 중 하나다. 근거에는 실행한 명령과 그 결과 요약(예: \`npm audit\` → 취약점 0건)이나 읽은 파일 · 검색한 패턴을 적고, \`해당 없음\`은 왜 해당하지 않는지, \`못 함\`은 못 한 이유와 대신 한 것을 적는다. 근거 없이 \`문제 없음\`만 쓴 행이 있으면 엔진이 통과로 받지 않는다. 2) \`## 발견 사항\`: 심각도(심각 · 높음 · 중간 · 낮음), 위치, 설명, 조치(고침 · 남김). 고칠 수 있는 문제는 바로 고치고 검증한 뒤 commit한다. 남긴 문제는 이유와 권장 조치를 적는다.`,
         perRound: `아래 점검 목록을 차례로 확인하고, 한 회차에 확인한 만큼 기록과 수정을 마친다.${
             runState.securityRetries > 0
-                ? " 이번 보안검토는 개발로 되돌려 고친 뒤 다시 하는 것이다. `security.md`에서 `남김`으로 둔 심각 · 높음 항목이 고쳐졌는지 먼저 확인하고 조치를 고친다. 이어서 지난 보안검토 뒤에 바뀐 코드(`git log`로 확인)만 점검 목록으로 다시 보고, 바뀌지 않은 곳의 기록은 그대로 둔다."
+                ? " 이번 보안검토는 개발로 되돌려 고친 뒤 다시 하는 것이다. `security.md`에서 `남김`으로 둔 심각 · 높음 항목이 고쳐졌는지 먼저 확인하고 조치를 고친다." +
+                  getReviewDocNote(runState) +
+                  " 이어서 지난 보안검토 뒤에 바뀐 코드(`git log`로 확인)만 점검 목록으로 다시 보고, 바뀌지 않은 곳의 기록은 그대로 둔다."
                 : ""
         }`,
-        checks: [
-            "비밀값: 코드 · 설정 파일 · `git log -p` 이력의 키 · 토큰 · 비밀번호",
-            "라이브러리(패키지) 취약점: 프로젝트의 audit 명령(예: `npm audit`). 네트워크를 쓸 수 없으면 lockfile 검토로 대신하고 그 사실을 적는다",
-            "입력 검증과 인젝션: SQL · 명령 · 경로 · XSS",
-            "인증 · 권한 · 세션",
-            "파일 업로드와 경로 처리",
-            "오류 메시지 · 로그에 드러나는 민감정보",
-            "웹이면 CORS와 보안 헤더",
-            "기본 계정 · 디버그 설정 · 개발용 설정이 남았는지"
-        ],
-        criteria: ["점검 목록을 모두 확인하고 결과를 security.md에 적었다.", "고친 문제는 테스트나 실행으로 확인했다.", "남긴 문제마다 이유와 권장 조치가 있다."],
+        checks: phaseUtil.SECURITY_CHECKS.map(({ key, detail }) => (detail ? `${key}: ${detail}` : key)),
+        criteria: ["점검 목록의 모든 항목이 security.md의 점검 결과 표에 상태와 근거와 함께 있다.", "고친 문제는 테스트나 실행으로 확인했다.", "남긴 문제마다 이유와 권장 조치가 있다."],
         avoid: "비밀값을 문서 · 로그 · commit 메시지에 옮겨 적기(위치만 적는다), 외부 서비스로 보내기를 허용받지 않은 채 외부 스캐너 · 서비스에 코드 보내기, 점검과 상관없는 기능 변경.",
         signal: "첫 줄에 고치지 못한 심각 · 높음 문제가 남았으면 `fail`, 없으면 `pass`(중간 · 낮음은 security.md에 기록만 하고 `pass`)를 쓴"
     };
@@ -334,6 +338,15 @@ const getSkipNote = (runState) => {
     return runState.skip?.length ? ` 소유자가 ${runState.skip.map((phase) => PHASE_LABELS[phase]).join(" · ")} 단계는 이번 실행에서 하지 않기로 했다. 그 단계의 산출물은 없고 만들지도 않는다.` : "";
 };
 
+// 엔진이 security.md의 점검 결과를 통과로 받지 않았으면 같은 보안검토를 다시 하게 한다.
+const getSecurityDocRetryPrompt = (runState) => {
+    if (!runState.securityDocProblems) {
+        return "";
+    }
+
+    return `앞 회차가 남긴 \`${phaseUtil.SECURITY_DOC_PATH}\`의 점검 결과가 기준에 못 미쳐 엔진이 통과로 받지 않았다: ${runState.securityDocProblems.join(", ")}. 이미 한 점검과 수정은 다시 하지 말고, 빠진 항목은 실제로 점검한 뒤 점검 결과 표를 형식대로 고쳐 commit하고 완료 신호를 남긴다.`;
+};
+
 // 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
 const getPhasePrompt = (runState) => {
     const label = PHASE_LABELS[runState.phase];
@@ -341,6 +354,7 @@ const getPhasePrompt = (runState) => {
     return [
         getAdoptionPrompt(runState),
         getDebateSynthesisPrompt(runState),
+        getSecurityDocRetryPrompt(runState),
         `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 ${phaseUtil
             .getActivePhases(runState.skip)
             .map((phase) => PHASE_LABELS[phase])
@@ -427,6 +441,21 @@ const getReviewPrompt = (runState) => {
         `${target}(다른 AI가 쓴 안)를 읽고 빈자리 · 위험 · 더 나은 점을 항목마다 한두 줄로 쓴다. 칭찬은 빼고 고칠 것 위주로 10개 이내.`,
         getProposalScopePrompt(runState),
         "인사 · 설명 없이 마크다운 목록만 최종 답변으로 출력한다.",
+        runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : ""
+    ]
+        .filter(Boolean)
+        .join("\n");
+};
+
+// 보안검토의 독립 검토: 다른 AI가 메인의 점검을 믿지 않고 코드를 직접 읽어 놓친 문제를 찾는다. 새 세션이라 점검 목록과 답의 형식을 직접 준다.
+const getSecurityReviewPrompt = (runState) => {
+    return [
+        `너는 보안 검토자다. 이 저장소(${runState.projectDir})의 보안검토를 다른 AI가 이미 마쳤고, 너는 그 결과를 독립적으로 다시 확인한다. 이 저장소는 읽기만 할 수 있다. 파일을 만들거나 고치지 마라.`,
+        `\`${phaseUtil.SECURITY_DOC_PATH}\`를 읽고, 저장소의 코드 · 설정을 직접 읽어 아래 점검 목록을 네가 다시 점검한다. \`확인함\`이라는 근거를 그대로 믿지 말고, 놓친 문제와 고쳤다고 적었지만 그대로인 문제를 찾는다. \`docs/autopilot/plan.md\`의 기술 선택과 데이터 구조도 참고한다.`,
+        "점검 목록:",
+        ...phaseUtil.SECURITY_CHECKS.map(({ key, detail }) => `- ${detail ? `${key}: ${detail}` : key}`),
+        "코드에서 직접 확인한 문제만 적고 추측은 뺀다. 이미 올바르게 고쳐진 문제는 적지 않는다. 비밀값은 값 대신 위치만 적는다.",
+        `답은 인사 · 설명 · 코드 블록 없이 이 JSON 하나만 쓴다: {"findings": [{"severity": "${phaseUtil.SECURITY_SEVERITIES.join("|")} 중 하나", "location": "파일 경로와 줄", "description": "문제", "recommendation": "권장 조치"}]}. 문제가 없으면 {"findings": []}.`,
         runState.tasks ? `<TASKS>\n${runState.tasks}\n</TASKS>` : ""
     ]
         .filter(Boolean)
@@ -520,4 +549,4 @@ const getRoundPrompt = (runState, round, remainingMinutes, progressCleanupPrompt
     return `${roundPrompt}\n\n${tasksBlock}${phaseBlock}<AUTOPILOT.md>\n${getAutopilotGuide(runState.commitPrefix, runState.mode)}\n</AUTOPILOT.md>\n\n<AUTOPILOT_POLICY.md>\n${getAutopilotPolicy(runState.workBranch, runState.mode === MODE_BUILD ? runState.allow : null)}\n</AUTOPILOT_POLICY.md>`;
 };
 
-export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt, getDebateOpeningPrompt, getDebateReplyPrompt, getDebateFormatPrompt };
+export default { getProgressCleanupPrompt, getRoundPrompt, getProposalPrompt, getReviewPrompt, getSecurityReviewPrompt, getDebateOpeningPrompt, getDebateReplyPrompt, getDebateFormatPrompt };

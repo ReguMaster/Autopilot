@@ -29,7 +29,7 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--skip design,qa,security] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--skip design,qa,security] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--security-review] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol|default] [--codex-effort high|default]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
@@ -60,14 +60,14 @@ const RUN_OPTION_KEYS = {
 };
 const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
 // 신규 개발에서만 뜻이 있는 인자. Codex의 model·effort는 Codex가 회차를 돌릴 때(--runner codex)도 쓴다.
-const BUILD_OPTION_KEYS = ["gates", "skip", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "debateTurns", "crossReview"];
+const BUILD_OPTION_KEYS = ["gates", "skip", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "debateTurns", "crossReview", "securityReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
 const ON_FAIL_OPTIONS = [
     ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
     ["--security-on-fail", "securityOnFail", "maxSecurityRetries"]
 ];
 const LINK_PROJECT_OPTION = "--link-project";
-const RUN_FLAGS = ["--no-open", "--extend-on-limit", "--cross-review"];
+const RUN_FLAGS = ["--no-open", "--extend-on-limit", "--cross-review", "--security-review"];
 
 const parseOptionValue = (args, index) => {
     const value = args[index + 1];
@@ -213,7 +213,8 @@ const parseSkipConflicts = (options) => {
             options.brainstorm?.includes(phase) && `--brainstorm ${phase}`,
             phase === "design" && options.designFormat !== undefined && "--design-format",
             phase === "qa" && options.qaOnFail !== undefined && "--qa-on-fail",
-            phase === "security" && options.securityOnFail !== undefined && "--security-on-fail"
+            phase === "security" && options.securityOnFail !== undefined && "--security-on-fail",
+            phase === "security" && options.securityReview && "--security-review"
         ].filter(Boolean);
 
         if (conflicts.length) {
@@ -230,7 +231,7 @@ const parseModeOptions = (options) => {
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
         throw new Error(
-            "--gate · --skip · --allow · --design-format · --qa-on-fail · --security-on-fail · --main · --brainstorm · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다."
+            "--gate · --skip · --allow · --design-format · --qa-on-fail · --security-on-fail · --main · --brainstorm · --debate-turns · --cross-review · --security-review 는 --mode build 에서만 쓸 수 있습니다."
         );
     }
 
@@ -238,7 +239,7 @@ const parseModeOptions = (options) => {
         parseMainOption(options);
     }
 
-    const usesCodex = options.runner === "codex" || Object.values(options.mains ?? {}).includes("codex") || Boolean(options.brainstorm);
+    const usesCodex = options.runner === "codex" || Object.values(options.mains ?? {}).includes("codex") || Boolean(options.brainstorm) || Boolean(options.securityReview);
 
     if ((options.codexModel !== undefined || options.codexEffort !== undefined) && !usesCodex) {
         throw new Error("--codex-model · --codex-effort 는 --runner codex 나 --main · --brainstorm 과 함께 씁니다.");
@@ -336,6 +337,10 @@ const parseRunArgs = (args) => {
 
     if (args.includes("--cross-review")) {
         options.crossReview = true;
+    }
+
+    if (args.includes("--security-review")) {
+        options.securityReview = true;
     }
 
     settingsUtil.getGitSettings(options.commitPrefix, options.workBranch);

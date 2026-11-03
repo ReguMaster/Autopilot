@@ -142,6 +142,13 @@ const checkCommandArgs = () => {
     assert.equal(parseRunArgs([...build, "--skip", "qa", "--security-on-fail", "retry:2"]).maxSecurityRetries, 2);
     assert.deepEqual(parseRunArgs([...build, "--skip", "design", "--brainstorm", "plan"]).brainstorm, ["plan"]);
 
+    // 보안검토 독립 검토(--security-review)는 신규 개발에서만, 보안검토를 건너뛰면 쓸 수 없다. Codex가 검토할 수 있으므로 --codex-model과 함께 쓸 수 있다.
+    assert.equal(parseRunArgs([...build, "--security-review"]).securityReview, true);
+    assert.equal(parseRunArgs(build).securityReview, undefined);
+    assert.equal(parseRunArgs([...build, "--security-review", "--codex-model", "gpt-6.1-sol"]).codexModel, "gpt-6.1-sol");
+    assert.throws(() => parseRunArgs([...project, "--security-review"]), /--mode build/);
+    assert.throws(() => parseRunArgs([...build, "--skip", "security", "--security-review"]), /--security-review/);
+
     // --link-project는 여러 번 쓸 수 있지만 연결 저장소는 2개(작업 프로젝트를 합쳐 3개)까지다.
     assert.deepEqual(parseRunArgs([...project, "--link-project", "C:\work\api", "--link-project", "C:\work\web"]).linkedProjectDirs, ["C:\work\api", "C:\work\web"]);
     assert.throws(() => parseRunArgs([...project, "--link-project", "a", "--link-project", "b", "--link-project", "c"]), /2개까지/);
@@ -699,6 +706,53 @@ const checkPhaseRules = (context) => {
     assert.equal(getPhaseTransition({ ...plan, phase: "security", securityRetries: 2 }, "fail", [], limits).event, "failed");
     assert.deepEqual(getPhaseTransition({ ...plan, phase: "security", securityRetries: 1 }, "pass", [], limits), { state: { ...plan, phase: "done", securityRetries: 1 }, event: "done" });
 
+    // 보안검토의 점검 결과 표: 항목마다 상태와 근거가 있어야 한다. 근거 없이 `문제 없음`이거나 항목이 빠졌거나 상태가 틀리면 문제로 돌려준다.
+    const securityRow = (key, status = "확인함", evidence = "npm audit 실행, 취약점 0건") => `| ${key} | ${status} | ${evidence} |`;
+    const securityDoc = (rows) => ["## 점검 결과", "", "| 항목 | 상태 | 근거 |", "|---|---|---|", ...rows].join("\n");
+    const fullRows = phaseUtil.SECURITY_CHECKS.map(({ key }) => securityRow(key));
+
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc(fullRows)), []);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc(fullRows).replace(/\n/g, "\r\n")), []);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc(phaseUtil.SECURITY_CHECKS.map(({ key }) => securityRow(`**${key}**`, "`해당 없음`", "웹이 아니라 CORS와 헤더가 없다")))), []);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc(phaseUtil.SECURITY_CHECKS.map(({ key }) => securityRow(key, "못 함", "네트워크 불가, lockfile만 읽음")))), []);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc(fullRows.map((row) => row.replace("npm audit 실행, 취약점 0건", "`a | b` 실행, 0건 확인")))), []);
+    assert.equal(phaseUtil.getSecurityDocProblems("").length, phaseUtil.SECURITY_CHECKS.length);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc(fullRows.slice(1))), ["'비밀값' 행이 없다"]);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc([securityRow("비밀값", "확인함", "문제 없음"), ...fullRows.slice(1)])), ["'비밀값'의 근거가 없거나 너무 짧다"]);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc([securityRow("비밀값", "통과"), ...fullRows.slice(1)])), ["'비밀값'의 상태가 확인함 · 해당 없음 · 못 함 중 하나가 아니다"]);
+    assert.deepEqual(phaseUtil.getSecurityDocProblems(securityDoc([`| 비밀값 | 확인함 |`, ...fullRows.slice(1)])), ["'비밀값'의 근거가 없거나 너무 짧다"]);
+    assert(phaseUtil.isFailResult("`fail`") && !phaseUtil.isFailResult("pass") && !phaseUtil.isFailResult("통과 (fail 0건)"));
+
+    // 보안검토 독립 검토: 메인의 반대쪽 AI가 검토하고(Codex 검토는 보내기를 허용해야 한다), 답은 JSON에서 읽어 심각 · 높음만 되돌리는 기준으로 삼는다.
+    assert.deepEqual(phaseUtil.getSecurityReviewer({ main: "claude", canSend: true }), { reviewer: "codex", isBlocked: false });
+    assert.deepEqual(phaseUtil.getSecurityReviewer({ main: "claude" }), { reviewer: "codex", isBlocked: true });
+    assert.deepEqual(phaseUtil.getSecurityReviewer({ main: "codex" }), { reviewer: "claude", isBlocked: false });
+
+    const reviewAnswer = (findings) => `검토했어요.\n${JSON.stringify({ findings: findings })}\n끝`;
+    const high = { severity: "높음", location: "src/a.js:1", description: "권한 확인 없음", recommendation: "확인 추가" };
+    const parsedReview = phaseUtil.parseSecurityReview(reviewAnswer([high, { ...high, severity: "**낮음**", description: "줄\n바꿈 | 파이프" }]));
+
+    assert.deepEqual(
+        parsedReview.findings.map((finding) => finding.severity),
+        ["높음", "낮음"]
+    );
+    assert.equal(parsedReview.findings[1].description, "줄 바꿈 | 파이프");
+    assert.deepEqual(phaseUtil.getBlockingFindings(parsedReview), [parsedReview.findings[0]]);
+    assert.deepEqual(phaseUtil.parseSecurityReview(reviewAnswer([])), { findings: [] });
+    assert.equal(phaseUtil.parseSecurityReview("문제는 없어요"), null);
+    assert.equal(phaseUtil.parseSecurityReview("{깨진 json}"), null);
+    assert.equal(phaseUtil.parseSecurityReview('{"findings": "없음"}'), null);
+    assert.equal(phaseUtil.parseSecurityReview(reviewAnswer([{ ...high, severity: "중대" }])), null, "모르는 심각도는 답 전체를 거부한다");
+    assert.equal(phaseUtil.parseSecurityReview(reviewAnswer([{ ...high, description: "" }])), null);
+    assert.equal(phaseUtil.parseSecurityReview(reviewAnswer(Array.from({ length: 21 }, () => high))), null);
+
+    const reviewDoc = phaseUtil.formatSecurityReview({ findings: [{ ...high, severity: "낮음", description: "a | b" }, high] }, "Codex");
+
+    assert.match(reviewDoc, /^# 보안검토 독립 검토 \(Codex\)$/m);
+    assert(reviewDoc.indexOf("| 높음 |") < reviewDoc.indexOf("| 낮음 |"), "심각도 순으로 쓴다");
+    assert(reviewDoc.includes("a \\| b"), "표의 `|`는 이스케이프한다");
+    assert.match(phaseUtil.formatSecurityReview({ findings: [] }, "Claude"), /찾은 문제 없음/);
+
     // 승인 없이 다시 시작하면 확인을 기다리던 단계를 다시 한다. 받아 둔 다른 AI의 안도 다시 받는다.
     assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan", receivedProposal: "plan" }), { state: plan, isRevision: true });
     assert.deepEqual(getStartPhase(plan), { state: plan, isRevision: false });
@@ -788,6 +842,36 @@ const checkPhaseRules = (context) => {
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "qa" }, 1, 60, "", 2), /다시 하는 것이다/);
     assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "security", securityRetries: 1 }, 1, 60, "", 2), /`남김`으로 둔 심각 · 높음 항목이 고쳐졌는지 먼저/);
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "security", qaRetries: 2 }, 1, 60, "", 2), /다시 하는 것이다/);
+
+    // 보안검토 프롬프트는 점검 결과 표의 형식과 점검 항목 전부를 알리고, 엔진이 통과로 받지 않았으면 그 이유를 알려 다시 하게 한다.
+    const securityPrompt = promptUtil.getRoundPrompt({ ...buildState, phase: "security" }, 1, 60, "", 2);
+
+    assert.match(securityPrompt, /\| 항목 \| 상태 \| 근거 \|/);
+    phaseUtil.SECURITY_CHECKS.forEach(({ key }) => assert(securityPrompt.includes(`- ${key}`), key));
+    assert.doesNotMatch(securityPrompt, /기준에 못 미쳐/);
+    assert.match(
+        promptUtil.getRoundPrompt({ ...buildState, phase: "security", securityDocProblems: ["'비밀값' 행이 없다"] }, 1, 60, "", 2),
+        /기준에 못 미쳐 엔진이 통과로 받지 않았다: '비밀값' 행이 없다/
+    );
+
+    // 독립 검토 프롬프트는 점검 목록 전부와 답의 형식을 알리고, 켰을 때만 개발 · 다시 하는 보안검토가 그 결과 문서를 본다.
+    const reviewPrompt = promptUtil.getSecurityReviewPrompt(buildState);
+
+    assert.match(reviewPrompt, /^너는 보안 검토자다\./);
+    assert.match(reviewPrompt, /읽기만 할 수 있다/);
+    phaseUtil.SECURITY_CHECKS.forEach(({ key }) => assert(reviewPrompt.includes(`- ${key}`), key));
+    assert.match(reviewPrompt, /\{"findings": \[\{"severity": "심각\|높음\|중간\|낮음 중 하나"/);
+
+    const reviewState = { ...buildState, securityReview: true };
+
+    assert.match(promptUtil.getRoundPrompt({ ...reviewState, phase: "build", securityRetries: 1 }, 1, 60, "", 2), /security-review\.md`의 심각 · 높음 항목도 같은 기준으로 다룬다/);
+    assert.match(
+        promptUtil.getRoundPrompt({ ...reviewState, phase: "build" }, 1, 60, "", 2),
+        /있으면 `docs\/autopilot\/qa\.md` · `docs\/autopilot\/security\.md` · `docs\/autopilot\/security-review\.md`의 실패 항목/
+    );
+    assert.match(promptUtil.getRoundPrompt({ ...reviewState, phase: "security", securityRetries: 1 }, 1, 60, "", 2), /security-review\.md`의 심각 · 높음 항목도 같은 기준으로 다룬다/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "security", securityRetries: 1 }, 1, 60, "", 2), /security-review/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...reviewState, skip: ["security"], phase: "build" }, 1, 60, "", 2), /security-review/);
 
     // 건너뛰는 단계는 순서 · 단계 번호 · 읽을 문서에서 빠지고, 디자인을 건너뛰면 기획이 화면의 상세까지 쓴다.
     const skipState = { ...buildState, skip: ["design", "security"] };
