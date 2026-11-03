@@ -5,8 +5,8 @@
     color-scheme: light;
     --page: #f4f6fa;
     --bg: #fff;
-    /* 레일은 하늘 바탕보다 한 톤 밝은 띠다 */
-    --rail-bg: color-mix(in srgb, var(--bg) 55%, var(--page));
+    /* 레일은 카드와 같은 흰 면이다. 보는 프로젝트만 본문 바탕으로 내려앉아 이어진다 */
+    --rail-bg: var(--bg);
     --ink: #172033;
     --ink-2: rgb(23 32 51 / 0.76);
     --muted: #66728a;

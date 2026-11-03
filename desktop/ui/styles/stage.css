@@ -11,7 +11,7 @@
     flex: 1;
     min-height: 0;
     flex-direction: column;
-    padding: 0 32px;
+    padding: 0 var(--gutter, 32px);
 }
 
 body[data-view="ready"] .view-ready,
@@ -32,7 +32,7 @@ body[data-view="done"] .view-done {
 
 /* 시작 전: 맨 위에 프로젝트 이름과 작업 모드, 그 아래에 인사(유지 보수)나 단계 카드와 안내(신규 개발) */
 .greet {
-    padding-top: 22px !important;
+    padding-top: 36px !important;
 }
 
 .project-head {
@@ -41,7 +41,7 @@ body[data-view="done"] .view-done {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 34px;
+    margin-bottom: 40px;
 }
 
 .project-head-name {
@@ -68,7 +68,7 @@ body[data-view="done"] .view-done {
 }
 
 .greet[data-mode="build"] .project-head {
-    margin-bottom: 18px;
+    margin-bottom: 28px;
 }
 
 /* 좁은 창에서 단계 카드가 두 줄로 늘면 안내가 컴포저 밑으로 들어가므로 본문 안에서 스크롤한다 */
@@ -224,25 +224,25 @@ body[data-view="done"] .view-done {
 .story {
     /* 이야기의 글 사이 간격은 이 값 하나다. 줄 높이가 글자 위아래에 더하는 여백은 각 글에서 걷어, 글자 크기가 달라도 보이는 간격이 같다 */
     --story-gap: 30px;
-    padding-top: 22px !important;
-    padding-bottom: 16px !important;
+    padding-top: 30px !important;
+    padding-bottom: 20px !important;
 }
 
 .story .project-head,
 .finish .project-head {
-    margin-bottom: 18px;
+    margin-bottom: 24px;
 }
 
 .story .step-card,
 .finish .step-card {
-    margin-bottom: 18px;
+    margin-bottom: 26px;
 }
 
 .run-grid {
     display: grid;
     flex: 1;
-    grid-template-columns: minmax(0, 1fr) 288px;
-    gap: 28px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 40px;
     min-height: 0;
 }
 
@@ -316,10 +316,10 @@ body[data-view="done"] .view-done {
 .run-card {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 24px;
     min-height: 0;
     margin-bottom: 4px;
-    padding: 18px;
+    padding: 24px;
     overflow: auto;
     scrollbar-width: thin;
     border-radius: var(--r-lg);

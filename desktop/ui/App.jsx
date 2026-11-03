@@ -18,7 +18,9 @@ import { TitleBar } from "./features/shell/TitleBar.jsx";
 import { useBodyFlags, useNativeFeel, useRevealWhenReady } from "./hooks/useBodyFlags.js";
 import { useOverlayDismiss } from "./hooks/useOverlayDismiss.js";
 import { useApproval } from "./hooks/useApproval.js";
+import { useReplayOnChange } from "./hooks/useReplay.js";
 import { useView } from "./hooks/useView.js";
+import { useAppStore } from "./stores/appStore.js";
 import { useRunStore } from "./stores/runStore.js";
 import { ui, useUiStore } from "./stores/uiStore.js";
 
@@ -33,6 +35,10 @@ const App = () => {
     useRevealWhenReady();
     useNativeFeel();
     useOverlayDismiss();
+    const contentRef = useReplayOnChange(
+        useAppStore((store) => store.settings.projectDir),
+        "switch-in"
+    );
 
     // 작업 칸은 실행 중에만 접고 펼친다. 실행이 끝나면 다음 실행을 위해 접힌 상태로 되돌린다.
     useEffect(() => {
@@ -46,7 +52,7 @@ const App = () => {
             <Rail />
             <div className="main-column">
                 <TitleBar />
-                <div className="content">
+                <div className="content" ref={contentRef}>
                     {newProject ? (
                         <NewProjectView />
                     ) : (

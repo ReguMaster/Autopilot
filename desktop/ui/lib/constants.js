@@ -40,7 +40,7 @@ const DEFAULT_DEBATE_TURNS = 8;
 const DEBATE_TURNS_LIMIT = 20;
 
 // 왼쪽 레일 너비(px). settingsStore.cjs의 MIN·MAX·DEFAULT_RAIL_WIDTH와 같다.
-const RAIL_WIDTH = { min: 200, max: 360, default: 224 };
+const RAIL_WIDTH = { collapsed: 64, min: 200, max: 360, default: 224 };
 
 const OPTIONS_LOCKED_TITLE = "종료 요청 후에는 모델·노력·추론을 바꿀 수 없어요";
 

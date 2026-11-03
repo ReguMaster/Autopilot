@@ -24,7 +24,7 @@ const IDLE_NOTES = { running: "실행 중", stopping: "종료 신호를 보냈�
 const getRunningTitle = (label) => `${label} · 실행 중에는 닫을 수 없어요`;
 
 // 프로젝트 한 줄 상태. 모드와 신규 개발 단계, 확인을 기다리는 단계까지 알린다.
-// composerMode는 보는 프로젝트만 안다(컴포저가 고른 작업 모드). 다른 프로젝트는 쉬는 중이면 확인 대기만 알리고 실행 중 문구는 runningText를 쓴다.
+// composerMode는 보는 프로젝트는 컴포저가 고른 작업 모드, 다른 프로젝트는 저장된 작업 모드(탭 요약의 savedMode)다. 모르면 쉬는 중이라고만 한다. 실행 중 문구는 runningText를 쓴다.
 const getTabNote = ({ status, mode, step, buildPhase, composerMode, runningText = "유지 보수, 실행 중" }) => {
     if (status !== "idle") {
         if (mode === "build" && step) {
@@ -88,7 +88,9 @@ const ProjectList = ({ tabs, active, activeNote = null, activeTicks = null, phas
                 const stepOf = tab.step ? { phase: tab.step } : null;
                 const ticks = isActive && activeNote ? activeTicks : getTabTicks({ status: tab.status, mode: tab.mode, step: stepOf, buildPhase: phases[tab.projectDir] ?? null });
                 const note =
-                    isActive && activeNote ? activeNote : getTabNote({ status: tab.status, mode: tab.mode, step: stepOf, buildPhase: phases[tab.projectDir] ?? null, runningText: IDLE_NOTES.running });
+                    isActive && activeNote
+                        ? activeNote
+                        : getTabNote({ status: tab.status, mode: tab.mode, step: stepOf, buildPhase: phases[tab.projectDir] ?? null, composerMode: tab.savedMode, runningText: IDLE_NOTES.running });
 
                 return (
                     <div key={tab.projectDir} className="proj" data-active={isActive ? "" : undefined} data-status={tab.status} data-tone={note.tone || undefined}>
@@ -183,8 +185,7 @@ const Rail = () => {
     return (
         <aside id="rail" className="rail" aria-label="프로젝트와 메뉴">
             <div className="rail-brand">
-                <img src="../docs/icon.png" alt="" />
-                <span className="rail-label">Autopilot</span>
+                <img src="../docs/logo.png" alt="Autopilot" />
             </div>
             <h2 className="rail-section rail-label">프로젝트</h2>
             <nav id="tabbar" className="rail-projects" aria-label="열린 프로젝트">

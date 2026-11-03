@@ -3,7 +3,7 @@ const { ACCOUNTS, PROJECT, runningState } = require("./data.cjs");
 const SECOND = "E:/Workspaces/Demo/autopilot-landing";
 const THIRD = "E:/Workspaces/Demo/a-project-with-a-rather-long-folder-name";
 
-const tab = (projectDir, status = "idle") => ({ projectDir: projectDir, name: projectDir.split("/").pop(), status: status });
+const tab = (projectDir, status = "idle", savedMode = "maintain") => ({ projectDir: projectDir, name: projectDir.split("/").pop(), status: status, savedMode: savedMode });
 
 const THREE_TABS = [tab(PROJECT), tab(SECOND, "running"), tab(THIRD)];
 
@@ -40,14 +40,22 @@ const SCENES = [
             await t.shot("wide", "#rail");
 
             await t.drag(".rail-resizer", -400);
-            await t.note("clamped-min", await readWidth());
+            await t.note("collapsing", await readWidth());
+            await t.wait(600);
+            await t.note("collapsed", `${await readWidth()} ${await t.eval(`document.documentElement.hasAttribute("data-rail-collapsed")`)}`);
+            await t.shot("collapsed", "#rail");
+            await t.hover(".proj:nth-child(3)");
+            await t.shot("collapsed-hover", "#rail");
             await t.drag(".rail-resizer", 400);
+            await t.wait(600);
             await t.note("clamped-max", await readWidth());
 
             await t.focus(".rail-resizer");
             await t.press("Home");
+            await t.wait(600);
             await t.note("home", await readWidth());
             await t.press("Right");
+            await t.wait(600);
             await t.note("right", await readWidth());
 
             await t.eval(`document.querySelector(".rail-resizer").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))`);

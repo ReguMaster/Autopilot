@@ -251,7 +251,7 @@ const getTabsPayload = () => {
         tabs: tabs.map((dir) => {
             const state = sessionPool.get(dir)?.runner.getState();
 
-            return { projectDir: dir, name: path.basename(dir), status: state?.status ?? "idle", mode: state?.mode ?? "", step: state?.step?.phase ?? "" };
+            return { projectDir: dir, name: path.basename(dir), status: state?.status ?? "idle", mode: state?.mode ?? "", step: state?.step?.phase ?? "", savedMode: readEffective(dir).mode };
         })
     };
 };

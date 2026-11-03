@@ -112,7 +112,7 @@ const ReadyView = () => {
 
     return (
         <section className="greet view-ready" data-mode={showBuild ? "build" : "maintain"} aria-label="시작 전">
-            <ProjectHead>
+            <ProjectHead hideName>
                 <ModeSeg />
             </ProjectHead>
             {showBuild ? <BuildReady /> : <Greeting />}

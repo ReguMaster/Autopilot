@@ -100,7 +100,7 @@ const {
     getRecommendedSkip,
     DRAFT_LIMITS
 } = require("../desktop/projectDraft.cjs");
-const { DEFAULT_SETTINGS, MIN_RAIL_WIDTH, MAX_RAIL_WIDTH, DEFAULT_RAIL_WIDTH } = require("../desktop/settingsStore.cjs");
+const { DEFAULT_SETTINGS, COLLAPSED_RAIL_WIDTH, MIN_RAIL_WIDTH, MAX_RAIL_WIDTH, DEFAULT_RAIL_WIDTH } = require("../desktop/settingsStore.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
 const {
@@ -1741,7 +1741,7 @@ const checkChoiceSync = () => {
 
     assert.equal(CODEX_MODEL_PATTERN.source, ENGINE_CODEX_MODEL_PATTERN.source);
 
-    assert.deepEqual(UI_RAIL_WIDTH, { min: MIN_RAIL_WIDTH, max: MAX_RAIL_WIDTH, default: DEFAULT_RAIL_WIDTH });
+    assert.deepEqual(UI_RAIL_WIDTH, { collapsed: COLLAPSED_RAIL_WIDTH, min: MIN_RAIL_WIDTH, max: MAX_RAIL_WIDTH, default: DEFAULT_RAIL_WIDTH });
     assert.equal(DEFAULT_SETTINGS.railWidth, DEFAULT_RAIL_WIDTH);
 
     assert.equal(MAX_RUN_DAYS, ENGINE_MAX_RUN_DAYS);

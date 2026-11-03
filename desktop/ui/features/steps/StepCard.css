@@ -6,9 +6,9 @@
 
 .step-card {
     display: flex;
-    gap: 5px;
+    gap: 8px;
     margin: 0;
-    padding: 11px 14px 9px;
+    padding: 18px 22px 15px;
     border-radius: var(--r-lg);
     background: var(--bg);
     box-shadow: var(--shadow-1);
@@ -18,7 +18,7 @@
 .step {
     display: grid;
     flex: 1 1 0;
-    gap: 6px;
+    gap: 9px;
     min-width: 0;
     transition: flex-grow 0.5s var(--ease-out);
 }
@@ -139,8 +139,8 @@
 /* 시작 전 단계 설정: 단계마다 한 줄 문장이다("기획은 [Claude만 써서] 진행하고, 끝나면 [멈추고 확인 받을게요]."). 알약 모양 선택 상자가 문장 속에 끼고, 문장이 길면 줄을 바꾼다 */
 .step-settings {
     display: grid;
-    margin-top: 10px;
-    padding: 2px 14px;
+    margin-top: 16px;
+    padding: 6px 24px;
     border-radius: var(--r-lg);
     background: var(--bg);
     box-shadow: var(--shadow-1);
@@ -149,10 +149,10 @@
 .step-group {
     display: grid;
     grid-template-columns: 4.6em minmax(0, 1fr);
-    column-gap: 14px;
+    column-gap: 20px;
     align-items: start;
     min-width: 0;
-    padding: 13px 0;
+    padding: 18px 0;
 }
 
 .step-group + .step-group {
@@ -176,15 +176,15 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 8px;
-    min-height: 36px;
+    gap: 8px 10px;
+    min-height: 40px;
     color: var(--ink-2);
     font-size: var(--text-sm);
     line-height: 1.5;
 }
 
 .step-sentence + .step-sentence {
-    margin-top: 2px;
+    margin-top: 6px;
 }
 
 .step-sentence .j {
@@ -200,7 +200,7 @@
     display: flex;
     align-items: center;
     gap: 7px;
-    margin: 10px 4px 0;
+    margin: 16px 6px 0;
     color: var(--muted);
     font-size: var(--text-xs);
 }

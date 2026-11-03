@@ -76,7 +76,8 @@ const applyProjectSwitch = (data, { dismissFinish = false } = {}) => {
 
     ui.set({ finishDismissed: dismissFinish });
     // 떠나기 전에 기억해 둔 단계 상태를 바로 보여 이전 프로젝트의 단계가 남지 않게 한다. loadRecentRuns가 새로 읽으면 바뀐다.
-    useRunsStore.setState((store) => ({ buildPhase: store.phases[nextDir] ?? null }));
+    // 지난 실행·연속 실행 날짜도 앞 프로젝트의 것이라, 새로 읽어 오기 전에는 비워 둔다.
+    useRunsStore.setState((store) => ({ buildPhase: store.phases[nextDir] ?? null, recent: [], streakDays: [] }));
 
     if (data.state) {
         applySessionSnapshot(data);

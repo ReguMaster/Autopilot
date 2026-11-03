@@ -46,7 +46,8 @@ const LOG_RETENTION_CHOICES = [7, 14, 30, 90, 180];
 const SLEEP_BLOCK_CHOICES = ["always", "plugged", "never"];
 // 화면 테마. system은 운영체제 설정을 따른다(메인이 nativeTheme.themeSource로 정한다).
 const THEME_CHOICES = ["system", "light", "dark"];
-// 왼쪽 레일 너비(px). 끌어서 바꾸고 화면 크기에 따라 달라 이 PC에만 남긴다. ui/lib/constants.js의 RAIL_WIDTH와 같다.
+// 왼쪽 레일 너비(px). 끌어서 바꾸고 화면 크기에 따라 달라 이 PC에만 남긴다. 많이 좁히면 COLLAPSED_RAIL_WIDTH(아이콘만 남은 띠)가 된다. ui/lib/constants.js의 RAIL_WIDTH와 같다.
+const COLLAPSED_RAIL_WIDTH = 64;
 const MIN_RAIL_WIDTH = 200;
 const MAX_RAIL_WIDTH = 360;
 const DEFAULT_RAIL_WIDTH = 224;
@@ -216,7 +217,7 @@ const SETTING_VALIDATORS = {
     sleepBlock: (value) => SLEEP_BLOCK_CHOICES.includes(value),
     postRunAction: (value) => POST_RUN_ACTIONS.includes(value),
     theme: (value) => THEME_CHOICES.includes(value),
-    railWidth: (value) => Number.isInteger(value) && value >= MIN_RAIL_WIDTH && value <= MAX_RAIL_WIDTH
+    railWidth: (value) => value === COLLAPSED_RAIL_WIDTH || (Number.isInteger(value) && value >= MIN_RAIL_WIDTH && value <= MAX_RAIL_WIDTH)
 };
 
 // MIGRATIONS[n]은 버전 n의 저장 내용을 n+1 형식으로 바꾼다. 키 이름이나 의미를 바꿀 때 여기에 더한다. context.writeProject는 프로젝트 파일에 쓰는 함수다.
@@ -618,6 +619,7 @@ module.exports = {
     EXPORT_VERSION,
     POLICY_CHOICES,
     SLEEP_BLOCK_CHOICES,
+    COLLAPSED_RAIL_WIDTH,
     MIN_RAIL_WIDTH,
     MAX_RAIL_WIDTH,
     DEFAULT_RAIL_WIDTH,

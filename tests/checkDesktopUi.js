@@ -171,6 +171,7 @@ const checkProjectListMarkup = ({ renderProjectList, getTabTicks }) => {
     assert.match(html, /class="proj-name rail-label">Personal\/app</);
     assert.match(html, /data-tone="warn"[^]*class="proj-note rail-label">기획 확인을 기다려요</, "보는 프로젝트는 받은 상태 줄을 보인다");
     assert.match(html, /class="proj-note rail-label">실행 중</);
+    assert.match(html, /class="proj-note rail-label">쉬는 중</, "저장된 작업 모드를 모르면 쉬는 중이라고만 한다");
     assert.match(html, /aria-label="Personal\/app 닫기"[^>]*disabled/, "실행 중인 프로젝트는 닫기 버튼이 잠긴다");
     assert.equal((html.match(/disabled/g) ?? []).length, 1);
     assert.match(html, /title="E:\/Work\/app"/, "마우스를 올리면 전체 경로가 보인다");
@@ -199,6 +200,19 @@ const checkProjectListMarkup = ({ renderProjectList, getTabTicks }) => {
             { projectDir: "E:/Work/api", name: "api", status: "idle", mode: "", step: "" }
         ]
     });
+
+    const savedModes = renderProjectList({
+        active: "E:/Work/app",
+        activeNote: { text: "유지 보수", tone: "" },
+        tabs: [
+            { projectDir: "E:/Work/app", name: "app", status: "idle", savedMode: "maintain" },
+            { projectDir: "E:/Work/api", name: "api", status: "idle", savedMode: "build" },
+            { projectDir: "E:/Work/web", name: "web", status: "idle", savedMode: "maintain" }
+        ]
+    });
+
+    assert.match(savedModes, /class="proj-note rail-label">신규 개발</, "다른 프로젝트도 저장된 작업 모드를 처음부터 보인다");
+    assert.match(savedModes, /class="proj-note rail-label">유지 보수<\/span>[^]*class="proj-note rail-label">신규 개발<\/span>[^]*class="proj-note rail-label">유지 보수</);
 
     assert.match(withTicks, /<span class="proj-ticks" aria-hidden="true"><i data-s="done"><\/i><i data-s="done"><\/i><i data-s="active"><\/i><i><\/i><i><\/i><\/span>/);
     assert.match(withTicks, /기획 확인을 기다려요<\/span><span class="proj-ticks" aria-hidden="true"><i data-s="hold"><\/i><i><\/i><i><\/i><i><\/i><i><\/i>/, "다른 프로젝트도 확인 대기를 알린다");
