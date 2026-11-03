@@ -204,7 +204,7 @@ const SKIP_NOTES = {
 // 기획서의 화면 목록(5절)이 `화면 없음`으로 시작하면 화면이 없는 프로젝트(CLI · 라이브러리 · 서버 등)다. 승인 화면이 디자인을 건너뛰자고 제안한다.
 const hasNoScreens = (planText) => {
     const lines = String(planText ?? "").split(/\r?\n/);
-    const start = lines.findIndex((line) => /^#{1,6}\s*(?:\*\*)?5\s*[).:]/.test(line) && line.includes("화면"));
+    const start = lines.findIndex((line) => /^#{1,6}\s*(?:\*\*)?5\s*[).:]/.test(line) && /화면|명령|API/i.test(line));
 
     if (start < 0) {
         return false;

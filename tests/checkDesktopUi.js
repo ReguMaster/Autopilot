@@ -521,6 +521,8 @@ const checkSkippedSteps = ({ renderStepCard, getBuildStartPhase, getNextPhase, i
     assert(hasNoScreens("# 기획\n\n## 4) 기능 목록\n- 변환\n\n## 5) 화면(또는 명령 · API) 목록\n화면 없음\n- `convert` 명령\n\n## 6) 데이터 구조\n"));
     assert(hasNoScreens("## 5. 화면 목록\n\n**화면 없음** (CLI)\n"));
     assert(hasNoScreens("### 5) 화면(또는 명령) 목록\r\n- 화면  없음\r\n"));
+    assert(hasNoScreens("## 5) 명령 · API 목록\n화면 없음\n- `convert` 명령\n"), "화면이 없어 5절 제목을 명령 · API 목록으로 줄여도 본다");
+    assert(!hasNoScreens("## 4) 기능 목록\n### 5. 내보내기\n화면 없음 상태에서도 동작\n"), "5절이 아닌 하위 제목은 보지 않는다");
     assert(!hasNoScreens("## 5) 화면 목록\n- 로그인 화면\n- 예약 화면\n\n## 8) 이번에 하지 않는 것\n- 화면 없음 모드\n"), "다른 절의 화면 없음은 보지 않는다");
     assert(!hasNoScreens("## 4) 기능 목록\n화면 없음\n"), "5절이 아니면 보지 않는다");
     assert(!hasNoScreens(""));
