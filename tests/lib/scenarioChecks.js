@@ -498,7 +498,7 @@ const checkSecurityReview = async (scenarioRunner, context, fakeCliFile) => {
             endTime: getEndTime(),
             mode: "build",
             allow: ["send"],
-            securityReview: true,
+            securityReview: "on",
             tasks: "CLI 도구",
             env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile, AP_CODEX_LOG: codexLog, ...env },
             limits: { minMinutes: 0, maxRounds: 10, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
@@ -563,6 +563,34 @@ const checkSecurityReview = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(blockedRun.data.reason, "신규 개발: 모든 단계 완료");
     assert.deepEqual(getLines(blockedRun, "보안검토"), ["[보안검토] 외부 서비스로 보내기를 허용하지 않아 독립 검토를 건너뜁니다."]);
     assert(!fs.existsSync(codexLog));
+
+    // 엄격 모드(strict): 검토하지 못한 보안검토는 통과시키지 않고 보안검토 실패로 끝낸다. 개발로 되돌리지 않고 단계는 보안검토에 남는다. 검토했으면 on과 같다.
+    for (const [env, options, expected] of [
+        [{ AP_SECURITY_REVIEW: "bad" }, {}, /Codex 독립 검토의 답을 읽을 수 없어 건너뜁니다/],
+        [{ AP_CODEX_LOGIN: "0" }, {}, /Codex 보안검토 검토 건너뜀: /],
+        [{}, { allow: [] }, /외부 서비스로 보내기를 허용하지 않아 독립 검토를 건너뜁니다/]
+    ]) {
+        const strictRun = await runSecurity(env, { securityReview: "strict", ...options });
+
+        assert.equal(strictRun.status, STATUS_OK, strictRun.error?.msg);
+        assert.equal(strictRun.data.reason, "보안검토 실패", String(expected));
+        assert.match(readLog(strictRun), expected);
+        assert.match(readLog(strictRun), /^\[보안검토\] 엄격 모드라 독립 검토를 하지 못한 보안검토는 통과시키지 않아요\.$/m);
+        assert.deepEqual(readLog(strictRun).match(/^\[단계\] .+$/gm), ["[단계] 보안검토 시작", "[단계] 보안검토 실패"]);
+        assert.equal(phaseUtil.readPhase(phaseFile).phase, "security");
+        assert.equal(phaseUtil.readPhase(phaseFile).securityRetries, 0, "되돌리지 않으므로 횟수를 쓰지 않는다");
+        checkDesktopLogContract(strictRun.data);
+    }
+
+    const strictCleanRun = await runSecurity({}, { securityReview: "strict" });
+
+    assert.equal(strictCleanRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.doesNotMatch(readLog(strictCleanRun), /엄격 모드/);
+
+    const strictBlockingRun = await runSecurity({ AP_SECURITY_REVIEW: "blocking-once" }, { securityReview: "strict" });
+
+    assert.equal(strictBlockingRun.data.reason, "신규 개발: 모든 단계 완료", "찾은 문제가 있으면 엄격 모드도 개발로 되돌린다");
+    assert.match(readLog(strictBlockingRun), /^\[단계\] 보안검토 실패 - 개발로 되돌림 \(1\/3\)$/m);
 
     // 메인이 Codex면 반대쪽인 Claude가 읽기 전용으로 검토하고, 보내기를 허용하지 않아도 된다(내용이 이미 Codex에 간다).
     const claudeReviewRun = await runSecurity({ AP_CODEX_ROUND: "build", AP_SECURITY_REVIEW: "blocking-once" }, { allow: [], mains: { security: "codex" } });

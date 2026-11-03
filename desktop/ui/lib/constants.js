@@ -26,6 +26,8 @@ const DEFAULT_DESIGN_FORMAT = "html";
 const ON_FAIL_CHOICES = ["stop", "retry:1", "retry:2", "retry:3", "retry:4", "retry:5"];
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
+// 보안검토의 독립 검토(off · on · strict). 엔진 --security-review와 같은 값이고 off면 인자를 생략한다.
+const DEFAULT_SECURITY_REVIEW = "off";
 // 여러 AI 브레인스토밍. 회차를 돌리고 안을 내는 AI(엔진 config.js의 BRAINSTORM_PHASES·AI_PROVIDERS·PROVIDER_LABELS).
 const BRAINSTORM_PHASES = ["plan", "design"];
 const AI_PROVIDERS = ["claude", "codex"];
@@ -74,6 +76,7 @@ export {
     ON_FAIL_CHOICES,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    DEFAULT_SECURITY_REVIEW,
     BRAINSTORM_PHASES,
     AI_PROVIDERS,
     PROVIDER_LABELS,

@@ -22,6 +22,9 @@ const DEFAULT_DESIGN_FORMAT = "html";
 const ON_FAIL_PATTERN = /^(stop|retry:[1-5])$/;
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
+// 보안검토의 독립 검토(엔진 --security-review). off는 인자를 생략하고, on은 검토하지 못하면 메인의 판정대로 진행하며, strict는 검토하지 못한 보안검토를 통과시키지 않는다.
+const SECURITY_REVIEW_CHOICES = ["off", "on", "strict"];
+const DEFAULT_SECURITY_REVIEW = "off";
 // 여러 AI 브레인스토밍을 켤 수 있는 단계와 회차를 돌리고 안을 내는 AI(엔진 config.js의 BRAINSTORM_PHASES·AI_PROVIDERS).
 const BRAINSTORM_PHASES = ["plan", "design"];
 const AI_PROVIDERS = ["claude", "codex"];
@@ -105,13 +108,20 @@ const getAssistedPhases = ({ mode, mains, brainstorm = [], allow = [] }) => {
     return mode === "build" ? brainstorm.filter((phase) => getOtherProvider(mainMap[phase]) === "claude" || allow.includes("send")) : [];
 };
 
+// 독립 검토를 할 수 있는 실행(엔진 phaseUtil.getSecurityReviewer와 같다). 보안검토를 건너뛰면 하지 않고, 검토자가 Codex(보안검토의 메인이 Claude)면 보내기를 허용해야 한다.
+const hasSecurityReview = ({ mode, mains, securityReview = DEFAULT_SECURITY_REVIEW, allow = [], skip = [] }) => {
+    return mode === "build" && securityReview !== DEFAULT_SECURITY_REVIEW && !skip.includes("security") && (getOtherProvider(getMains(mains).security) === "claude" || allow.includes("send"));
+};
+
 // Codex가 관여하는 실행(회차를 돌리거나 보조로 안을 냄)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다). 비어 있으면 Codex 설정을 따르므로 생략한다.
 // 유지 보수는 --runner로 회차를 돌릴 AI를 고르고, 신규 개발은 단계마다 --main이 정하므로 --runner를 보내지 않는다(저장된 실행 에이전트가 새어 들지 않게).
-const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", codexEffort = "", brainstorm = [], allow, skip = [] }) => {
+const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", codexEffort = "", brainstorm = [], allow, skip = [], securityReview }) => {
     const isBuild = mode === "build";
     const args = !isBuild && runner !== DEFAULT_RUNNER ? ["--runner", runner] : [];
     const usesCodex = isBuild
-        ? Object.values(getMains(mains)).includes("codex") || getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm.filter((phase) => !skip.includes(phase)), allow: allow }).length > 0
+        ? Object.values(getMains(mains)).includes("codex") ||
+          getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm.filter((phase) => !skip.includes(phase)), allow: allow }).length > 0 ||
+          hasSecurityReview({ mode: mode, mains: mains, securityReview: securityReview, allow: allow, skip: skip })
         : runner === "codex";
 
     if (usesCodex) {
@@ -130,6 +140,7 @@ const getBuildArgs = ({
     designFormat,
     qaOnFail,
     securityOnFail,
+    securityReview = DEFAULT_SECURITY_REVIEW,
     mains,
     brainstorm = [],
     crossReview = false,
@@ -173,6 +184,10 @@ const getBuildArgs = ({
 
     if (securityOnFail && securityOnFail !== DEFAULT_SECURITY_ON_FAIL && !skip.includes("security")) {
         args.push("--security-on-fail", securityOnFail);
+    }
+
+    if (hasSecurityReview({ mode: mode, mains: mains, securityReview: securityReview, allow: allow, skip: skip })) {
+        args.push("--security-review", securityReview);
     }
 
     // 보조(메인의 반대쪽 AI)를 쓸 수 있는 단계만 넘긴다. 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
@@ -271,6 +286,8 @@ module.exports = {
     ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    SECURITY_REVIEW_CHOICES,
+    DEFAULT_SECURITY_REVIEW,
     BRAINSTORM_PHASES,
     AI_PROVIDERS,
     CODEX_MODEL_PATTERN,

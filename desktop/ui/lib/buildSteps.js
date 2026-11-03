@@ -36,6 +36,27 @@ const getAssistOptions = (main, codex) => {
         { value: "debate", label: `${name}와 협의해서`, icon: icon, hint: reason || "더 고칠 것이 없을 때까지 주고받고, 못 맞춘 쟁점만 골라요", disabled: Boolean(reason) }
     ];
 };
+// 보안검토의 독립 검토: "점검이 끝나면 [Codex가 다시 확인해요]". 검토자는 메인의 반대쪽 AI이고, 켜면 심각 · 높음을 찾을 때 개발로 되돌린다.
+// on은 검토하지 못하면 메인의 판정대로 가고, strict는 검토하지 못한 보안검토를 통과시키지 않고 멈춘다.
+const getSecurityReviewOptions = (main, codex) => {
+    const reviewer = getOtherProvider(main);
+    const name = PROVIDER_LABELS[reviewer];
+    const reason = reviewer === "codex" && codex && !codex.available ? codex.reason : "";
+    const icon = PROVIDER_LOGOS[reviewer];
+
+    return [
+        { value: "off", label: `${PROVIDER_LABELS[main]}가 혼자 판정해요`, hint: "다른 AI의 확인 없이 메인이 pass · fail을 정해요" },
+        {
+            value: "on",
+            label: `${name}가 다시 확인해요`,
+            icon: icon,
+            hint: reason || "코드를 따로 읽어 심각 · 높음을 찾으면 개발로 되돌려요. 확인하지 못하면 메인 판정대로 가요",
+            disabled: Boolean(reason)
+        },
+        { value: "strict", label: `${name}가 다시 확인하고, 못 하면 멈춰요`, icon: icon, hint: reason || "확인하지 못한 보안검토는 통과시키지 않고 보안검토 실패로 끝내요", disabled: Boolean(reason) }
+    ];
+};
+
 // 기획 · 디자인이 끝났을 때: "끝나면 [멈추고 확인 받을게요]". 두 AI가 쓴 단계는 늘 멈추므로 이 선택은 잠긴다.
 const GATE_OPTIONS = [
     { value: "stop", label: "멈추고 확인 받을게요", hint: "산출물을 직접 보고 승인해야 다음 단계로 가요" },
@@ -425,6 +446,7 @@ export {
     BRAINSTORM_AFTER,
     GATE_OPTIONS,
     CROSS_REVIEW_OPTIONS,
+    getSecurityReviewOptions,
     getCodexModelOptions,
     getCodexDefaults,
     getBrainstormMode,

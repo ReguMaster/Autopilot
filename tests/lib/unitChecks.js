@@ -143,11 +143,14 @@ const checkCommandArgs = () => {
     assert.deepEqual(parseRunArgs([...build, "--skip", "design", "--brainstorm", "plan"]).brainstorm, ["plan"]);
 
     // 보안검토 독립 검토(--security-review)는 신규 개발에서만, 보안검토를 건너뛰면 쓸 수 없다. Codex가 검토할 수 있으므로 --codex-model과 함께 쓸 수 있다.
-    assert.equal(parseRunArgs([...build, "--security-review"]).securityReview, true);
+    assert.equal(parseRunArgs([...build, "--security-review", "on"]).securityReview, "on");
+    assert.equal(parseRunArgs([...build, "--security-review", "strict"]).securityReview, "strict");
+    assert.throws(() => parseRunArgs([...build, "--security-review", "fast"]), /--security-review 값은 on \| strict/);
+    assert.throws(() => parseRunArgs([...build, "--security-review"]));
     assert.equal(parseRunArgs(build).securityReview, undefined);
-    assert.equal(parseRunArgs([...build, "--security-review", "--codex-model", "gpt-6.1-sol"]).codexModel, "gpt-6.1-sol");
-    assert.throws(() => parseRunArgs([...project, "--security-review"]), /--mode build/);
-    assert.throws(() => parseRunArgs([...build, "--skip", "security", "--security-review"]), /--security-review/);
+    assert.equal(parseRunArgs([...build, "--security-review", "on", "--codex-model", "gpt-6.1-sol"]).codexModel, "gpt-6.1-sol");
+    assert.throws(() => parseRunArgs([...project, "--security-review", "on"]), /--mode build/);
+    assert.throws(() => parseRunArgs([...build, "--skip", "security", "--security-review", "strict"]), /--security-review/);
 
     // --link-project는 여러 번 쓸 수 있지만 연결 저장소는 2개(작업 프로젝트를 합쳐 3개)까지다.
     assert.deepEqual(parseRunArgs([...project, "--link-project", "C:\work\api", "--link-project", "C:\work\web"]).linkedProjectDirs, ["C:\work\api", "C:\work\web"]);
@@ -862,7 +865,7 @@ const checkPhaseRules = (context) => {
     phaseUtil.SECURITY_CHECKS.forEach(({ key }) => assert(reviewPrompt.includes(`- ${key}`), key));
     assert.match(reviewPrompt, /\{"findings": \[\{"severity": "심각\|높음\|중간\|낮음 중 하나"/);
 
-    const reviewState = { ...buildState, securityReview: true };
+    const reviewState = { ...buildState, securityReview: "on" };
 
     assert.match(promptUtil.getRoundPrompt({ ...reviewState, phase: "build", securityRetries: 1 }, 1, 60, "", 2), /security-review\.md`의 심각 · 높음 항목도 같은 기준으로 다룬다/);
     assert.match(

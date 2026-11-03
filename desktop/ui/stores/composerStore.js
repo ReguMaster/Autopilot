@@ -16,6 +16,7 @@ import {
     DEFAULT_RUNNER,
     CODEX_RUNNER,
     DEFAULT_SECURITY_ON_FAIL,
+    DEFAULT_SECURITY_REVIEW,
     EFFORT_LEVELS,
     GATE_PHASES,
     SKIPPABLE_PHASES,
@@ -44,6 +45,7 @@ const useComposerStore = create(() => ({
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
+    securityReview: DEFAULT_SECURITY_REVIEW,
     mains: {},
     brainstorm: [],
     crossReview: false,
@@ -59,11 +61,18 @@ const toggleChoice = (current, choices, value) => {
 };
 
 // 보내기를 허용하지 않으면 Codex가 보조인 단계(메인이 Claude)는 보조를 쓸 수 없다. 그 단계를 빼고, 협의·교차검토를 남은 단계에 맞춘다.
-const dropBlockedAssistants = ({ allow, mains, brainstorm, debate, crossReview }) => {
-    const next = allow.includes("send") ? brainstorm : brainstorm.filter((phase) => getAssistant(mains, phase) === "claude");
+// 보안검토의 독립 검토도 검토자가 Codex(보안검토의 메인이 Claude)면 같다.
+const dropBlockedAssistants = ({ allow, mains, brainstorm, debate, crossReview, securityReview }) => {
+    const isSendAllowed = allow.includes("send");
+    const next = isSendAllowed ? brainstorm : brainstorm.filter((phase) => getAssistant(mains, phase) === "claude");
     const nextDebate = debate.filter((phase) => next.includes(phase));
 
-    return { brainstorm: next, debate: nextDebate, crossReview: next.some((phase) => !nextDebate.includes(phase)) ? crossReview : false };
+    return {
+        brainstorm: next,
+        debate: nextDebate,
+        crossReview: next.some((phase) => !nextDebate.includes(phase)) ? crossReview : false,
+        securityReview: isSendAllowed || getAssistant(mains, "security") === "claude" ? securityReview : DEFAULT_SECURITY_REVIEW
+    };
 };
 
 let isApplying = false;
@@ -142,6 +151,7 @@ const COMPOSER_KEYS = [
     "designFormat",
     "qaOnFail",
     "securityOnFail",
+    "securityReview",
     "mains",
     "brainstorm",
     "crossReview",
@@ -153,7 +163,8 @@ const COMPOSER_KEYS = [
 
 // 시작·예약 저장 때 엔진에 넘길 작업 모드와 신규 개발 설정
 const getModeOptions = () => {
-    const { mode, gates, skip, allow, designFormat, qaOnFail, securityOnFail, mains, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } = useComposerStore.getState();
+    const { mode, gates, skip, allow, designFormat, qaOnFail, securityOnFail, securityReview, mains, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } =
+        useComposerStore.getState();
 
     return {
         mode: mode,
@@ -163,6 +174,7 @@ const getModeOptions = () => {
         designFormat: designFormat,
         qaOnFail: qaOnFail,
         securityOnFail: securityOnFail,
+        securityReview: securityReview,
         mains: mains,
         brainstorm: brainstorm,
         crossReview: crossReview,
@@ -233,7 +245,8 @@ const composer = {
     setPhaseMain: (phase, provider) =>
         useComposerStore.setState((current) => {
             const mains = Object.fromEntries(Object.entries({ ...current.mains, [phase]: provider }).filter(([, value]) => value !== DEFAULT_RUNNER));
-            const needsSend = current.brainstorm.includes(phase) && getAssistant(mains, phase) === CODEX_RUNNER && !current.allow.includes("send");
+            const hasAssistant = current.brainstorm.includes(phase) || (phase === "security" && current.securityReview !== DEFAULT_SECURITY_REVIEW);
+            const needsSend = hasAssistant && getAssistant(mains, phase) === CODEX_RUNNER && !current.allow.includes("send");
 
             return { mains: mains, allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow };
         }),
@@ -261,6 +274,13 @@ const composer = {
     setDesignFormat: (designFormat) => useComposerStore.setState({ designFormat: designFormat }),
     setQaOnFail: (qaOnFail) => useComposerStore.setState({ qaOnFail: qaOnFail }),
     setSecurityOnFail: (securityOnFail) => useComposerStore.setState({ securityOnFail: securityOnFail }),
+    // 독립 검토자는 보안검토 메인의 반대쪽 AI다. Codex가 검토하면 프로젝트 내용을 보내야 하므로 보내기도 함께 켠다.
+    setSecurityReview: (securityReview) =>
+        useComposerStore.setState((current) => {
+            const needsSend = securityReview !== DEFAULT_SECURITY_REVIEW && getAssistant(current.mains, "security") === CODEX_RUNNER && !current.allow.includes("send");
+
+            return { securityReview: securityReview, allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow };
+        }),
     getModeOptions: getModeOptions,
     stepEndTime: (unit, step) => useComposerStore.setState((current) => ({ endTime: shiftEndTime(current.endTime, step * unit, Date.now()) })),
     setEndTimeAfter: (minutes) => useComposerStore.setState({ endTime: getEndTimeAfter(Date.now(), minutes) }),

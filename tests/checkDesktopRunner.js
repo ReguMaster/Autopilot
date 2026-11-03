@@ -1054,6 +1054,34 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], designFormat: "figma", qaOnFail: "stop" }).slice(-6), ["--mode", "build", "--design-format", "figma", "--qa-on-fail", "stop"]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], securityOnFail: "retry:1" }).slice(-4), ["--mode", "build", "--security-on-fail", "retry:1"]);
 
+    // 보안검토의 독립 검토는 켰을 때만 --security-review on|strict로 넘긴다. 보안검토를 건너뛰거나, 검토자가 Codex인데 보내기를 허용하지 않았으면 빼고 보낸다(엔진이 거부한다).
+    const reviewBase = { ...buildBase, gates: [], allow: ["send"] };
+
+    assert.deepEqual(getCliArgs({ ...reviewBase, securityReview: "on" }).slice(-6), ["--mode", "build", "--allow", "send", "--security-review", "on"]);
+    assert.deepEqual(getCliArgs({ ...reviewBase, securityReview: "strict", securityOnFail: "retry:1" }).slice(-8), [
+        "--mode",
+        "build",
+        "--allow",
+        "send",
+        "--security-on-fail",
+        "retry:1",
+        "--security-review",
+        "strict"
+    ]);
+    assert(!getCliArgs({ ...reviewBase, securityReview: "off" }).includes("--security-review"));
+    assert(!getCliArgs(reviewBase).includes("--security-review"));
+    assert(!getCliArgs({ ...reviewBase, securityReview: "on", skip: ["security"] }).includes("--security-review"));
+    assert(!getCliArgs({ ...reviewBase, securityReview: "on", mode: "maintain" }).includes("--security-review"));
+    assert(!getCliArgs({ ...reviewBase, allow: [], securityReview: "strict" }).includes("--security-review"), "Codex 검토자는 보내기를 허용해야 한다");
+    assert.deepEqual(
+        getCliArgs({ ...reviewBase, allow: [], mains: { security: "codex" }, securityReview: "on" }).slice(-6),
+        ["--mode", "build", "--main", "security=codex", "--security-review", "on"],
+        "메인이 Codex면 Claude가 검토해 보내기와 상관없다"
+    );
+    // Codex가 검토할 수 있는 실행에는 Codex의 model · effort를 넘긴다(엔진이 그 밖에는 거부한다).
+    assert(getCliArgs({ ...reviewBase, securityReview: "on", codexModel: "gpt-6.1-sol" }).includes("--codex-model"));
+    assert(!getCliArgs({ ...reviewBase, securityReview: "off", codexModel: "gpt-6.1-sol" }).includes("--codex-model"));
+
     // 건너뛰는 단계는 --skip으로 넘기고, 그 단계의 확인받기 · 형식 · 되돌림 · 보조 설정은 엔진이 거부하므로 빼고 보낸다.
     assert.deepEqual(getCliArgs({ ...buildBase, skip: ["design", "security"], allow: [], designFormat: "figma", qaOnFail: "stop", securityOnFail: "retry:1" }).slice(-8), [
         "--mode",

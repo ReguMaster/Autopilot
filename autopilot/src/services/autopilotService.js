@@ -21,6 +21,7 @@ import {
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    SECURITY_REVIEW_STRICT,
     BRAINSTORM_PHASES,
     PROVIDER_CLAUDE,
     PROVIDER_CODEX,
@@ -58,6 +59,9 @@ import streamUtil from "../utils/streamUtil.js";
 const INTERRUPT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 // 단계의 안 · 검토를 낼 때 Claude에게 주는 도구. 저장소를 읽기만 하게 한다.
 const READ_ONLY_TOOLS = "Read,Glob,Grep";
+const SECURITY_REVIEW_BLOCKING = "blocking";
+const SECURITY_REVIEW_CLEAR = "clear";
+const SECURITY_REVIEW_UNAVAILABLE = "unavailable";
 
 // Codex가 회차를 돌리거나(메인) 안을 내는(보조) 실행인지. model·effort 줄을 헤더에 남길지 정한다.
 const isCodexInvolved = (runState, options) => {
@@ -159,7 +163,7 @@ const getModeSettings = (options, progressFile, tasks) => {
         brainstorm: brainstorm,
         isBrainstormBlocked: BRAINSTORM_PHASES.some((phase) => phaseUtil.getPhaseAgents({ phase: phase, mains: mains, brainstorm: brainstorm, canSend: canSend }).isBlocked),
         crossReview: Boolean(options.crossReview),
-        securityReview: Boolean(options.securityReview),
+        securityReview: options.securityReview ?? null,
         debate: options.debate || [],
         debateTurns: options.debateTurns ?? DEBATE_DEFAULT_TURNS,
         proposals: state.proposals,
@@ -929,6 +933,13 @@ const readDisputes = (runState) => {
 
 // 보안검토가 pass라고 했어도 security.md의 점검 결과가 기준에 못 미치면 한 번 다시 쓰게 하고, 또 모자라면 보안검토 실패로 끝낸다.
 // 개발로 되돌리지 않는 것은 고칠 코드가 아니라 점검 기록이 모자란 것이기 때문이다. 다음 실행이 보안검토부터 다시 한다. 실행을 끝내야 하면 true를 반환한다.
+const endSecurityPhaseFailed = (context, loopState) => {
+    context.writeLog(`[단계] ${PHASE_LABELS.security} 실패`);
+    loopState.reason = `${PHASE_LABELS.security} 실패`;
+
+    return true;
+};
+
 const handleIncompleteSecurityDoc = (context, loopState, problems) => {
     const { runState, phaseDoneFile, writeLog } = context;
     const summary = problems.join(" / ");
@@ -945,14 +956,13 @@ const handleIncompleteSecurityDoc = (context, loopState, problems) => {
 
     runState.securityDocProblems = null;
     writeLog(`[보안검토] security.md 점검 결과가 다시 기준에 못 미쳐요: ${summary}`);
-    writeLog(`[단계] ${PHASE_LABELS.security} 실패`);
-    loopState.reason = `${PHASE_LABELS.security} 실패`;
 
-    return true;
+    return endSecurityPhaseFailed(context, loopState);
 };
 
-// 보안검토 pass를 메인의 반대쪽 AI가 독립적으로 다시 확인한다. 심각 · 높음 문제를 찾았으면 true(개발로 되돌린다)다.
-// 못 쓰거나 실패하거나 답을 읽을 수 없으면 이유를 남기고 false다(회차 실패로 세지 않는다). 결과는 docs/autopilot/security-review.md에 쓰고 다음 실행이 commit한다.
+// 보안검토 pass를 메인의 반대쪽 AI가 독립적으로 다시 확인한다. 결과는 심각 · 높음 문제를 찾았으면 "blocking"(개발로 되돌린다), 없으면 "clear"다.
+// 못 쓰거나 실패하거나 답을 읽을 수 없으면 이유를 남기고 "unavailable"이다(회차 실패로 세지 않는다. 엄격 모드는 호출하는 쪽이 실패로 끝낸다).
+// 결과는 docs/autopilot/security-review.md에 쓰고 다음 실행이 commit한다.
 const runSecurityReview = async (context, loopState) => {
     const { runState, writeLog } = context;
     const { reviewer, isBlocked } = phaseUtil.getSecurityReviewer({ main: runState.phaseAgents.main, canSend: runState.allow.includes("send") });
@@ -961,13 +971,13 @@ const runSecurityReview = async (context, loopState) => {
     if (isBlocked) {
         writeLog("[보안검토] 외부 서비스로 보내기를 허용하지 않아 독립 검토를 건너뜁니다.");
 
-        return false;
+        return SECURITY_REVIEW_UNAVAILABLE;
     }
 
     const answer = await askProvider(context, loopState, reviewer, promptUtil.getSecurityReviewPrompt(runState), `${PHASE_LABELS.security} 검토`);
 
     if (answer === null) {
-        return false;
+        return SECURITY_REVIEW_UNAVAILABLE;
     }
 
     const review = phaseUtil.parseSecurityReview(answer);
@@ -975,7 +985,7 @@ const runSecurityReview = async (context, loopState) => {
     if (!review) {
         writeLog(`[보안검토] ${label} 독립 검토의 답을 읽을 수 없어 건너뜁니다.`);
 
-        return false;
+        return SECURITY_REVIEW_UNAVAILABLE;
     }
 
     const blocking = phaseUtil.getBlockingFindings(review);
@@ -987,7 +997,7 @@ const runSecurityReview = async (context, loopState) => {
             : `[보안검토] ${label} 독립 검토에서 심각 · 높음 문제는 없었어요 (그 밖의 지적 ${review.findings.length}개)`
     );
 
-    return blocking.length > 0;
+    return blocking.length ? SECURITY_REVIEW_BLOCKING : SECURITY_REVIEW_CLEAR;
 };
 
 // 세션이 남긴 단계 완료 신호로 다음 단계로 넘긴다. 확인 대기·모든 단계 완료·테스트/QA·보안검토 실패로 실행을 끝내야 하면 true를 반환한다.
@@ -1015,14 +1025,22 @@ const applyPhaseDone = async (context, loopState) => {
     }
 
     if (phase === "security" && runState.securityReview && !phaseUtil.isFailResult(result)) {
-        const isBlocking = await runSecurityReview(context, loopState);
+        const reviewResult = await runSecurityReview(context, loopState);
 
         // 중단으로 검토가 끊기면 통과로 넘기지 않는다. 다음 실행이 보안검토를 다시 한다.
         if (isStopRequested(context, loopState)) {
             return false;
         }
 
-        if (isBlocking) {
+        // 엄격 모드는 검토하지 못한 보안검토를 통과시키지 않는다. 고칠 코드가 없으므로 개발로 되돌리지 않고 끝내며, 다음 실행이 보안검토부터 다시 한다.
+        if (reviewResult === SECURITY_REVIEW_UNAVAILABLE && runState.securityReview === SECURITY_REVIEW_STRICT) {
+            fileUtil.removeFiles([phaseDoneFile]);
+            writeLog("[보안검토] 엄격 모드라 독립 검토를 하지 못한 보안검토는 통과시키지 않아요.");
+
+            return endSecurityPhaseFailed(context, loopState);
+        }
+
+        if (reviewResult === SECURITY_REVIEW_BLOCKING) {
             result = "fail";
         }
     }

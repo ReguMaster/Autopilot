@@ -474,6 +474,7 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         designFormat: "html",
         qaOnFail: "retry:3",
         securityOnFail: "stop",
+        securityReview: "off",
         mains: {},
         brainstorm: [],
         crossReview: false,
@@ -561,6 +562,29 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.deepEqual(useComposerStore.getState().mains, {}, "기본(Claude)인 단계는 맵에 남기지 않는다");
     assert.deepEqual(getBrainstormState().allow, ["large", "send"], "메인이 Claude가 되면 보조가 Codex라 보내기가 켜진다");
     composer.loadSettings({ mode: "maintain", gates: ["plan", "design"], allow: ["deps", "large"], mains: {}, brainstorm: [], debate: [], crossReview: false }, ["mode", "gates", ...keys]);
+
+    // 보안검토의 독립 검토: 검토자는 보안검토 메인의 반대쪽 AI다. 검토자가 Codex(메인이 Claude)면 보내기도 켜지고, 보내기를 끄면 검토도 꺼진다. 메인이 Codex면 검토자가 Claude라 보내기와 상관없다.
+    const getReviewState = () => {
+        const { securityReview, allow, mains } = useComposerStore.getState();
+
+        return { securityReview: securityReview, allow: allow, mains: mains };
+    };
+
+    composer.loadSettings({ allow: ["large"], mains: {}, securityReview: "off" }, ["allow", "mains", "securityReview"]);
+    composer.setSecurityReview("strict");
+    assert.deepEqual(getReviewState(), { securityReview: "strict", allow: ["large", "send"], mains: {} }, "Codex 검토자는 보내기를 켠다");
+    assert.equal(composer.getModeOptions().securityReview, "strict");
+    composer.toggleAllow("send");
+    assert.deepEqual(getReviewState(), { securityReview: "off", allow: ["large"], mains: {} }, "보내기를 끄면 Codex 검토는 꺼진다");
+    composer.setPhaseMain("security", "codex");
+    composer.setSecurityReview("on");
+    assert.deepEqual(getReviewState(), { securityReview: "on", allow: ["large"], mains: { security: "codex" } }, "메인이 Codex면 Claude가 검토해 보내기를 켜지 않는다");
+    composer.toggleAllow("send");
+    composer.toggleAllow("send");
+    assert.equal(getReviewState().securityReview, "on", "Claude 검토자는 보내기를 꺼도 남는다");
+    composer.setPhaseMain("security", "claude");
+    assert.deepEqual(getReviewState(), { securityReview: "on", allow: ["large", "send"], mains: {} }, "메인이 Claude가 되면 검토자가 Codex라 보내기가 켜진다");
+    composer.loadSettings({ allow: ["deps", "large"], mains: {}, securityReview: "off" }, ["allow", "mains", "securityReview"]);
 
     calls.length = 0;
     accountStore.useAccountStore.setState({

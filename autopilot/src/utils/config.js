@@ -44,6 +44,10 @@ const ON_FAIL_STOP = "stop";
 const MAX_FAIL_RETRIES = 5;
 const DEFAULT_QA_ON_FAIL = "retry:3";
 const DEFAULT_SECURITY_ON_FAIL = "retry:3";
+// 보안검토의 독립 검토(--security-review). on은 검토하지 못하면 메인의 판정대로 진행하고, strict는 검토하지 못한 보안검토를 통과시키지 않는다.
+const SECURITY_REVIEW_ON = "on";
+const SECURITY_REVIEW_STRICT = "strict";
+const SECURITY_REVIEW_MODES = [SECURITY_REVIEW_ON, SECURITY_REVIEW_STRICT];
 // 여러 AI 브레인스토밍. 이 단계에서는 그 단계의 메인 AI와 상대 AI(보조)가 각자 안을 내고 사용자가 고른다.
 // 메인은 단계마다 정하고(--main) 보조는 늘 메인의 반대쪽 AI다. 제공자는 providerUtil에 더한다.
 const BRAINSTORM_PHASES = ["plan", "design"];
@@ -156,6 +160,9 @@ export {
     MAX_FAIL_RETRIES,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    SECURITY_REVIEW_ON,
+    SECURITY_REVIEW_STRICT,
+    SECURITY_REVIEW_MODES,
     BRAINSTORM_PHASES,
     PROVIDER_CLAUDE,
     PROVIDER_CODEX,

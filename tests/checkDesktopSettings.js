@@ -146,6 +146,13 @@ const checkNormalize = () => {
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "design"], crossReview: true }), { brainstorm: ["plan", "design"], crossReview: true });
     assert.deepEqual(normalizeOverrides({ brainstorm: ["build"], crossReview: "yes" }), {});
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "plan"] }), {});
+    // 보안검토의 독립 검토: 기본은 끔이고 off · on · strict만 저장한다.
+    assert.equal(buildDefaults.securityReview, "off");
+    assert.deepEqual(normalizeOverrides({ securityReview: "strict" }), { securityReview: "strict" });
+    assert.deepEqual(normalizeOverrides({ securityReview: "on" }), { securityReview: "on" });
+    assert.deepEqual(normalizeOverrides({ securityReview: "fast" }), {});
+    assert.deepEqual(normalizeOverrides({ securityReview: true }), {});
+    assert.equal(normalizeSettings({ securityReview: "always" }).securityReview, "off");
     // 단계마다 메인 AI: 기본은 비어 있어(모두 Claude) --main을 넘기지 않고, 다섯 단계 이름과 claude·codex만 저장한다.
     assert.deepEqual(buildDefaults.mains, {});
     assert.deepEqual(normalizeOverrides({ mains: { plan: "codex", security: "codex" } }), { mains: { plan: "codex", security: "codex" } });

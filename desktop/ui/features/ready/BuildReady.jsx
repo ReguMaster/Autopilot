@@ -21,6 +21,7 @@ import {
     getMainOptions,
     getMaxRetries,
     getReadySteps,
+    getSecurityReviewOptions,
     toOnFailValue
 } from "../../lib/buildSteps.js";
 import { getAssistant, getMain } from "../../lib/phaseAgents.js";
@@ -139,6 +140,23 @@ const OnFailSettings = ({ phase }) => {
     );
 };
 
+// 보안검토의 독립 검토: 점검이 끝나면 메인의 반대쪽 AI가 코드를 따로 읽고 다시 확인한다. 검토자가 Codex면 외부 서비스로 보내기도 함께 켜진다.
+const SecurityReviewSettings = () => {
+    const { main, securityReview } = useComposerStore(useShallow((store) => ({ main: getMain(store.mains, "security"), securityReview: store.securityReview })));
+    const codex = useRunsStore((store) => store.providers?.codex);
+
+    return (
+        <>
+            <div className="step-sentence">
+                <span>점검이 끝나면</span>
+                <Select inline value={securityReview} options={getSecurityReviewOptions(main, codex)} onChange={composer.setSecurityReview} ariaLabel="보안검토의 독립 검토" />
+                <span className="j">.</span>
+            </div>
+            {securityReview !== "off" && main === "claude" ? <p className="step-note">Codex에 프로젝트 내용을 보내야 해서 외부 서비스로 보내기도 함께 켰어요.</p> : null}
+        </>
+    );
+};
+
 // 하지 않을 수도 있는 단계(디자인·테스트/QA·보안검토): 앞머리에서 진행할지 건너뛸지 고른다. 건너뛰면 그 단계의 다른 설정은 숨기고 잃는 것을 알린다.
 const SkippableSettings = ({ phase, children }) => {
     const isSkipped = useComposerStore((store) => store.skip.includes(phase));
@@ -171,6 +189,7 @@ const SETTINGS = {
     security: (
         <SkippableSettings phase="security">
             <OnFailSettings phase="security" />
+            <SecurityReviewSettings />
         </SkippableSettings>
     )
 };

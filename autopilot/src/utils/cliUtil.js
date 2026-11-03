@@ -21,6 +21,7 @@ import {
     MODES,
     MODEL_CHOICES,
     RUNNERS,
+    SECURITY_REVIEW_MODES,
     SKIPPABLE_PHASES
 } from "./config.js";
 import debateUtil from "./debateUtil.js";
@@ -29,7 +30,7 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--skip design,qa,security] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--security-review] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--skip design,qa,security] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--security-review on|strict] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol|default] [--codex-effort high|default]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
@@ -54,6 +55,7 @@ const RUN_OPTION_KEYS = {
     "--design-format": "designFormat",
     "--qa-on-fail": "qaOnFail",
     "--security-on-fail": "securityOnFail",
+    "--security-review": "securityReview",
     "--main": "mains",
     "--brainstorm": "brainstorm",
     "--debate-turns": "debateTurns"
@@ -67,7 +69,7 @@ const ON_FAIL_OPTIONS = [
     ["--security-on-fail", "securityOnFail", "maxSecurityRetries"]
 ];
 const LINK_PROJECT_OPTION = "--link-project";
-const RUN_FLAGS = ["--no-open", "--extend-on-limit", "--cross-review", "--security-review"];
+const RUN_FLAGS = ["--no-open", "--extend-on-limit", "--cross-review"];
 
 const parseOptionValue = (args, index) => {
     const value = args[index + 1];
@@ -274,6 +276,10 @@ const parseModeOptions = (options) => {
         throw new Error("--cross-review 는 나란히 비교(compare)하는 단계가 있을 때만 씁니다.");
     }
 
+    if (options.securityReview !== undefined && !SECURITY_REVIEW_MODES.includes(options.securityReview)) {
+        throw new Error(`--security-review 값은 ${SECURITY_REVIEW_MODES.join(" | ")} 중 하나여야 합니다.`);
+    }
+
     if (options.designFormat !== undefined && !DESIGN_FORMATS.includes(options.designFormat)) {
         throw new Error(`--design-format 값은 ${DESIGN_FORMATS.join(" | ")} 중 하나여야 합니다.`);
     }
@@ -337,10 +343,6 @@ const parseRunArgs = (args) => {
 
     if (args.includes("--cross-review")) {
         options.crossReview = true;
-    }
-
-    if (args.includes("--security-review")) {
-        options.securityReview = true;
     }
 
     settingsUtil.getGitSettings(options.commitPrefix, options.workBranch);

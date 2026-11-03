@@ -21,6 +21,8 @@ const {
     ON_FAIL_PATTERN,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
+    SECURITY_REVIEW_CHOICES,
+    DEFAULT_SECURITY_REVIEW,
     BRAINSTORM_PHASES,
     isMains,
     CODEX_MODEL_PATTERN,
@@ -79,6 +81,7 @@ const OVERRIDABLE_KEYS = [
     "designFormat",
     "qaOnFail",
     "securityOnFail",
+    "securityReview",
     "mains",
     "brainstorm",
     "crossReview",
@@ -129,6 +132,8 @@ const DEFAULT_SETTINGS = {
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
     securityOnFail: DEFAULT_SECURITY_ON_FAIL,
+    // 보안검토를 메인의 반대쪽 AI가 독립적으로 다시 확인할지(off · on · strict). strict는 검토하지 못하면 보안검토를 통과시키지 않는다.
+    securityReview: DEFAULT_SECURITY_REVIEW,
     // 신규 개발에서 단계마다 그 단계의 회차를 돌리는 메인 AI(없는 단계는 claude). 기본은 모두 Claude다.
     mains: {},
     // 여러 AI 브레인스토밍을 켠 단계(메인의 반대쪽 AI가 보조로 따로 안을 낸다)와 서로 검토하기. 기본은 메인만이다.
@@ -193,6 +198,7 @@ const SETTING_VALIDATORS = {
     designFormat: (value) => DESIGN_FORMATS.includes(value),
     qaOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
     securityOnFail: (value) => typeof value === "string" && ON_FAIL_PATTERN.test(value),
+    securityReview: (value) => SECURITY_REVIEW_CHOICES.includes(value),
     mains: isMains,
     brainstorm: (value) => isChoiceList(value, BRAINSTORM_PHASES),
     crossReview: (value) => typeof value === "boolean",

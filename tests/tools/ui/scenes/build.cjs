@@ -611,6 +611,21 @@ const SCENES = [
         }
     },
     {
+        // 보안검토의 독립 검토: 검토자는 메인의 반대쪽 AI이고, 고른 방식이 문장으로 보인다. 화면이 길어 단계 카드가 잘리지 않게 키운다.
+        name: "ready-build-security-review",
+        size: [1160, 1100],
+        init: { ...BUILD, settings: { ...BUILD.settings, allow: ["deps", "large", "send"], securityReview: "strict" } },
+        run: async (t) => {
+            const readSecurity = "document.querySelector('[data-phase=\"security\"]').textContent.replace(/\\s+/g, ' ')";
+
+            await t.shot("steps", "#build-steps");
+            await t.note("strict", await t.eval(readSecurity));
+            await t.click('[aria-label="보안검토의 독립 검토"]');
+            await t.wait(300);
+            await t.shot("options");
+        }
+    },
+    {
         name: "ready-build-allow-popover",
         init: BUILD,
         run: async (t) => {
