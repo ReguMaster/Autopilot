@@ -81,6 +81,16 @@ desktop/(Electron 앱)과 tests/checkDesktop*.js를 고칠 때 적용한다. 공
 - 실행·로그인 중에는 계정 선택(그 탭이 실행 중일 때)·추가·제거·로그인·데이터 폴더 변경(어느 탭이든 실행 중일 때)을 막는다(메인도 거부한다). 한도 회피를 위한 자동 계정 전환은 하지 않는다.
 - tests/checkDesktopAccounts.js가 가짜 claude로 검증한다.
 
+### Codex 계정·한도·로그인과 Welcome
+
+- Codex 계정은 Claude 계정(accountIpc)과 같은 규칙의 병렬 구현이다. codexAccountIpc.cjs(IPC `autopilot:*-codex-account`·`cancel-codex-login`·`open-codex-login-url`, 이벤트 `autopilot:codex-accounts`·`codex-account`·`codex-login`)가 계정 목록·선택·로그인·로그아웃·제거를, codexAccountStore.cjs가 계정 폴더(기본 계정은 환경의 `CODEX_HOME`, 없으면 `~/.codex`, 추가 계정은 userData/codex-accounts/<cx-8자리16진수>/가 그 계정의 CODEX_HOME)를, codexAccount.cjs가 계정마다 읽기를, codexCli.cjs가 `codex login status`·`codex login`·`codex logout`을 맡는다. settings.json에는 {id, label} 목록(codexAccounts)과 새 탭의 기본 계정(codexAccountId, MACHINE_KEYS), 프로젝트 파일에는 그 탭이 고른 계정(CODEX_ACCOUNT_KEY `codexAccountId`, ACCOUNT_KEY처럼 설정 범위·내보내기에 안 든다)만 저장한다. 폴더는 id 형식(`cx-` + 16진수 8자)으로만 정하고 로그인 정보는 저장하지 않는다.
+- 시작하면 선택한 Codex 계정이 기본이 아닐 때만 엔진에 `--codex-home <그 폴더>`를 넘긴다(engineArgs.getCliArgs의 codexHome). 기본 계정은 엔진이 환경의 CODEX_HOME을 그대로 따른다. 쓸 수 있는지(autopilot:get-providers)도 선택한 계정의 CODEX_HOME으로 묻는다. Codex 로그인은 시작 조건이 아니다(없으면 엔진이 그 회차를 Claude로 돌린다).
+- 한도는 세션 기록 읽기가 유일한 길이다(비공식 형식이라 알 수 없는 줄은 건너뛴다): CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl을 최근 것부터 6개까지 보고, 파일 끝 1MB에서 마지막 `event_msg`/`token_count`의 `rate_limits`(primary·secondary의 used_percent·window_minutes·resets_at(초))를 읽는다. 창 길이 300분·10080분은 Claude와 같은 이름(5시간·주간 한도)으로 불러 화면의 시간 대비 사용 표시가 그대로 동작하고, resets_at이 지났으면 새 창이라 0%·리셋 없음으로 본다. fetchedAt은 그 이벤트의 시각이라 마지막으로 쓴 때이고, 기록이 없으면 NO_USAGE 안내다. 이 앱이 엔진으로 돌린 Codex 회차도 같은 CODEX_HOME에 기록을 남겨 갱신된다. 신원(이메일·이름·요금제)은 auth.json의 id_token 클레임에서 읽고(토큰은 이 모듈 밖으로 내보내지 않는다), 로그인 여부는 `codex login status`의 종료 코드다(키링에 둔 로그인도 맞게 본다). 5분마다 읽고 새로 고침은 15초 간격을 막는다.
+- 로그인은 `codex login`을 그 CODEX_HOME으로 실행한다(브라우저는 CLI가 열고 끝나면 CLI가 스스로 끝나므로 코드 입력이 없다). 출력의 주소(openai.com·chatgpt.com의 https만)를 "브라우저에서 열기"로 열 수 있게 알린다. 새 계정이 실패·취소되면 폴더를 지운다. Claude와 Codex의 로그인은 서로 막지 않는다(각자 한 번에 하나).
+- 로그아웃(`autopilot:logout-account`·`logout-codex-account`)은 `claude auth logout`·`codex logout`을 그 설정 폴더로 실행하고 다시 상태를 읽어 정말 로그아웃됐는지 확인한다(안 됐으면 LOGOUT_FAILED). 계정 목록·폴더는 남기고 로그인 정보만 지우며 기본 계정도 된다. 실행 중이거나 로그인 중에는 거부한다. 제거(`remove-codex-account`)는 폴더를 지우기 전에 로그아웃을 먼저 시도한다.
+- 화면: 프로필 패널은 위의 Claude·Codex 탭(uiStore.profileProvider)으로 몸통(ClaudeProfile·features/profile/CodexProfile)을 한 번에 하나만 그려 id가 겹치지 않는다. 공통 조각은 profileParts.jsx다. 상태는 stores/codexAccountStore·actions/codexAccounts이다.
+- Welcome(features/welcome/Welcome, `#welcome`): settings.onboarded가 명시적으로 false이고 열린 탭이 없을 때만 본문(.content) 위에 덮인다(그 아래 화면은 그대로 마운트돼 스모크 테스트의 자리 확인이 유지된다). 이미 쓰던 사람은 탭이 있어 뜨지 않고 값도 바꾸지 않는다. AI 카드마다 계정 줄(연결 상태·로그인·로그아웃), 다른 계정 추가(이름 없이 바로 로그인, 끝나면 이메일이 이름), 진행 중 로그인 안내(Claude는 코드 입력)를 두고, 시작하기·나중에 연결할게요가 `autopilot:set-preferences`의 onboarded: true를 저장한다(PREFERENCE_KEYS, MACHINE_KEYS라 내보내지 않는다). 검증: tests/checkDesktopLogin.js(가짜 codex·claude, 세션 기록 파서·계정 저장소·읽기), tests/checkDesktopSettings.js, tests/checkDesktopRunner.js(--codex-home), tests/tools/ui의 welcome·profile-panel-codex 장면.
+
 ### 플랫폼 범위
 
 - 배포는 Windows exe(포터블·설치형), macOS dmg·zip, Linux AppImage·deb이고 계정 코드는 비-Windows에서도 돌도록 짠다. claudeCli.findClaude는 비-Windows에서 실행 권한을 확인하고, junction은 Windows 밖에서 디렉터리 심볼릭 링크로, 프로세스 종료는 Windows taskkill·그 외 SIGTERM으로 하며, CMD 래퍼 처리는 Windows만 한다.
