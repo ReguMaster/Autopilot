@@ -534,6 +534,32 @@ const SCENES = [
             await t.note("sheet-escape", await flags());
             await t.shot("final", "", { skipDom: true });
         }
+    },
+    {
+        // 처음 켰을 때의 AI 연동 안내: Claude는 로그인돼 있고 Codex는 로그인이 필요하다. 시작하기를 누르면 안내를 마친 것으로 저장하고 닫힌다.
+        name: "welcome",
+        init: { accounts: ACCOUNTS, codexAccounts: CODEX_ACCOUNTS, settings: { onboarded: false, tabs: [] } },
+        run: async (t) => {
+            await t.wait(700);
+            await t.shot("welcome", "#welcome");
+            await t.drive("codexLogin", { accountId: "cx-1a2b3c4d", phase: "waiting", url: "https://auth.openai.com/oauth/authorize?x", message: "열린 브라우저에서 로그인을 마쳐 주세요." });
+            await t.shot("codex-waiting", "#welcome");
+            await t.drive("login", { accountId: "default", phase: "waiting", url: "https://claude.ai/oauth/x", message: "브라우저에서 로그인을 마쳐 주세요." });
+            await t.shot("claude-code", "#welcome");
+            await t.clearCalls();
+            await t.click("#welcome-done");
+            await t.wait(500);
+            await t.note("hidden", await t.eval("document.getElementById('welcome').hidden"));
+            await t.note("calls", await callsWithArgs(t));
+        }
+    },
+    {
+        // 열린 프로젝트가 있으면(이미 쓰던 사람) 연동 안내는 뜨지 않는다.
+        name: "welcome-skipped-for-existing",
+        init: { ...withProject, accounts: ACCOUNTS, settings: { projectDir: PROJECT, onboarded: false, tabs: [PROJECT] } },
+        run: async (t) => {
+            await t.note("hidden", await t.eval("document.getElementById('welcome').hidden"));
+        }
     }
 ];
 

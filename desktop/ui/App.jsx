@@ -11,6 +11,7 @@ import { ProfilePanel } from "./features/profile/ProfilePanel.jsx";
 import { ReadyView } from "./features/ready/ReadyView.jsx";
 import { RunView } from "./features/run/RunView.jsx";
 import { ScheduleSheet } from "./features/schedule/ScheduleSheet.jsx";
+import { Welcome } from "./features/welcome/Welcome.jsx";
 import { SettingsPanel } from "./features/settings/SettingsPanel.jsx";
 import { Notices } from "./features/shell/Notices.jsx";
 import { Rail } from "./features/shell/Rail.jsx";
@@ -64,6 +65,7 @@ const App = () => {
                     )}
                     <Notices />
                     {newProject ? null : <Composer />}
+                    <Welcome />
                 </div>
             </div>
             <Symbols />
