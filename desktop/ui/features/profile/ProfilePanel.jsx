@@ -186,7 +186,7 @@ const ClaudeProfile = () => {
             <ProfileCard profile={account.profile} isLoading={isLoading} percent={topPercent} />
             <div id="login-expiry" className="profile-warn" hidden={!expiry && !needsRelogin} data-tone={needsRelogin ? "warn" : undefined}>
                 <span>{expiry?.text ?? RELOGIN_FALLBACK_TEXT}</span>
-                <Button id="account-login" hidden={!needsRelogin} disabled={isManageLocked} title={manageTitle} onClick={accounts.login}>
+                <Button id="account-login" hidden={!needsRelogin} disabled={isManageLocked} title={manageTitle} onClick={() => accounts.login()}>
                     다시 로그인
                 </Button>
             </div>

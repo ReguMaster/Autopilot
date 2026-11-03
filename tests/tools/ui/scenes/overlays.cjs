@@ -254,6 +254,8 @@ const SCENES = [
             await t.shot("loading", "#profile");
             await t.drive("account", "default", { profile: null, limits: [], fetchedAt: 0, error: { code: "TOKEN_EXPIRED", msg: "로그인이 만료됐어요." } });
             await t.shot("expired", "#profile");
+            await t.click("#account-login");
+            await t.note("login", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'loginAccount').map((call) => typeof call[1]))"));
             await t.drive("account", "default", { ...ACCOUNTS.snapshots.default, fetchedAt: NOW - 3 * HOUR, error: { code: "NETWORK", msg: "네트워크에 연결할 수 없어요." } });
             await t.shot("stale-error", "#profile");
         }
