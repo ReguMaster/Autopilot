@@ -102,6 +102,12 @@ const DEFAULT_ACCOUNTS = {
     snapshots: {},
     login: null
 };
+const DEFAULT_CODEX_ACCOUNTS = {
+    accounts: [{ id: "default", label: "기본 계정", isDefault: true }],
+    activeId: "default",
+    snapshots: {},
+    login: null
+};
 const DEFAULT_SCHEDULES = {
     schedules: [],
     statuses: [],
@@ -125,6 +131,7 @@ const model = {
     tabs: init.tabs || [],
     logs: init.logs || [],
     accounts: { ...DEFAULT_ACCOUNTS, ...init.accounts },
+    codexAccounts: { ...DEFAULT_CODEX_ACCOUNTS, ...init.codexAccounts },
     schedules: { ...DEFAULT_SCHEDULES, ...init.schedules },
     runs: init.runs || [],
     streakDays: init.streakDays || [],
@@ -342,6 +349,20 @@ const api = {
     cancelLogin: respond("cancelLogin", async () => ok({})),
     openLoginUrl: respond("openLoginUrl", async () => ok({})),
     removeAccount: respond("removeAccount", async () => ok(model.accounts)),
+    logoutAccount: respond("logoutAccount", async () => ok(model.accounts)),
+    getCodexAccounts: respond("getCodexAccounts", async () => ok(model.codexAccounts)),
+    refreshCodexAccount: respond("refreshCodexAccount", async (id) => ok({ id: id, account: model.codexAccounts.snapshots[id] })),
+    selectCodexAccount: respond("selectCodexAccount", async (id) => {
+        model.codexAccounts = { ...model.codexAccounts, activeId: id };
+
+        return ok(model.codexAccounts);
+    }),
+    addCodexAccount: respond("addCodexAccount", async () => ok({})),
+    loginCodexAccount: respond("loginCodexAccount", async () => ok({})),
+    cancelCodexLogin: respond("cancelCodexLogin", async () => ok({})),
+    openCodexLoginUrl: respond("openCodexLoginUrl", async () => ok({})),
+    logoutCodexAccount: respond("logoutCodexAccount", async () => ok(model.codexAccounts)),
+    removeCodexAccount: respond("removeCodexAccount", async () => ok(model.codexAccounts)),
     selectClaudeDir: respond("selectClaudeDir", async () => ok(model.accounts)),
     resetClaudeDir: respond("resetClaudeDir", async () => ok(model.accounts)),
     onTabs: subscribe("tabs"),
@@ -350,6 +371,9 @@ const api = {
     onAccount: subscribe("account"),
     onAccounts: subscribe("accounts"),
     onLogin: subscribe("login"),
+    onCodexAccount: subscribe("codexAccount"),
+    onCodexAccounts: subscribe("codexAccounts"),
+    onCodexLogin: subscribe("codexLogin"),
     onUpdate: subscribe("update"),
     onSchedules: subscribe("schedules"),
     onPostAction: subscribe("postAction")
@@ -397,6 +421,15 @@ window.__drive = {
         emit("account", { id: id, account: account });
     },
     login: (login) => emit("login", login),
+    codexAccounts: (patch) => {
+        model.codexAccounts = { ...model.codexAccounts, ...patch };
+        emit("codexAccounts", model.codexAccounts);
+    },
+    codexAccount: (id, account) => {
+        model.codexAccounts = { ...model.codexAccounts, snapshots: { ...model.codexAccounts.snapshots, [id]: account } };
+        emit("codexAccount", { id: id, account: account });
+    },
+    codexLogin: (login) => emit("codexLogin", login),
     postAction: (payload) => emit("postAction", payload),
     schedules: (patch) => {
         model.schedules = { ...model.schedules, ...patch };

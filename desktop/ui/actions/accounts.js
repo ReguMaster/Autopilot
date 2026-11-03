@@ -77,8 +77,25 @@ const accounts = {
 
         return isOk;
     },
-    login: async () => {
-        showAccountFailure(await window.autopilot.loginAccount(useAccountStore.getState().activeId));
+    login: async (id = useAccountStore.getState().activeId) => {
+        showAccountFailure(await window.autopilot.loginAccount(id));
+    },
+    logout: async (id = useAccountStore.getState().activeId) => {
+        const label = useAccountStore.getState().accounts.find((account) => account.id === id)?.label;
+        const isConfirmed = await modal.confirm({
+            title: `'${label}' 계정을 로그아웃할까요?`,
+            message: "이 계정의 Claude 로그인 정보를 지워요. 계정은 목록에 남아 있어서 다시 로그인하면 바로 쓸 수 있어요.",
+            confirmLabel: "로그아웃",
+            tone: "danger"
+        });
+
+        if (isConfirmed) {
+            const result = await window.autopilot.logoutAccount(id);
+
+            if (showAccountFailure(result)) {
+                applyPayload(result.data);
+            }
+        }
     },
     remove: async () => {
         const { accounts: list, activeId } = useAccountStore.getState();

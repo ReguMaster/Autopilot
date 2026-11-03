@@ -1,43 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { formatClock, formatUsageReset, getUsagePace, getUsageTone } from "../../../viewFormat.js";
 import { accounts } from "../../actions/accounts.js";
-import { AvatarRing } from "../../components/AvatarRing.jsx";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Panel } from "../../components/Panel.jsx";
+import { Seg } from "../../components/Seg.jsx";
 import { useAnyRunning } from "../../hooks/useAnyRunning.js";
 import { useLoginExpiry } from "../../hooks/useLoginExpiry.js";
-import { useClock } from "../../stores/clock.js";
 import { EMPTY_ACCOUNT, useAccountStore } from "../../stores/accountStore.js";
 import { useRunStore } from "../../stores/runStore.js";
-import { useUiStore } from "../../stores/uiStore.js";
+import { ui, useUiStore } from "../../stores/uiStore.js";
+import { CodexProfile } from "./CodexProfile.jsx";
+import { getAccountStatus, getAvatarLetter, ProfileCard, Usage } from "./profileParts.jsx";
 
 const MAX_ACCOUNT_COUNT = 9;
 const DEFAULT_ACCOUNT_ID = "default";
-const SKELETON_ITEM_COUNT = 3;
-const SESSION_LIMIT_PREFIX = "5시간";
 // 로그인 정보가 없거나 만료돼 사용량을 읽지 못할 때, 또는 로그인 만료가 가까울 때 다시 로그인이 필요하다.
 const RELOGIN_ERROR_CODES = ["NO_CREDENTIALS", "TOKEN_EXPIRED"];
 const RELOGIN_FALLBACK_TEXT = "다시 로그인이 필요해요.";
-
-const getAvatarLetter = ({ name, email }) => {
-    return Array.from(name || email)[0]?.toUpperCase() ?? "";
-};
-
-const getAccountStatus = (account, isLoading) => {
-    if (isLoading) {
-        return { text: "불러오는 중이에요.", tone: "" };
-    }
-
-    if (!account.error) {
-        return { text: `${formatClock(account.fetchedAt)} 기준`, tone: "" };
-    }
-
-    const staleNote = account.fetchedAt ? ` (${formatClock(account.fetchedAt)} 기준 값)` : "";
-
-    return { text: account.error.msg + staleNote, tone: "warn" };
-};
 
 // 계정은 이름 첫 글자를 단 줄로 고른다(라디오 묶음). 실행 중이거나 로그인 중에는 바꿀 수 없다.
 const AccountList = ({ isLocked, isIdle }) => {
@@ -178,89 +158,7 @@ const LoginBox = () => {
     );
 };
 
-// 아바타 사진은 계정 정보에 없어 이름(없으면 이메일)의 첫 글자를 그린다. 조직 이름은 요금제 표시의 툴팁에 둔다.
-const ProfileCard = ({ profile, isLoading, percent }) => {
-    return (
-        <section id="profile-card" className="profile-card" aria-busy={isLoading} hidden={!profile && !isLoading}>
-            <AvatarRing id="profile-avatar" className="profile-avatar" size="lg" letter={profile ? getAvatarLetter(profile) : ""} percent={percent} aria-hidden="true" />
-            <div className="profile-id">
-                <b id="profile-name" className="profile-name">
-                    {profile ? profile.name || profile.email : ""}
-                </b>
-                <span id="profile-email" className="profile-email">
-                    {profile?.name ? profile.email : ""}
-                </span>
-            </div>
-            <span id="profile-plan" className="profile-plan" hidden={!profile?.plan} title={profile?.organization || undefined}>
-                {profile?.plan || ""}
-            </span>
-        </section>
-    );
-};
-
-// 항목 구성이 같으면 막대를 다시 만들지 않아(key가 이름) 값이 바뀔 때만 막대가 움직인다. 막대 위 세로 선은 한도 기간이 지난 만큼이다.
-const UsageItem = ({ limit, nowMs }) => {
-    const percent = Math.round(limit.percent);
-    const pace = getUsagePace(limit, nowMs);
-
-    return (
-        <section className="usage-item" data-tone={getUsageTone(limit.percent)} data-session={limit.label.startsWith(SESSION_LIMIT_PREFIX) ? "" : undefined}>
-            <h3>{limit.label}</h3>
-            <b className="usage-percent num">{`${percent}%`}</b>
-            <div
-                className="usage-meter"
-                role="meter"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow={String(percent)}
-                aria-label={limit.label}
-                style={{ "--value": String(limit.percent), "--elapsed": String(pace?.elapsed ?? 0) }}
-            >
-                <i></i>
-                {pace ? <span className="usage-pace" aria-hidden="true"></span> : null}
-            </div>
-            <span className="usage-reset">
-                <span>{formatUsageReset(limit.resetsAt, nowMs)}</span>
-                {pace?.isFast ? <em>시간보다 빨리 쓰고 있어요</em> : null}
-            </span>
-        </section>
-    );
-};
-
-const UsageSkeleton = () => {
-    return (
-        <section className="usage-item">
-            <h3></h3>
-            <b className="usage-percent num"></b>
-            <div className="usage-meter" role="meter" aria-valuemin="0" aria-valuemax="100">
-                <i></i>
-            </div>
-            <span className="usage-reset"></span>
-        </section>
-    );
-};
-
-const Usage = ({ limits, isLoading }) => {
-    const isRunning = useRunStore((store) => store.state.status === "running");
-    const minute = useClock((now) => Math.floor(now / 60000));
-    const nowMs = useMemo(() => Date.now(), [minute, limits]);
-
-    return (
-        <section id="usage-section" className="profile-usage" aria-label="사용량과 한도" hidden={!isLoading && limits.length === 0}>
-            <div id="usage-list" className="usage-list" data-loading={isLoading ? "" : undefined} data-working={isRunning ? "" : undefined}>
-                {isLoading
-                    ? Array.from({ length: SKELETON_ITEM_COUNT }, (_, index) => <UsageSkeleton key={index} />)
-                    : limits.map((limit) => <UsageItem key={limit.label} limit={limit} nowMs={nowMs} />)}
-            </div>
-            <p className="panel-note usage-legend" hidden={isLoading || !limits.some((limit) => getUsagePace(limit, nowMs))}>
-                막대 위 세로 선은 한도 기간이 지난 만큼이에요.
-            </p>
-        </section>
-    );
-};
-
-const ProfilePanel = () => {
-    const open = useUiStore((store) => store.panel === "profile");
+const ClaudeProfile = () => {
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const {
         activeId,
@@ -284,7 +182,7 @@ const ProfilePanel = () => {
     const topPercent = account.limits.length > 0 ? Math.max(...account.limits.map((limit) => limit.percent)) : null;
 
     return (
-        <Panel id="profile" className="profile-panel" aria-label="프로필" open={open}>
+        <>
             <ProfileCard profile={account.profile} isLoading={isLoading} percent={topPercent} />
             <div id="login-expiry" className="profile-warn" hidden={!expiry && !needsRelogin} data-tone={needsRelogin ? "warn" : undefined}>
                 <span>{expiry?.text ?? RELOGIN_FALLBACK_TEXT}</span>
@@ -313,6 +211,9 @@ const ProfilePanel = () => {
                     {status.text}
                 </p>
                 <div className="panel-foot-actions">
+                    <Button id="account-logout" hidden={isLoading || account.error?.code === "NO_CREDENTIALS"} disabled={isManageLocked} title={manageTitle} onClick={() => accounts.logout()}>
+                        로그아웃
+                    </Button>
                     <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isManageLocked} title={manageTitle} onClick={accounts.remove}>
                         이 계정 제거
                     </Button>
@@ -322,8 +223,34 @@ const ProfilePanel = () => {
                     </Button>
                 </div>
             </div>
+        </>
+    );
+};
+
+const PROVIDER_OPTIONS = [
+    { value: "claude", label: "Claude" },
+    { value: "codex", label: "Codex" }
+];
+
+// 프로필 패널은 AI마다 계정·한도를 보여 준다. 위 탭으로 Claude와 Codex를 오간다(두 몸통은 한 번에 하나만 그려 id가 겹치지 않는다).
+const ProfilePanel = () => {
+    const open = useUiStore((store) => store.panel === "profile");
+    const provider = useUiStore((store) => store.profileProvider);
+
+    return (
+        <Panel id="profile" className="profile-panel" aria-label="프로필" open={open}>
+            <Seg
+                name="profile-provider"
+                label="AI 선택"
+                className="mode-seg profile-provider"
+                slide
+                options={PROVIDER_OPTIONS}
+                value={provider}
+                onChange={(value) => ui.set({ profileProvider: value })}
+            />
+            {provider === "codex" ? <CodexProfile /> : <ClaudeProfile />}
         </Panel>
     );
 };
 
-export { ProfilePanel };
+export { ProfilePanel, ClaudeProfile };

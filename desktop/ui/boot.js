@@ -4,7 +4,9 @@ import { handleLogEvent, handleStateEvent } from "./actions/events.js";
 import { settings as settingsActions } from "./actions/settings.js";
 import { loadBuildPhase, loadRecentRuns } from "./actions/runs.js";
 import { setStopArmed } from "./actions/run.js";
+import { applyCodexLogin, applyCodexPayload } from "./actions/codexAccounts.js";
 import { setAccountSnapshot } from "./stores/accountStore.js";
+import { setCodexAccountSnapshot } from "./stores/codexAccountStore.js";
 import { useAppStore } from "./stores/appStore.js";
 import { composer } from "./stores/composerStore.js";
 import { applyRunState, appendEntries, flushNow, getRunState, useRunStore } from "./stores/runStore.js";
@@ -77,6 +79,12 @@ const boot = async () => {
         applyPayload(accountsResult.data);
     }
 
+    const codexResult = await window.autopilot.getCodexAccounts();
+
+    if (codexResult.status === STATUS_OK) {
+        applyCodexPayload(codexResult.data);
+    }
+
     const schedulesResult = await window.autopilot.getSchedules();
 
     if (schedulesResult.status === STATUS_OK) {
@@ -103,6 +111,9 @@ const boot = async () => {
     window.autopilot.onAccounts(applyPayload);
     window.autopilot.onAccount(({ id, account }) => setAccountSnapshot(id, account));
     window.autopilot.onLogin(applyLogin);
+    window.autopilot.onCodexAccounts(applyCodexPayload);
+    window.autopilot.onCodexAccount(({ id, account }) => setCodexAccountSnapshot(id, account));
+    window.autopilot.onCodexLogin(applyCodexLogin);
     window.autopilot.onSchedules(applySchedulePayload);
     window.autopilot.onPostAction(settingsActions.applyPostAction);
     window.appWindow.onState(({ maximized }) => useAppStore.setState({ maximized: maximized }));

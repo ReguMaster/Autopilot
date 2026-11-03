@@ -1,4 +1,4 @@
-const { ACCOUNTS, DAY, HOUR, MODELS, NOW, PROJECT, RUNS, RUN_LINES, doneState, makeRun, runningState, withProject } = require("./data.cjs");
+const { ACCOUNTS, CODEX_ACCOUNTS, DAY, HOUR, MODELS, NOW, PROJECT, RUNS, RUN_LINES, doneState, makeRun, runningState, withProject } = require("./data.cjs");
 
 const callNames = async (t) => JSON.stringify((await t.calls()).map((call) => call[0]));
 const callsWithArgs = async (t) => JSON.stringify(await t.calls());
@@ -226,6 +226,23 @@ const SCENES = [
             await t.wait(500);
             await t.shot("second-account", "#profile");
             await t.note("calls", await callNames(t));
+        }
+    },
+    {
+        // 프로필 패널의 AI 탭: Codex는 세션 기록에서 읽은 한도와 계정(로그인 안 된 계정은 로그인 안내)을 보인다.
+        name: "profile-panel-codex",
+        init: { ...withProject, accounts: ACCOUNTS, codexAccounts: CODEX_ACCOUNTS },
+        run: async (t) => {
+            await t.click("#profile-toggle");
+            await t.wait(700);
+            await t.click("input[name='profile-provider'][value='codex']");
+            await t.wait(400);
+            await t.shot("codex", "#profile");
+            await t.click(".account-option:nth-child(2)");
+            await t.wait(400);
+            await t.shot("codex-logged-out", "#profile");
+            await t.drive("codexLogin", { accountId: "cx-1a2b3c4d", phase: "waiting", url: "https://auth.openai.com/oauth/authorize?x", message: "열린 브라우저에서 로그인을 마쳐 주세요." });
+            await t.shot("codex-waiting", "#profile");
         }
     },
     {

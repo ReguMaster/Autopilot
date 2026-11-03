@@ -468,6 +468,10 @@ body.profile-open #profile {
 }
 
 /* 프로필: 계정 고르기와 관리, 계정 카드, 사용량 */
+.profile-provider {
+    margin: 0 0 14px;
+}
+
 .account-chips {
     display: flex;
     flex-wrap: wrap;

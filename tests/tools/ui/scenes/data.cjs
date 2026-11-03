@@ -114,6 +114,26 @@ const ACCOUNTS = {
     login: null
 };
 
+const CODEX_ACCOUNTS = {
+    accounts: [
+        { id: "default", label: "기본 계정", isDefault: true },
+        { id: "cx-1a2b3c4d", label: "회사 ChatGPT", isDefault: false }
+    ],
+    activeId: "default",
+    snapshots: {
+        default: {
+            installed: true,
+            loggedIn: true,
+            profile: { name: "서영호", email: "yh@example.com", plan: "Pro Lite", organization: "" },
+            limits: [{ label: "주간 한도", percent: 50, resetsAt: NOW + 3 * DAY }],
+            fetchedAt: NOW - 20 * MINUTE,
+            error: null
+        },
+        "cx-1a2b3c4d": { installed: true, loggedIn: false, profile: null, limits: [], fetchedAt: 0, error: { code: "NOT_LOGGED_IN", msg: "이 계정은 Codex에 로그인되어 있지 않아요." } }
+    },
+    login: null
+};
+
 const MODELS = [
     { id: "claude-opus-5-5", line: "opus" },
     { id: "claude-opus-4-8", line: "opus" },
@@ -142,4 +162,4 @@ const RUN_LINES = [
     "AutoPilot 종료 - 예정 시각 도달 (2회차)"
 ];
 
-module.exports = { NOW, MINUTE, HOUR, DAY, PROJECT, round, runningState, doneState, withProject, makeRun, RUNS, ACCOUNTS, MODELS, RUN_LINES };
+module.exports = { NOW, MINUTE, HOUR, DAY, PROJECT, round, runningState, doneState, withProject, makeRun, RUNS, ACCOUNTS, CODEX_ACCOUNTS, MODELS, RUN_LINES };

@@ -18,7 +18,18 @@ const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
 const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS, AI_PROVIDERS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, getProjectKey, ACCOUNT_KEY, CODEX_ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
+const {
+    createSettingsStore,
+    getProjectKey,
+    ACCOUNT_KEY,
+    CODEX_ACCOUNT_KEY,
+    LINKED_REPOS_KEY,
+    SETTING_VALIDATORS,
+    OVERRIDABLE_KEYS,
+    PREFERENCE_KEYS,
+    POLICY_CHOICES,
+    MAX_TABS
+} = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 const { askClaude, getCodexStatus } = require("./claudeCli.cjs");
 const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, getRecommendedSkip, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
