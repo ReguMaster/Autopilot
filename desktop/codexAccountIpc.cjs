@@ -316,10 +316,19 @@ const createCodexAccountIpc = ({
             return createFailure("INVALID_ACCOUNT", "제거할 수 있는 계정이 아니에요.");
         }
 
-        dropReader(accountId);
-
         // 로그인 정보를 키링에 두는 환경도 있어 폴더를 지우기 전에 로그아웃을 먼저 시도한다(실패해도 제거는 계속한다).
         await logoutCodex(store.getHome(accountId), launch);
+
+        // 로그아웃을 기다리는 동안 시작한 로그인·실행이 이 폴더를 쓰고 있을 수 있어 지우지 않는다. 로그아웃은 됐으니 화면에 알린다.
+        const lateBusyFailure = getBusyFailure();
+
+        if (lateBusyFailure) {
+            await getReader(accountId).refresh(true);
+
+            return lateBusyFailure;
+        }
+
+        dropReader(accountId);
 
         try {
             store.removeAccountDir(accountId);

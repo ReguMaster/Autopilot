@@ -320,6 +320,7 @@ const checkCodexRemove = async (testDir) => {
     const handlers = {};
     const events = [];
     let settings = { theme: "system", codexAccounts: [{ id: removed.id, label: removed.label }], codexAccountId: removed.id };
+    let isBusy = false;
 
     fs.writeFileSync(fakeFile, FAKE_CODEX_SOURCE);
 
@@ -332,7 +333,7 @@ const checkCodexRemove = async (testDir) => {
         setCodexAccountId: () => {},
         resolveProjectDir: () => testDir,
         broadcast: (channel) => events.push(channel),
-        isRunning: () => false,
+        isRunning: () => isBusy,
         isProjectRunning: () => false,
         onAccountsChange: () => events.push("change"),
         launch: { command: process.execPath, prefixArgs: [fakeFile] },
@@ -352,6 +353,22 @@ const checkCodexRemove = async (testDir) => {
     assert(!fs.existsSync(removed.home));
     // 화면이 알림을 받고 Codex 상태를 다시 물을 때 메인이 기억한 옛 값을 주지 않도록 먼저 알린다.
     assert.deepEqual(events, ["change", "autopilot:codex-accounts"]);
+
+    // 로그아웃을 기다리는 동안 시작한 실행이 쓰는 계정 폴더는 지우지 않는다.
+    const used = store.createAccount({ label: "실행 중 계정" });
+
+    settings = { ...settings, codexAccounts: [...settings.codexAccounts, { id: used.id, label: used.label }] };
+
+    const lateBusy = handlers["autopilot:remove-codex-account"]({}, used.id);
+
+    isBusy = true;
+
+    assert.equal((await lateBusy).error?.code, "RUNNING");
+    assert(fs.existsSync(used.home), "실행이 쓰는 폴더를 남긴다");
+    assert(
+        settings.codexAccounts.some((account) => account.id === used.id),
+        "설정에서도 빼지 않는다"
+    );
 };
 
 const runChecks = async () => {
