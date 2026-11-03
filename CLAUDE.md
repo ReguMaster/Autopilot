@@ -51,7 +51,7 @@ npm run dist:linux            # AppImage·deb(x64·arm64)
 엔진과 앱(desktop/)의 인터페이스다. 바꾸면 양쪽을 함께 고친다.
 
 ```sh
-node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--runner claude|codex] [--config-dir <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--mode maintain|build] [--gate plan,design] [--skip design,qa,security] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model <모델>] [--codex-effort <e>] [--debate-turns <N>] [--cross-review] [--security-review on|strict] [--no-open]
+node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm|"yyyy-MM-dd HH:mm"] [--policy auto|todo] [--tasks-file <파일>] [--model <m|모델 ID>] [--effort <e>] [--runner claude|codex] [--config-dir <d>] [--codex-home <d>] [--extend-on-limit] [--max-extend-minutes <N>] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days <N>] [--link-project <저장소>]... [--mode maintain|build] [--gate plan,design] [--skip design,qa,security] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model <모델>] [--codex-effort <e>] [--debate-turns <N>] [--cross-review] [--security-review on|strict] [--no-open]
 ```
 
 - 하위 명령은 모두 --project가 필요하다.
@@ -60,6 +60,7 @@ node autopilot/core/autopilot_loop.js --project <프로젝트> [--end-time HH:mm
     - reset-progress: 진행 기록 초기화(신규 개발의 단계 상태 PHASE.json도 지운다)
     - status: 실행 상태 확인. 한 줄 JSON `{"running":true,"pid":N,"logFile":"..."}` 또는 `{"running":false}`. 신규 개발을 한 적 있는 프로젝트는 `"phase":{"phase":"plan|design|build|qa|security|done","awaiting":null|"plan"|"design","qaRetries":N,"securityRetries":N,"proposals":null|{"phase":"plan|design","candidates":["claude","codex"],"picked":null|"claude"|"codex"},"debate":null|{"phase":"plan|design","disputes":[{"id":"d1","title":"…","claude":"…","codex":"…"}],"resolved":null|{"d1":"claude|codex"}},"receivedProposal":null|"plan"|"design"}`가 더해진다.
     - approve [--pick claude|codex] [--resolve d1=claude|codex,...]: 확인을 기다리는 신규 개발 단계를 승인한다(awaiting을 지워 다음 실행이 다음 단계부터 한다). 여러 AI가 안을 낸 단계(proposals.candidates가 둘 이상)는 --pick이 있어야 하고 고른 안을 proposals.picked에 남긴다. 협의한 단계(debate)는 --pick 대신 --resolve로 모든 쟁점을 빠짐없이 골라야 하고(쟁점이 없으면 --resolve 없이) debate.resolved에 남긴다. 실행 중이거나 기다리는 단계가 없거나, 고를 안·쟁점이 없는데 --pick·--resolve를 주거나, 둘을 함께 주면 거부한다.
+- --codex-home <폴더>는 Codex 호출(회차·브레인스토밍·검토·협의)의 CODEX_HOME으로 넘긴다(autopilotUtil.getRunEnv). Codex 계정을 폴더(로그인 정보)로 가르는 용도이고 없으면 환경의 CODEX_HOME·~/.codex를 따른다.
 - 앱은 stdout 로그를 줄 맨 앞의 형식으로 해석한다. 엔진은 로그 기록 호출 한 번을 제어 줄 한 줄로만 쓰고(헤더도 줄마다 호출), 줄바꿈 뒤의 본문(Claude 출력·stderr·오류 메시지)은 logUtil이 4칸 들여써서 제어 줄을 흉내 내지 못하게 한다.
 - 앱이 해석하는 줄은 형식을 지킨다.
     - `[N회차] 시작 - 남은 시간 N분 (model X, effort Y)`: 회차 시작. Codex가 돌린 회차는 `(Codex, model X, effort Y)`이다(옛 로그의 `기본값`은 앱 파서가 빈 값으로 읽는다).

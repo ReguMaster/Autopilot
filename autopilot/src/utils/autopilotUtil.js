@@ -174,6 +174,10 @@ const acquireRunLock = (lockFile) => {
 const getRunEnv = (options) => {
     const env = { ...process.env, ...options.env, CLAUDE_CONFIG_DIR: path.resolve(os.homedir(), options.configDir || ".claude") };
 
+    if (options.codexHome) {
+        env.CODEX_HOME = path.resolve(options.codexHome);
+    }
+
     delete env.ELECTRON_RUN_AS_NODE;
 
     return env;

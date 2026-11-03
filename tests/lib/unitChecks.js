@@ -960,6 +960,11 @@ const checkRunEnv = () => {
     assert.equal(env.ELECTRON_RUN_AS_NODE, undefined);
     assert.equal(env.AP_KEEP, "yes");
     assert(env.CLAUDE_CONFIG_DIR.endsWith(".claude"));
+
+    // --codex-home을 주면 Codex 호출이 그 폴더의 로그인(계정)을 쓰고, 주지 않으면 환경의 CODEX_HOME을 그대로 따른다.
+    assert.equal(autopilotUtil.getRunEnv({ codexHome: path.join(process.cwd(), "codex-acct") }).CODEX_HOME, path.join(process.cwd(), "codex-acct"));
+    assert.equal(autopilotUtil.getRunEnv({ env: { CODEX_HOME: "/keep" } }).CODEX_HOME, "/keep");
+    assert.equal(cliUtil.parseRunArgs(["--project", "/p", "--codex-home", "/h"]).codexHome, "/h");
 };
 
 // 진행 기록은 프로젝트마다 앱 데이터 폴더의 고유한 경로를 쓰고, 작업 폴더는 프로젝트 git이 추적하지 않도록 만든다.
