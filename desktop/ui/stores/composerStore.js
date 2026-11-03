@@ -87,14 +87,15 @@ const getSelectedOptions = () => {
 };
 
 // 엔진에 전달된 값으로 맞춘다. 옛 상태처럼 실행 에이전트 값이 없으면 지금 고른 값을 그대로 둔다.
+// 연결한 실행의 옛 로그 `기본값`은 빈 값으로 읽히는데, 엔진은 빈 Codex 값을 받지 않아 그대로 두면 다음 set이 실패한다.
 const setSelectedOptions = ({ model, effort, runner, codexModel, codexEffort }) => {
     useComposerStore.setState((current) => ({
         model: getModelFamily(model) || current.model,
         modelId: model,
         effort: Math.max(0, EFFORT_LEVELS.indexOf(effort)),
         runner: runner ?? current.runner,
-        codexModel: codexModel ?? current.codexModel,
-        codexEffort: codexEffort ?? current.codexEffort
+        codexModel: codexModel || current.codexModel,
+        codexEffort: codexEffort || current.codexEffort
     }));
 };
 

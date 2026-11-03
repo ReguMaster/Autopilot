@@ -243,6 +243,10 @@ const checkComposer = async ({ runStore, composerStore }) => {
     runStore.applyRunState(createState({ status: "running", requested: { runner: "codex", model: "claude-haiku-4-5", effort: "medium", codexModel: "gpt-6.1-sol", codexEffort: "low" } }));
     composer.syncFromRun(runStore.useRunStore.getState().state);
     assert.deepEqual([useComposerStore.getState().runner, useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["codex", "gpt-6.1-sol", "low"]);
+
+    runStore.applyRunState(createState({ status: "running", requested: { runner: "codex", model: "claude-haiku-4-5", effort: "medium", codexModel: "", codexEffort: "" } }));
+    composer.syncFromRun(runStore.useRunStore.getState().state);
+    assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["gpt-6.1-sol", "low"], "옛 로그의 빈 Codex 값은 고른 값을 지우지 않는다");
     composer.setSelectedOptions({ model: "claude-haiku-4-5", effort: "medium", runner: "claude", codexModel: "gpt-6.1-sol", codexEffort: "high" });
 
     runStore.applyRunState(createState({ status: "idle" }));
