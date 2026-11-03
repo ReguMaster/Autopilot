@@ -10,6 +10,7 @@ const { listRuns, readRun, deleteRun, getRunFiles, getRunUsage, pruneRuns, MAX_R
 const { handleState, notify, showWindow, configure: configureSystem, refreshSleepBlocker } = require("./systemIntegration.cjs");
 const { shouldRunPostAction, runPowerAction, createPostAction } = require("./postAction.cjs");
 const { createAccountIpc } = require("./accountIpc.cjs");
+const { createCodexAccountIpc } = require("./codexAccountIpc.cjs");
 const { parseLoginExpiryFlag } = require("./claudeAccount.cjs");
 const { createUpdateCheck } = require("./updateCheck.cjs");
 const loginItem = require("./launchAtLogin.cjs");
@@ -17,7 +18,7 @@ const { createScheduler } = require("./scheduler.cjs");
 const { parseSchedule } = require("./scheduleRules.cjs");
 const { getCliArgs, getEndTimeError, MAX_LINKED_REPOS, AI_PROVIDERS } = require("./engineArgs.cjs");
 const { readJsonFile } = require("./jsonFile.cjs");
-const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
+const { createSettingsStore, getProjectKey, ACCOUNT_KEY, CODEX_ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 const { askClaude, getCodexStatus } = require("./claudeCli.cjs");
 const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, getRecommendedSkip, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
@@ -279,6 +280,15 @@ const setAccountId = (projectDir, accountId) => {
     }
 };
 
+const getCodexAccountId = (projectDir) => readEffective(projectDir).codexAccountId;
+const setCodexAccountId = (projectDir, accountId) => {
+    if (projectDir) {
+        settingsStore.updateProject(projectDir, { [CODEX_ACCOUNT_KEY]: accountId });
+    } else {
+        updateSettings({ codexAccountId: accountId });
+    }
+};
+
 // --debug-login-expiry는 만료 화면을 보는 개발용이라 패키지 앱에서는 읽지 않는다.
 const accounts = createAccountIpc({
     readSettings: readSettings,
@@ -290,6 +300,17 @@ const accounts = createAccountIpc({
     isRunning: isAnyRunning,
     isProjectRunning: isProjectRunning,
     loginExpiresAtOverride: app.isPackaged ? 0 : parseLoginExpiryFlag(process.argv)
+});
+
+const codexAccounts = createCodexAccountIpc({
+    readSettings: readSettings,
+    writeSettings: writeSettings,
+    getCodexAccountId: getCodexAccountId,
+    setCodexAccountId: setCodexAccountId,
+    resolveProjectDir: (requestedDir) => sessionPool.get(requestedDir)?.projectDir ?? null,
+    broadcast: broadcast,
+    isRunning: isAnyRunning,
+    isProjectRunning: isProjectRunning
 });
 
 const updateCheck = createUpdateCheck({ currentVersion: app.getVersion(), onChange: (update) => broadcast("autopilot:update", update), isEnabled: () => readSettings().checkUpdates });
@@ -519,7 +540,8 @@ const launchRun = async (session, settings, startOptions, { remember, keepTasks 
                 model: model,
                 projectDir: settings.projectDir,
                 tasksFile: tasksFile,
-                configDir: runAccount.data.configDir
+                configDir: runAccount.data.configDir,
+                codexHome: codexAccounts.getRunHome(session.projectDir)
             }),
             roundOptions: { model: model, effort: startOptions.effort, runner: startOptions.runner, codexModel: startOptions.codexModel, codexEffort: startOptions.codexEffort }
         });
@@ -803,6 +825,7 @@ const attachRunningEngines = async () => {
 // 연결하는 동안 나간 이벤트는 렌더러가 아직 이전 프로젝트를 보고 있어 버리므로, 응답에 새 프로젝트의 지금 상태와 로그를 담는다(응답 뒤의 이벤트는 반영된다).
 const getSwitchResult = async (session, extra = {}) => {
     accounts.broadcastPayload();
+    codexAccounts.broadcastPayload();
 
     await attachRunningEngine(session.projectDir);
 
@@ -1329,11 +1352,14 @@ const handleApprovePhase = async (event, requestedDir, pick, resolutions) => {
 
 // 다른 AI 제공자(지금은 Codex)를 쓸 수 있는지. 단계 카드가 열릴 때마다 묻지 않도록 잠시 기억한다.
 const PROVIDER_STATUS_TTL_MS = 60000;
-let providerStatus = { at: 0, data: null };
+let providerStatus = { at: 0, home: "", data: null };
 
+// 지금 보는 프로젝트가 고른 Codex 계정으로 쓸 수 있는지 묻는다(계정이 바뀌면 기억한 값을 쓰지 않는다).
 const handleGetProviders = async () => {
-    if (!providerStatus.data || Date.now() - providerStatus.at > PROVIDER_STATUS_TTL_MS) {
-        providerStatus = { at: Date.now(), data: { codex: await getCodexStatus() } };
+    const home = codexAccounts.getActiveHome();
+
+    if (!providerStatus.data || providerStatus.home !== home || Date.now() - providerStatus.at > PROVIDER_STATUS_TTL_MS) {
+        providerStatus = { at: Date.now(), home: home, data: { codex: await getCodexStatus(null, { ...process.env, CODEX_HOME: home }) } };
     }
 
     return { status: STATUS_OK, data: providerStatus.data };
@@ -1648,9 +1674,13 @@ const registerIpc = () => {
     registerHandler("autopilot:delete-schedule", handleDeleteSchedule);
     registerHandler("autopilot:toggle-schedule", handleToggleSchedule);
     accounts.register(registerHandler);
+    codexAccounts.register(registerHandler);
 
     // 로그인 중에 앱이 끝나도 로그인 프로세스가 남지 않게 한다.
-    app.on("before-quit", () => accounts.cancelLogin());
+    app.on("before-quit", () => {
+        accounts.cancelLogin();
+        codexAccounts.cancelLogin();
+    });
 };
 
 // 앱이 시작한 엔진이 실행 중인지. 이때 창을 닫으면 트레이로 숨겨 엔진을 계속 돌린다.
@@ -1692,6 +1722,7 @@ const confirmClose = (window) => {
 // 앱을 켤 때 한 번 조회하고 이후 주기적으로 다시 읽는다. 스모크 테스트는 네트워크를 쓰지 않도록 시작하지 않는다.
 const startAccountWatch = () => {
     accounts.startWatch();
+    codexAccounts.startWatch();
 };
 
 // 예약 판단은 사용량 조회와 실행 시작을 하므로 스모크 테스트에서는 시작하지 않는다. 절전에서 깨어나면 놓친 예약을 바로 살핀다.

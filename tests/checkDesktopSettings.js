@@ -689,6 +689,17 @@ const checkProjectAccount = () => {
         assert.deepEqual(normalizeOverrides({ accountId: "" }), {}, "빈 값은 고른 것이 아니다");
         assert.deepEqual(normalizeOverrides({ accountId: 5 }), {});
 
+        // Codex 계정도 같은 규칙이다: 탭이 고른 것이 우선하고, 설정 범위에 들지 않으며, 내보내지 않는다.
+        store.update({ codexAccountId: "cx-00000001" });
+        store.updateProject(projectB, { codexAccountId: "cx-00000002" });
+        assert.equal(store.resolve(projectA).settings.codexAccountId, "cx-00000001");
+        assert.equal(store.resolve(projectB).settings.codexAccountId, "cx-00000002");
+        assert.deepEqual(store.resolve(projectB).overridden, ["tasks"]);
+        assert.deepEqual(normalizeOverrides({ codexAccountId: "" }), {});
+        assert.equal(store.read().onboarded, false, "처음에는 연동 안내를 아직 마치지 않았다");
+        store.clearProject(projectB, ["codexAccountId"]);
+        store.update({ codexAccountId: "default" });
+
         store.remember(projectB, { tasks: "다음" });
 
         assert.equal(store.readProject(projectB).accountId, "acct-b", "작업을 기억해도 고른 계정은 남는다");
@@ -702,6 +713,8 @@ const checkProjectAccount = () => {
 
         assert.equal(Object.hasOwn(exportedB.settings, "accountId"), false, "내보내기에 계정이 없다");
         assert.equal(exported.global.accountId, undefined);
+        assert.equal(exported.global.codexAccountId, undefined);
+        assert.equal(exported.global.onboarded, undefined, "연동 안내를 마쳤는지는 이 PC에서만 뜻이 있다");
 
         store.importData({ app: "AutoPilot", kind: "settings", version: 1, global: {}, projects: [{ projectDir: projectB, settings: { accountId: "acct-evil", effort: "low" } }] });
 

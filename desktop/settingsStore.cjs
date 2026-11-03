@@ -95,14 +95,16 @@ const OVERRIDABLE_KEYS = [
 const SCHEDULES_KEY = "schedules";
 // 프로젝트(탭)마다 고른 계정. 계정 id는 이 PC에서만 뜻이 있어 내보내거나 가져오지 않고, 없으면 전역 accountId를 따른다.
 const ACCOUNT_KEY = "accountId";
+// Codex 계정도 같은 규칙으로 탭마다 고른다. 없으면 전역 codexAccountId를 따른다.
+const CODEX_ACCOUNT_KEY = "codexAccountId";
 // 프로젝트(탭)마다 연결한 저장소 경로(작업 프로젝트를 빼고 MAX_LINKED_REPOS개까지). 경로는 이 PC에서만 뜻이 있어 계정처럼 내보내거나 가져오지 않는다.
 const LINKED_REPOS_KEY = "linkedRepos";
-const LOCAL_PROJECT_KEYS = [ACCOUNT_KEY, LINKED_REPOS_KEY];
+const LOCAL_PROJECT_KEYS = [ACCOUNT_KEY, CODEX_ACCOUNT_KEY, LINKED_REPOS_KEY];
 const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
-const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme", "railWidth"];
+const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme", "railWidth", "onboarded"];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
-const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "claudeDir", "launchAtLogin", "createParentDir", "railWidth"];
+const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "codexAccounts", "codexAccountId", "onboarded", "claudeDir", "launchAtLogin", "createParentDir", "railWidth"];
 // PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
 const NON_PORTABLE_KEYS = [...MACHINE_KEYS, "postRunAction"];
 const EXPORT_APP = "AutoPilot";
@@ -149,6 +151,10 @@ const DEFAULT_SETTINGS = {
     codexEffort: DEFAULT_CODEX_EFFORT,
     accounts: [],
     accountId: "default",
+    codexAccounts: [],
+    codexAccountId: "default",
+    // 처음 켰을 때의 AI 연동 안내(Welcome)를 마쳤는지. 이 PC의 로그인 상태에 달린 값이라 내보내지 않는다.
+    onboarded: false,
     claudeDir: "",
     // 새 프로젝트를 마지막으로 만든 상위 폴더. 비면 문서 폴더다.
     createParentDir: "",
@@ -211,6 +217,9 @@ const SETTING_VALIDATORS = {
     codexEffort: (value) => CODEX_EFFORT_LEVELS.includes(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
+    codexAccounts: (value) => Array.isArray(value),
+    codexAccountId: (value) => typeof value === "string",
+    onboarded: (value) => typeof value === "boolean",
     claudeDir: (value) => typeof value === "string",
     createParentDir: (value) => typeof value === "string",
     keepInTray: (value) => typeof value === "boolean",
@@ -297,8 +306,10 @@ const normalizeOverrides = (saved) => {
         overrides[SCHEDULES_KEY] = normalizeSchedules(source[SCHEDULES_KEY]);
     }
 
-    if (typeof source[ACCOUNT_KEY] === "string" && source[ACCOUNT_KEY]) {
-        overrides[ACCOUNT_KEY] = source[ACCOUNT_KEY];
+    for (const key of [ACCOUNT_KEY, CODEX_ACCOUNT_KEY]) {
+        if (typeof source[key] === "string" && source[key]) {
+            overrides[key] = source[key];
+        }
     }
 
     if (Array.isArray(source[LINKED_REPOS_KEY])) {
@@ -438,6 +449,7 @@ const createSettingsStore = ({ dir }) => {
             ...Object.fromEntries(overridden.map((key) => [key, overrides[key]])),
             projectDir: target,
             accountId: overrides[ACCOUNT_KEY] ?? globals.accountId,
+            codexAccountId: overrides[CODEX_ACCOUNT_KEY] ?? globals.codexAccountId,
             linkedRepos: overrides[LINKED_REPOS_KEY] ?? []
         };
 
@@ -617,6 +629,7 @@ module.exports = {
     OVERRIDABLE_KEYS,
     SCHEDULES_KEY,
     ACCOUNT_KEY,
+    CODEX_ACCOUNT_KEY,
     LINKED_REPOS_KEY,
     MAX_TABS,
     PREFERENCE_KEYS,

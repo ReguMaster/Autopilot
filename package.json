@@ -14,7 +14,7 @@
         "start": "npm run build:ui && electron .",
         "dev": "npm run build:ui && electron . --dev",
         "test": "npm run build:ui && electron . --smoke-test",
-        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js && node tests/checkDesktopUi.js && node tests/checkDesktopStores.js && node tests/checkDesktopSettings.js && node tests/checkDesktopSessions.js && node tests/checkDesktopStreak.js && node tests/checkDesktopCard.js",
+        "test:desktop": "node tests/checkDesktopRunner.js && node tests/checkDesktopView.js && node tests/checkDesktopAccounts.js && node tests/checkDesktopLogin.js && node tests/checkDesktopHistory.js && node tests/checkDesktopSystem.js && node tests/checkDesktopSchedule.js && node tests/checkDesktopUi.js && node tests/checkDesktopStores.js && node tests/checkDesktopSettings.js && node tests/checkDesktopSessions.js && node tests/checkDesktopStreak.js && node tests/checkDesktopCard.js",
         "build": "npm run build:ui && electron-builder --win --x64 --dir",
         "build:mac": "npm run build:ui && electron-builder --mac --dir",
         "build:linux": "npm run build:ui && electron-builder --linux --dir",

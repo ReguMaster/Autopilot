@@ -222,6 +222,7 @@ const getCliArgs = ({
     model,
     effort,
     configDir,
+    codexHome,
     ...buildOptions
 }) => {
     const args = ["--project", projectDir, "--no-open", "--tasks-file", tasksFile, "--policy", policy, "--model", model, "--effort", effort];
@@ -258,6 +259,10 @@ const getCliArgs = ({
 
     if (configDir) {
         args.push("--config-dir", configDir);
+    }
+
+    if (codexHome) {
+        args.push("--codex-home", codexHome);
     }
 
     return args;

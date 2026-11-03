@@ -1027,6 +1027,8 @@ const checkCliArgs = () => {
 
     assert.deepEqual(getCliArgs(base), ["--project", "/p", "--no-open", "--tasks-file", "/t.md", "--policy", "auto", "--model", "opus", "--effort", "high"]);
     assert.deepEqual(getCliArgs({ ...base, endTime: "07:30", configDir: "/c" }).slice(-4), ["--end-time", "07:30", "--config-dir", "/c"]);
+    assert.deepEqual(getCliArgs({ ...base, configDir: "/c", codexHome: "/h" }).slice(-4), ["--config-dir", "/c", "--codex-home", "/h"], "기본이 아닌 Codex 계정만 --codex-home으로 넘긴다");
+    assert(!getCliArgs({ ...base, codexHome: "" }).includes("--codex-home"));
     assert(!getCliArgs({ ...base, extendLimitMinutes: 180 }).includes("--max-extend-minutes"), "연장이 꺼져 있으면 연장 상한도 보내지 않는다");
     assert(getCliArgs({ ...base, extendOnLimit: true }).includes("--extend-on-limit"));
     assert(!getCliArgs({ ...base, extendOnLimit: true }).includes("--max-extend-minutes"), "제한 없음(0)이면 연장 상한을 보내지 않는다");

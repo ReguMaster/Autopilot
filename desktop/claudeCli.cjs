@@ -267,6 +267,43 @@ const askClaude = (configDir, prompt, options = {}) => {
     };
 };
 
+// `claude auth logout`으로 그 설정 폴더의 로그인 정보를 지운다(키체인에 둔 macOS 로그인도 CLI가 지운다). 끝난 뒤 상태를 다시 읽어 정말 로그아웃됐는지 확인한다.
+const logoutClaude = (configDir, options = {}) => {
+    return new Promise((resolve) => {
+        const launch = getLaunch(options);
+
+        if (!launch.command) {
+            resolve({ ok: false, message: "claude 실행 파일을 PATH에서 찾지 못했어요. Claude Code를 먼저 설치해 주세요." });
+
+            return;
+        }
+
+        let child;
+
+        try {
+            child = spawnClaudeProcess(launch, ["auth", "logout"], { env: getClaudeEnv(configDir), windowsHide: true, stdio: ["ignore", "ignore", "ignore"] });
+        } catch (error) {
+            resolve({ ok: false, message: error.message });
+
+            return;
+        }
+
+        const timer = setTimeout(() => killProcessTree(child), AUTH_STATUS_TIMEOUT_MS);
+
+        child.on("error", (error) => {
+            clearTimeout(timer);
+            resolve({ ok: false, message: error.message });
+        });
+        child.on("close", async () => {
+            clearTimeout(timer);
+
+            const status = await getAuthStatus(configDir, options);
+
+            resolve(status.loggedIn ? { ok: false, message: "로그아웃하지 못했어요. 잠시 뒤 다시 시도해 주세요." } : { ok: true });
+        });
+    });
+};
+
 const isLoginUrl = (text) => {
     try {
         const { protocol, hostname } = new URL(text);
@@ -424,4 +461,18 @@ const getCodexStatus = (launch = null, processEnv = process.env) => {
     });
 };
 
-module.exports = { findClaude, getCodexStatus, getAuthStatus, renewCredentials, askClaude, startLogin, isLoginUrl, LOGIN_CODE_PATTERN, LOGIN_EMAIL_PATTERN };
+module.exports = {
+    findClaude,
+    findExecutable,
+    spawnClaudeProcess,
+    killProcessTree,
+    getCodexStatus,
+    getAuthStatus,
+    renewCredentials,
+    askClaude,
+    startLogin,
+    logoutClaude,
+    isLoginUrl,
+    LOGIN_CODE_PATTERN,
+    LOGIN_EMAIL_PATTERN
+};

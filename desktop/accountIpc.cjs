@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { STATUS_OK, STATUS_FAILED } = require("./autopilotRunner.cjs");
 const { createAccountReader } = require("./claudeAccount.cjs");
-const { startLogin, isLoginUrl, getAuthStatus, renewCredentials } = require("./claudeCli.cjs");
+const { startLogin, isLoginUrl, getAuthStatus, renewCredentials, logoutClaude } = require("./claudeCli.cjs");
 const { createAccountStore, normalizeAccounts, sanitizeLabel, resolveBaseDir, getHomeConfigDir, DEFAULT_ACCOUNT_ID, DEFAULT_ACCOUNT_LABEL, MAX_ACCOUNTS } = require("./accountStore.cjs");
 
 const CREDENTIALS_FILE_NAME = ".credentials.json";
@@ -307,6 +307,29 @@ const createAccountIpc = ({
         return { status: STATUS_OK };
     };
 
+    // 로그인 정보만 지우고 계정(폴더·목록)은 남긴다. 기본 계정도 로그아웃할 수 있다. 다시 쓰려면 로그인하면 된다.
+    const handleLogout = async (event, accountId) => {
+        const busyFailure = getBusyFailure();
+
+        if (busyFailure) {
+            return busyFailure;
+        }
+
+        if (!listAccounts(readSettings()).some((account) => account.id === accountId)) {
+            return createFailure("INVALID_ACCOUNT", "알 수 없는 계정이에요.");
+        }
+
+        const result = await logoutClaude(store.getConfigDir(accountId));
+
+        if (!result.ok) {
+            return createFailure("LOGOUT_FAILED", result.message);
+        }
+
+        await getReader(accountId).refresh(true);
+
+        return broadcastPayload();
+    };
+
     const handleRemove = async (event, accountId) => {
         const busyFailure = getBusyFailure();
 
@@ -461,6 +484,7 @@ const createAccountIpc = ({
         handle("autopilot:submit-login-code", handleSubmitCode);
         handle("autopilot:cancel-login", handleCancelLogin);
         handle("autopilot:open-login-url", handleOpenLoginUrl);
+        handle("autopilot:logout-account", handleLogout);
         handle("autopilot:remove-account", handleRemove);
         handle("autopilot:select-claude-dir", handleSelectClaudeDir);
         handle("autopilot:reset-claude-dir", handleResetClaudeDir);
