@@ -18,6 +18,7 @@ import {
     DEFAULT_SECURITY_ON_FAIL,
     EFFORT_LEVELS,
     GATE_PHASES,
+    SKIPPABLE_PHASES,
     STATUS_OK
 } from "../lib/constants.js";
 import { getRunState } from "./runStore.js";
@@ -38,6 +39,7 @@ const useComposerStore = create(() => ({
     extendOnLimit: false,
     mode: DEFAULT_MODE,
     gates: DEFAULT_GATES,
+    skip: [],
     allow: DEFAULT_ALLOW,
     designFormat: DEFAULT_DESIGN_FORMAT,
     qaOnFail: DEFAULT_QA_ON_FAIL,
@@ -135,6 +137,7 @@ const COMPOSER_KEYS = [
     "runner",
     "mode",
     "gates",
+    "skip",
     "allow",
     "designFormat",
     "qaOnFail",
@@ -150,11 +153,12 @@ const COMPOSER_KEYS = [
 
 // 시작·예약 저장 때 엔진에 넘길 작업 모드와 신규 개발 설정
 const getModeOptions = () => {
-    const { mode, gates, allow, designFormat, qaOnFail, securityOnFail, mains, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } = useComposerStore.getState();
+    const { mode, gates, skip, allow, designFormat, qaOnFail, securityOnFail, mains, brainstorm, crossReview, debate, debateTurns, codexModel, codexEffort } = useComposerStore.getState();
 
     return {
         mode: mode,
         gates: gates,
+        skip: skip,
         allow: allow,
         designFormat: designFormat,
         qaOnFail: qaOnFail,
@@ -215,6 +219,8 @@ const composer = {
     setExtendOnLimit: (isOn) => useComposerStore.setState({ extendOnLimit: isOn }),
     setEndTime: (endTime) => useComposerStore.setState({ endTime: endTime }),
     setMode: (mode) => useComposerStore.setState({ mode: mode }),
+    // 하지 않기로 한 단계는 그 단계의 확인받기 · 보조 · 되돌림 설정을 쓰지 않으므로 화면이 숨긴다(엔진 인자에서도 빠진다). 다시 하기로 하면 설정이 그대로 돌아온다.
+    toggleSkip: (phase) => useComposerStore.setState((current) => ({ skip: toggleChoice(current.skip, SKIPPABLE_PHASES, phase) })),
     toggleGate: (phase) => useComposerStore.setState((current) => ({ gates: toggleChoice(current.gates, GATE_PHASES, phase) })),
     // Codex는 프로젝트 내용을 외부로 보내므로 보내기를 끄면 브레인스토밍도 Claude만으로 돌린다.
     toggleAllow: (key) =>

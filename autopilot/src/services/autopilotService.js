@@ -82,6 +82,7 @@ const writeRunHeader = (context) => {
         `Deadline : ${dateUtil.getDatetimeString(runState.deadline)} (${runState.endSource})`,
         `Policy : ${runState.policy} (${runState.policySource})`,
         ...(runState.mode === MODE_BUILD ? [`Mode : 신규 개발 (${PHASE_LABELS[runState.phase]} 단계부터)`] : []),
+        ...(runState.mode === MODE_BUILD && runState.skip.length ? [`Skip : ${runState.skip.map((phase) => PHASE_LABELS[phase]).join(", ")}`] : []),
         ...(options.runner === PROVIDER_CODEX ? ["Runner : Codex"] : []),
         ...(runState.mode === MODE_BUILD && Object.values(runState.mains).includes(PROVIDER_CODEX)
             ? [`Main : ${BUILD_PHASES.map((phase) => `${PHASE_LABELS[phase]} ${PROVIDER_LABELS[runState.mains[phase]]}`).join(", ")}`]
@@ -122,6 +123,14 @@ const getModeSettings = (options, progressFile, tasks) => {
         throw new Error("신규 개발에는 만들 것이 필요합니다.");
     }
 
+    // 확인을 기다리다 승인된 다음 단계가 이번에 건너뛰는 단계일 수 있다. PHASE.json은 그대로 두고 이번 실행만 건너뛴다.
+    const skip = options.skip || [];
+    const { phase: startPhase, skipped: skippedAtStart } = phaseUtil.skipForward(state.phase, skip);
+
+    if (startPhase === PHASE_DONE) {
+        throw new Error("남은 단계를 모두 건너뛰도록 정해서 할 일이 없습니다. 건너뛰는 단계를 줄여 주세요.");
+    }
+
     const allow = options.allow || [];
     const brainstorm = options.brainstorm || [];
     const mains = phaseUtil.getPhaseMains(options.mains, options.runner);
@@ -134,7 +143,9 @@ const getModeSettings = (options, progressFile, tasks) => {
     return {
         mode: mode,
         phaseFile: phaseFile,
-        phase: state.phase,
+        phase: startPhase,
+        skip: skip,
+        skippedAtStart: skippedAtStart,
         qaRetries: state.qaRetries,
         securityRetries: state.securityRetries,
         isRevision: isRevision,
@@ -154,6 +165,12 @@ const getModeSettings = (options, progressFile, tasks) => {
         debateState: state.debate,
         receivedProposal: state.receivedProposal
     };
+};
+
+const writeSkippedPhases = (writeLog, phases) => {
+    for (const phase of phases) {
+        writeLog(`[단계] ${PHASE_LABELS[phase]} 건너뜀`);
+    }
 };
 
 // PHASE.json에 쓸 지금 단계 상태. 확인 대기와 고른 안은 단계를 마치거나 확정할 때만 정한다.
@@ -941,7 +958,7 @@ const applyPhaseDone = async (context, loopState) => {
     const debateResult = isSynthesis ? { phase: phase, disputes: disputes || [], resolved: null } : null;
     const candidates = !debateResult && readyProviders.length ? [main, ...readyProviders] : [];
     const reviewState = { ...runState };
-    const { state, event } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult);
+    const { state, event, skipped = [] } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult, runState.skip);
 
     runState.debateStage = null;
     runState.isDisputesRetry = false;
@@ -975,6 +992,7 @@ const applyPhaseDone = async (context, loopState) => {
     }
 
     writeLog(`[단계] ${label} 완료`);
+    writeSkippedPhases(writeLog, skipped);
 
     if (event === "done") {
         loopState.reason = "신규 개발: 모든 단계 완료";
@@ -1155,6 +1173,7 @@ const writeBuildStart = (context) => {
         writeLog("[브레인스토밍] 외부 서비스로 보내기를 허용하지 않아 다른 AI의 안을 받지 않습니다.");
     }
 
+    writeSkippedPhases(writeLog, runState.skippedAtStart);
     writeLog(`[단계] ${PHASE_LABELS[runState.phase]} 시작`);
 };
 

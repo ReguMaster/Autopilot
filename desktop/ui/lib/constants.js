@@ -16,6 +16,8 @@ const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
 const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
 const GATE_PHASES = ["plan", "design"];
 const DEFAULT_GATES = ["plan", "design"];
+// 이번 실행에서 하지 않기로 정할 수 있는 단계. 기획과 개발은 건너뛸 수 없다.
+const SKIPPABLE_PHASES = ["design", "qa", "security"];
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DEFAULT_ALLOW = ["deps", "large"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
@@ -64,6 +66,7 @@ export {
     PHASE_LABELS,
     GATE_PHASES,
     DEFAULT_GATES,
+    SKIPPABLE_PHASES,
     ALLOW_KEYS,
     DEFAULT_ALLOW,
     DESIGN_FORMATS,

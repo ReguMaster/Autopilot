@@ -1,6 +1,6 @@
 import { STOP_CONFIRM_MS } from "../../actions/run.js";
 import { SwapText } from "../../components/SwapText.jsx";
-import { getBuildActionLabel, getBuildStartPhase, PHASE_DONE } from "../../lib/buildSteps.js";
+import { getBuildActionLabel, getBuildStartPhase, isAllSkipped, PHASE_DONE } from "../../lib/buildSteps.js";
 import { MAIN_ACTIONS } from "../../lib/constants.js";
 import { useAppStore } from "../../stores/appStore.js";
 import { useComposerStore } from "../../stores/composerStore.js";
@@ -15,22 +15,28 @@ const useBuildStart = (status) => {
     const isBuild = useComposerStore((store) => store.mode === "build");
     const hasTasks = useComposerStore((store) => Boolean(store.tasks.trim()));
     const buildPhase = useRunsStore((store) => store.buildPhase);
+    const skip = useComposerStore((store) => store.skip);
 
     if (!isBuild || status !== "idle") {
         return null;
     }
 
-    const startPhase = getBuildStartPhase(buildPhase);
+    const startPhase = getBuildStartPhase(buildPhase, skip);
+    const label = getBuildActionLabel(buildPhase, skip);
 
     if (startPhase === PHASE_DONE) {
-        return { label: getBuildActionLabel(buildPhase), title: "신규 개발의 모든 단계를 마쳤어요", isBlocked: true };
+        return { label: label, title: "신규 개발의 모든 단계를 마쳤어요", isBlocked: true };
+    }
+
+    if (isAllSkipped(buildPhase, skip)) {
+        return { label: label, title: "남은 단계를 모두 건너뛰도록 정해서 시작할 수 없어요. 건너뛰는 단계를 줄여 주세요", isBlocked: true };
     }
 
     if (startPhase === "plan" && !hasTasks) {
-        return { label: getBuildActionLabel(buildPhase), title: "만들고 싶은 것을 적어 주시면 기획을 시작할 수 있어요", isBlocked: true };
+        return { label: label, title: "만들고 싶은 것을 적어 주시면 기획을 시작할 수 있어요", isBlocked: true };
     }
 
-    return { label: getBuildActionLabel(buildPhase), title: "", isBlocked: false };
+    return { label: label, title: "", isBlocked: false };
 };
 
 // 가운데 버튼은 시작 → 종료 신호 → 종료로 바뀐다. 종료 신호는 한 번 누르면 붉게 바뀌어 4초 동안 "한 번 더 눌러 종료"를 보이고, 그 안에 다시 눌러야 보낸다.

@@ -39,6 +39,28 @@ const PLAN_DOC = {
         "3. 원장 화면"
     ].join("\n")
 };
+// 화면이 없는 프로젝트의 기획서: 5절이 `화면 없음`으로 시작해 승인 화면이 디자인 건너뛰기를 제안한다.
+const NO_SCREEN_PLAN_DOC = {
+    kind: "file",
+    path: "docs/autopilot/plan.md",
+    isPartial: false,
+    text: [
+        "# 파일 정리 CLI",
+        "",
+        "## 4) 기능 목록",
+        "- 폴더를 종류와 날짜별로 정리",
+        "- 옮기기 전에 미리보기",
+        "",
+        "## 5) 화면(또는 명령 · API) 목록",
+        "화면 없음",
+        "- `tidy <폴더>`: 정리하기",
+        "- `tidy <폴더> --dry-run`: 미리보기",
+        "",
+        "## 9) 개발 순서",
+        "1. 파일 분류 규칙",
+        "2. 명령줄 인자와 미리보기"
+    ].join("\n")
+};
 const DESIGN_DOC = {
     kind: "folder",
     path: "docs/autopilot/design",
@@ -390,6 +412,22 @@ const BUILD_RUN_SCENES = [
         }
     },
     {
+        // 기획서가 화면 없음이라고 적었으면 디자인 건너뛰기를 제안하고, 누르면 다음 단계가 개발로 바뀐다. 시작할 때 skip도 함께 넘어간다.
+        name: "approval-plan-no-screens",
+        init: { ...BUILD, model: { buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0 }, phaseDocs: { plan: NO_SCREEN_PLAN_DOC } } },
+        run: async (t) => {
+            await t.shot("suggest");
+            await t.note("before", await t.eval("document.querySelector('#approval-approve').textContent"));
+            await t.click("#approval-skip-design");
+            await t.wait(300);
+            await t.shot("skipped");
+            await t.note("after", await t.eval("document.querySelector('#approval-approve').textContent"));
+            await t.click("#approval-approve");
+            await t.wait(300);
+            await t.note("start", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'start').map((call) => call[1].skip))"));
+        }
+    },
+    {
         name: "approval-plan-approve",
         init: { ...BUILD, model: { buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0 }, phaseDocs: { plan: PLAN_DOC } } },
         run: async (t) => {
@@ -555,6 +593,21 @@ const SCENES = [
             await t.shot("ready");
             await t.shot("steps", "#build-steps");
             await t.shot("composer", ".composer");
+        }
+    },
+    {
+        // 건너뛰기로 정한 단계는 점선 칸이 되고 그 단계의 다른 설정은 숨는다. 다시 진행하기로 바꾸면 설정이 돌아온다.
+        name: "ready-build-skip",
+        init: { ...BUILD, settings: { ...BUILD.settings, skip: ["design", "security"] } },
+        run: async (t) => {
+            await t.shot("ready");
+            await t.shot("steps", "#build-steps");
+            await t.note("states", await t.eval("JSON.stringify([...document.querySelectorAll('#build-steps .step')].map((step) => step.dataset.state))"));
+            await t.note(
+                "groups",
+                await t.eval("JSON.stringify([...document.querySelectorAll('#build-steps .step-group')].map((group) => group.dataset.phase + ':' + group.querySelectorAll('.step-sentence').length))")
+            );
+            await t.note("action", await t.eval("document.querySelector('#main-action-label').textContent"));
         }
     },
     {

@@ -20,7 +20,8 @@ import {
     MODE_BUILD,
     MODES,
     MODEL_CHOICES,
-    RUNNERS
+    RUNNERS,
+    SKIPPABLE_PHASES
 } from "./config.js";
 import debateUtil from "./debateUtil.js";
 import phaseUtil from "./phaseUtil.js";
@@ -28,7 +29,7 @@ import settingsUtil from "./settingsUtil.js";
 import util from "./util.js";
 
 const HELP_TEXT = [
-    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
+    "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--skip design,qa,security] [--allow deps,large,external-api,send] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol|default] [--codex-effort high|default]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
@@ -48,6 +49,7 @@ const RUN_OPTION_KEYS = {
     "--log-retention-days": "logRetentionDays",
     "--mode": "mode",
     "--gate": "gates",
+    "--skip": "skip",
     "--allow": "allow",
     "--design-format": "designFormat",
     "--qa-on-fail": "qaOnFail",
@@ -58,7 +60,7 @@ const RUN_OPTION_KEYS = {
 };
 const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
 // 신규 개발에서만 뜻이 있는 인자. Codex의 model·effort는 Codex가 회차를 돌릴 때(--runner codex)도 쓴다.
-const BUILD_OPTION_KEYS = ["gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "debateTurns", "crossReview"];
+const BUILD_OPTION_KEYS = ["gates", "skip", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "debateTurns", "crossReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
 const ON_FAIL_OPTIONS = [
     ["--qa-on-fail", "qaOnFail", "maxQaRetries"],
@@ -203,6 +205,23 @@ const parseMainOption = (options) => {
     options.mains = Object.fromEntries(entries);
 };
 
+// 건너뛰는 단계에 그 단계의 확인받기 · 보조 · 형식 · 되돌림 설정을 함께 주면 계약이 흐려지므로 거부한다(앱은 건너뛰는 단계의 설정을 빼고 보낸다).
+const parseSkipConflicts = (options) => {
+    for (const phase of options.skip) {
+        const conflicts = [
+            options.gates?.includes(phase) && `--gate ${phase}`,
+            options.brainstorm?.includes(phase) && `--brainstorm ${phase}`,
+            phase === "design" && options.designFormat !== undefined && "--design-format",
+            phase === "qa" && options.qaOnFail !== undefined && "--qa-on-fail",
+            phase === "security" && options.securityOnFail !== undefined && "--security-on-fail"
+        ].filter(Boolean);
+
+        if (conflicts.length) {
+            throw new Error(`--skip ${phase} 는 ${conflicts.join(", ")} 와 함께 쓸 수 없습니다(건너뛰는 단계는 설정하지 않습니다).`);
+        }
+    }
+};
+
 // 작업 모드와 신규 개발 인자. 신규 개발 인자를 유지 보수 모드에 주면 계약이 흐려지므로 거부한다.
 const parseModeOptions = (options) => {
     if (options.mode !== undefined && !MODES.includes(options.mode)) {
@@ -210,7 +229,9 @@ const parseModeOptions = (options) => {
     }
 
     if (options.mode !== MODE_BUILD && BUILD_OPTION_KEYS.some((key) => options[key] !== undefined)) {
-        throw new Error("--gate · --allow · --design-format · --qa-on-fail · --security-on-fail · --main · --brainstorm · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다.");
+        throw new Error(
+            "--gate · --skip · --allow · --design-format · --qa-on-fail · --security-on-fail · --main · --brainstorm · --debate-turns · --cross-review 는 --mode build 에서만 쓸 수 있습니다."
+        );
     }
 
     if (options.mains !== undefined) {
@@ -254,6 +275,11 @@ const parseModeOptions = (options) => {
 
     if (options.designFormat !== undefined && !DESIGN_FORMATS.includes(options.designFormat)) {
         throw new Error(`--design-format 값은 ${DESIGN_FORMATS.join(" | ")} 중 하나여야 합니다.`);
+    }
+
+    if (options.skip !== undefined) {
+        options.skip = parseListOption("--skip", options.skip, SKIPPABLE_PHASES);
+        parseSkipConflicts(options);
     }
 
     for (const [optionName, key, retriesKey] of ON_FAIL_OPTIONS) {

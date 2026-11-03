@@ -1,4 +1,4 @@
-import { buildProjectBrief } from "../../projectDraft.cjs";
+import { buildProjectBrief, getRecommendedSkip } from "../../projectDraft.cjs";
 import { STATUS_OK } from "../lib/constants.js";
 import { createDraft, newProject } from "../stores/newProjectStore.js";
 import { ui } from "../stores/uiStore.js";
@@ -135,7 +135,7 @@ const createProject = async () => {
 
     newProject.set({ isCreating: true, notice: "" });
 
-    const result = await window.autopilot.createProject({ name: state.draft.name, brief: getBrief(state), author: state.info.author ? null : state.author });
+    const result = await window.autopilot.createProject({ name: state.draft.name, brief: getBrief(state), platforms: state.platforms, author: state.info.author ? null : state.author });
 
     newProject.set({ isCreating: false });
 
@@ -148,7 +148,9 @@ const createProject = async () => {
     newProject.clear();
     ui.set({ newProject: false });
     applyProjectSwitch(result.data);
-    ui.showNotice(`${state.draft.name} 프로젝트를 만들었어요. 단계 설정을 확인하고 기획을 시작해 주세요.`);
+    ui.showNotice(
+        `${state.draft.name} 프로젝트를 만들었어요. ${getRecommendedSkip(state.platforms).length ? "화면이 없어서 디자인은 건너뛰도록 해 뒀어요. " : ""}단계 설정을 확인하고 기획을 시작해 주세요.`
+    );
 };
 
 export { EXAMPLES, openNewProject, pickParentDir, applyExample, suggestExamples, writeManually, requestDraft, cancelDraft, getBrief, createProject };

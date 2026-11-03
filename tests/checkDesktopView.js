@@ -783,6 +783,7 @@ const checkBuildSteps = ({ describeStepLine, createStory, applyStoryEntry, build
     assert.equal(describeStepLine("[단계] 기획 확인 대기"), "기획 결과를 확인해 주시면 이어서 할게요.");
     assert.equal(describeStepLine("[단계] 테스트/QA 실패 - 개발로 되돌림 (1/3)"), "테스트/QA에서 문제가 남아서 개발로 돌아가 고칠게요. (1/3)");
     assert.equal(describeStepLine("[단계] 테스트/QA 실패"), "테스트/QA에서 고치지 못한 문제가 남았어요.");
+    assert.equal(describeStepLine("[단계] 보안검토 건너뜀"), "보안검토 단계는 건너뛸게요.");
     assert.equal(describeStepLine("    [단계] 기획 시작"), "", "들여 쓴 Claude 출력은 단계 줄이 아니다");
 
     // 여러 AI 브레인스토밍 줄도 이야기와 지난 실행 대화에 한 문장으로 남는다.

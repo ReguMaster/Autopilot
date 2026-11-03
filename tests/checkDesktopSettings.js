@@ -133,6 +133,14 @@ const checkNormalize = () => {
     );
     assert.deepEqual(normalizeOverrides({ mode: "build", gates: ["design"], securityOnFail: "stop" }), { mode: "build", gates: ["design"], securityOnFail: "stop" });
 
+    // 건너뛰기는 디자인 · 테스트/QA · 보안검토만, 겹치지 않게 받는다(기획 · 개발은 건너뛸 수 없다). 기본은 모두 한다.
+    assert.deepEqual(buildDefaults.skip, []);
+    assert.deepEqual(normalizeOverrides({ skip: ["design", "security"] }), { skip: ["design", "security"] });
+    assert.deepEqual(normalizeOverrides({ skip: ["plan"] }), {});
+    assert.deepEqual(normalizeOverrides({ skip: ["build"] }), {});
+    assert.deepEqual(normalizeOverrides({ skip: ["qa", "qa"] }), {});
+    assert.deepEqual(normalizeSettings({ skip: ["ui"] }).skip, []);
+
     // 여러 AI 브레인스토밍: 기본은 Claude만이고, 기획 · 디자인이 아닌 단계나 겹친 값은 버린다.
     assert.deepEqual([buildDefaults.brainstorm, buildDefaults.crossReview], [[], false]);
     assert.deepEqual(normalizeOverrides({ brainstorm: ["plan", "design"], crossReview: true }), { brainstorm: ["plan", "design"], crossReview: true });

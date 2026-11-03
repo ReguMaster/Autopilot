@@ -17,6 +17,7 @@ import {
     BUILD_PHASES as UI_BUILD_PHASES,
     PHASE_LABELS as UI_PHASE_LABELS,
     GATE_PHASES as UI_GATE_PHASES,
+    SKIPPABLE_PHASES as UI_SKIPPABLE_PHASES,
     DEFAULT_GATES as UI_DEFAULT_GATES,
     ALLOW_KEYS as UI_ALLOW_KEYS,
     DEFAULT_ALLOW as UI_DEFAULT_ALLOW,
@@ -51,6 +52,7 @@ import {
     BUILD_PHASES as ENGINE_BUILD_PHASES,
     PHASE_LABELS as ENGINE_PHASE_LABELS,
     GATE_PHASES as ENGINE_GATE_PHASES,
+    SKIPPABLE_PHASES as ENGINE_SKIPPABLE_PHASES,
     ALLOW_KEYS as ENGINE_ALLOW_KEYS,
     DESIGN_FORMATS as ENGINE_DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT as ENGINE_DEFAULT_DESIGN_FORMAT,
@@ -86,7 +88,18 @@ const {
     STATUS_FAILED
 } = require("../desktop/autopilotRunner.cjs");
 const { getProjectError, canInitGitRepo, initGitRepo, getGitAuthor, createProject, isProjectReportFile, getPhaseDoc, readPhaseDoc, MAX_PHASE_DOC_BYTES } = require("../desktop/projectFiles.cjs");
-const { getProjectNameError, toFolderName, getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, buildProjectBrief, sanitizeBrief, DRAFT_LIMITS } = require("../desktop/projectDraft.cjs");
+const {
+    getProjectNameError,
+    toFolderName,
+    getDraftPrompt,
+    parseDraft,
+    getExamplesPrompt,
+    parseExamples,
+    buildProjectBrief,
+    sanitizeBrief,
+    getRecommendedSkip,
+    DRAFT_LIMITS
+} = require("../desktop/projectDraft.cjs");
 const { DEFAULT_SETTINGS, MIN_RAIL_WIDTH, MAX_RAIL_WIDTH, DEFAULT_RAIL_WIDTH } = require("../desktop/settingsStore.cjs");
 const { createAccountReader, parseLoginExpiryFlag } = require("../desktop/claudeAccount.cjs");
 const { createUpdateCheck, isNewerVersion } = require("../desktop/updateCheck.cjs");
@@ -105,6 +118,7 @@ const {
     MAX_LINKED_REPOS,
     MODES,
     GATE_PHASES,
+    SKIPPABLE_PHASES,
     ALLOW_KEYS,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,
@@ -1040,6 +1054,31 @@ const checkCliArgs = () => {
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], designFormat: "figma", qaOnFail: "stop" }).slice(-6), ["--mode", "build", "--design-format", "figma", "--qa-on-fail", "stop"]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], securityOnFail: "retry:1" }).slice(-4), ["--mode", "build", "--security-on-fail", "retry:1"]);
 
+    // 건너뛰는 단계는 --skip으로 넘기고, 그 단계의 확인받기 · 형식 · 되돌림 · 보조 설정은 엔진이 거부하므로 빼고 보낸다.
+    assert.deepEqual(getCliArgs({ ...buildBase, skip: ["design", "security"], allow: [], designFormat: "figma", qaOnFail: "stop", securityOnFail: "retry:1" }).slice(-8), [
+        "--mode",
+        "build",
+        "--skip",
+        "design,security",
+        "--gate",
+        "plan",
+        "--qa-on-fail",
+        "stop"
+    ]);
+    assert.deepEqual(getCliArgs({ ...buildBase, skip: ["design"], gates: ["design"], allow: [] }).slice(-4), ["--mode", "build", "--skip", "design"]);
+    assert.deepEqual(getCliArgs({ ...buildBase, skip: ["design"], gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["design"] }).slice(-8), [
+        "--mode",
+        "build",
+        "--skip",
+        "design",
+        "--allow",
+        "send",
+        "--brainstorm",
+        "plan"
+    ]);
+    assert(!getCliArgs({ ...buildBase, skip: [] }).includes("--skip"), "건너뛰는 단계가 없으면 인자를 생략한다");
+    assert(!getCliArgs({ ...buildBase, mode: "maintain", skip: ["design"] }).includes("--skip"), "유지 보수에는 건너뛰기가 없다");
+
     // 여러 AI 브레인스토밍은 보내기를 허용했을 때만 넘긴다(Codex에 프로젝트 내용이 나간다). 제공자는 엔진 기본값이라 생략한다.
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], crossReview: true }).slice(-6), [
         "build",
@@ -1397,6 +1436,14 @@ const checkProjectDraftRules = () => {
         assert.notEqual(getProjectNameError(name), "", JSON.stringify(name));
     }
 
+    // 화면이 없는 실행 환경(서버 · API, CLI · 도구)만 골랐을 때만 디자인 건너뛰기를 추천한다. 모르거나 화면이 있는 환경이 섞이면 추천하지 않는다.
+    assert.deepEqual(getRecommendedSkip(["cli"]), ["design"]);
+    assert.deepEqual(getRecommendedSkip(["server", "cli"]), ["design"]);
+    assert.deepEqual(getRecommendedSkip(["web", "server"]), []);
+    assert.deepEqual(getRecommendedSkip(["unknown"]), []);
+    assert.deepEqual(getRecommendedSkip([]), []);
+    assert.deepEqual(getRecommendedSkip(undefined), []);
+
     assert.equal(toFolderName("Hanbit Booking!!"), "hanbit-booking");
     assert.equal(toFolderName("미용실"), "", "영문이 없으면 이름을 비워 사용자가 정하게 한다");
     assert.equal(toFolderName("CON"), "");
@@ -1667,6 +1714,7 @@ const checkChoiceSync = () => {
     for (const [appValue, uiValue, engineValue] of [
         [MODES, UI_MODES, ENGINE_MODES],
         [GATE_PHASES, UI_GATE_PHASES, ENGINE_GATE_PHASES],
+        [SKIPPABLE_PHASES, UI_SKIPPABLE_PHASES, ENGINE_SKIPPABLE_PHASES],
         [ALLOW_KEYS, UI_ALLOW_KEYS, ENGINE_ALLOW_KEYS],
         [DESIGN_FORMATS, UI_DESIGN_FORMATS, ENGINE_DESIGN_FORMATS],
         [DEFAULT_DESIGN_FORMAT, UI_DEFAULT_DESIGN_FORMAT, ENGINE_DEFAULT_DESIGN_FORMAT],

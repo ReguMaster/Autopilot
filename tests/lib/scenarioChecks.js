@@ -321,6 +321,90 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert(!fs.existsSync(phaseFile));
 };
 
+// 건너뛰기: 하지 않기로 한 단계는 멈추지 않는 전환에서는 그 자리에서, 확인받고 멈춘 뒤에는 다음 실행이 시작할 때 넘긴다.
+const checkBuildSkip = async (scenarioRunner, context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "build skip project");
+    const dataDir = scenarioRunner.dataDir;
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+    commitInitialProject(context, projectDir);
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+    const phaseFile = phaseUtil.getPhaseFile(progressFile);
+    const runBuild = (options) => {
+        return runAutopilot({
+            projectDir: projectDir,
+            dataDir: dataDir,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            tasks: "CLI 도구",
+            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile },
+            limits: { minMinutes: 0, maxRounds: 10, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...options
+        });
+    };
+    const readLog = (result) => fs.readFileSync(result.data.logFile, "utf8");
+    const readPrompt = () => fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8");
+    const getPhaseLines = (result) => readLog(result).match(/^\[단계\] .+$/gm);
+
+    // 기획에서 확인받고 멈추면 PHASE.json은 바로 다음 단계(디자인)를 가리키고, 승인 뒤 다음 실행이 디자인을 건너뛰고 개발부터 한다.
+    const gatedRun = await runBuild({ skip: ["design", "security"], gates: ["plan"] });
+
+    assert.equal(gatedRun.status, STATUS_OK, gatedRun.error?.msg);
+    assert.equal(gatedRun.data.reason, "기획 확인 대기");
+    assert.match(readLog(gatedRun), /^Skip : 디자인, 보안검토$/m);
+    assert.deepEqual(getPhaseLines(gatedRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 기획 확인 대기"]);
+    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
+    assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+
+    const finalRun = await runBuild({ skip: ["design", "security"], gates: ["plan"], tasks: "" });
+
+    assert.equal(finalRun.status, STATUS_OK, finalRun.error?.msg);
+    assert.equal(finalRun.data.reason, "신규 개발: 모든 단계 완료");
+    assert.match(readLog(finalRun), /^Mode : 신규 개발 \(개발 단계부터\)$/m);
+    assert.deepEqual(getPhaseLines(finalRun), ["[단계] 디자인 건너뜀", "[단계] 개발 시작", "[단계] 개발 완료", "[단계] 테스트/QA 시작", "[단계] 테스트/QA 완료", "[단계] 보안검토 건너뜀"]);
+    assert.match(readPrompt(), /지금 단계는 \[테스트\/QA\][\s\S]*<PHASE>\n단계: 테스트\/QA \(3\/3\)/);
+    assert.doesNotMatch(/<PHASE>[\s\S]*<\/PHASE>/.exec(readPrompt())[0], /design\.md|security\.md/);
+    assert.equal(phaseUtil.readPhase(phaseFile).phase, "done");
+    checkDesktopLogContract(finalRun.data);
+
+    // 확인 없이 이어 가는 전환은 그 자리에서 건너뛴다.
+    assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+
+    const inRunSkip = await runBuild({ skip: ["design"], gates: [] });
+
+    assert.equal(inRunSkip.data.reason, "신규 개발: 모든 단계 완료");
+    assert.deepEqual(getPhaseLines(inRunSkip), [
+        "[단계] 기획 시작",
+        "[단계] 기획 완료",
+        "[단계] 디자인 건너뜀",
+        "[단계] 개발 시작",
+        "[단계] 개발 완료",
+        "[단계] 테스트/QA 시작",
+        "[단계] 테스트/QA 완료",
+        "[단계] 보안검토 시작",
+        "[단계] 보안검토 완료"
+    ]);
+    assert.doesNotMatch(readLog(inRunSkip), /^Skip : .*보안검토/m);
+    assert.match(readPrompt(), /<PHASE>\n단계: 보안검토 \(4\/4\)/);
+    checkDesktopLogContract(inRunSkip.data);
+
+    // 남은 단계를 모두 건너뛰면 할 일이 없어 시작하지 않는다. 단계 상태는 그대로 둔다.
+    assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+    phaseUtil.writePhase(phaseFile, { ...phaseUtil.INITIAL_PHASE, phase: "qa" });
+
+    const emptyRun = await runBuild({ skip: ["qa", "security"], tasks: "" });
+
+    assert.equal(emptyRun.status, STATUS_FAILED);
+    assert.match(emptyRun.error.msg, /모두 건너뛰/);
+    assert.equal(phaseUtil.readPhase(phaseFile).phase, "qa");
+    assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+};
+
 // 여러 AI 브레인스토밍: Codex가 단계 시작 전에 따로 안을 내고 교차검토를 하면, 확인받기를 켜지 않아도 사용자가 고르도록 멈춘다.
 // 고른 안은 다음 실행의 첫 회차가 확정한다. Codex가 실패하거나 보내기를 허용하지 않았으면 건너뛰고 Claude 안으로 진행한다.
 const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
@@ -1725,6 +1809,7 @@ export {
     checkCliRun,
     checkSessionRunner,
     checkBuildMode,
+    checkBuildSkip,
     checkBrainstorm,
     checkCodexRunner,
     checkDebate,

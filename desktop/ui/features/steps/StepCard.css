@@ -58,6 +58,17 @@
     animation: breathe 2.2s ease-in-out infinite;
 }
 
+/* 하지 않기로 한 단계는 점선 막대와 취소선 이름으로 알린다 */
+.step[data-state="skipped"] .step-seg {
+    background: repeating-linear-gradient(90deg, var(--faint) 0 3px, transparent 3px 7px);
+    opacity: 0.45;
+}
+
+.step[data-state="skipped"] .step-label {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
 .step[data-state="next"] .step-seg {
     background: repeating-linear-gradient(90deg, var(--accent) 0 5px, transparent 5px 9px);
     opacity: 0.55;
@@ -100,7 +111,7 @@
 }
 
 /* 아직 하지 않은 단계는 이름만 보이고(전체 문구는 title), 지금 단계가 설명을 차지한다 */
-.step[data-state="waiting"] .step-detail {
+.step:is([data-state="waiting"], [data-state="skipped"]) .step-detail {
     display: none;
 }
 

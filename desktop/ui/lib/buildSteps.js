@@ -1,4 +1,4 @@
-import { BUILD_PHASES, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS, PROVIDER_LABELS } from "./constants.js";
+import { BUILD_PHASES, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS, PROVIDER_LABELS, SKIPPABLE_PHASES } from "./constants.js";
 import { PROVIDER_LOGOS, getOtherProvider } from "./phaseAgents.js";
 
 // 신규 개발 단계 카드와 시작 전 안내에 쓰는 문구. DOM에 의존하지 않아 tests/checkDesktopUi.js가 그대로 부른다.
@@ -139,17 +139,86 @@ const getAllowUsage = (key, { brainstorm, designFormat }) => {
     ];
 };
 
+// 이번 실행에서 하지 않는 단계를 건너뛴 첫 단계(엔진의 phaseUtil.skipForward와 같다). 끝까지 건너뛰면 done이다.
+const skipForward = (phase, skip = []) => {
+    let current = phase;
+
+    while (skip.includes(current)) {
+        current = BUILD_PHASES[BUILD_PHASES.indexOf(current) + 1] ?? PHASE_DONE;
+    }
+
+    return current;
+};
+
+// 어떤 단계 다음에 할 단계(건너뛰는 단계는 넘긴다). 승인 화면이 "확인하고 <다음 단계> 시작"을 쓴다.
+const getNextPhase = (phase, skip = []) => {
+    return skipForward(BUILD_PHASES[BUILD_PHASES.indexOf(phase) + 1] ?? PHASE_DONE, skip);
+};
+
+// PHASE.json이 가리키는 단계의 순서. 모두 마쳤으면 단계 수다. 이 순서 앞의 단계는 이미 지나갔으므로 건너뛰기로 보이지 않는다.
+const getPassedCount = (buildPhase) => {
+    const phase = buildPhase?.phase || BUILD_PHASES[0];
+
+    return phase === PHASE_DONE ? BUILD_PHASES.length : Math.max(0, BUILD_PHASES.indexOf(phase));
+};
+
 // 다음 실행이 시작할 단계. 확인을 기다리던 단계를 승인 없이 시작하면 그 단계를 다시 한다(엔진의 getStartPhase). 모두 마쳤으면 done이다.
-const getBuildStartPhase = (buildPhase) => {
-    return buildPhase?.awaiting || buildPhase?.phase || BUILD_PHASES[0];
+// 남은 단계를 모두 건너뛰도록 골랐으면(isAllSkipped) 엔진이 시작하지 않으므로 done이 아니라 지금 단계에 머문다.
+const getBuildStartPhase = (buildPhase, skip = []) => {
+    if (buildPhase?.awaiting) {
+        return buildPhase.awaiting;
+    }
+
+    const phase = buildPhase?.phase || BUILD_PHASES[0];
+    const startPhase = skipForward(phase, skip);
+
+    return startPhase === PHASE_DONE && phase !== PHASE_DONE ? phase : startPhase;
+};
+
+const isAllSkipped = (buildPhase, skip = []) => {
+    const phase = buildPhase?.phase;
+
+    return Boolean(phase) && !buildPhase.awaiting && phase !== PHASE_DONE && skipForward(phase, skip) === PHASE_DONE;
+};
+
+// 단계 문장의 앞머리 선택: 이 단계를 할지 건너뛸지. 기획과 개발은 건너뛸 수 없다.
+const SKIP_OPTIONS = [
+    { value: "run", label: "진행해요", hint: "이 단계를 하고 산출물을 남겨요" },
+    { value: "skip", label: "건너뛰어요", hint: "이 단계를 하지 않고 다음 단계로 가요" }
+];
+// 건너뛰기로 하면 잃는 것. 보안검토처럼 놓치기 쉬운 단계는 사용자가 알고 고르게 한다.
+const SKIP_NOTES = {
+    design: "기획서의 화면 목록과 저장소에 이미 있는 스타일을 따라 개발해요.",
+    qa: "개발이 끝나면 따로 확인하지 않고 마쳐요. qa.md가 남지 않아요.",
+    security: "보안 점검 기록(security.md)이 남지 않아요. 배포 전에 직접 확인해 주세요."
+};
+
+// 기획서의 화면 목록(5절)이 `화면 없음`으로 시작하면 화면이 없는 프로젝트(CLI · 라이브러리 · 서버 등)다. 승인 화면이 디자인을 건너뛰자고 제안한다.
+const hasNoScreens = (planText) => {
+    const lines = String(planText ?? "").split(/\r?\n/);
+    const start = lines.findIndex((line) => /^#{1,6}\s*(?:\*\*)?5\s*[).:]/.test(line) && line.includes("화면"));
+
+    if (start < 0) {
+        return false;
+    }
+
+    const next = lines.findIndex((line, index) => index > start && /^#{1,6}\s/.test(line));
+    const body = lines.slice(start + 1, next < 0 ? undefined : next).filter((line) => line.trim());
+
+    return body.slice(0, 3).some((line) => /화면\s*없음/.test(line));
 };
 
 // 시작 전 단계 카드의 칸: 지난 단계는 done, 확인을 기다리는 단계는 hold, 이어서 할 단계는 next, 나머지는 waiting이다.
-const getReadySteps = (buildPhase) => {
-    const startPhase = getBuildStartPhase(buildPhase);
+const getReadySteps = (buildPhase, skip = []) => {
+    const startPhase = getBuildStartPhase(buildPhase, skip);
     const startIndex = startPhase === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(startPhase);
+    const passedCount = getPassedCount(buildPhase);
 
     return BUILD_PHASES.map((phase, index) => {
+        if (skip.includes(phase) && index >= passedCount) {
+            return { phase: phase, state: "skipped", detail: "건너뛰어요" };
+        }
+
         if (index < startIndex) {
             return { phase: phase, state: "done", detail: "마쳤어요" };
         }
@@ -167,8 +236,8 @@ const getReadySteps = (buildPhase) => {
 };
 
 // 시작 전 제목과 안내. endLabel은 문장 속 종료 시각(formatEndTimeShort)이다.
-const getBuildGreeting = ({ buildPhase, endLabel, gates }) => {
-    const startPhase = getBuildStartPhase(buildPhase);
+const getBuildGreeting = ({ buildPhase, endLabel, gates, skip = [] }) => {
+    const startPhase = getBuildStartPhase(buildPhase, skip);
 
     if (startPhase === PHASE_DONE) {
         return { title: "모든 단계를 마쳤어요", lead: "유지 보수로 바꾸면 만든 것을 이어서 다듬을 수 있어요. 처음부터 다시 만들려면 설정에서 진행 기록을 초기화해 주세요." };
@@ -176,8 +245,9 @@ const getBuildGreeting = ({ buildPhase, endLabel, gates }) => {
 
     const label = PHASE_LABELS[startPhase];
     const startIndex = BUILD_PHASES.indexOf(startPhase);
-    const gateLabels = GATE_PHASES.filter((phase) => gates.includes(phase) && BUILD_PHASES.indexOf(phase) >= startIndex).map((phase) => PHASE_LABELS[phase]);
-    const gateText = gateLabels.length ? ` ${gateLabels.join("·")} 단계가 끝나면 멈추고 확인을 기다려요.` : "";
+    const gateLabels = GATE_PHASES.filter((phase) => gates.includes(phase) && !skip.includes(phase) && BUILD_PHASES.indexOf(phase) >= startIndex).map((phase) => PHASE_LABELS[phase]);
+    const skipLabels = SKIPPABLE_PHASES.filter((phase) => skip.includes(phase) && BUILD_PHASES.indexOf(phase) >= startIndex).map((phase) => PHASE_LABELS[phase]);
+    const gateText = `${gateLabels.length ? ` ${gateLabels.join("·")} 단계가 끝나면 멈추고 확인을 기다려요.` : ""}${skipLabels.length ? ` ${skipLabels.join("·")} 단계는 건너뛰어요.` : ""}`;
 
     if (buildPhase?.awaiting) {
         return { title: `${label} 확인을 기다리고 있어요`, lead: `산출물을 확인하고 고칠 점을 적어 주시면 ${label}을 다시 해요. ${endLabel}까지 이어 갈게요.${gateText}` };
@@ -191,8 +261,8 @@ const getBuildGreeting = ({ buildPhase, endLabel, gates }) => {
 };
 
 // 신규 개발의 주 버튼 글자: 다음에 할 단계 이름. 확인을 기다리던 단계는 다시 하고, 모두 마쳤으면 시작할 수 없다.
-const getBuildActionLabel = (buildPhase) => {
-    const startPhase = getBuildStartPhase(buildPhase);
+const getBuildActionLabel = (buildPhase, skip = []) => {
+    const startPhase = getBuildStartPhase(buildPhase, skip);
 
     if (startPhase === PHASE_DONE) {
         return "모두 마쳤어요";
@@ -233,12 +303,16 @@ const getRetryText = (step, qaOnFail, securityOnFail) => {
 
 // 실행 중·마친 뒤의 단계 카드. 엔진의 [단계] 줄(step)이 있으면 그 단계가 지금이고, 오기 전에는 시작할 단계(buildPhase)가 지금이다.
 // 마친 단계 중 확인받기로 둔 것은 "확인함", 테스트/QA·보안검토에서 돌아온 개발은 몇 번째로 다시 하는지 보여준다.
-const getRunSteps = ({ step, buildPhase, gates, qaOnFail, securityOnFail, round }) => {
-    const current = step?.phase || getBuildStartPhase(buildPhase);
+const getRunSteps = ({ step, buildPhase, gates, qaOnFail, securityOnFail, round, skip = [] }) => {
+    const current = step?.phase || getBuildStartPhase(buildPhase, skip);
     const currentIndex = current === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(current);
     const onFail = { qa: qaOnFail, security: securityOnFail };
 
     return BUILD_PHASES.map((phase, index) => {
+        if (skip.includes(phase) && index !== currentIndex) {
+            return { phase: phase, state: "skipped", detail: "건너뛰었어요" };
+        }
+
         if (index < currentIndex || (index === currentIndex && step?.status === "done")) {
             return { phase: phase, state: "done", detail: gates.includes(phase) ? "확인함" : "마쳤어요" };
         }
@@ -263,8 +337,8 @@ const getRunSteps = ({ step, buildPhase, gates, qaOnFail, securityOnFail, round 
 
 // 실행 중 카드의 단계 문서: 지금까지 온 단계의 산출물. 지금 단계 것은 쓰는 중, 지난 단계 것은 확인받기로 뒀으면 확인함이다.
 // 테스트/QA·보안검토가 개발로 되돌렸으면 그 기록(qa.md·security.md)은 이미 있으므로 고칠 항목으로 함께 보여준다.
-const getPhaseDocs = ({ step, buildPhase, gates, designFormat }) => {
-    const current = step?.phase || getBuildStartPhase(buildPhase);
+const getPhaseDocs = ({ step, buildPhase, gates, designFormat, skip = [] }) => {
+    const current = step?.phase || getBuildStartPhase(buildPhase, skip);
     const currentIndex = current === PHASE_DONE ? BUILD_PHASES.length : BUILD_PHASES.indexOf(current);
     const retries = { qa: step?.qaRetries || buildPhase?.qaRetries || 0, security: step?.securityRetries || buildPhase?.securityRetries || 0 };
     const docs = [
@@ -275,6 +349,7 @@ const getPhaseDocs = ({ step, buildPhase, gates, designFormat }) => {
     ];
 
     return docs
+        .filter((doc) => !skip.includes(doc.phase))
         .filter((doc) => BUILD_PHASES.indexOf(doc.phase) <= currentIndex || retries[doc.phase] > 0)
         .map((doc) => {
             const isWriting = doc.phase === current && step?.status !== "done";
@@ -363,6 +438,11 @@ export {
     getAllowRisk,
     getAllowUsage,
     getBuildStartPhase,
+    getNextPhase,
+    isAllSkipped,
+    SKIP_OPTIONS,
+    SKIP_NOTES,
+    hasNoScreens,
     getReadySteps,
     getBuildGreeting,
     getBuildActionLabel,

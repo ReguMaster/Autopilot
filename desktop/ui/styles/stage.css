@@ -861,6 +861,29 @@ body[data-view="done"] .view-done {
     color: var(--muted);
 }
 
+/* 기획서가 화면 없음이라고 하면 디자인을 건너뛰자는 제안 */
+.approval-suggest {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hair);
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+}
+
+.approval-suggest p {
+    margin: 0;
+}
+
+.approval-suggest b {
+    color: var(--ink);
+    font-weight: 650;
+}
+
 .approval-meta {
     display: flex;
     flex-direction: column;

@@ -1,4 +1,4 @@
-import { BUILD_PHASES, MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
+import { MODE_BUILD, PHASE_LABELS, POLICY_TODO, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES, PROPOSALS_DIR, PROVIDER_CLAUDE, PROVIDER_LABELS } from "./config.js";
 import dateUtil from "./dateUtil.js";
 import phaseUtil from "./phaseUtil.js";
 import { getAutopilotGuide, getAutopilotPolicy } from "./guideText.js";
@@ -25,6 +25,34 @@ const DESIGN_PROMPTS = {
 };
 const PASS_SIGNAL = "첫 줄에 `pass`를 쓴";
 
+const isSkipped = (runState, phase) => {
+    return Boolean(runState.skip?.includes(phase));
+};
+
+// 개발이 읽을 문서. 건너뛴 단계의 산출물은 없으므로 빼고, 디자인이 없으면 화면은 기획서의 목록과 저장소의 기존 스타일을 따르게 한다.
+const getBuildRead = (runState) => {
+    const failureDocs = [isSkipped(runState, "qa") ? "" : "`docs/autopilot/qa.md`", isSkipped(runState, "security") ? "" : "`docs/autopilot/security.md`"].filter(Boolean);
+    const parts = [
+        "`docs/autopilot/plan.md`의 개발 순서와 완료 조건",
+        isSkipped(runState, "design")
+            ? "화면은 기획서의 화면 목록과 저장소에 이미 있는 화면의 스타일(디자인 단계는 건너뛰었다)"
+            : "디자인 산출물(`docs/autopilot/design.md` · `docs/autopilot/design/`)",
+        "진행 기록",
+        failureDocs.length ? `있으면 ${failureDocs.join(" · ")}의 실패 항목` : ""
+    ];
+
+    return `${parts.filter(Boolean).join(", ")}.`;
+};
+
+// 디자인을 하면 화면의 상세는 디자인이 맡고 기획은 화면이 있는지만 알린다. 디자인을 건너뛰면 기획이 화면의 상세까지 쓴다.
+const getPlanScreenNote = (runState) => {
+    if (isSkipped(runState, "design")) {
+        return " 이번 실행은 디자인 단계를 건너뛰므로 5)에 화면마다 목적 · 구성 요소 · 주요 동작 · 상태(빈 상태 · 로딩 · 오류)까지 적는다. 화면이 없는 프로젝트면 `화면 없음`이라고 쓰고 명령 · API 목록만 적는다.";
+    }
+
+    return " 화면(UI)이 없는 프로젝트(CLI · 라이브러리 · 서버 · 스크립트 등)면 5)의 첫 줄에 `화면 없음`이라고 쓰고 명령 · API 목록만 적는다(사용자가 이 줄을 보고 디자인 단계를 건너뛸 수 있다).";
+};
+
 // 단계마다 같은 틀(관점 · 읽을 것 · 산출물 · 회차당 작업 · 완료 기준 · 하지 않을 것 · 완료 신호)로 무엇을 어디까지 할지 정한다.
 const getPhaseBrief = (runState) => {
     // 테스트/QA · 보안검토가 개발로 되돌린 뒤의 개발 · 테스트/QA는 앞선 결과 문서가 있으므로 실패 항목부터 본다.
@@ -34,7 +62,7 @@ const getPhaseBrief = (runState) => {
         return {
             role: "제품 기획자이자 테크 리드다. 개발자가 이 문서 하나만 보고 순서대로 만들 수 있게 쓴다.",
             read: "`docs/autopilot/brief.md`(있으면 가장 먼저 읽는다), <TASKS>의 만들 것, 저장소에 이미 있는 파일.",
-            output: "`docs/autopilot/plan.md`를 다음 목차 그대로 쓴다. 1) 한 줄 요약 2) 목표와 측정 가능한 성공 기준 3) 사용자와 주요 시나리오 4) 기능 목록(필수 · 있으면 좋음으로 나누고 기능마다 완료 조건) 5) 화면(또는 명령 · API) 목록 6) 데이터 구조 7) 기술 선택과 이유(새 라이브러리(패키지) · 큰 구조 · 외부 API는 AUTOPILOT_POLICY.md가 허용한 범위 안에서) 8) 이번에 하지 않는 것 9) 개발 순서(작은 단위로 나누고 단위마다 검증 방법) 10) 위험과 가정.",
+            output: `\`docs/autopilot/plan.md\`를 다음 목차 그대로 쓴다. 1) 한 줄 요약 2) 목표와 측정 가능한 성공 기준 3) 사용자와 주요 시나리오 4) 기능 목록(필수 · 있으면 좋음으로 나누고 기능마다 완료 조건) 5) 화면(또는 명령 · API) 목록 6) 데이터 구조 7) 기술 선택과 이유(새 라이브러리(패키지) · 큰 구조 · 외부 API는 AUTOPILOT_POLICY.md가 허용한 범위 안에서) 8) 이번에 하지 않는 것 9) 개발 순서(작은 단위로 나누고 단위마다 검증 방법) 10) 위험과 가정.${getPlanScreenNote(runState)}`,
             perRound: "한 회차에 초안 전체를 쓴다. 돌려보낸 단계면 수정 요청한 부분을 고치고 나머지 절과 어긋나지 않게 맞춘다.",
             criteria: [
                 "목차의 모든 절이 채워져 있다.",
@@ -66,20 +94,20 @@ const getPhaseBrief = (runState) => {
     if (runState.phase === "build") {
         return {
             role: "시니어 개발자다. 기획서의 개발 순서를 작은 단위로 하나씩 실제로 동작하게 만든다.",
-            read: "`docs/autopilot/plan.md`의 개발 순서와 완료 조건, 디자인 산출물(`docs/autopilot/design.md` · `docs/autopilot/design/`), 진행 기록, 있으면 `docs/autopilot/qa.md` · `docs/autopilot/security.md`의 실패 항목.",
+            read: getBuildRead(runState),
             output: "동작하는 코드와 자동 테스트. 저장소에 빌드 · 테스트 · 실행 방법이 아직 없으면 첫 회차에 프로젝트 뼈대와 함께 `CLAUDE.md`(실행 · 검증 명령, 폴더 구조, 코드 규칙. 개발이 끝난 뒤 유지 보수 모드가 이 파일을 지침으로 쓴다)와 `README.md`(설치 · 실행 방법)를 만든다.",
             perRound: `개발 순서에서 아직 끝나지 않은 다음 단위 1~2개. 단위마다 구현 → 테스트 → 실제 실행으로 확인 → commit → 진행 기록 갱신 순서를 지킨다.${
                 isReturned ? " 이번 개발은 테스트/QA · 보안검토가 되돌린 것이다. 새 단위보다 `qa.md`의 실패 항목과 `security.md`의 고치지 못한 심각 · 높음 항목을 먼저 고친다." : ""
             }`,
             criteria: ["개발 순서의 모든 단위가 끝났다.", "빌드와 전체 테스트가 통과한다.", "필수 기능의 완료 조건을 실제로 실행해 확인했다.", "`README.md` · `CLAUDE.md`가 지금 코드와 맞다."],
-            avoid: "plan.md에 없는 기능 추가(필요하면 plan.md를 먼저 고치고 이유를 적는다), 디자인과 다른 화면으로 임의 변경, 검증하지 않은 코드 commit."
+            avoid: `plan.md에 없는 기능 추가(필요하면 plan.md를 먼저 고치고 이유를 적는다), ${isSkipped(runState, "design") ? "저장소의 기존 화면 스타일과 다른 임의 변경" : "디자인과 다른 화면으로 임의 변경"}, 검증하지 않은 코드 commit.`
         };
     }
 
     if (runState.phase === "qa") {
         return {
             role: "QA 엔지니어다. 사용자가 실제로 쓰는 방식대로 기능을 확인하고 깨지는 곳을 찾는다.",
-            read: "`docs/autopilot/plan.md`의 기능별 완료 조건과 주요 시나리오, 디자인 산출물, `README.md`의 실행 방법.",
+            read: `\`docs/autopilot/plan.md\`의 기능별 완료 조건과 주요 시나리오, ${isSkipped(runState, "design") ? "" : "디자인 산출물, "}\`README.md\`의 실행 방법.`,
             output: "`docs/autopilot/qa.md`에 기능마다 확인 방법 · 결과(통과 · 실패) · 실패면 재현 절차를 표로 남긴다. 확인한 시나리오는 자동 테스트로 추가한다.",
             perRound: `기능 묶음 하나를 확인한다. 작은 문제는 바로 고치고 다시 확인한 뒤 commit한다.${
                 isReturned
@@ -302,6 +330,10 @@ const getDebateFormatPrompt = () => {
     return `방금 답은 정해진 JSON으로 읽을 수 없었다. 발언 내용은 그대로 두고 형식만 고쳐 다시 답한다. 문자열 안의 큰따옴표는 \\"로 쓴다.\n${DEBATE_FORMAT}`;
 };
 
+const getSkipNote = (runState) => {
+    return runState.skip?.length ? ` 소유자가 ${runState.skip.map((phase) => PHASE_LABELS[phase]).join(" · ")} 단계는 이번 실행에서 하지 않기로 했다. 그 단계의 산출물은 없고 만들지도 않는다.` : "";
+};
+
 // 신규 개발은 개선 정책 대신 지금 단계를 알려주고, 단계의 틀은 <PHASE> 블록으로 따로 준다.
 const getPhasePrompt = (runState) => {
     const label = PHASE_LABELS[runState.phase];
@@ -309,7 +341,10 @@ const getPhasePrompt = (runState) => {
     return [
         getAdoptionPrompt(runState),
         getDebateSynthesisPrompt(runState),
-        `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 ${BUILD_PHASES.map((phase) => PHASE_LABELS[phase]).join(" → ")} 순서이며, 이 세션은 지금 단계의 일만 하고 아래 <PHASE>의 틀을 따른다.`,
+        `이번 실행은 [신규 개발]이고 지금 단계는 [${label}]이다. 단계는 ${phaseUtil
+            .getActivePhases(runState.skip)
+            .map((phase) => PHASE_LABELS[phase])
+            .join(" → ")} 순서이며, 이 세션은 지금 단계의 일만 하고 아래 <PHASE>의 틀을 따른다.${getSkipNote(runState)}`,
         runState.isRevision ? `이 단계는 사용자가 산출물을 확인하고 다시 하라고 돌려보낸 것이다. <TASKS>의 수정 요청을 반영해 ${label} 산출물을 고친다.` : "",
         runState.debateStage === "synthesis" ? "" : getBrainstormPrompt(runState)
     ]
@@ -400,10 +435,11 @@ const getReviewPrompt = (runState) => {
 
 const getPhaseBlock = (runState) => {
     const brief = getPhaseBrief(runState);
+    const activePhases = phaseUtil.getActivePhases(runState.skip);
 
     return [
         "<PHASE>",
-        `단계: ${PHASE_LABELS[runState.phase]} (${BUILD_PHASES.indexOf(runState.phase) + 1}/${BUILD_PHASES.length})`,
+        `단계: ${PHASE_LABELS[runState.phase]} (${activePhases.indexOf(runState.phase) + 1}/${activePhases.length})`,
         `관점: ${brief.role}`,
         `읽을 것: ${brief.read}`,
         `산출물: ${brief.output}`,

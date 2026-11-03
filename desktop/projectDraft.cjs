@@ -10,6 +10,8 @@ const PLATFORMS = [
     { key: "unknown", label: "아직 몰라요" }
 ];
 const PLATFORM_KEYS = PLATFORMS.map((platform) => platform.key);
+// 화면이 없는 실행 환경. 이것만 골랐으면 신규 개발의 디자인 단계는 건너뛰기를 추천한다(모르거나 화면이 있는 환경이 섞이면 추천하지 않는다).
+const NO_SCREEN_PLATFORMS = ["server", "cli"];
 const MAX_PROJECT_NAME_LENGTH = 64;
 const MAX_DRAFT_NAME_LENGTH = 40;
 const MAX_WHAT_LENGTH = 2000;
@@ -19,6 +21,10 @@ const RESERVED_NAME_PATTERN = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 const INVALID_NAME_PATTERN = /[<>:"/\\|?*\u0000-\u001f]/;
 // 줄바꿈·탭 말고 제어 문자는 지운다.
 const CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+
+const getRecommendedSkip = (platforms) => {
+    return Array.isArray(platforms) && platforms.length > 0 && platforms.every((key) => NO_SCREEN_PLATFORMS.includes(key)) ? ["design"] : [];
+};
 
 // Windows에서도 만들 수 있는 폴더 이름인지. 문제가 없으면 빈 문자열이다.
 const getProjectNameError = (name) => {
@@ -237,6 +243,7 @@ const sanitizeBrief = (text) => {
 module.exports = {
     PLATFORMS,
     PLATFORM_KEYS,
+    getRecommendedSkip,
     DRAFT_LIMITS,
     MAX_PROJECT_NAME_LENGTH,
     MAX_WHAT_LENGTH,

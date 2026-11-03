@@ -33,6 +33,8 @@ const PHASE_DONE = "done";
 const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
 // 끝나면 멈추고 사용자 확인을 받을 수 있는 단계
 const GATE_PHASES = ["plan", "design"];
+// 이번 실행에서 하지 않기로 정할 수 있는 단계(--skip). 기획과 개발은 뼈대라 건너뛸 수 없다.
+const SKIPPABLE_PHASES = ["design", "qa", "security"];
 // 신규 개발에서 실행마다 켜는 정책 완화. deps 새 라이브러리(패키지), large 큰 구조 만들기, external-api 외부 API 호출 코드, send 외부 서비스로 코드 보내기
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
@@ -146,6 +148,7 @@ export {
     PHASE_DONE,
     PHASE_LABELS,
     GATE_PHASES,
+    SKIPPABLE_PHASES,
     ALLOW_KEYS,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,

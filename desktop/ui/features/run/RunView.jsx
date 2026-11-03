@@ -102,13 +102,15 @@ const RunTag = () => {
 const RunSteps = () => {
     const { mode, step, round } = useRunStore(useShallow((store) => ({ mode: store.state.mode, step: store.state.step, round: store.state.round })));
     const buildPhase = useRunsStore((store) => store.buildPhase);
-    const { gates, qaOnFail, securityOnFail } = useComposerStore(useShallow((store) => ({ gates: store.gates, qaOnFail: store.qaOnFail, securityOnFail: store.securityOnFail })));
+    const { gates, skip, qaOnFail, securityOnFail } = useComposerStore(
+        useShallow((store) => ({ gates: store.gates, skip: store.skip, qaOnFail: store.qaOnFail, securityOnFail: store.securityOnFail }))
+    );
 
     if (mode !== "build") {
         return null;
     }
 
-    return <StepCard id="run-steps" cells={getRunSteps({ step: step, buildPhase: buildPhase, gates: gates, qaOnFail: qaOnFail, securityOnFail: securityOnFail, round: round })} />;
+    return <StepCard id="run-steps" cells={getRunSteps({ step: step, buildPhase: buildPhase, gates: gates, skip: skip, qaOnFail: qaOnFail, securityOnFail: securityOnFail, round: round })} />;
 };
 
 // 실행 중 화면: 지난 문장은 위로 올라가며 흐려지고 지금 문장이 크게 쓰인다.

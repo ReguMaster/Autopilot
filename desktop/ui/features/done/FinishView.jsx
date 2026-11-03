@@ -86,9 +86,16 @@ const BuildNext = ({ reason }) => {
 
 const FinishSteps = ({ state }) => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
-    const { gates, qaOnFail, securityOnFail } = useComposerStore(useShallow((store) => ({ gates: store.gates, qaOnFail: store.qaOnFail, securityOnFail: store.securityOnFail })));
+    const { gates, skip, qaOnFail, securityOnFail } = useComposerStore(
+        useShallow((store) => ({ gates: store.gates, skip: store.skip, qaOnFail: store.qaOnFail, securityOnFail: store.securityOnFail }))
+    );
 
-    return <StepCard id="finish-steps" cells={getRunSteps({ step: state.step, buildPhase: buildPhase, gates: gates, qaOnFail: qaOnFail, securityOnFail: securityOnFail, round: state.round })} />;
+    return (
+        <StepCard
+            id="finish-steps"
+            cells={getRunSteps({ step: state.step, buildPhase: buildPhase, gates: gates, skip: skip, qaOnFail: qaOnFail, securityOnFail: securityOnFail, round: state.round })}
+        />
+    );
 };
 
 const FinishBody = () => {

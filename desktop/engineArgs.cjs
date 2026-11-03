@@ -13,6 +13,8 @@ const PROTECTED_BRANCHES = ["main", "master", "head"];
 const MODES = ["maintain", "build"];
 const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
 const GATE_PHASES = ["plan", "design"];
+// 이번 실행에서 하지 않기로 정할 수 있는 단계(엔진 config.js의 SKIPPABLE_PHASES와 같다). 기획과 개발은 건너뛸 수 없다.
+const SKIPPABLE_PHASES = ["design", "qa", "security"];
 const ALLOW_KEYS = ["deps", "large", "external-api", "send"];
 const DESIGN_FORMATS = ["md", "html", "figma", "image"];
 const DEFAULT_DESIGN_FORMAT = "html";
@@ -105,11 +107,11 @@ const getAssistedPhases = ({ mode, mains, brainstorm = [], allow = [] }) => {
 
 // Codex가 관여하는 실행(회차를 돌리거나 보조로 안을 냄)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다). 비어 있으면 Codex 설정을 따르므로 생략한다.
 // 유지 보수는 --runner로 회차를 돌릴 AI를 고르고, 신규 개발은 단계마다 --main이 정하므로 --runner를 보내지 않는다(저장된 실행 에이전트가 새어 들지 않게).
-const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", codexEffort = "", brainstorm, allow }) => {
+const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", codexEffort = "", brainstorm = [], allow, skip = [] }) => {
     const isBuild = mode === "build";
     const args = !isBuild && runner !== DEFAULT_RUNNER ? ["--runner", runner] : [];
     const usesCodex = isBuild
-        ? Object.values(getMains(mains)).includes("codex") || getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm, allow: allow }).length > 0
+        ? Object.values(getMains(mains)).includes("codex") || getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm.filter((phase) => !skip.includes(phase)), allow: allow }).length > 0
         : runner === "codex";
 
     if (usesCodex) {
@@ -120,7 +122,20 @@ const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", c
 };
 
 // 신규 개발 인자는 mode가 build일 때만 붙인다. 엔진 기본값(확인받기·허용 없음, html, retry:3)과 같으면 생략한다.
-const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, securityOnFail, mains, brainstorm = [], crossReview = false, debate = [], debateTurns = DEBATE_DEFAULT_TURNS }) => {
+const getBuildArgs = ({
+    mode,
+    gates = [],
+    skip = [],
+    allow = [],
+    designFormat,
+    qaOnFail,
+    securityOnFail,
+    mains,
+    brainstorm = [],
+    crossReview = false,
+    debate = [],
+    debateTurns = DEBATE_DEFAULT_TURNS
+}) => {
     if (mode !== "build") {
         return [];
     }
@@ -133,28 +148,35 @@ const getBuildArgs = ({ mode, gates = [], allow = [], designFormat, qaOnFail, se
         args.push("--main", mainEntries.join(","));
     }
 
-    if (gates.length) {
-        args.push("--gate", gates.join(","));
+    // 건너뛰는 단계의 확인받기 · 보조 · 형식 · 되돌림 설정은 엔진이 거부하므로 빼고 보낸다.
+    const activeGates = gates.filter((phase) => !skip.includes(phase));
+
+    if (skip.length) {
+        args.push("--skip", skip.join(","));
+    }
+
+    if (activeGates.length) {
+        args.push("--gate", activeGates.join(","));
     }
 
     if (allow.length) {
         args.push("--allow", allow.join(","));
     }
 
-    if (designFormat && designFormat !== DEFAULT_DESIGN_FORMAT) {
+    if (designFormat && designFormat !== DEFAULT_DESIGN_FORMAT && !skip.includes("design")) {
         args.push("--design-format", designFormat);
     }
 
-    if (qaOnFail && qaOnFail !== DEFAULT_QA_ON_FAIL) {
+    if (qaOnFail && qaOnFail !== DEFAULT_QA_ON_FAIL && !skip.includes("qa")) {
         args.push("--qa-on-fail", qaOnFail);
     }
 
-    if (securityOnFail && securityOnFail !== DEFAULT_SECURITY_ON_FAIL) {
+    if (securityOnFail && securityOnFail !== DEFAULT_SECURITY_ON_FAIL && !skip.includes("security")) {
         args.push("--security-on-fail", securityOnFail);
     }
 
     // 보조(메인의 반대쪽 AI)를 쓸 수 있는 단계만 넘긴다. 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다(엔진이 그 밖에는 거부한다).
-    const assisted = getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm, allow: allow });
+    const assisted = getAssistedPhases({ mode: mode, mains: mains, brainstorm: brainstorm.filter((phase) => !skip.includes(phase)), allow: allow });
 
     if (assisted.length) {
         const hasCompare = assisted.some((phase) => !debate.includes(phase));
@@ -242,6 +264,7 @@ module.exports = {
     MODES,
     BUILD_PHASES,
     GATE_PHASES,
+    SKIPPABLE_PHASES,
     ALLOW_KEYS,
     DESIGN_FORMATS,
     DEFAULT_DESIGN_FORMAT,

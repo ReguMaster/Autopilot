@@ -12,8 +12,8 @@ const CARD_COMMIT_LIMIT = 4;
 
 const PhaseDocs = ({ step }) => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
-    const { gates, designFormat } = useComposerStore(useShallow((store) => ({ gates: store.gates, designFormat: store.designFormat })));
-    const docs = getPhaseDocs({ step: step, buildPhase: buildPhase, gates: gates, designFormat: designFormat });
+    const { gates, skip, designFormat } = useComposerStore(useShallow((store) => ({ gates: store.gates, skip: store.skip, designFormat: store.designFormat })));
+    const docs = getPhaseDocs({ step: step, buildPhase: buildPhase, gates: gates, skip: skip, designFormat: designFormat });
 
     return (
         <section className="card-section" aria-label="단계 문서">

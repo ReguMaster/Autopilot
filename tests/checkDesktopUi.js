@@ -450,6 +450,69 @@ const checkInlineControls = ({ renderSelect, renderSeg, renderStepper, renderEff
     assert.doesNotMatch(renderSeg({ name: "m", label: "모드", options: options, value: "b", onChange: () => {} }), /seg-thumb/);
 };
 
+// 건너뛰는 단계: 시작 단계 · 단계 카드 · 안내 · 단계 문서에 반영되고, 이미 지나간 단계는 건너뛰기로 보이지 않는다. 남은 단계를 모두 건너뛰면 시작할 수 없다.
+const checkSkippedSteps = ({ renderStepCard, getBuildStartPhase, getNextPhase, isAllSkipped, getReadySteps, getRunSteps, getPhaseDocs, getBuildGreeting, getBuildActionLabel, hasNoScreens }) => {
+    const planDone = { phase: "design", awaiting: null, qaRetries: 0, securityRetries: 0 };
+    const getStates = (cells) => cells.map((cell) => `${cell.state}`);
+
+    assert.equal(getBuildStartPhase(planDone, []), "design");
+    assert.equal(getBuildStartPhase(planDone, ["design"]), "build");
+    assert.equal(getBuildStartPhase({ ...planDone, phase: "qa" }, ["qa", "security"]), "qa", "남은 단계를 모두 건너뛰면 done이 아니라 지금 단계에 머문다");
+    assert.equal(getBuildStartPhase({ ...planDone, phase: "done" }, ["qa"]), "done");
+    assert.equal(getBuildStartPhase({ ...planDone, awaiting: "plan" }, ["design"]), "plan", "확인을 기다리던 단계는 다시 한다");
+    assert.equal(getBuildStartPhase(null, ["design"]), "plan");
+    assert(isAllSkipped({ ...planDone, phase: "qa" }, ["qa", "security"]));
+    assert(!isAllSkipped({ ...planDone, phase: "qa" }, ["security"]));
+    assert(!isAllSkipped({ ...planDone, phase: "done" }, ["qa", "security"]));
+    assert(!isAllSkipped(null, ["design", "qa", "security"]));
+    assert.equal(getNextPhase("plan", ["design"]), "build");
+    assert.equal(getNextPhase("plan", []), "design");
+    assert.equal(getNextPhase("design", ["design"]), "build");
+    assert.equal(getNextPhase("build", ["qa", "security"]), "done");
+
+    assert.deepEqual(getStates(getReadySteps(null, ["design", "security"])), ["waiting", "skipped", "waiting", "waiting", "skipped"]);
+    assert.deepEqual(getStates(getReadySteps(planDone, ["design"])), ["done", "skipped", "next", "waiting", "waiting"]);
+    assert.deepEqual(getStates(getReadySteps({ ...planDone, phase: "build" }, ["design"])), ["done", "done", "next", "waiting", "waiting"], "이미 지난 디자인은 건너뛰기로 보이지 않는다");
+    assert.deepEqual(getStates(getReadySteps({ ...planDone, awaiting: "plan" }, ["design"])), ["hold", "skipped", "waiting", "waiting", "waiting"]);
+    assert.equal(getReadySteps(null, ["qa"])[3].detail, "건너뛰어요");
+
+    assert.match(
+        getBuildGreeting({ buildPhase: null, endLabel: "07:00", gates: ["plan", "design"], skip: ["design", "security"] }).lead,
+        /기획 단계가 끝나면 멈추고 확인을 기다려요\. 디자인·보안검토 단계는 건너뛰어요\./
+    );
+    assert.doesNotMatch(getBuildGreeting({ buildPhase: null, endLabel: "07:00", gates: ["plan", "design"], skip: ["design"] }).lead, /디자인 단계가 끝나면/);
+    assert.doesNotMatch(getBuildGreeting({ buildPhase: null, endLabel: "07:00", gates: [], skip: [] }).lead, /건너뛰/);
+    assert.equal(getBuildActionLabel(planDone, ["design"]), "개발 시작");
+    assert.equal(getBuildActionLabel(planDone, []), "디자인 시작");
+
+    const run = { buildPhase: null, gates: [], qaOnFail: "retry:3", securityOnFail: "retry:3", round: 2, skip: ["design", "security"] };
+    const cells = getRunSteps({ ...run, step: { phase: "build", status: "running", qaRetries: 0, securityRetries: 0 } });
+
+    assert.deepEqual(getStates(cells), ["done", "skipped", "active", "waiting", "skipped"]);
+    assert.equal(cells[1].detail, "건너뛰었어요");
+    assert.deepEqual(getStates(getRunSteps({ ...run, step: { phase: "qa", status: "done", qaRetries: 0, securityRetries: 0 } })), ["done", "skipped", "done", "done", "skipped"]);
+
+    assert.deepEqual(
+        getPhaseDocs({ step: { phase: "qa", status: "running", qaRetries: 0 }, buildPhase: null, gates: [], designFormat: "html", skip: ["design"] }).map((doc) => doc.path),
+        ["docs/autopilot/plan.md", "docs/autopilot/qa.md"]
+    );
+
+    // 건너뛴 단계의 칸은 점선 상태로 그리고 이름만 보인다.
+    const html = renderStepCard({ cells: getReadySteps(null, ["design"]) });
+
+    assert.match(html, /data-phase="design" data-state="skipped"/);
+    assert.match(html, /title="디자인: 건너뛰어요"/);
+
+    // 기획서 5절(화면 목록)이 `화면 없음`으로 시작하면 화면이 없는 프로젝트다.
+    assert(hasNoScreens("# 기획\n\n## 4) 기능 목록\n- 변환\n\n## 5) 화면(또는 명령 · API) 목록\n화면 없음\n- `convert` 명령\n\n## 6) 데이터 구조\n"));
+    assert(hasNoScreens("## 5. 화면 목록\n\n**화면 없음** (CLI)\n"));
+    assert(hasNoScreens("### 5) 화면(또는 명령) 목록\r\n- 화면  없음\r\n"));
+    assert(!hasNoScreens("## 5) 화면 목록\n- 로그인 화면\n- 예약 화면\n\n## 8) 이번에 하지 않는 것\n- 화면 없음 모드\n"), "다른 절의 화면 없음은 보지 않는다");
+    assert(!hasNoScreens("## 4) 기능 목록\n화면 없음\n"), "5절이 아니면 보지 않는다");
+    assert(!hasNoScreens(""));
+    assert(!hasNoScreens(null));
+};
+
 const checkRunSteps = ({ getRunSteps, getPhaseDocs, getRevisionTasks, renderDocPreview }) => {
     const base = { buildPhase: { phase: "build", awaiting: null, qaRetries: 0, securityRetries: 0 }, gates: ["plan"], qaOnFail: "retry:3", securityOnFail: "retry:2", round: 4 };
     const getCells = (options) => getRunSteps({ ...base, ...options }).map((cell) => `${cell.state}:${cell.detail}`);
@@ -587,6 +650,7 @@ const checkUi = async () => {
     checkPhaseAgents(ui);
     checkInlineControls(ui);
     checkRunSteps(ui);
+    checkSkippedSteps(ui);
     checkTagChips(ui);
     checkArchiveDetailButtons(ui);
     checkModalClosingLayout();

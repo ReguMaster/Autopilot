@@ -20,7 +20,7 @@ const { readJsonFile } = require("./jsonFile.cjs");
 const { createSettingsStore, getProjectKey, ACCOUNT_KEY, LINKED_REPOS_KEY, SETTING_VALIDATORS, OVERRIDABLE_KEYS, PREFERENCE_KEYS, POLICY_CHOICES, MAX_TABS } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 const { askClaude, getCodexStatus } = require("./claudeCli.cjs");
-const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
+const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, getRecommendedSkip, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
@@ -124,7 +124,7 @@ const isValidAgentOptions = (options) => {
 };
 
 // 작업 모드·신규 개발 설정과 실행 에이전트. 렌더러가 보낸 값 중 이 키만 받고, 없는 키는 fallback(저장된 값)을 쓴다.
-const MODE_KEYS = ["mode", "gates", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "crossReview", "debate", "debateTurns", ...AGENT_KEYS];
+const MODE_KEYS = ["mode", "gates", "skip", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "crossReview", "debate", "debateTurns", ...AGENT_KEYS];
 
 const pickModeOptions = (source, fallback) => {
     return Object.fromEntries(MODE_KEYS.map((key) => [key, source[key] === undefined ? fallback[key] : source[key]]));
@@ -1053,7 +1053,10 @@ const handleCreateProject = async (event, request = {}) => {
         return createFailure("TOO_MANY_TABS", opened.error);
     }
 
-    settingsStore.remember(opened.projectDir, { mode: "build", tasks: created.brief });
+    // 화면이 없는 환경(서버 · CLI)만 골랐으면 디자인은 건너뛰기를 추천값으로 기억한다. 사용자는 단계 설정에서 바꿀 수 있다.
+    const platforms = Array.isArray(request.platforms) ? request.platforms.filter((key) => PLATFORM_KEYS.includes(key)) : [];
+
+    settingsStore.remember(opened.projectDir, { mode: "build", tasks: created.brief, skip: getRecommendedSkip(platforms) });
 
     return getSwitchResult(sessionPool.open(opened.projectDir), { created: true });
 };

@@ -122,6 +122,26 @@ const checkCommandArgs = () => {
     assert.throws(() => parseRunArgs([...project, "--branch"]));
     assert.equal(parseRunArgs([...project, "--extend-on-limit", "--max-extend-minutes", "90"]).maxExtendMinutes, 90);
 
+    // 건너뛰기(--skip)는 신규 개발에서만, 디자인 · 테스트/QA · 보안검토만, 그 단계의 설정과 함께 쓸 수 없다.
+    const build = [...project, "--mode", "build"];
+
+    assert.deepEqual(parseRunArgs([...build, "--skip", "design,security", "--gate", "plan"]).skip, ["design", "security"]);
+    assert.equal(parseRunArgs(build).skip, undefined);
+    assert.throws(() => parseRunArgs([...project, "--skip", "design"]), /--mode build/);
+
+    for (const invalidSkip of ["plan", "build", "design,design", "ui", ""]) {
+        assert.throws(() => parseRunArgs([...build, "--skip", invalidSkip]), /--skip/, invalidSkip);
+    }
+
+    assert.throws(() => parseRunArgs([...build, "--skip"]));
+    assert.throws(() => parseRunArgs([...build, "--skip", "design", "--gate", "design"]), /--skip design 는 --gate design 와 함께/);
+    assert.throws(() => parseRunArgs([...build, "--skip", "design", "--brainstorm", "design"]), /--brainstorm design/);
+    assert.throws(() => parseRunArgs([...build, "--skip", "design", "--design-format", "md"]), /--design-format/);
+    assert.throws(() => parseRunArgs([...build, "--skip", "qa", "--qa-on-fail", "stop"]), /--qa-on-fail/);
+    assert.throws(() => parseRunArgs([...build, "--skip", "security", "--security-on-fail", "retry:2"]), /--security-on-fail/);
+    assert.equal(parseRunArgs([...build, "--skip", "qa", "--security-on-fail", "retry:2"]).maxSecurityRetries, 2);
+    assert.deepEqual(parseRunArgs([...build, "--skip", "design", "--brainstorm", "plan"]).brainstorm, ["plan"]);
+
     // --link-project는 여러 번 쓸 수 있지만 연결 저장소는 2개(작업 프로젝트를 합쳐 3개)까지다.
     assert.deepEqual(parseRunArgs([...project, "--link-project", "C:\work\api", "--link-project", "C:\work\web"]).linkedProjectDirs, ["C:\work\api", "C:\work\web"]);
     assert.throws(() => parseRunArgs([...project, "--link-project", "a", "--link-project", "b", "--link-project", "c"]), /2개까지/);
@@ -683,6 +703,19 @@ const checkPhaseRules = (context) => {
     assert.deepEqual(getStartPhase({ ...plan, phase: "design", awaiting: "plan", receivedProposal: "plan" }), { state: plan, isRevision: true });
     assert.deepEqual(getStartPhase(plan), { state: plan, isRevision: false });
 
+    // 건너뛰는 단계는 멈추지 않고 이어 가는 전환에서만 넘기고, 멈추는 전환은 다음 실행이 시작할 때 넘긴다.
+    assert.deepEqual(getPhaseTransition(plan, "pass", [], limits, [], null, ["design"]), { state: { ...plan, phase: "build" }, event: "next", skipped: ["design"] });
+    assert.deepEqual(getPhaseTransition(plan, "", ["plan"], limits, [], null, ["design"]), { state: { ...plan, phase: "design", awaiting: "plan" }, event: "await" });
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "build" }, "", [], limits, [], null, ["qa"]), { state: { ...plan, phase: "security" }, event: "next", skipped: ["qa"] });
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "build" }, "", [], limits, [], null, ["qa", "security"]), { state: { ...plan, phase: "done" }, event: "done", skipped: ["qa", "security"] });
+    assert.deepEqual(getPhaseTransition({ ...plan, phase: "qa" }, "pass", [], limits, [], null, ["security"]), { state: { ...plan, phase: "done" }, event: "done", skipped: ["security"] });
+    assert.equal(getPhaseTransition({ ...plan, phase: "qa" }, "fail", [], limits, [], null, ["security"]).event, "retry");
+    assert.deepEqual(phaseUtil.skipForward("design", ["design"]), { phase: "build", skipped: ["design"] });
+    assert.deepEqual(phaseUtil.skipForward("qa", ["qa", "security"]), { phase: "done", skipped: ["qa", "security"] });
+    assert.deepEqual(phaseUtil.skipForward("plan", ["design"]), { phase: "plan", skipped: [] });
+    assert.deepEqual(phaseUtil.getActivePhases(["design", "security"]), ["plan", "build", "qa"]);
+    assert.deepEqual(phaseUtil.getActivePhases(), ["plan", "design", "build", "qa", "security"]);
+
     assert.equal(phaseUtil.parseOnFail("retry:5"), 5);
     assert.equal(phaseUtil.parseOnFail("retry:05"), 5);
     assert.equal(phaseUtil.parseOnFail("stop"), 0);
@@ -755,6 +788,21 @@ const checkPhaseRules = (context) => {
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "qa" }, 1, 60, "", 2), /다시 하는 것이다/);
     assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "security", securityRetries: 1 }, 1, 60, "", 2), /`남김`으로 둔 심각 · 높음 항목이 고쳐졌는지 먼저/);
     assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "security", qaRetries: 2 }, 1, 60, "", 2), /다시 하는 것이다/);
+
+    // 건너뛰는 단계는 순서 · 단계 번호 · 읽을 문서에서 빠지고, 디자인을 건너뛰면 기획이 화면의 상세까지 쓴다.
+    const skipState = { ...buildState, skip: ["design", "security"] };
+    const skipBuildPrompt = promptUtil.getRoundPrompt({ ...skipState, phase: "build" }, 1, 60, "", 2);
+    const skipBuildBlock = /<PHASE>\n([\s\S]*?)\n<\/PHASE>/.exec(skipBuildPrompt)[1];
+
+    assert.match(skipBuildPrompt, /단계는 기획 → 개발 → 테스트\/QA 순서이며/);
+    assert.match(skipBuildPrompt, /소유자가 디자인 · 보안검토 단계는 이번 실행에서 하지 않기로 했다/);
+    assert.match(skipBuildBlock, /^단계: 개발 \(2\/3\)/);
+    assert.match(skipBuildBlock, /^읽을 것: .*화면은 기획서의 화면 목록과 저장소에 이미 있는 화면의 스타일.*있으면 `docs\/autopilot\/qa\.md`의 실패 항목\./m);
+    assert.doesNotMatch(skipBuildBlock, /design\.md|security\.md/);
+    assert.match(promptUtil.getRoundPrompt({ ...skipState, phase: "plan" }, 1, 60, "", 2), /디자인 단계를 건너뛰므로 5\)에 화면마다 목적/);
+    assert.match(promptUtil.getRoundPrompt({ ...buildState, phase: "plan" }, 1, 60, "", 2), /5\)의 첫 줄에 `화면 없음`이라고 쓰고/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...buildState, phase: "build" }, 1, 60, "", 2), /건너뛰/);
+    assert.doesNotMatch(promptUtil.getRoundPrompt({ ...skipState, phase: "qa" }, 1, 60, "", 2), /디자인 산출물/);
 
     const maintainPrompt = promptUtil.getRoundPrompt({ ...buildState, mode: "maintain" }, 1, 60, "", 2);
 

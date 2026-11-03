@@ -469,6 +469,7 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.deepEqual(composer.getModeOptions(), {
         mode: "build",
         gates: ["plan", "design"],
+        skip: [],
         allow: ["large", "send"],
         designFormat: "html",
         qaOnFail: "retry:3",
@@ -482,6 +483,19 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         codexEffort: ""
     });
     composer.setSecurityOnFail("retry:3");
+
+    // 건너뛰기는 건너뛸 수 있는 단계(디자인·테스트/QA·보안검토)만, 고를 수 있는 값의 순서로 저장된다. 기획·개발은 고를 수 없다.
+    composer.toggleSkip("security");
+    composer.toggleSkip("design");
+    composer.toggleSkip("plan");
+    composer.toggleSkip("build");
+    assert.deepEqual(composer.getModeOptions().skip, ["design", "security"]);
+    composer.toggleSkip("security");
+    assert.deepEqual(useComposerStore.getState().skip, ["design"]);
+    composer.loadSettings({ skip: ["qa"] }, ["skip"]);
+    assert.deepEqual(useComposerStore.getState().skip, ["qa"]);
+    composer.loadSettings({ skip: [] }, ["skip"]);
+    assert.deepEqual(useComposerStore.getState().skip, []);
 
     // 협의 최대 횟수는 협의를 끄거나 보내기를 꺼도 고른 값을 남긴다.
     composer.setDebateTurns(12);
@@ -1305,6 +1319,7 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
 
     assert.equal(createRequest.name, "hanbit-booking");
     assert.equal(createRequest.author, null);
+    assert.deepEqual(createRequest.platforms, ["web"]);
     assert.match(createRequest.brief, /^# hanbit-booking\n/);
     assert.match(createRequest.brief, /- 알림 문자/);
     assert.doesNotMatch(createRequest.brief, /- 예약\n/, "뺀 기능은 brief에 넣지 않는다");

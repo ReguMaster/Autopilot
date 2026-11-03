@@ -12,6 +12,8 @@ import {
     DESIGN_FORMAT_OPTIONS,
     GATE_OPTIONS,
     MAX_ON_FAIL_RETRIES,
+    SKIP_NOTES,
+    SKIP_OPTIONS,
     ON_FAIL_WHEN,
     getAssistOptions,
     getBrainstormMode,
@@ -137,12 +139,40 @@ const OnFailSettings = ({ phase }) => {
     );
 };
 
+// 하지 않을 수도 있는 단계(디자인·테스트/QA·보안검토): 앞머리에서 진행할지 건너뛸지 고른다. 건너뛰면 그 단계의 다른 설정은 숨기고 잃는 것을 알린다.
+const SkippableSettings = ({ phase, children }) => {
+    const isSkipped = useComposerStore((store) => store.skip.includes(phase));
+
+    return (
+        <>
+            <div className="step-sentence">
+                <span>이 단계는</span>
+                <Select inline value={isSkipped ? "skip" : "run"} options={SKIP_OPTIONS} onChange={() => composer.toggleSkip(phase)} ariaLabel={`${PHASE_LABELS[phase]} 단계를 할지`} />
+                <span className="j">.</span>
+            </div>
+            {isSkipped ? <p className="step-note">{SKIP_NOTES[phase]}</p> : children}
+        </>
+    );
+};
+
 const SETTINGS = {
     plan: <PlanSettings />,
-    design: <DesignSettings />,
+    design: (
+        <SkippableSettings phase="design">
+            <DesignSettings />
+        </SkippableSettings>
+    ),
     build: <BuildSettings />,
-    qa: <OnFailSettings phase="qa" />,
-    security: <OnFailSettings phase="security" />
+    qa: (
+        <SkippableSettings phase="qa">
+            <OnFailSettings phase="qa" />
+        </SkippableSettings>
+    ),
+    security: (
+        <SkippableSettings phase="security">
+            <OnFailSettings phase="security" />
+        </SkippableSettings>
+    )
 };
 
 // 협의 횟수와 교차검토는 보조를 쓰는 모든 단계가 함께 쓰는 값이라 단계 줄이 아니라 한 줄로 둔다. phases는 설정을 보이고 있는 기획·디자인이다.
@@ -182,12 +212,12 @@ const AssistSettings = ({ phases }) => {
 // 신규 개발의 시작 전: 단계 막대(아래에 단계별 설정 문장)와 이어서 할 단계를 알리는 안내. 마친 단계의 설정은 펼치지 않는다.
 const BuildReady = () => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
-    const { endTime, gates } = useComposerStore(useShallow((store) => ({ endTime: store.endTime, gates: store.gates })));
+    const { endTime, gates, skip } = useComposerStore(useShallow((store) => ({ endTime: store.endTime, gates: store.gates, skip: store.skip })));
     const endLabel = useClock((now) => formatEndTimeShort(endTime, now));
-    const greeting = getBuildGreeting({ buildPhase: buildPhase, endLabel: endLabel, gates: gates });
-    const cells = getReadySteps(buildPhase);
+    const greeting = getBuildGreeting({ buildPhase: buildPhase, endLabel: endLabel, gates: gates, skip: skip });
+    const cells = getReadySteps(buildPhase, skip);
     const settings = Object.fromEntries(cells.filter((cell) => cell.state !== "done").map((cell) => [cell.phase, SETTINGS[cell.phase]]));
-    const shownBrainstormPhases = BRAINSTORM_PHASES.filter((phase) => settings[phase]);
+    const shownBrainstormPhases = BRAINSTORM_PHASES.filter((phase) => settings[phase] && !skip.includes(phase));
     const hasAssist = useComposerStore((store) => shownBrainstormPhases.some((phase) => getBrainstormMode(store, phase) !== "none"));
     // 협의·교차검토 줄은 설정을 보이고 있는 기획·디자인 줄 바로 뒤에 둔다.
     const assistRow = hasAssist ? { name: "보조", after: shownBrainstormPhases.at(-1), node: <AssistSettings phases={shownBrainstormPhases} /> } : null;

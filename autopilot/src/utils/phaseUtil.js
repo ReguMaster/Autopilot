@@ -99,11 +99,25 @@ const getStartPhase = (state) => {
     return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null, debate: null, receivedProposal: null }, isRevision: true };
 };
 
+// 건너뛰는 단계에 서 있으면 처음으로 할 단계까지 앞으로 옮긴다. 거쳐 간 단계는 skipped에 담는다. 끝까지 건너뛰면 phase는 done이다.
+const skipForward = (phase, skip = []) => {
+    const skipped = [];
+    let current = phase;
+
+    while (skip.includes(current)) {
+        skipped.push(current);
+        current = BUILD_PHASES[BUILD_PHASES.indexOf(current) + 1] ?? PHASE_DONE;
+    }
+
+    return { phase: current, skipped: skipped };
+};
+
 // 단계를 마친 세션이 남긴 결과(테스트/QA·보안검토만 pass·fail)로 다음 상태와 일어난 일을 정한다.
 // maxRetries는 단계별로 개발에 되돌릴 수 있는 횟수({ qa, security })다.
 // candidates는 이 단계에 안을 낸 제공자들이다. 둘 이상이면 사용자가 골라야 하므로 확인받기 설정과 상관없이 멈춘다.
 // debate는 두 AI가 협의를 마친 결과({ phase, disputes, resolved: null })다. 쟁점을 고르거나 합의안을 확인해야 하므로 늘 멈춘다.
-const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], debate = null) => {
+// skip은 이번 실행에서 하지 않는 단계다. 멈추지 않고 이어 가는 전환만 건너뛰고(skipped로 알린다), 멈추는 전환은 다음 실행이 시작할 때 건너뛰도록 바로 다음 단계를 남긴다.
+const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], debate = null, skip = []) => {
     const retryKey = RETRY_KEYS[state.phase];
 
     // 세션이 `fail`을 꾸미거나(백틱·굵게) 뒤에 이유를 붙여도 실패로 본다. 정확히 일치만 보면 실패가 통과로 넘어간다.
@@ -134,7 +148,19 @@ const getPhaseTransition = (state, result, gates, maxRetries, candidates = [], d
         return { state: { ...state, phase: nextPhase, awaiting: state.phase }, event: "await" };
     }
 
-    return { state: { ...state, phase: nextPhase, awaiting: null }, event: "next" };
+    const { phase: runnablePhase, skipped } = skipForward(nextPhase, skip);
+    const skippedPart = skipped.length ? { skipped: skipped } : {};
+
+    if (runnablePhase === PHASE_DONE) {
+        return { state: { ...state, phase: PHASE_DONE, awaiting: null }, event: "done", ...skippedPart };
+    }
+
+    return { state: { ...state, phase: runnablePhase, awaiting: null }, event: "next", ...skippedPart };
+};
+
+// 이번 실행에서 하는 단계들(순서대로). 프롬프트가 몇 번째 단계인지 말할 때 쓴다.
+const getActivePhases = (skip = []) => {
+    return BUILD_PHASES.filter((phase) => !skip.includes(phase));
 };
 
 // 메인의 반대쪽 AI. 보조는 늘 이 AI다.
@@ -195,7 +221,9 @@ export default {
     readPhase,
     writePhase,
     getStartPhase,
+    skipForward,
     getPhaseTransition,
+    getActivePhases,
     getOtherProvider,
     getPhaseMains,
     getPhaseAgents,
