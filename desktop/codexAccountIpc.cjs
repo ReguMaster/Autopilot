@@ -308,8 +308,7 @@ const createCodexAccountIpc = ({
             return busyFailure;
         }
 
-        const settings = readSettings();
-        const target = listAccounts(settings).find((account) => account.id === accountId);
+        const target = listAccounts(readSettings()).find((account) => account.id === accountId);
 
         if (!target || target.isDefault) {
             return createFailure("INVALID_ACCOUNT", "제거할 수 있는 계정이 아니에요.");
@@ -325,6 +324,9 @@ const createCodexAccountIpc = ({
         } catch (error) {
             return createFailure("REMOVE_FAILED", `계정 폴더를 지우지 못했어요. 사용 중인 파일이 없는지 확인해 주세요. (${error.code || error.message})`);
         }
+
+        // 로그아웃을 기다리는 동안 다른 곳이 저장했을 수 있어 다시 읽는다.
+        const settings = readSettings();
 
         writeSettings({
             ...settings,

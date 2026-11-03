@@ -9,6 +9,7 @@ const { getAuthStatus, logoutClaude } = require("../desktop/claudeCli.cjs");
 const { getCodexLoginStatus, readCodexIdentity, startCodexLogin, logoutCodex, isCodexLoginUrl, getPlanName } = require("../desktop/codexCli.cjs");
 const { createCodexAccountReader, readCodexUsage, parseRateLimitLine, getWindowLabel } = require("../desktop/codexAccount.cjs");
 const { createCodexAccountStore, normalizeCodexAccounts, DEFAULT_CODEX_ACCOUNT_ID } = require("../desktop/codexAccountStore.cjs");
+const { createCodexAccountIpc } = require("../desktop/codexAccountIpc.cjs");
 
 const LOGIN_URL = "https://auth.openai.com/oauth/authorize?client_id=test&state=abc";
 const NOW = Date.parse("2026-11-03T08:00:00Z");
@@ -311,6 +312,44 @@ const checkReader = async (testDir) => {
     assert.equal(await reader.refresh(), withUsage);
 };
 
+// 계정 제거는 로그아웃을 기다리는 동안 다른 곳이 저장한 설정을 옛 값으로 되돌리지 않는다.
+const checkCodexRemove = async (testDir) => {
+    const fakeFile = path.join(testDir, "fakeCodexIpc.cjs");
+    const store = createCodexAccountStore({ accountsRoot: path.join(testDir, "ipc-accounts"), getBaseHome: () => path.join(testDir, "ipc-base") });
+    const removed = store.createAccount({ label: "지울 계정" });
+    const handlers = {};
+    let settings = { theme: "system", codexAccounts: [{ id: removed.id, label: removed.label }], codexAccountId: removed.id };
+
+    fs.writeFileSync(fakeFile, FAKE_CODEX_SOURCE);
+
+    createCodexAccountIpc({
+        readSettings: () => ({ ...settings }),
+        writeSettings: (next) => {
+            settings = { ...next };
+        },
+        getCodexAccountId: () => settings.codexAccountId,
+        setCodexAccountId: () => {},
+        resolveProjectDir: () => testDir,
+        broadcast: () => {},
+        isRunning: () => false,
+        isProjectRunning: () => false,
+        launch: { command: process.execPath, prefixArgs: [fakeFile] },
+        store: store
+    }).register((channel, handler) => {
+        handlers[channel] = handler;
+    });
+
+    const pending = handlers["autopilot:remove-codex-account"]({}, removed.id);
+
+    settings = { ...settings, theme: "dark", codexAccounts: [...settings.codexAccounts, { id: "cx-0000000a", label: "새 계정" }] };
+
+    assert.equal((await pending).status, "OK");
+    assert.equal(settings.theme, "dark", "로그아웃을 기다리는 동안 바뀐 설정을 유지한다");
+    assert.deepEqual(settings.codexAccounts, [{ id: "cx-0000000a", label: "새 계정" }], "그 사이 추가한 계정은 남기고 제거한 계정만 뺀다");
+    assert.equal(settings.codexAccountId, DEFAULT_CODEX_ACCOUNT_ID);
+    assert(!fs.existsSync(removed.home));
+};
+
 const runChecks = async () => {
     const testDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "autopilot-login-"));
 
@@ -322,6 +361,7 @@ const runChecks = async () => {
         await checkCodexCli(testDir);
         await checkClaudeLogout(testDir);
         await checkReader(testDir);
+        await checkCodexRemove(testDir);
 
         console.log("Desktop login checks passed.");
     } finally {
