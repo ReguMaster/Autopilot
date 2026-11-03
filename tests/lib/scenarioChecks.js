@@ -669,7 +669,10 @@ const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(fs.readFileSync(path.join(projectDir, "docs/autopilot/proposals/plan-codex.md"), "utf8"), "# Codex 기획안\n\n1) 한 줄 요약\n");
     assert.equal(fs.readFileSync(path.join(projectDir, "docs/autopilot/proposals/plan-review-codex.md"), "utf8"), "- Codex 검토: 빈자리 하나\n");
     assert.match(fs.readFileSync(path.join(projectDir, "prompt.txt"), "utf8"), /독립적으로 쓴다[\s\S]*plan-codex\.md`\(Codex 안\)를 읽고 `docs\/autopilot\/proposals\/plan-review-claude\.md`/);
-    assert.match(fs.readFileSync(codexLog, "utf8"), /^exec -s read-only --color never -\n너는 제품 기획자이자 테크 리드다[\s\S]*10\) 위험과 가정[\s\S]*검토자다/m);
+    assert.match(
+        fs.readFileSync(codexLog, "utf8"),
+        /^exec -s read-only --color never -m gpt-6\.1-sol -c model_reasoning_effort=high -\n너는 제품 기획자이자 테크 리드다[\s\S]*10\) 위험과 가정[\s\S]*검토자다/m
+    );
     assert.deepEqual(phaseUtil.readPhase(phaseFile).proposals, { phase: "plan", candidates: ["claude", "codex"], picked: null });
     checkDesktopLogContract(firstRun.data);
 
@@ -723,14 +726,14 @@ const checkBrainstorm = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(getLines(firstRun).filter((line) => line.includes("진행")).length, 0);
     checkDesktopLogContract(slowRun.data);
 
-    // 모델·Effort를 고르면 Codex 호출마다 넘기고 헤더에 남기고, 고르지 않았으면 인자도 헤더도 없다(위의 첫 실행).
+    // 모델·Effort를 고르면 Codex 호출마다 넘기고 헤더에 남기고, 고르지 않았으면 기본값(gpt-6.1-sol, high)을 넘기고 남긴다(위의 첫 실행).
     const settingsDir = createProject("brainstorm settings 한글");
     const settingsRun = await runBrainstorm(settingsDir, { codexModel: "gpt-6-luna", codexEffort: "high" });
     const settingsCalls = fs.readFileSync(codexLog, "utf8").split("---\n").slice(-2);
 
     assert.equal(settingsRun.status, STATUS_OK, settingsRun.error?.msg);
     assert.match(readLog(settingsRun), /^Codex : model gpt-6-luna, effort high$/m);
-    assert.doesNotMatch(readLog(firstRun), /^Codex : /m);
+    assert.match(readLog(firstRun), /^Codex : model gpt-6\.1-sol, effort high$/m);
     assert.equal(settingsCalls.length, 2);
     checkDesktopLogContract(settingsRun.data);
 
@@ -826,20 +829,20 @@ const checkCodexRunner = async (scenarioRunner, context, fakeCliFile) => {
     assert.match(codexRun.logText, /^\d{2}:\d{2}:\d{2} \[세션\] 0199a213-81c0-7800-8aa1-bbab2a035a53 \(codex resume/m);
     assert.match(fs.readFileSync(codexRun.reportFile, "utf8"), /Codex gpt-6-luna high[\s\S]*codex resume 0199a213/);
 
-    // 실행 중 set으로 바꾸면 다음 회차부터 Codex가 돈다. 비운 model은 Codex 설정을 따르고 인자를 넘기지 않는다.
+    // 실행 중 set으로 바꾸면 다음 회차부터 Codex가 돈다. 고르지 않은 model은 기본값이다.
     const switchRun = await runCodex("codex switch 한글", { runner: "claude", mode: "to-codex" });
 
     assert.match(switchRun.startLines[0], /\(model opus, effort high\)$/);
-    assert.match(switchRun.startLines[1], /\(Codex, model 기본값, effort low\)$/);
+    assert.match(switchRun.startLines[1], /\(Codex, model gpt-6\.1-sol, effort low\)$/);
     assert.deepEqual(
         switchRun.rounds.map((round) => [round.runner, round.model, round.effort]),
         [
             ["claude", "opus", "high"],
-            ["codex", "", "low"]
+            ["codex", "gpt-6.1-sol", "low"]
         ]
     );
     assert.equal(switchRun.codexCalls.length, 1);
-    assert(switchRun.codexCalls[0].startsWith("exec --json --color never --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=low -\n"));
+    assert(switchRun.codexCalls[0].startsWith("exec --json --color never --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol -c model_reasoning_effort=low -\n"));
 
     // Codex를 쓸 수 없으면 그 회차는 Claude로 돌리고 이유를 남긴다.
     const fallbackRun = await runCodex("codex fallback 한글", { env: { AP_CODEX_LOGIN: "0" }, limits: { minMinutes: 0, maxRounds: 1, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] } });
@@ -1035,7 +1038,7 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
         "[단계] 기획 확인 대기"
     ]);
     assert.equal(failRun.data.rounds.length, 1);
-    assert.match(failCodexCalls[1], /^exec -s read-only --color never -\n[\s\S]*지금까지 주고받은 말:\nClaude: [\s\S]*Codex: /);
+    assert.match(failCodexCalls[1], /^exec -s read-only --color never -m gpt-6\.1-sol -c model_reasoning_effort=high -\n[\s\S]*지금까지 주고받은 말:\nClaude: [\s\S]*Codex: /);
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(failDir)).proposals, { phase: "plan", candidates: ["claude", "codex"], picked: null });
     assert.equal(phaseUtil.readPhase(getPhaseFile(failDir)).debate, null);
 
@@ -1180,7 +1183,7 @@ const checkHybrid = async (scenarioRunner, context, fakeCliFile) => {
         ["codex", "claude", "claude"]
     );
     assert.match(readLog(mixedRun), /^Main : 기획 Codex, 디자인 Claude, 개발 Claude, 테스트\/QA Claude, 보안검토 Claude$/m);
-    assert.match(readLog(mixedRun), /^\[1회차\] 시작 - 남은 시간 \d+분 \(Codex, model 기본값, effort 기본값\)$/m);
+    assert.match(readLog(mixedRun), /^\[1회차\] 시작 - 남은 시간 \d+분 \(Codex, model gpt-6\.1-sol, effort high\)$/m);
     assert.match(readLog(mixedRun), /^\[2회차\] 시작 - 남은 시간 \d+분 \(model opus, effort high\)$/m);
     assert.deepEqual(getLines(mixedRun, ["단계"]), [
         "[단계] 기획 시작",
@@ -1275,8 +1278,11 @@ const checkHybrid = async (scenarioRunner, context, fakeCliFile) => {
     assert.match(debateClaudeCalls[0], /너는 \[기획\] 협의에 참여한 Claude다[\s\S]*아래 Codex의 발언에 답한다[\s\S]*<CLAUDE_안>\n# Claude 기획안[\s\S]*<CODEX_안>[\s\S]*Codex의 발언: /);
     assert.match(debateClaudeCalls[1], /--resume 11111111-2222-3333-4444-555555555555[\s\S]*2\/2번째 주고받기다\. 이번이 마지막 주고받기다/);
     assert.equal(debateCodexCalls.length, 2);
-    assert.match(debateCodexCalls[0], /^exec -s read-only --color never -\n너는 \[기획\] 협의에 참여한 Codex다[\s\S]*두 안을 읽고 먼저 Claude 안을 네 안과 비교해 의견을 말한다/);
-    assert.match(debateCodexCalls[1], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 -c sandbox_mode=read-only -\nClaude의 답:/);
+    assert.match(
+        debateCodexCalls[0],
+        /^exec -s read-only --color never -m gpt-6\.1-sol -c model_reasoning_effort=high -\n너는 \[기획\] 협의에 참여한 Codex다[\s\S]*두 안을 읽고 먼저 Claude 안을 네 안과 비교해 의견을 말한다/
+    );
+    assert.match(debateCodexCalls[1], /^exec resume 01a18d02-d1e7-7b20-831e-d85c25a2b4f2 -c sandbox_mode=read-only -m gpt-6\.1-sol -c model_reasoning_effort=high -\nClaude의 답:/);
     assert.match(splitCalls(codexLog).at(-1), /협의가 끝났다[\s\S]*두 안\(`docs\/autopilot\/plan\.md`, `docs\/autopilot\/proposals\/plan-claude\.md`\)/);
     assert.deepEqual(phaseUtil.readPhase(getPhaseFile(debateDir)).debate, {
         phase: "plan",

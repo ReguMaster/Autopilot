@@ -88,7 +88,7 @@ const runCli = async (args = process.argv.slice(2)) => {
         }
 
         const { model, effort, runner, codexModel, codexEffort } = requestRoundOptionsResult.data.roundOptions;
-        const codexText = codexModel === undefined && codexEffort === undefined ? "" : `, Codex model ${codexModel || "(default)"}, effort ${codexEffort || "(default)"}`;
+        const codexText = codexModel === undefined && codexEffort === undefined ? "" : `, Codex model ${codexModel ?? "(default)"}, effort ${codexEffort ?? "(default)"}`;
 
         log.info(`AutoPilot will use ${runner ?? "(default runner)"}, model ${model ?? "(default)"}, effort ${effort ?? "(default)"}${codexText} from the next round.`);
 

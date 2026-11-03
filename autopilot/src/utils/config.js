@@ -55,11 +55,11 @@ const PROVIDER_CLAUDE = "claude";
 const PROVIDER_CODEX = "codex";
 const AI_PROVIDERS = [PROVIDER_CLAUDE, PROVIDER_CODEX];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
-// Codex에 넘기는 model(Codex가 쓰는 이름, 예: gpt-6.1-sol)과 reasoning effort. 비우면 Codex 설정(~/.codex/config.toml)을 따른다.
+// Codex에 넘기는 model(Codex가 쓰는 이름, 예: gpt-6.1-sol)과 reasoning effort. Codex 설정(~/.codex/config.toml)을 따르지 않고 늘 값을 지정해 넘긴다.
 const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
-// 인자로는 빈 값을 넘길 수 없어서 Codex 설정을 따르게 되돌릴 때 쓰는 값(--codex-model default). 엔진 안에서는 빈 문자열이다.
-const CODEX_DEFAULT_VALUE = "default";
+const DEFAULT_CODEX_MODEL = "gpt-6.1-sol";
+const DEFAULT_CODEX_EFFORT = "high";
 // 회차를 실행하는 에이전트(--runner). 유지 보수는 실행 중 set으로 다음 회차부터 바꿀 수 있다. 신규 개발은 단계마다 --main이 정하고 --runner는 --main에 없는 단계의 기본값이다.
 const RUNNERS = AI_PROVIDERS;
 const DEFAULT_RUNNER = PROVIDER_CLAUDE;
@@ -170,7 +170,8 @@ export {
     PROVIDER_LABELS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
-    CODEX_DEFAULT_VALUE,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT,
     RUNNERS,
     DEFAULT_RUNNER,
     PROPOSALS_DIR,

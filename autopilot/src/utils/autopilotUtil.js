@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import {
     CODEX_EFFORT_LEVELS,
     CODEX_MODEL_PATTERN,
+    DEFAULT_CODEX_EFFORT,
+    DEFAULT_CODEX_MODEL,
     DEFAULT_EFFORT,
     DEFAULT_MODEL,
     DEFAULT_RUNNER,
@@ -178,7 +180,6 @@ const getRunEnv = (options) => {
 };
 
 // 회차마다 읽는 실행 값 변경 파일(실행 에이전트, Claude·Codex의 model·effort). 허용된 값만 돌려주고, JSON이 깨져 있으면 예외를 던진다.
-// Codex의 빈 값은 Codex 설정을 따르라는 뜻이라 그대로 둔다.
 const readRoundOptions = (roundOptionsFile) => {
     const text = fileUtil.readTextFile(roundOptionsFile);
 
@@ -193,8 +194,8 @@ const readRoundOptions = (roundOptionsFile) => {
         ...(util.isValidModel(savedOptions?.model) ? { model: savedOptions.model } : {}),
         ...(EFFORT_LEVELS.includes(savedOptions?.effort) ? { effort: savedOptions.effort } : {}),
         ...(RUNNERS.includes(savedOptions?.runner) ? { runner: savedOptions.runner } : {}),
-        ...(typeof codexModel === "string" && (codexModel === "" || CODEX_MODEL_PATTERN.test(codexModel)) ? { codexModel: codexModel } : {}),
-        ...(savedOptions?.codexEffort === "" || CODEX_EFFORT_LEVELS.includes(savedOptions?.codexEffort) ? { codexEffort: savedOptions.codexEffort } : {})
+        ...(typeof codexModel === "string" && CODEX_MODEL_PATTERN.test(codexModel) ? { codexModel: codexModel } : {}),
+        ...(CODEX_EFFORT_LEVELS.includes(savedOptions?.codexEffort) ? { codexEffort: savedOptions.codexEffort } : {})
     };
 };
 
@@ -216,14 +217,14 @@ const writeRoundOptions = (roundOptionsFile, roundOptions) => {
     return nextOptions;
 };
 
-// 우선순위: 실행 중 변경 파일 > 실행 인자 > 기본값. Codex의 model·effort 기본값은 빈 값(Codex 설정을 따름)이다.
+// 우선순위: 실행 중 변경 파일 > 실행 인자 > 기본값.
 const getRoundOptions = (startOptions, savedOptions) => {
     return {
         model: savedOptions.model || startOptions.model || DEFAULT_MODEL,
         effort: savedOptions.effort || startOptions.effort || DEFAULT_EFFORT,
         runner: savedOptions.runner || startOptions.runner || DEFAULT_RUNNER,
-        codexModel: savedOptions.codexModel ?? startOptions.codexModel ?? "",
-        codexEffort: savedOptions.codexEffort ?? startOptions.codexEffort ?? ""
+        codexModel: savedOptions.codexModel || startOptions.codexModel || DEFAULT_CODEX_MODEL,
+        codexEffort: savedOptions.codexEffort || startOptions.codexEffort || DEFAULT_CODEX_EFFORT
     };
 };
 

@@ -35,7 +35,7 @@ const getCommitItemHtml = (commitInfo) => {
     return `<li><code>${escapeHtml(commitInfo.hash)}</code> ${escapeHtml(commitInfo.subject)} <span class="meta">${escapeHtml(commitInfo.stat)}</span></li>`;
 };
 
-// Codex 회차는 턴 수·비용을 알려 주지 않으므로 실행 값만 쓴다. 비운 Codex 값은 Codex 설정을 따른 것이다.
+// Codex 회차는 턴 수·비용을 알려 주지 않으므로 실행 값만 쓴다. 옛 로그에서 읽은 비운 Codex 값은 Codex 설정을 따른 것이다.
 const getRoundCardHtml = (roundInfo) => {
     const isCodex = roundInfo.runner === "codex";
     const usage = isCodex

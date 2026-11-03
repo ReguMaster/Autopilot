@@ -15,6 +15,8 @@ import {
     DEFAULT_QA_ON_FAIL,
     DEFAULT_RUNNER,
     CODEX_RUNNER,
+    DEFAULT_CODEX_EFFORT,
+    DEFAULT_CODEX_MODEL,
     DEFAULT_SECURITY_ON_FAIL,
     DEFAULT_SECURITY_REVIEW,
     EFFORT_LEVELS,
@@ -27,7 +29,7 @@ import { ui } from "./uiStore.js";
 
 // 시작 전에 고르는 값(실행 에이전트·모델·노력·추론·정책·종료 시각·작업·한도 연장·작업 모드와 신규 개발 설정). 실행 중에는 엔진에 전달된 값을 따라간다.
 // model은 계열이고, modelId는 알약에 보여줄 값(계열 별칭이거나 엔진이 쓰는 모델 ID)이다. endTime은 HH:mm이거나 yyyy-MM-dd HH:mm(날짜 지정)이다.
-// Claude(model·effort)와 Codex(codexModel·codexEffort, 빈 값은 Codex 설정을 따름)의 모델·노력(추론)은 늘 둘 다 갖고, 누가 일하는지와 무관하다.
+// Claude(model·effort)와 Codex(codexModel·codexEffort)의 모델·노력(추론)은 늘 둘 다 갖고, 누가 일하는지와 무관하다.
 // 유지 보수는 runner가 회차를 돌리는 AI이고, 신규 개발은 mains(단계마다 메인 AI, 비면 Claude)가 정한다.
 const useComposerStore = create(() => ({
     runner: DEFAULT_RUNNER,
@@ -51,8 +53,8 @@ const useComposerStore = create(() => ({
     crossReview: false,
     debate: [],
     debateTurns: DEFAULT_DEBATE_TURNS,
-    codexModel: "",
-    codexEffort: ""
+    codexModel: DEFAULT_CODEX_MODEL,
+    codexEffort: DEFAULT_CODEX_EFFORT
 }));
 
 // 체크를 바꾼 목록. 순서는 고를 수 있는 값의 순서로 맞춰 저장 값이 흔들리지 않게 한다.

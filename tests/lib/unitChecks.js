@@ -188,18 +188,18 @@ const checkCommandArgs = () => {
         assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
     }
 
-    // 실행 에이전트와 Codex의 model·effort도 실행 중에 바꾼다. default는 Codex 설정을 따르라는 빈 값이다.
-    assert.deepEqual(parseSetArgs([...project, "--runner", "codex", "--codex-model", "gpt-6.1-sol", "--codex-effort", "default"]), {
+    // 실행 에이전트와 Codex의 model·effort도 실행 중에 바꾼다. Codex 설정을 따르는 빈 값(default)은 없고 늘 값을 지정한다.
+    assert.deepEqual(parseSetArgs([...project, "--runner", "codex", "--codex-model", "gpt-6.1-sol", "--codex-effort", "low"]), {
         projectDir: "C:\\work\\demo project",
         runner: "codex",
         codexModel: "gpt-6.1-sol",
-        codexEffort: ""
+        codexEffort: "low"
     });
-    assert.deepEqual(parseSetArgs([...project, "--codex-model", "default"]), { projectDir: "C:\\work\\demo project", codexModel: "" });
 
     for (const invalidArgs of [
         [...project, "--runner", "gemini"],
         [...project, "--codex-model", "gpt 6"],
+        [...project, "--codex-effort", "default"],
         [...project, "--codex-effort", "ultra"]
     ]) {
         assert.throws(() => parseSetArgs(invalidArgs), undefined, `set ${invalidArgs.join(" ")}`);
@@ -282,7 +282,7 @@ const checkBrainstormRules = (context) => {
 
     assert.throws(() => parseRunArgs([...project, "--main", "plan=codex"]), /--mode build/);
 
-    // Codex의 model·effort는 브레인스토밍과 함께만 받고, 비우면 인자를 넘기지 않아 Codex 설정을 따른다.
+    // Codex의 model·effort는 브레인스토밍과 함께만 받는다.
     assert.deepEqual(parseRunArgs([...build, "--brainstorm", "plan", "--codex-model", "gpt-6.1-sol", "--codex-effort", "xhigh"]), {
         projectDir: "C:\\work\\demo project",
         mode: "build",

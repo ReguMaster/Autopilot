@@ -9,7 +9,6 @@ import {
     DEBATE_TURNS_LIMIT,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
-    CODEX_DEFAULT_VALUE,
     DESIGN_FORMATS,
     EFFORT_LEVELS,
     GATE_PHASES,
@@ -31,7 +30,7 @@ import util from "./util.js";
 
 const HELP_TEXT = [
     "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--skip design,qa,security] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--security-review on|strict] [--no-open]",
-    "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol|default] [--codex-effort high|default]",
+    "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol] [--codex-effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>",
     "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
 ].join("\n");
@@ -81,7 +80,7 @@ const parseOptionValue = (args, index) => {
     return value;
 };
 
-// 회차 실행 값. Codex의 model·effort는 default를 빈 문자열(Codex 설정을 따름)로 바꾼다.
+// 회차 실행 값. Codex의 model·effort는 비우지 못하고 늘 값을 지정한다.
 const parseRoundOptions = (options) => {
     if (options.model && !util.isValidModel(options.model)) {
         throw new Error(`잘못된 model 값입니다 (${MODEL_CHOICES.join(" | ")} 또는 claude-로 시작하는 모델 ID).`);
@@ -95,18 +94,12 @@ const parseRoundOptions = (options) => {
         throw new Error(`--runner 값은 ${RUNNERS.join(" | ")} 중 하나여야 합니다.`);
     }
 
-    for (const key of ["codexModel", "codexEffort"]) {
-        if (options[key] === CODEX_DEFAULT_VALUE) {
-            options[key] = "";
-        }
+    if (options.codexModel !== undefined && !CODEX_MODEL_PATTERN.test(options.codexModel)) {
+        throw new Error("--codex-model 값은 영문으로 시작하는 Codex 모델 이름이어야 합니다 (예: gpt-6.1-sol).");
     }
 
-    if (options.codexModel && !CODEX_MODEL_PATTERN.test(options.codexModel)) {
-        throw new Error(`--codex-model 값은 영문으로 시작하는 Codex 모델 이름이나 ${CODEX_DEFAULT_VALUE}여야 합니다 (예: gpt-6.1-sol).`);
-    }
-
-    if (options.codexEffort && !CODEX_EFFORT_LEVELS.includes(options.codexEffort)) {
-        throw new Error(`--codex-effort 값은 ${[...CODEX_EFFORT_LEVELS, CODEX_DEFAULT_VALUE].join(" | ")} 중 하나여야 합니다.`);
+    if (options.codexEffort !== undefined && !CODEX_EFFORT_LEVELS.includes(options.codexEffort)) {
+        throw new Error(`--codex-effort 값은 ${CODEX_EFFORT_LEVELS.join(" | ")} 중 하나여야 합니다.`);
     }
 };
 

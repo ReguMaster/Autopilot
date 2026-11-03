@@ -32,8 +32,10 @@ const DEFAULT_SECURITY_REVIEW = "off";
 const BRAINSTORM_PHASES = ["plan", "design"];
 const AI_PROVIDERS = ["claude", "codex"];
 const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
-// Codex에 넘기는 reasoning effort(엔진 config.js의 CODEX_EFFORT_LEVELS). 비우면 Codex 설정을 따른다.
+// Codex에 넘기는 model·reasoning effort의 기본값과 허용 단계(엔진 config.js의 DEFAULT_CODEX_*·CODEX_EFFORT_LEVELS). Codex 설정을 따르지 않고 늘 값을 지정한다.
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+const DEFAULT_CODEX_MODEL = "gpt-6.1-sol";
+const DEFAULT_CODEX_EFFORT = "high";
 // 회차를 돌리는 에이전트(엔진 config.js의 RUNNERS·DEFAULT_RUNNER)
 const DEFAULT_RUNNER = "claude";
 const CODEX_RUNNER = "codex";
@@ -81,6 +83,8 @@ export {
     AI_PROVIDERS,
     PROVIDER_LABELS,
     CODEX_EFFORT_LEVELS,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT,
     DEFAULT_RUNNER,
     CODEX_RUNNER,
     DEFAULT_DEBATE_TURNS,

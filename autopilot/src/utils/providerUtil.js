@@ -5,7 +5,7 @@ import { PROVIDER_LABELS } from "./config.js";
 // Claude와 따로 안을 내는 AI 제공자. 새 제공자는 실행 파일 이름과 인자만 더한다.
 // 사용자 텍스트는 stdin으로만 넘겨 CMD 래퍼에서도 인자 검사를 통과한다. 최종 답변은 stdout으로 받는다(진행 표시는 stderr).
 // 협의는 같은 대화를 이어 가야 하므로 stderr 머리말의 세션 아이디로 resume한다. resume은 -s를 받지 않아 설정 덮어쓰기로 읽기 전용을 건다.
-// model·effort는 비우면 인자를 넘기지 않아 Codex 설정을 따른다. effort는 설정 덮어쓰기(-c)로만 넘길 수 있다.
+// model·effort는 있는 것만 인자로 넘긴다(엔진은 늘 값을 채워 부른다). effort는 설정 덮어쓰기(-c)로만 넘길 수 있다.
 // 회차 실행(--runner codex)은 Claude 회차의 --dangerously-skip-permissions와 같은 권한으로 돌고, 진행을 JSONL 이벤트로 받는다(streamUtil.handleCodexEvent).
 const PROVIDERS = {
     codex: {

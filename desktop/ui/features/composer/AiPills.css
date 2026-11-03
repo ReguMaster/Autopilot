@@ -171,13 +171,6 @@
     height: 196px;
 }
 
-/* Codex는 추론 단계를 Codex 설정에 맡길 수 있어서, 켜 두면 슬라이드가 잠긴다. 제목 줄 오른쪽에 둔다 */
-.ai-follow {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
 .ai-follow small {
     color: var(--muted);
     font-weight: 600;

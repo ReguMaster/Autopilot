@@ -18,6 +18,8 @@ import {
     BUILD_PHASES,
     PHASE_DONE,
     PHASE_LABELS,
+    DEFAULT_CODEX_EFFORT,
+    DEFAULT_CODEX_MODEL,
     DEFAULT_DESIGN_FORMAT,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_SECURITY_ON_FAIL,
@@ -91,7 +93,7 @@ const writeRunHeader = (context) => {
         ...(runState.mode === MODE_BUILD && Object.values(runState.mains).includes(PROVIDER_CODEX)
             ? [`Main : ${BUILD_PHASES.map((phase) => `${PHASE_LABELS[phase]} ${PROVIDER_LABELS[runState.mains[phase]]}`).join(", ")}`]
             : []),
-        ...(isCodexInvolved(runState, options) && (options.codexModel || options.codexEffort) ? [`Codex : model ${options.codexModel || "기본값"}, effort ${options.codexEffort || "기본값"}`] : []),
+        ...(isCodexInvolved(runState, options) ? [`Codex : model ${options.codexModel || DEFAULT_CODEX_MODEL}, effort ${options.codexEffort || DEFAULT_CODEX_EFFORT}`] : []),
         `Log : ${runState.logFile}`,
         `Report : ${runState.reportFile}`,
         ...runState.repos.filter((repo) => repo.isLinked).map((repo) => `Linked : ${repo.name} (${repo.dir})`)
@@ -528,13 +530,9 @@ const getRoundAgent = async (context, roundOptions, runner) => {
     return { runner: PROVIDER_CODEX, model: roundOptions.codexModel, effort: roundOptions.codexEffort, ready: ready };
 };
 
-// 회차 시작 줄의 실행 값. Claude는 지금까지의 형식 그대로이고, Codex는 앞에 이름을 붙이며 비운 값은 기본값이라고 쓴다(앱 파서가 읽는다).
+// 회차 시작 줄의 실행 값. Claude는 지금까지의 형식 그대로이고, Codex는 앞에 이름을 붙인다(앱 파서가 읽는다).
 const getAgentLabel = (agent) => {
-    if (agent.runner !== PROVIDER_CODEX) {
-        return `model ${agent.model}, effort ${agent.effort}`;
-    }
-
-    return `Codex, model ${agent.model || "기본값"}, effort ${agent.effort || "기본값"}`;
+    return `${agent.runner === PROVIDER_CODEX ? "Codex, " : ""}model ${agent.model}, effort ${agent.effort}`;
 };
 
 const runRound = async (context, loopState, remainingMinutes) => {

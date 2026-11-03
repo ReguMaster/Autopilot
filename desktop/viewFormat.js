@@ -217,7 +217,7 @@ const formatOptions = (model, effort) => {
     return model ? `${formatModelName(model)} · ${formatEffort(effort)}` : "-";
 };
 
-// 회차를 돌린 에이전트까지 담은 실행 값. Codex는 앞에 이름을 붙이고, 비운 값(Codex 설정을 따름)은 기본이라고 쓴다.
+// 회차를 돌린 에이전트까지 담은 실행 값. Codex는 앞에 이름을 붙인다. 비운 값은 Codex 설정을 따르던 옛 로그의 것이라 기본이라고 쓴다.
 const formatAgentOptions = (runner, model, effort) => {
     if (runner !== "codex") {
         return formatOptions(model, effort);
@@ -1170,7 +1170,7 @@ const describePastRun = (run, nowMs) => {
 const TRANSCRIPT_LIMIT = 1500;
 const TRANSCRIPT_TEXT_LENGTH = 600;
 const TRANSCRIPT_ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
-// Codex가 돌린 회차는 괄호 앞에 "Codex, "가 붙고, Codex 설정을 따른 값은 "기본값"이다(러너 파서와 같다).
+// Codex가 돌린 회차는 괄호 앞에 "Codex, "가 붙는다. 옛 로그에는 Codex 설정을 따른 값이 "기본값"으로 남아 있다(러너 파서와 같다).
 const TRANSCRIPT_ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \((Codex, )?model (\S+), effort (\S+)\))?/;
 const TRANSCRIPT_CODEX_DEFAULT_LABEL = "기본값";
 const TRANSCRIPT_COMMIT_PATTERN = /^\[커밋\] (\S+) \+(\d+) -(\d+) ?(.*)$/;

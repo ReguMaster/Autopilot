@@ -198,28 +198,28 @@ const checkComposer = async ({ runStore, composerStore }) => {
     composer.chooseEffort(0);
     composer.chooseEffort(1);
     assert.equal(sent.length, 1, "전달 중에 또 바뀌어도 바로 또 보내지 않는다");
-    assert.deepEqual(sent[0], { model: "haiku", effort: "xhigh", runner: "claude", codexModel: "", codexEffort: "" }, "처음 바뀐 시점의 선택이 먼저 나간다");
+    assert.deepEqual(sent[0], { model: "haiku", effort: "xhigh", runner: "claude", codexModel: "gpt-6.1-sol", codexEffort: "high" }, "처음 바뀐 시점의 선택이 먼저 나간다");
 
     release();
     await wait(10);
     assert.equal(sent.length, 2, "끝난 뒤 마지막 선택만 한 번 더 보낸다");
-    assert.deepEqual(sent[1], { model: "haiku", effort: "medium", runner: "claude", codexModel: "", codexEffort: "" });
+    assert.deepEqual(sent[1], { model: "haiku", effort: "medium", runner: "claude", codexModel: "gpt-6.1-sol", codexEffort: "high" });
 
     release();
     await wait(10);
 
     // 모델·노력은 AI마다 따로 정하고 누가 일하는지(runner)는 바꾸지 않는다. Codex의 모델·추론도 실행 중에 바로 보낸다.
-    composer.chooseCodexModel("gpt-6.1-sol");
+    composer.chooseCodexModel("gpt-6-luna");
     release();
     await wait(10);
-    composer.chooseCodexEffort("high");
+    composer.chooseCodexEffort("low");
     release();
     await wait(10);
     assert.deepEqual(
         sent.slice(2).map((options) => [options.runner, options.codexModel, options.codexEffort]),
         [
-            ["claude", "gpt-6.1-sol", ""],
-            ["claude", "gpt-6.1-sol", "high"]
+            ["claude", "gpt-6-luna", "high"],
+            ["claude", "gpt-6-luna", "low"]
         ]
     );
 
@@ -240,10 +240,10 @@ const checkComposer = async ({ runStore, composerStore }) => {
     assert.equal(useComposerStore.getState().model, "haiku");
     assert.equal(useComposerStore.getState().runner, "claude");
 
-    runStore.applyRunState(createState({ status: "running", requested: { runner: "codex", model: "claude-haiku-4-5", effort: "medium", codexModel: "", codexEffort: "low" } }));
+    runStore.applyRunState(createState({ status: "running", requested: { runner: "codex", model: "claude-haiku-4-5", effort: "medium", codexModel: "gpt-6.1-sol", codexEffort: "low" } }));
     composer.syncFromRun(runStore.useRunStore.getState().state);
-    assert.deepEqual([useComposerStore.getState().runner, useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["codex", "", "low"]);
-    composer.setSelectedOptions({ model: "claude-haiku-4-5", effort: "medium", runner: "claude", codexModel: "", codexEffort: "" });
+    assert.deepEqual([useComposerStore.getState().runner, useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["codex", "gpt-6.1-sol", "low"]);
+    composer.setSelectedOptions({ model: "claude-haiku-4-5", effort: "medium", runner: "claude", codexModel: "gpt-6.1-sol", codexEffort: "high" });
 
     runStore.applyRunState(createState({ status: "idle" }));
     composer.chooseModel("opus");
@@ -480,8 +480,8 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
         crossReview: false,
         debate: [],
         debateTurns: 8,
-        codexModel: "",
-        codexEffort: ""
+        codexModel: "gpt-6.1-sol",
+        codexEffort: "high"
     });
     composer.setSecurityOnFail("retry:3");
 
@@ -508,14 +508,14 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.equal(useComposerStore.getState().debateTurns, 8);
 
     // Codex의 model·effort는 보내기를 끄거나 Codex를 꺼도 고른 값을 남긴다.
-    composer.setCodexModel("gpt-6.1-sol");
-    composer.setCodexEffort("high");
-    assert.deepEqual([composer.getModeOptions().codexModel, composer.getModeOptions().codexEffort], ["gpt-6.1-sol", "high"]);
+    composer.setCodexModel("gpt-6-luna");
+    composer.setCodexEffort("xhigh");
+    assert.deepEqual([composer.getModeOptions().codexModel, composer.getModeOptions().codexEffort], ["gpt-6-luna", "xhigh"]);
     composer.toggleAllow("send");
     composer.toggleAllow("send");
+    assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["gpt-6-luna", "xhigh"]);
+    composer.loadSettings({ codexModel: "gpt-6.1-sol", codexEffort: "high" }, ["codexModel", "codexEffort"]);
     assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["gpt-6.1-sol", "high"]);
-    composer.loadSettings({ codexModel: "", codexEffort: "" }, ["codexModel", "codexEffort"]);
-    assert.deepEqual([useComposerStore.getState().codexModel, useComposerStore.getState().codexEffort], ["", ""]);
 
     // 단계에 Codex를 보조로 켜면(메인이 Claude인 단계의 나란히 비교 · 협의) 보내기도 켜지고, 보내기를 끄면 Codex 보조가 있던 단계는 브레인스토밍 · 협의가 함께 꺼진다.
     const getBrainstormState = () => {

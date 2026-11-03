@@ -676,11 +676,6 @@ body[data-view="run"] #policy-chip {
     font-size: var(--text-xs);
 }
 
-/* Codex 설정을 따르는 Effort는 파형을 점선으로 그려 고른 단계와 구별한다 */
-.wave.is-auto path {
-    stroke-dasharray: 2.4 2.2;
-}
-
 /* Effort 팝오버 머리: 어느 AI의 무엇을 고르는지 제공자 로고와 그 AI가 부르는 이름으로 알린다 */
 .choice-head {
     display: flex;

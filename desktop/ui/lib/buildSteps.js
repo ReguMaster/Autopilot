@@ -73,20 +73,7 @@ const CROSS_REVIEW_OPTIONS = [
 const getCodexModelOptions = (models, current) => {
     const extra = current && !models.some((model) => model.id === current) ? [{ value: current, label: current }] : [];
 
-    return [{ value: "", label: "기본 모델", hint: "Codex 설정" }, ...models.map((model) => ({ value: model.id, label: model.label })), ...extra];
-};
-
-// Codex 설정을 따를 때 실제로 쓰이는 값. codex는 메인이 알려 준 { models, defaults }이고, 모르면 빈 값이다.
-// Effort는 Codex 설정이 먼저이고, 없으면 쓰일 모델(고른 모델이나 설정의 모델)의 기본 Effort다.
-const getCodexDefaults = (codex, codexModel = "") => {
-    const models = codex?.models ?? [];
-    const defaults = codex?.defaults ?? { model: "", effort: "" };
-    const findModel = (id) => models.find((model) => model.id === id);
-
-    return {
-        modelLabel: defaults.model ? findModel(defaults.model)?.label || defaults.model : "",
-        effort: defaults.effort || findModel(codexModel || defaults.model)?.defaultEffort || ""
-    };
+    return [...models.map((model) => ({ value: model.id, label: model.label })), ...extra];
 };
 
 // 그 단계의 보조 방식(none: 보조 없이, compare: 나란히 비교, debate: 협의). 협의는 나란히 비교의 한 갈래라 brainstorm과 debate에 함께 든다.
@@ -448,7 +435,6 @@ export {
     CROSS_REVIEW_OPTIONS,
     getSecurityReviewOptions,
     getCodexModelOptions,
-    getCodexDefaults,
     getBrainstormMode,
     MAX_ON_FAIL_RETRIES,
     getMaxRetries,

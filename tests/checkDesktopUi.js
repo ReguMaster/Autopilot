@@ -282,7 +282,7 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
     assert.equal((compact.match(/data-state="done"/g) ?? []).length, 2);
 };
 
-// Codex 선택 상자: 값이 비면 Codex 설정을 따르는 기본 항목이 맨 앞에 있고, 저장된 모델이 목록에 없어도 고른 값은 보인다.
+// Codex 선택 상자: Codex가 알려 준 목록 그대로이고(Codex 설정을 따르는 기본 항목은 없다), 저장된 모델이 목록에 없어도 고른 값은 보인다.
 const checkCodexOptions = ({ getCodexModelOptions }) => {
     const models = [
         { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
@@ -291,12 +291,12 @@ const checkCodexOptions = ({ getCodexModelOptions }) => {
 
     assert.deepEqual(
         getCodexModelOptions(models, "gpt-6-luna").map((option) => option.value),
-        ["", "gpt-6.1-sol", "gpt-6-luna"]
+        ["gpt-6.1-sol", "gpt-6-luna"]
     );
     assert.deepEqual(
-        getCodexModelOptions([], "").map((option) => option.value),
-        [""],
-        "목록을 못 읽어도 기본 항목은 있다"
+        getCodexModelOptions([], "gpt-6.1-sol").map((option) => option.value),
+        ["gpt-6.1-sol"],
+        "목록을 못 읽어도 고른 값은 보인다"
     );
     assert.deepEqual(
         getCodexModelOptions(models, "gpt-9")
@@ -403,7 +403,7 @@ const checkPhaseAgents = ({ getMain, getAssistant, getOtherProvider, getMainPhas
     assert.deepEqual(getLevelNames("claude"), ["Low", "Medium", "High", "Extra High", "Max"]);
     assert.deepEqual(getLevelNames("codex"), getLevelNames("claude"));
     assert.deepEqual(getLevelValues("codex"), ["low", "medium", "high", "xhigh", "max"]);
-    assert.deepEqual([LEVEL_INFO[2].tags.claude, LEVEL_INFO[2].tags.codex], ["기본값", "깊게"], "Claude는 가운데가 기본값이고 Codex는 기본이 따로 있다");
+    assert.deepEqual([LEVEL_INFO[2].tags.claude, LEVEL_INFO[2].tags.codex], ["기본값", "기본값"], "가운데(High)가 두 AI 모두의 기본값이다");
     assert.ok(LEVEL_INFO.every((info) => info.desc && info.tags.claude && info.tags.codex));
 };
 
@@ -442,17 +442,17 @@ const checkInlineControls = ({ renderSelect, renderSeg, renderStepper, renderEff
     assert.match(withIcons, /aria-disabled="true"[^>]*data-icon=""/);
     assert.equal((withIcons.match(/aria-disabled="true"/g) ?? []).length, 1);
 
-    // 노력·추론 슬라이드: 단계 이름과 설명이 칸마다 바뀌고, Codex 설정을 따르는 중이면 잠긴다.
+    // 노력·추론 슬라이드: 단계 이름과 설명이 칸마다 바뀌고, 잠그면 비활성이다.
     const high = renderEffortSlider({ provider: "claude", level: 2, onChange: () => {} });
     const maxLevel = renderEffortSlider({ provider: "claude", level: 4, onChange: () => {} });
-    const following = renderEffortSlider({ provider: "codex", level: 1, disabled: true, onChange: () => {} });
+    const locked = renderEffortSlider({ provider: "codex", level: 1, disabled: true, onChange: () => {} });
 
     assert.match(high, /class="slider" data-provider="claude" data-level="2"/);
     assert.match(high, /aria-label="노력"[^>]*aria-valuetext="High, 기본값"/);
     assert.match(high, /<b>High<\/b>[\s\S]*대부분의 작업에 알맞은 균형이에요/);
     assert.match(maxLevel, /data-level="4"[\s\S]*<b>Max<\/b>[\s\S]*가장 깊게/);
-    assert.match(following, /data-provider="codex" data-level="1" data-off=""/);
-    assert.match(following, /disabled=""[^>]*aria-label="추론"/);
+    assert.match(locked, /data-provider="codex" data-level="1" data-off=""/);
+    assert.match(locked, /disabled=""[^>]*aria-label="추론"/);
     assert.equal((high.match(/<i><\/i>/g) ?? []).length, 5, "다섯 칸 점");
 
     const slid = renderSeg({ name: "m", label: "모드", options: options, value: "b", onChange: () => {}, slide: true });

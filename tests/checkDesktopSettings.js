@@ -170,8 +170,14 @@ const checkNormalize = () => {
     assert.deepEqual(normalizeOverrides({ debateTurns: 21 }), {});
     assert.deepEqual(normalizeOverrides({ debateTurns: 3.5 }), {});
     assert.deepEqual(normalizeOverrides({ debateTurns: "5" }), {});
-    // Codex의 model·effort: 기본은 비어 있어(Codex 설정을 따름) 인자를 넘기지 않고, 엔진이 받는 값만 저장한다.
-    assert.deepEqual([buildDefaults.codexModel, buildDefaults.codexEffort], ["", ""]);
+    // Codex의 model·effort: Codex 설정을 따르지 않고 늘 값을 지정한다. 기본값이 있고, 엔진이 받는 값만 저장한다(빈 값은 받지 않는다).
+    assert.deepEqual([buildDefaults.codexModel, buildDefaults.codexEffort], ["gpt-6.1-sol", "high"]);
+    assert.deepEqual(normalizeOverrides({ codexModel: "", codexEffort: "" }), {});
+    assert.deepEqual(
+        [normalizeSettings({ codexModel: "", codexEffort: "" }).codexModel, normalizeSettings({ codexModel: "", codexEffort: "" }).codexEffort],
+        ["gpt-6.1-sol", "high"],
+        "옛 파일의 빈 값은 기본값이 된다"
+    );
     assert.deepEqual(normalizeOverrides({ codexModel: "gpt-6.1-sol", codexEffort: "xhigh" }), { codexModel: "gpt-6.1-sol", codexEffort: "xhigh" });
     assert.deepEqual(normalizeOverrides({ codexModel: "gpt 6; rm", codexEffort: "ultra" }), {});
     assert.deepEqual(normalizeOverrides({ codexModel: "--model", codexEffort: 3 }), {});

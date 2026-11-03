@@ -35,8 +35,7 @@ const PROVIDERS = {
         models: [
             { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
             { id: "gpt-6-astra", label: "GPT-6-Astra" }
-        ],
-        defaults: { model: "gpt-6.1-sol", effort: "medium" }
+        ]
     }
 };
 const MODELS = [
@@ -81,9 +80,9 @@ const finished = (number, startedAt, minutes, commits, overrides = {}) => ({
     ...overrides
 });
 const current = (number, startedAt, overrides = {}) => ({ ...finished(number, startedAt, 0, []), endedAt: 0, outcome: "", ...overrides });
-const CODEX = { model: "", effort: "", runner: "codex" };
-// Codex가 메인인 단계의 실행 상태(Codex 설정을 따르는 model·effort는 빈 값)
-const CODEX_RUN = { runner: "codex", model: "", effort: "", requested: { runner: "codex", model: "claude-opus-5-5", effort: "high", codexModel: "", codexEffort: "" } };
+const CODEX = { model: "gpt-6.1-sol", effort: "high", runner: "codex" };
+// Codex가 메인인 단계의 실행 상태
+const CODEX_RUN = { runner: "codex", model: "gpt-6.1-sol", effort: "high", requested: { runner: "codex", model: "claude-opus-5-5", effort: "high", codexModel: "gpt-6.1-sol", codexEffort: "high" } };
 
 // 신규 개발 한 건의 회차(기획 1 · 디자인 2 · 개발 3~5 · 테스트/QA 6 · 보안검토 7). 시작·끝은 실행 시작부터의 분이다.
 const BUILD_ROUNDS = [

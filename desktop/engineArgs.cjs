@@ -28,11 +28,11 @@ const DEFAULT_SECURITY_REVIEW = "off";
 // 여러 AI 브레인스토밍을 켤 수 있는 단계와 회차를 돌리고 안을 내는 AI(엔진 config.js의 BRAINSTORM_PHASES·AI_PROVIDERS).
 const BRAINSTORM_PHASES = ["plan", "design"];
 const AI_PROVIDERS = ["claude", "codex"];
-// Codex에 넘기는 model(Codex가 쓰는 이름)과 reasoning effort. 엔진 config.js의 CODEX_MODEL_PATTERN·CODEX_EFFORT_LEVELS와 같고, 비우면 Codex 설정을 따른다.
+// Codex에 넘기는 model(Codex가 쓰는 이름)과 reasoning effort. 엔진 config.js의 CODEX_MODEL_PATTERN·CODEX_EFFORT_LEVELS·DEFAULT_CODEX_*와 같고, Codex 설정을 따르지 않고 늘 값을 넘긴다.
 const CODEX_MODEL_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,62}$/;
 const CODEX_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
-// 인자로 빈 값을 넘길 수 없어 Codex 설정을 따르게 되돌릴 때 쓰는 값(엔진 config.js의 CODEX_DEFAULT_VALUE)
-const CODEX_DEFAULT_VALUE = "default";
+const DEFAULT_CODEX_MODEL = "gpt-6.1-sol";
+const DEFAULT_CODEX_EFFORT = "high";
 // 회차를 실행하는 에이전트(엔진 config.js의 RUNNERS·DEFAULT_RUNNER). 기본값이면 인자를 생략한다.
 const RUNNERS = ["claude", "codex"];
 const DEFAULT_RUNNER = "claude";
@@ -113,9 +113,9 @@ const hasSecurityReview = ({ mode, mains, securityReview = DEFAULT_SECURITY_REVI
     return mode === "build" && securityReview !== DEFAULT_SECURITY_REVIEW && !skip.includes("security") && (getOtherProvider(getMains(mains).security) === "claude" || allow.includes("send"));
 };
 
-// Codex가 관여하는 실행(회차를 돌리거나 보조로 안을 냄)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다). 비어 있으면 Codex 설정을 따르므로 생략한다.
+// Codex가 관여하는 실행(회차를 돌리거나 보조로 안을 냄)에만 Codex의 model·effort를 넘긴다(엔진이 그 밖에는 거부한다).
 // 유지 보수는 --runner로 회차를 돌릴 AI를 고르고, 신규 개발은 단계마다 --main이 정하므로 --runner를 보내지 않는다(저장된 실행 에이전트가 새어 들지 않게).
-const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", codexEffort = "", brainstorm = [], allow, skip = [], securityReview }) => {
+const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = DEFAULT_CODEX_MODEL, codexEffort = DEFAULT_CODEX_EFFORT, brainstorm = [], allow, skip = [], securityReview }) => {
     const isBuild = mode === "build";
     const args = !isBuild && runner !== DEFAULT_RUNNER ? ["--runner", runner] : [];
     const usesCodex = isBuild
@@ -125,7 +125,7 @@ const getCodexArgs = ({ mode, runner = DEFAULT_RUNNER, mains, codexModel = "", c
         : runner === "codex";
 
     if (usesCodex) {
-        args.push(...(codexModel ? ["--codex-model", codexModel] : []), ...(codexEffort ? ["--codex-effort", codexEffort] : []));
+        args.push("--codex-model", codexModel, "--codex-effort", codexEffort);
     }
 
     return args;
@@ -292,7 +292,8 @@ module.exports = {
     AI_PROVIDERS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
-    CODEX_DEFAULT_VALUE,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT,
     RUNNERS,
     DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS,

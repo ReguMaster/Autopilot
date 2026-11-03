@@ -8,7 +8,7 @@ const MAX_LEVEL = LEVEL_INFO.length - 1;
 const BURST_MS = 700;
 
 // 노력(Claude)·추론(Codex)을 다섯 칸으로 고르는 슬라이드. 칸마다 이름과 한 줄 설명이 바뀌고, 단계가 오를수록 선과 글자가 검정 → 주황 → 붉은색으로 물든다.
-// 맨 끝(Max)에 닿는 순간에만 손잡이에서 고리가 한 번 퍼진다. 그 밖의 움직임은 없다. disabled면(Codex 설정을 따르는 중) 흐리게 잠근다.
+// 맨 끝(Max)에 닿는 순간에만 손잡이에서 고리가 한 번 퍼진다. 그 밖의 움직임은 없다. disabled면(실행 중 종료 신호) 흐리게 잠근다.
 const EffortSlider = ({ provider, level, onChange, disabled = false }) => {
     const names = getLevelNames(provider);
     const info = LEVEL_INFO[level];

@@ -27,6 +27,8 @@ const {
     isMains,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT,
     RUNNERS,
     DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS,
@@ -142,9 +144,9 @@ const DEFAULT_SETTINGS = {
     debate: [],
     // 협의에서 주고받는 최대 횟수. 둘 다 더 고칠 것이 없으면 그 전에 끝난다.
     debateTurns: DEBATE_DEFAULT_TURNS,
-    // Codex가 쓸 model·reasoning effort. 비우면 Codex 설정(~/.codex/config.toml)을 따른다.
-    codexModel: "",
-    codexEffort: "",
+    // Codex가 쓸 model·reasoning effort. Codex 설정을 따르지 않고 늘 지정한다(옛 파일의 빈 값은 검증에서 걸려 기본값이 된다).
+    codexModel: DEFAULT_CODEX_MODEL,
+    codexEffort: DEFAULT_CODEX_EFFORT,
     accounts: [],
     accountId: "default",
     claudeDir: "",
@@ -205,8 +207,8 @@ const SETTING_VALIDATORS = {
     // 협의로 돌릴 단계. brainstorm에 없는 단계는 엔진 인자를 만들 때 빠진다(engineArgs).
     debate: (value) => isChoiceList(value, BRAINSTORM_PHASES),
     debateTurns: (value) => Number.isInteger(value) && value >= 1 && value <= DEBATE_TURNS_LIMIT,
-    codexModel: (value) => value === "" || (typeof value === "string" && CODEX_MODEL_PATTERN.test(value)),
-    codexEffort: (value) => value === "" || CODEX_EFFORT_LEVELS.includes(value),
+    codexModel: (value) => typeof value === "string" && CODEX_MODEL_PATTERN.test(value),
+    codexEffort: (value) => CODEX_EFFORT_LEVELS.includes(value),
     accounts: (value) => Array.isArray(value),
     accountId: (value) => typeof value === "string",
     claudeDir: (value) => typeof value === "string",

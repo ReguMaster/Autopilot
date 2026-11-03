@@ -2,7 +2,7 @@ import { formatAgentOptions } from "../../../viewFormat.js";
 import { SwapText } from "../../components/SwapText.jsx";
 import { useRunStore } from "../../stores/runStore.js";
 
-// 다음 회차에 쓸 값. 그 회차를 돌리는 AI의 모델·노력(추론)이다. Codex의 빈 값은 Codex 설정을 따른다는 뜻이다.
+// 다음 회차에 쓸 값. 그 회차를 돌리는 AI의 모델·노력(추론)이다.
 const getRequestedAgent = (requested, runner) => {
     return runner === "codex" ? { runner: "codex", model: requested.codexModel, effort: requested.codexEffort } : { runner: "claude", model: requested.model, effort: requested.effort };
 };

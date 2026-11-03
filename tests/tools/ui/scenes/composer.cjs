@@ -15,11 +15,10 @@ const CODEX_PROVIDERS = {
         available: true,
         reason: "",
         models: [
-            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", defaultEffort: "low" },
-            { id: "gpt-6.1-sol-mini", label: "GPT-6.1-Sol-Mini", defaultEffort: "medium" },
-            { id: "gpt-6-luna", label: "GPT-6-Luna", defaultEffort: "medium" }
-        ],
-        defaults: { model: "gpt-6.1-sol", effort: "" }
+            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
+            { id: "gpt-6.1-sol-mini", label: "GPT-6.1-Sol-Mini" },
+            { id: "gpt-6-luna", label: "GPT-6-Luna" }
+        ]
     }
 };
 
@@ -96,7 +95,7 @@ const SCENES = [
         }
     },
     {
-        // Codex 알약: 모델은 Codex 설정을 따르는 기본이 맨 앞이고, 추론은 Codex 설정을 따르는 스위치를 끄면 슬라이드로 직접 정한다.
+        // Codex 알약: 모델은 Codex가 알려 준 목록에서 고르고, 추론은 슬라이드로 정한다.
         name: "composer-model-codex",
         init: { ...withProject, models: MODELS, model: { providers: CODEX_PROVIDERS } },
         run: async (t) => {
@@ -107,8 +106,6 @@ const SCENES = [
             await t.click('#ai-popover-codex label:has(input[value="gpt-6.1-sol-mini"])');
             await t.wait(500);
             await t.click("#ai-pill-codex");
-            await t.wait(300);
-            await t.click('#ai-popover-codex .ai-follow input[type="checkbox"]');
             await t.wait(300);
             await setSlider(t, "codex", 3);
             await t.wait(500);

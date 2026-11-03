@@ -30,6 +30,8 @@ import {
     AI_PROVIDERS as UI_AI_PROVIDERS,
     PROVIDER_LABELS as UI_PROVIDER_LABELS,
     CODEX_EFFORT_LEVELS as UI_CODEX_EFFORT_LEVELS,
+    DEFAULT_CODEX_MODEL as UI_DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT as UI_DEFAULT_CODEX_EFFORT,
     DEFAULT_RUNNER as UI_DEFAULT_RUNNER,
     CODEX_RUNNER as UI_CODEX_RUNNER,
     DEFAULT_DEBATE_TURNS as UI_DEFAULT_DEBATE_TURNS,
@@ -64,7 +66,8 @@ import {
     PROVIDER_LABELS as ENGINE_PROVIDER_LABELS,
     CODEX_MODEL_PATTERN as ENGINE_CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS as ENGINE_CODEX_EFFORT_LEVELS,
-    CODEX_DEFAULT_VALUE as ENGINE_CODEX_DEFAULT_VALUE,
+    DEFAULT_CODEX_MODEL as ENGINE_DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT as ENGINE_DEFAULT_CODEX_EFFORT,
     RUNNERS as ENGINE_RUNNERS,
     DEFAULT_RUNNER as ENGINE_DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS as ENGINE_DEBATE_DEFAULT_TURNS,
@@ -129,7 +132,8 @@ const {
     AI_PROVIDERS,
     CODEX_MODEL_PATTERN,
     CODEX_EFFORT_LEVELS,
-    CODEX_DEFAULT_VALUE,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_EFFORT,
     RUNNERS,
     DEFAULT_RUNNER,
     DEBATE_DEFAULT_TURNS,
@@ -137,9 +141,9 @@ const {
     MAX_RUN_DAYS
 } = require("../desktop/engineArgs.cjs");
 
-// 러너 상태의 요청 값. 실행 에이전트와 Codex 값을 따로 주지 않으면 Claude·빈 값이다.
+// 러너 상태의 요청 값. 실행 에이전트와 Codex 값을 따로 주지 않으면 Claude·Codex 기본값이다.
 const getRequested = (values) => {
-    return { runner: "claude", model: "", effort: "", codexModel: "", codexEffort: "", ...values };
+    return { runner: "claude", model: "", effort: "", codexModel: DEFAULT_CODEX_MODEL, codexEffort: DEFAULT_CODEX_EFFORT, ...values };
 };
 
 // 엔진 대신 실행되는 가짜 CLI. AP_MODE로 동작을 고르고 stop 인자는 STOP 파일을 만든다. 받은 인자와 환경은 ARGS_<하위 명령>·ENV_<하위 명령> 파일에 남긴다.
@@ -406,12 +410,12 @@ const checkStopSignal = async (testDir) => {
     assert.deepEqual(runner.getState().requested, getRequested({ model: "opus", effort: "high" }));
     assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low" })).status, STATUS_OK);
     assert.deepEqual(runner.getState().requested, getRequested({ model: "sonnet", effort: "low" }));
-    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --runner claude --model sonnet --effort low --codex-model default --codex-effort default`);
+    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --runner claude --model sonnet --effort low --codex-model ${DEFAULT_CODEX_MODEL} --codex-effort ${DEFAULT_CODEX_EFFORT}`);
 
-    // Codex로 바꾸면 Codex 값을 넘긴다. 비운 Codex 값은 인자로 줄 수 없어 default다. 다시 Claude로 돌려 2회차 기대값을 지킨다.
-    assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low", runner: "codex", codexModel: "gpt-6.1-sol", codexEffort: "" })).status, STATUS_OK);
-    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --runner codex --model sonnet --effort low --codex-model gpt-6.1-sol --codex-effort default`);
-    assert.deepEqual(runner.getState().requested, getRequested({ runner: "codex", model: "sonnet", effort: "low", codexModel: "gpt-6.1-sol" }));
+    // Codex로 바꾸면 Codex 값을 넘긴다. 다시 Claude로 돌려 2회차 기대값을 지킨다.
+    assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low", runner: "codex", codexModel: "gpt-6-luna", codexEffort: "low" })).status, STATUS_OK);
+    assert.equal(readTestFile("OPTIONS"), `--project ${launch.projectDir} --runner codex --model sonnet --effort low --codex-model gpt-6-luna --codex-effort low`);
+    assert.deepEqual(runner.getState().requested, getRequested({ runner: "codex", model: "sonnet", effort: "low", codexModel: "gpt-6-luna", codexEffort: "low" }));
     assert.equal((await runner.setRoundOptions({ model: "sonnet", effort: "low" })).status, STATUS_OK);
     assert.equal(readTestFile("ENV_set"), "from-runner");
 
@@ -1056,9 +1060,16 @@ const checkCliArgs = () => {
 
     // 보안검토의 독립 검토는 켰을 때만 --security-review on|strict로 넘긴다. 보안검토를 건너뛰거나, 검토자가 Codex인데 보내기를 허용하지 않았으면 빼고 보낸다(엔진이 거부한다).
     const reviewBase = { ...buildBase, gates: [], allow: ["send"] };
+    const codexTail = ["--codex-model", DEFAULT_CODEX_MODEL, "--codex-effort", DEFAULT_CODEX_EFFORT];
+    // Codex가 관여하는 실행은 맨 뒤에 Codex 인자가 붙으므로, 다른 인자만 보는 검증은 그 꼬리를 뺀다.
+    const getArgsOnly = (options) => {
+        const args = getCliArgs(options);
 
-    assert.deepEqual(getCliArgs({ ...reviewBase, securityReview: "on" }).slice(-6), ["--mode", "build", "--allow", "send", "--security-review", "on"]);
-    assert.deepEqual(getCliArgs({ ...reviewBase, securityReview: "strict", securityOnFail: "retry:1" }).slice(-8), [
+        return args.at(-4) === "--codex-model" ? args.slice(0, -4) : args;
+    };
+
+    assert.deepEqual(getCliArgs({ ...reviewBase, securityReview: "on" }).slice(-10), ["--mode", "build", "--allow", "send", "--security-review", "on", ...codexTail]);
+    assert.deepEqual(getCliArgs({ ...reviewBase, securityReview: "strict", securityOnFail: "retry:1" }).slice(-12), [
         "--mode",
         "build",
         "--allow",
@@ -1066,7 +1077,8 @@ const checkCliArgs = () => {
         "--security-on-fail",
         "retry:1",
         "--security-review",
-        "strict"
+        "strict",
+        ...codexTail
     ]);
     assert(!getCliArgs({ ...reviewBase, securityReview: "off" }).includes("--security-review"));
     assert(!getCliArgs(reviewBase).includes("--security-review"));
@@ -1074,8 +1086,8 @@ const checkCliArgs = () => {
     assert(!getCliArgs({ ...reviewBase, securityReview: "on", mode: "maintain" }).includes("--security-review"));
     assert(!getCliArgs({ ...reviewBase, allow: [], securityReview: "strict" }).includes("--security-review"), "Codex 검토자는 보내기를 허용해야 한다");
     assert.deepEqual(
-        getCliArgs({ ...reviewBase, allow: [], mains: { security: "codex" }, securityReview: "on" }).slice(-6),
-        ["--mode", "build", "--main", "security=codex", "--security-review", "on"],
+        getCliArgs({ ...reviewBase, allow: [], mains: { security: "codex" }, securityReview: "on" }).slice(-10),
+        ["--mode", "build", "--main", "security=codex", "--security-review", "on", ...codexTail],
         "메인이 Codex면 Claude가 검토해 보내기와 상관없다"
     );
     // Codex가 검토할 수 있는 실행에는 Codex의 model · effort를 넘긴다(엔진이 그 밖에는 거부한다).
@@ -1094,7 +1106,7 @@ const checkCliArgs = () => {
         "stop"
     ]);
     assert.deepEqual(getCliArgs({ ...buildBase, skip: ["design"], gates: ["design"], allow: [] }).slice(-4), ["--mode", "build", "--skip", "design"]);
-    assert.deepEqual(getCliArgs({ ...buildBase, skip: ["design"], gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["design"] }).slice(-8), [
+    assert.deepEqual(getArgsOnly({ ...buildBase, skip: ["design"], gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["design"] }).slice(-8), [
         "--mode",
         "build",
         "--skip",
@@ -1108,7 +1120,7 @@ const checkCliArgs = () => {
     assert(!getCliArgs({ ...buildBase, mode: "maintain", skip: ["design"] }).includes("--skip"), "유지 보수에는 건너뛰기가 없다");
 
     // 여러 AI 브레인스토밍은 보내기를 허용했을 때만 넘긴다(Codex에 프로젝트 내용이 나간다). 제공자는 엔진 기본값이라 생략한다.
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], crossReview: true }).slice(-6), [
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], crossReview: true }).slice(-6), [
         "build",
         "--allow",
         "send",
@@ -1116,33 +1128,33 @@ const checkCliArgs = () => {
         "plan,design",
         "--cross-review"
     ]);
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["design"] }).slice(-2), ["--brainstorm", "design"]);
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["design"] }).slice(-2), ["--brainstorm", "design"]);
     assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], brainstorm: ["plan"], crossReview: true }).slice(-2), ["--mode", "build"]);
     assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain", allow: ["send"], brainstorm: ["plan"] }), getCliArgs(base));
 
     // 협의 단계는 :debate를 붙이고, 교차검토는 나란히 비교하는 단계가 있을 때만 넘긴다. brainstorm에 없는 협의 단계는 넘기지 않는다.
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["plan"], crossReview: true }).slice(-3), [
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["plan"], crossReview: true }).slice(-3), [
         "--brainstorm",
         "plan:debate,design",
         "--cross-review"
     ]);
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan"], debate: ["plan", "design"], crossReview: true }).slice(-2), ["--brainstorm", "plan:debate"]);
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan"], debate: ["plan", "design"], crossReview: true }).slice(-2), ["--brainstorm", "plan:debate"]);
 
     // 협의 최대 횟수는 기본값과 다르고 협의하는 단계가 있을 때만 넘긴다(엔진이 협의 없는 --debate-turns를 거부한다).
     const debateBase = { ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan", "design"], debate: ["plan"] };
 
-    assert.deepEqual(getCliArgs({ ...debateBase, debateTurns: 12 }).slice(-4), ["--brainstorm", "plan:debate,design", "--debate-turns", "12"]);
+    assert.deepEqual(getArgsOnly({ ...debateBase, debateTurns: 12 }).slice(-4), ["--brainstorm", "plan:debate,design", "--debate-turns", "12"]);
     assert.deepEqual(getCliArgs({ ...debateBase, debateTurns: DEBATE_DEFAULT_TURNS }), getCliArgs(debateBase));
     assert.deepEqual(getCliArgs({ ...debateBase, debate: [], debateTurns: 12 }), getCliArgs({ ...debateBase, debate: [] }));
     assert.deepEqual(getCliArgs({ ...debateBase, brainstorm: ["design"], debateTurns: 12 }), getCliArgs({ ...debateBase, brainstorm: ["design"] }));
     assert.deepEqual(getCliArgs({ ...debateBase, allow: [], debateTurns: 12 }), getCliArgs({ ...debateBase, allow: [] }));
 
-    // Codex의 model·effort는 값이 있을 때만, 보내기를 허용해 브레인스토밍을 켰을 때만 넘긴다(비면 Codex 설정을 따른다).
+    // Codex의 model·effort는 보내기를 허용해 브레인스토밍을 켰을 때만 넘기고, 고르지 않았으면 기본값을 넘긴다.
     const codexBase = { ...buildBase, gates: [], allow: ["send"], brainstorm: ["plan"] };
 
     assert.deepEqual(getCliArgs({ ...codexBase, codexModel: "gpt-6.1-sol", codexEffort: "high" }).slice(-6), ["--brainstorm", "plan", "--codex-model", "gpt-6.1-sol", "--codex-effort", "high"]);
-    assert.deepEqual(getCliArgs({ ...codexBase, codexEffort: "xhigh" }).slice(-4), ["--brainstorm", "plan", "--codex-effort", "xhigh"]);
-    assert.deepEqual(getCliArgs({ ...codexBase, codexModel: "", codexEffort: "" }), getCliArgs(codexBase));
+    assert.deepEqual(getCliArgs({ ...codexBase, codexEffort: "xhigh" }).slice(-6), ["--brainstorm", "plan", "--codex-model", DEFAULT_CODEX_MODEL, "--codex-effort", "xhigh"]);
+    assert.deepEqual(getCliArgs(codexBase).slice(-6), ["--brainstorm", "plan", "--codex-model", DEFAULT_CODEX_MODEL, "--codex-effort", DEFAULT_CODEX_EFFORT]);
     assert.deepEqual(getCliArgs({ ...codexBase, allow: [], codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs({ ...codexBase, allow: [] }));
     assert.deepEqual(getCliArgs({ ...codexBase, brainstorm: [], codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs({ ...codexBase, brainstorm: [] }));
     assert.deepEqual(getCliArgs({ ...codexBase, mode: "maintain", codexModel: "gpt-6.1-sol", codexEffort: "high" }), getCliArgs(base));
@@ -1156,7 +1168,7 @@ const checkCliArgs = () => {
         "--codex-effort",
         "high"
     ]);
-    assert.deepEqual(getCliArgs({ ...base, runner: "codex", codexModel: "", codexEffort: "" }).slice(-2), ["--runner", "codex"]);
+    assert.deepEqual(getCliArgs({ ...base, runner: "codex" }).slice(-6), ["--runner", "codex", "--codex-model", DEFAULT_CODEX_MODEL, "--codex-effort", DEFAULT_CODEX_EFFORT]);
     assert.deepEqual(getCliArgs({ ...base, runner: "claude" }), getCliArgs(base));
 
     // 단계마다 메인(없으면 claude)과 보조(반대쪽 AI): Codex 보조는 보내기를 허용해야 하고 Claude 보조는 허용과 상관없다(엔진 phaseUtil과 같다).
@@ -1170,18 +1182,25 @@ const checkCliArgs = () => {
     assert.deepEqual(getAssistedPhases({ mode: "maintain", mains: {}, brainstorm: ["plan"], allow: ["send"] }), []);
 
     // 신규 개발은 --runner를 보내지 않는다(저장된 실행 에이전트가 새어 들지 않게). 단계마다 메인은 --main이 정하고, 기본(claude)이 아닌 단계만 넘긴다.
-    assert.deepEqual(getCliArgs({ ...codexBase, runner: "codex", codexModel: "gpt-6.1-sol" }).slice(-4), ["--brainstorm", "plan", "--codex-model", "gpt-6.1-sol"]);
+    assert.deepEqual(getCliArgs({ ...codexBase, runner: "codex", codexModel: "gpt-6.1-sol" }).slice(-6), [
+        "--brainstorm",
+        "plan",
+        "--codex-model",
+        "gpt-6.1-sol",
+        "--codex-effort",
+        DEFAULT_CODEX_EFFORT
+    ]);
     assert(!getCliArgs({ ...buildBase, runner: "codex" }).includes("--runner"));
     assert.deepEqual(
         getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "claude", build: "claude" } }),
         getCliArgs({ ...buildBase, gates: [], allow: [] }),
         "모두 기본이면 --main을 보내지 않는다"
     );
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex", security: "codex" } }).slice(-4), ["--mode", "build", "--main", "plan=codex,security=codex"]);
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: [], mains: { plan: "codex", security: "codex" } }).slice(-4), ["--mode", "build", "--main", "plan=codex,security=codex"]);
     assert.deepEqual(getCliArgs({ ...buildBase, mode: "maintain", mains: { plan: "codex" } }), getCliArgs(base), "유지 보수에는 --main이 없다");
 
     // 메인이 Codex이면 보조는 Claude라서 보내기를 허용하지 않아도 브레인스토밍한다. Codex가 메인이므로 Codex의 model·effort도 넘긴다.
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan"], crossReview: true, codexModel: "gpt-6.1-sol" }).slice(-9), [
+    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan"], crossReview: true, codexModel: "gpt-6.1-sol" }).slice(-11), [
         "--mode",
         "build",
         "--main",
@@ -1190,9 +1209,11 @@ const checkCliArgs = () => {
         "plan",
         "--cross-review",
         "--codex-model",
-        "gpt-6.1-sol"
+        "gpt-6.1-sol",
+        "--codex-effort",
+        DEFAULT_CODEX_EFFORT
     ]);
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan"], debate: ["plan"], debateTurns: 5 }).slice(-6), [
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan"], debate: ["plan"], debateTurns: 5 }).slice(-6), [
         "--main",
         "plan=codex",
         "--brainstorm",
@@ -1202,7 +1223,7 @@ const checkCliArgs = () => {
     ]);
 
     // 메인이 Claude이면 보조는 Codex라서 보내기가 필요하다. 허용하지 않은 단계는 브레인스토밍에서 빠지고, 남은 단계가 없으면 관련 인자도 없다.
-    assert.deepEqual(getCliArgs({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan", "design"], crossReview: true }).slice(-5), [
+    assert.deepEqual(getArgsOnly({ ...buildBase, gates: [], allow: [], mains: { plan: "codex" }, brainstorm: ["plan", "design"], crossReview: true }).slice(-5), [
         "--main",
         "plan=codex",
         "--brainstorm",
@@ -1230,7 +1251,7 @@ const checkCliArgs = () => {
 };
 
 // 신규 개발: 로그의 Mode 헤더와 단계 줄을 상태로 읽고, 엔진 status의 단계 상태를 검증해 읽는다.
-// Codex가 돌린 회차 시작 줄은 실행 에이전트를 codex로 읽고, 기본값(Codex 설정을 따름)은 빈 값으로 둔다. 실행 값이 없는 옛 줄은 앞 회차 값을 이어 쓴다.
+// Codex가 돌린 회차 시작 줄은 실행 에이전트를 codex로 읽고, 옛 로그의 기본값(Codex 설정을 따름)은 빈 값으로 둔다. 실행 값이 없는 옛 줄은 앞 회차 값을 이어 쓴다.
 const checkRunnerLogs = () => {
     const state = createInitialState();
 
@@ -1756,7 +1777,8 @@ const checkChoiceSync = () => {
         [CODEX_EFFORT_LEVELS, UI_CODEX_EFFORT_LEVELS, ENGINE_CODEX_EFFORT_LEVELS],
         [DEFAULT_RUNNER, UI_DEFAULT_RUNNER, ENGINE_DEFAULT_RUNNER],
         [RUNNERS, [UI_DEFAULT_RUNNER, UI_CODEX_RUNNER], ENGINE_RUNNERS],
-        [CODEX_DEFAULT_VALUE, CODEX_DEFAULT_VALUE, ENGINE_CODEX_DEFAULT_VALUE],
+        [DEFAULT_CODEX_MODEL, UI_DEFAULT_CODEX_MODEL, ENGINE_DEFAULT_CODEX_MODEL],
+        [DEFAULT_CODEX_EFFORT, UI_DEFAULT_CODEX_EFFORT, ENGINE_DEFAULT_CODEX_EFFORT],
         [DEBATE_DEFAULT_TURNS, UI_DEFAULT_DEBATE_TURNS, ENGINE_DEBATE_DEFAULT_TURNS],
         [DEBATE_TURNS_LIMIT, UI_DEBATE_TURNS_LIMIT, ENGINE_DEBATE_TURNS_LIMIT]
     ]) {

@@ -11,7 +11,7 @@ import { useMergedRef } from "../../hooks/useMergedRef.js";
 import { getModelsNote, useModels } from "../../hooks/useModels.js";
 import { useReplayOnChange } from "../../hooks/useReplay.js";
 import { useWidthTween } from "../../hooks/useWidthTween.js";
-import { getCodexDefaults, getCodexModelOptions } from "../../lib/buildSteps.js";
+import { getCodexModelOptions } from "../../lib/buildSteps.js";
 import { CODEX_EFFORT_LEVELS, CODEX_RUNNER, DEFAULT_EFFORT_LEVEL, DEFAULT_RUNNER, EFFORT_LEVELS, MODEL_FAMILIES, OPTIONS_LOCKED_TITLE, PHASE_LABELS, PROVIDER_LABELS } from "../../lib/constants.js";
 import { PROVIDER_LOGOS, getMainPhases, getOtherProvider } from "../../lib/phaseAgents.js";
 import { useAppStore } from "../../stores/appStore.js";
@@ -26,12 +26,8 @@ const TERMS = { claude: "노력", codex: "추론" };
 const TERM_NOTES = { claude: "얼마나 애써서 생각할지 정해요", codex: "답을 내기 전에 얼마나 따져 볼지 정해요" };
 const PINNED_LOCKED_TITLE = "고정한 버전은 실행 중에 바꿀 수 없어요";
 
-// Codex 모델의 알약 이름. 기본 모델은 Codex 설정의 모델을, 그것도 모르면 Codex라고 쓴다. 목록에 없는 모델은 받은 이름 그대로다.
+// Codex 모델의 알약 이름. 목록에 없는 모델은 받은 이름 그대로다.
 const getCodexChipName = (codex, codexModel) => {
-    if (!codexModel) {
-        return getCodexDefaults(codex).modelLabel || "Codex";
-    }
-
     return codex?.models?.find((model) => model.id === codexModel)?.label || codexModel;
 };
 
@@ -107,7 +103,7 @@ const ClaudeModels = ({ family, isStopping, isIdle, pins, models, onPick }) => {
     );
 };
 
-// Codex 모델 목록. 쓸 수 있는지 아직 모르면 확인 중, 쓸 수 없으면 이유를 보인다. 기본 모델은 Codex 설정이 지금 무엇인지 함께 보인다.
+// Codex 모델 목록. 쓸 수 있는지 아직 모르면 확인 중, 쓸 수 없으면 이유를 보인다.
 const CodexModels = ({ codex, codexModel, isStopping, onPick }) => {
     if (!codex || !codex.available) {
         return (
@@ -119,21 +115,18 @@ const CodexModels = ({ codex, codexModel, isStopping, onPick }) => {
         );
     }
 
-    const defaultLabel = getCodexDefaults(codex).modelLabel;
-    const defaultDesc = defaultLabel ? `Codex 설정 · ${defaultLabel}` : "Codex 설정을 따라요";
-
     return (
         <div className="model-list">
             {getCodexModelOptions(codex.models ?? [], codexModel).map((option) => (
                 <ModelRow
-                    key={option.value || "default"}
+                    key={option.value}
                     name="model-codex"
                     value={option.value}
                     isChecked={codexModel === option.value}
                     isDisabled={isStopping}
                     lockedTitle={OPTIONS_LOCKED_TITLE}
                     title={option.label}
-                    desc={option.value ? "" : defaultDesc}
+                    desc=""
                     onPick={() => onPick(option.value)}
                 />
             ))}
@@ -215,14 +208,11 @@ const AiPill = ({ provider }) => {
     const popoverRef = useRef(null);
     const models = useModels(isClaude && isOpen);
 
-    // 노력(추론) 단계와 알약에 보일 이름. Codex 설정을 따를 때는 설정이나 모델의 기본 단계를 보이고 파형은 점선이다.
-    const defaultEffort = getCodexDefaults(codex, codexModel).effort;
-    const isAuto = !isClaude && codexEffort === "";
-    const codexShownEffort = isAuto ? defaultEffort : codexEffort;
-    const shownEffort = isClaude ? EFFORT_LEVELS[effort] : codexShownEffort;
+    // 노력(추론) 단계와 알약에 보일 이름
+    const shownEffort = isClaude ? EFFORT_LEVELS[effort] : codexEffort;
     const levelIndex = isClaude ? effort : CODEX_EFFORT_LEVELS.indexOf(shownEffort);
     const level = levelIndex < 0 ? DEFAULT_EFFORT_LEVEL : levelIndex;
-    const levelName = isAuto && !defaultEffort ? "기본" : formatEffort(shownEffort, provider);
+    const levelName = formatEffort(shownEffort, provider);
     const modelName = isClaude ? formatModelName(pins[modelId] || modelId) : getCodexChipName(codex, codexModel);
     const signature = `${provider}|${modelName}|${levelName}`;
     const chipRef = useMergedRef(useWidthTween(signature), useReplayOnChange(signature, "model-swap"));
@@ -289,7 +279,7 @@ const AiPill = ({ provider }) => {
                 <Icon symbol={PROVIDER_LOGOS[provider]} className="mark logo" />
                 <span className="ai-model">{modelName}</span>
                 <i className="ai-dot" aria-hidden="true"></i>
-                <Wave level={level} isAuto={isAuto} />
+                <Wave level={level} />
                 <span className="ai-level">{levelName}</span>
                 <Icon symbol="icon-lock" className="lock" />
                 <Icon symbol="icon-chevron" className="chevron" />
@@ -323,16 +313,9 @@ const AiPill = ({ provider }) => {
                 </div>
                 <div className="ai-sec">
                     {TERMS[provider]}
-                    {isClaude ? (
-                        <small>{TERM_NOTES[provider]}</small>
-                    ) : (
-                        <span className="ai-follow">
-                            <small>Codex 설정 따르기</small>
-                            <Switch isOn={isAuto} isDisabled={isStopping} label="Codex 설정을 따라요" onChange={(checked) => composer.chooseCodexEffort(checked ? "" : CODEX_EFFORT_LEVELS[level])} />
-                        </span>
-                    )}
+                    <small>{TERM_NOTES[provider]}</small>
                 </div>
-                <EffortSlider provider={provider} level={level} disabled={isStopping || isAuto} onChange={changeLevel} />
+                <EffortSlider provider={provider} level={level} disabled={isStopping} onChange={changeLevel} />
                 <PopoverFoot provider={provider} mode={mode} mains={mains} runner={runner} isLocked={isStopping} codexReason={codexReason} />
             </Popover>
         </>

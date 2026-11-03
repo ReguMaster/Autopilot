@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const { spawn, spawnSync, execFile } = require("node:child_process");
 const { StringDecoder } = require("node:string_decoder");
 const { isProjectLogFile } = require("./projectFiles.cjs");
-const { CODEX_DEFAULT_VALUE } = require("./engineArgs.cjs");
+const { DEFAULT_CODEX_MODEL, DEFAULT_CODEX_EFFORT } = require("./engineArgs.cjs");
 
 const STATUS_OK = "OK";
 const STATUS_FAILED = "FAILED";
@@ -40,7 +40,7 @@ const MAX_DISPUTES = 10;
 const MAX_DISPUTE_TEXT_LENGTH = 600;
 const DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/;
 const ROUND_PATTERN = /^\[(\d+)회차\] (.+)$/;
-// Codex가 돌린 회차는 괄호 앞에 "Codex, "가 붙고, Codex 설정을 따른 값은 "기본값"이다(앱 안에서는 빈 값).
+// Codex가 돌린 회차는 괄호 앞에 "Codex, "가 붙는다. 옛 로그에는 Codex 설정을 따른 값이 "기본값"으로 남아 있어 앱 안에서는 빈 값으로 읽는다.
 const ROUND_START_PATTERN = /^시작 - 남은 시간 \d+분(?: \((Codex, )?model (\S+), effort (\S+)\))?/;
 const CODEX_DEFAULT_LABEL = "기본값";
 const RETRY_PATTERN = /^(\d+)분 후 재시도/;
@@ -70,7 +70,7 @@ const createInitialState = () => {
         runner: "claude",
         model: "",
         effort: "",
-        requested: { runner: "claude", model: "", effort: "", codexModel: "", codexEffort: "" },
+        requested: { runner: "claude", model: "", effort: "", codexModel: DEFAULT_CODEX_MODEL, codexEffort: DEFAULT_CODEX_EFFORT },
         project: "",
         deadlineAt: 0,
         policy: "",
@@ -734,8 +734,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
     };
 
     // 같은 엔진에 set을 전달한다. 진행 중인 회차에는 영향이 없고 다음 회차부터 적용된다.
-    // Codex의 빈 model·effort(Codex 설정을 따름)는 인자로 넘길 수 없어 default로 보낸다.
-    const setRoundOptions = ({ model, effort, runner = "claude", codexModel = "", codexEffort = "" }) => {
+    const setRoundOptions = ({ model, effort, runner = "claude", codexModel = DEFAULT_CODEX_MODEL, codexEffort = DEFAULT_CODEX_EFFORT }) => {
         return new Promise((resolve) => {
             if (!isActive() || state.status !== "running") {
                 resolve(createFailure("NOT_RUNNING", "실행 중일 때만 변경할 수 있어요."));
@@ -743,7 +742,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
                 return;
             }
 
-            const args = ["--runner", runner, "--model", model, "--effort", effort, "--codex-model", codexModel || CODEX_DEFAULT_VALUE, "--codex-effort", codexEffort || CODEX_DEFAULT_VALUE];
+            const args = ["--runner", runner, "--model", model, "--effort", effort, "--codex-model", codexModel, "--codex-effort", codexEffort];
 
             execEngine(launch, "set", args, (error, stdout, stderr) => {
                 if (error) {
@@ -757,7 +756,7 @@ const createRunner = ({ onLog, onState, attachPollMs = ATTACH_POLL_MS }) => {
 
                 state.requested = { runner: runner, model: model, effort: effort, codexModel: codexModel, codexEffort: codexEffort };
 
-                const label = runner === "codex" ? `Codex(model ${codexModel || CODEX_DEFAULT_LABEL}, effort ${codexEffort || CODEX_DEFAULT_LABEL})` : `model ${model}, effort ${effort}`;
+                const label = runner === "codex" ? `Codex(model ${codexModel}, effort ${codexEffort})` : `model ${model}, effort ${effort}`;
 
                 addLines("app", [`[앱] 다음 회차부터 ${label}을(를) 적용해요.`]);
                 resolve({ status: STATUS_OK });
