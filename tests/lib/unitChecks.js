@@ -350,7 +350,7 @@ const checkBrainstormRules = (context) => {
     assert.throws(() => parseApproveArgs([...project, "--pick", "gpt"]), /--pick/);
 
     const { getPhaseTransition, getStartPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null, phaseHeads: {} };
     const limits = { qa: 3, security: 3 };
     const proposals = { phase: "plan", candidates: ["claude", "codex"], picked: null };
 
@@ -582,7 +582,7 @@ const checkDebateRules = (context) => {
 
     // 협의를 마친 단계는 확인받기 설정과 상관없이 멈추고, 돌려보내면 협의도 다시 한다. 협의가 생기기 전의 상태 파일은 debate가 null이다.
     const { getPhaseTransition, getStartPhase, readPhase } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null, phaseHeads: {} };
     const oldPhaseFile = path.join(context.testDir, "old-phase.json");
 
     assert.deepEqual(getPhaseTransition(plan, "pass", [], { qa: 3, security: 3 }, [], debate), { state: { ...plan, phase: "design", awaiting: "plan", debate: debate }, event: "await" });
@@ -684,7 +684,7 @@ const checkDebateRules = (context) => {
 // 단계 전환: 확인받기로 둔 단계에서 멈추고, 테스트/QA·보안검토 실패는 단계마다 정한 횟수까지 개발로 되돌린다.
 const checkPhaseRules = (context) => {
     const { getPhaseTransition, getStartPhase, readPhase, isPhaseState } = phaseUtil;
-    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
+    const plan = { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null, phaseHeads: {} };
     const limits = { qa: 3, security: 2 };
 
     assert.deepEqual(getPhaseTransition(plan, "pass", [], limits), { state: { ...plan, phase: "design" }, event: "next" });
@@ -789,9 +789,24 @@ const checkPhaseRules = (context) => {
 
     fs.mkdirSync(path.dirname(oldPhaseFile), { recursive: true });
     fs.writeFileSync(oldPhaseFile, JSON.stringify({ phase: "qa", awaiting: null, qaRetries: 2 }));
-    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
+    assert.deepEqual(readPhase(oldPhaseFile), { phase: "qa", awaiting: null, qaRetries: 2, securityRetries: 0, proposals: null, debate: null, receivedProposal: null, phaseHeads: {} });
     fs.writeFileSync(oldPhaseFile, "null");
     assert.deepEqual(readPhase(oldPhaseFile), plan);
+
+    // 단계 시작점(phaseHeads)은 모르는 단계·해시가 아닌 값을 받지 않고, 취소 복구 범위가 되돌릴 자리와 남길 상태를 정한다.
+    const heads = { plan: "a1b2c3d", design: "b2c3d4e", build: "c3d4e5f" };
+
+    assert(isPhaseState({ ...plan, phaseHeads: heads }));
+    assert(!isPhaseState({ ...plan, phaseHeads: { plan: "not-a-hash" } }));
+    assert(!isPhaseState({ ...plan, phaseHeads: { deploy: "a1b2c3d" } }));
+    assert(!isPhaseState({ ...plan, phaseHeads: [] }));
+    assert.deepEqual(phaseUtil.getRestorePlan({ ...plan, phaseHeads: heads }, "state"), { target: null, state: null });
+    assert.deepEqual(phaseUtil.getRestorePlan({ ...plan, phaseHeads: heads }, "all"), { target: "a1b2c3d", state: null });
+    assert.deepEqual(phaseUtil.getRestorePlan({ ...plan, phase: "design", awaiting: "plan", phaseHeads: heads }, "phase"), { target: "a1b2c3d", state: { ...plan, phaseHeads: { plan: "a1b2c3d" } } });
+    assert.deepEqual(phaseUtil.getRestorePlan({ ...plan, phase: "build", qaRetries: 2, phaseHeads: heads }, "phase"), { target: "c3d4e5f", state: { ...plan, phase: "build", phaseHeads: heads } });
+    assert.deepEqual(phaseUtil.getRestorePlan({ ...plan, phase: "qa", qaRetries: 2, phaseHeads: { ...heads, qa: "d4e5f6a" } }, "phase").state.qaRetries, 2);
+    assert.throws(() => phaseUtil.getRestorePlan({ ...plan, phase: "qa" }, "phase"), /시작한 시점이 기록되지 않았습니다/);
+    assert.throws(() => phaseUtil.getRestorePlan(plan, "all"), /시작한 시점이 기록되지 않았습니다/);
 
     // 신규 개발의 허용 체크만 정책에 덧붙는다. 보내기를 켜지 않았으면 외부 도구 금지를 덧붙인다.
     assert.equal(getAutopilotPolicy("ai/autopilot"), getAutopilotPolicy("ai/autopilot", null));

@@ -9,7 +9,6 @@ body[data-home] .composer {
     min-height: 0;
     padding: 28px var(--gutter) 14px;
     overflow-y: auto;
-    scrollbar-width: thin;
 }
 
 .home > *,
@@ -33,7 +32,7 @@ body[data-home] .composer {
 }
 
 .home h1 {
-    max-width: 15em;
+    max-width: 22em;
     color: var(--muted);
     font-size: var(--title-xl);
     font-weight: 600;
@@ -406,7 +405,8 @@ body[data-home] .composer {
     text-align: left;
     transition:
         box-shadow 0.28s var(--ease-out),
-        translate 0.28s var(--ease-out);
+        translate 0.28s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .home-start-card:hover {

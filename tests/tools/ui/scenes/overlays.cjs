@@ -3,9 +3,17 @@ const { ACCOUNTS, CODEX_ACCOUNTS, DAY, HOUR, MODELS, NOW, PROJECT, RUNS, RUN_LIN
 const callNames = async (t) => JSON.stringify((await t.calls()).map((call) => call[0]));
 const callsWithArgs = async (t) => JSON.stringify(await t.calls());
 
-const openSettings = async (t) => {
+const SECTION_IDS = ["general", "project", "run", "build", "ai", "data"];
+
+// 설정은 레일 오른쪽 본문 전체를 덮는 페이지다. section을 주면 그 항목을 보고 연다.
+const openSettings = async (t, section = "") => {
     await t.click("#settings-toggle");
     await t.wait(700);
+
+    if (section) {
+        await t.click(`#settings-nav-${section}`);
+        await t.wait(600);
+    }
 };
 
 const SCENES = [
@@ -14,11 +22,13 @@ const SCENES = [
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS, settings: { projectDir: PROJECT, modelVersions: { opus: "claude-opus-4-8" } } },
         run: async (t) => {
             await openSettings(t);
-            await t.shot("panel-top", "#settings");
-            await t.scrollTo("#settings .panel-scroll", 380);
-            await t.shot("panel-middle", "#settings");
-            await t.scrollTo("#settings .panel-scroll", 9999);
-            await t.shot("panel-bottom", "#settings");
+
+            for (const section of SECTION_IDS) {
+                await t.click(`#settings-nav-${section}`);
+                await t.wait(600);
+                await t.shot(`section-${section}`, "#settings");
+            }
+
             await t.shot("page-open", "", { skipDom: true });
         }
     },
@@ -27,7 +37,8 @@ const SCENES = [
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS, settings: { projectDir: PROJECT, linkedRepos: ["C:/work/mireu-web", "C:/work/mireu-admin"] } },
         run: async (t) => {
             await t.shot("ready-peek", "", { skipDom: true });
-            await openSettings(t);
+            await t.click("#linked-repo-peek");
+            await t.wait(700);
             await t.shot("linked-repos", "#settings");
             await t.click("#linked-repos .repo-item .button");
             await t.shot("linked-repos-removed", "#settings");
@@ -47,42 +58,43 @@ const SCENES = [
         },
         run: async (t) => {
             await openSettings(t);
-            await t.shot("panel-top", "#settings");
-            await t.scrollTo("#settings .panel-scroll", 9999);
-            await t.shot("panel-bottom", "#settings");
+            await t.shot("general", "#settings");
+            await t.click("#settings-nav-ai");
+            await t.wait(600);
+            await t.shot("ai", "#settings");
+            await t.click("#settings-nav-data");
+            await t.wait(600);
+            await t.shot("data", "#settings");
         }
     },
     {
+        // 실행 중에는 범위가 있는 값(실행·신규 개발·AI 기본값)이 잠기고, 앱 전체 값(일반)은 그대로다.
         name: "settings-panel-running",
         init: { ...withProject, state: runningState(), accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {
-            await openSettings(t);
-            await t.shot("panel-top", "#settings");
-            await t.note(
-                "heights",
-                await t.eval(
-                    `JSON.stringify([...document.querySelectorAll("#settings .panel-scroll > *")].map((node) => [node.className || node.tagName, Math.round(node.getBoundingClientRect().height * 10) / 10]))`
-                )
-            );
-            await t.scrollTo("#settings .panel-scroll", 9999);
-            await t.note(
-                "scroll",
-                await t.eval(`(() => { const el = document.querySelector("#settings .panel-scroll"); return JSON.stringify([el.scrollTop, el.scrollHeight, el.clientHeight]); })()`)
-            );
-            await t.shot("panel-bottom", "#settings");
+            await openSettings(t, "run");
+            await t.shot("run", "#settings");
+            await t.click("#settings-nav-build");
+            await t.wait(600);
+            await t.shot("build", "#settings");
+            await t.click("#settings-nav-ai");
+            await t.wait(600);
+            await t.shot("ai", "#settings");
         }
     },
     {
         name: "settings-actions",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS, state: doneState(), runs: RUNS },
         run: async (t) => {
-            await openSettings(t);
-            await t.scrollTo("#settings .panel-scroll", 9999);
+            await openSettings(t, "run");
             await t.clearCalls();
             await t.click("#extend-on-limit");
+            await t.click("#settings-nav-general");
+            await t.wait(600);
             await t.click("#keep-in-tray");
             await t.shot("switches", "#settings");
-            await t.click("#select-project");
+            await t.click("#settings-nav-data");
+            await t.wait(600);
             await t.click("#open-report");
             await t.click("#reset-progress");
             await t.confirm();
@@ -103,8 +115,7 @@ const SCENES = [
         name: "modal-confirm",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS, state: doneState(), runs: RUNS },
         run: async (t) => {
-            await openSettings(t);
-            await t.scrollTo("#settings .panel-scroll", 9999);
+            await openSettings(t, "data");
             await t.clearCalls();
             await t.click("#reset-progress");
             await t.wait(500);
@@ -122,7 +133,7 @@ const SCENES = [
         name: "settings-scope",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {
-            await openSettings(t);
+            await openSettings(t, "run");
             await t.shot("global-top", "#settings");
             await t.clearCalls();
             await t.click("#settings .seg-option:nth-child(2)");
@@ -137,8 +148,6 @@ const SCENES = [
             await t.wait(500);
             await t.shot("project-reset", "#defaults-group");
             await t.note("calls-after-reset", await callsWithArgs(t));
-            await t.scrollTo("#settings .panel-scroll", 380);
-            await t.shot("project-middle", "#settings");
         }
     },
     {
@@ -150,9 +159,9 @@ const SCENES = [
             responses: { updateSettings: { status: "FAILED", error: { code: "INVALID_OPTIONS", msg: "작업 브랜치는 영문·숫자·._-/로 된 git 브랜치 이름이어야 하고 main·master는 쓸 수 없어요." } } }
         },
         run: async (t) => {
-            await openSettings(t);
+            await openSettings(t, "project");
             await t.eval('document.querySelector("#git-group").scrollIntoView({ block: "center" })');
-            await t.wait(200);
+            await t.wait(600);
             await t.shot("git", "#git-group");
             await t.click("#git-workBranch");
             await t.press("End");
@@ -167,7 +176,7 @@ const SCENES = [
         name: "settings-storage",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {
-            await openSettings(t);
+            await openSettings(t, "project");
             await t.eval('document.querySelector("#storage-group").scrollIntoView({ block: "center" })');
             await t.wait(300);
             await t.shot("storage", "#storage-group");
@@ -192,7 +201,7 @@ const SCENES = [
             await t.drive("postAction", { pending: null, error: "" });
             await t.wait(300);
             await t.shot("after-cancel", ".notices");
-            await openSettings(t);
+            await openSettings(t, "run");
             await t.eval('document.querySelector("#post-run-label").scrollIntoView({ block: "center" })');
             await t.wait(300);
             await t.shot("setting", "#settings .settings-group:has(#post-run-label)");
@@ -202,8 +211,7 @@ const SCENES = [
         name: "settings-model-versions",
         init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
         run: async (t) => {
-            await openSettings(t);
-            await t.scrollTo("#settings .panel-scroll", 380);
+            await openSettings(t, "ai");
             await t.clearCalls();
             await t.click("#model-versions .select-trigger");
             await t.shot("list-open", "#model-versions .select-list", { skipDom: true });
@@ -212,6 +220,55 @@ const SCENES = [
             await t.shot("picked", "#model-versions");
             await t.note("calls", await callsWithArgs(t));
             await t.shot("chip", "#ai-pill-claude");
+        }
+    },
+    {
+        // 신규 개발 기본값: 보조를 Codex로 고르면 보내기가 함께 켜지고, 이 프로젝트 범위에서는 바꾼 키만 저장된다.
+        name: "settings-build",
+        init: {
+            ...withProject,
+            accounts: ACCOUNTS,
+            models: MODELS,
+            settings: { projectDir: PROJECT, mains: { qa: "codex" }, allow: ["deps", "large"] },
+            model: { providers: { codex: { available: true, reason: "", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol" }] } } }
+        },
+        run: async (t) => {
+            await openSettings(t, "build");
+            await t.shot("global-top", "#settings");
+            await t.clearCalls();
+            await t.click("#phase-design .version-row:nth-child(4) .select-trigger");
+            await t.shot("assist-list", "#phase-design", { skipDom: true });
+            await t.click("#phase-design .version-row:nth-child(4) .select-option:nth-child(2)");
+            await t.wait(400);
+            await t.shot("assist-codex", "#phase-design");
+            await t.note("calls-global", await callsWithArgs(t));
+            await t.click("#settings .seg-option:nth-child(2)");
+            await t.wait(300);
+            await t.clearCalls();
+            await t.click("#phase-plan .version-row:nth-child(1) .select-trigger");
+            await t.click("#phase-plan .version-row:nth-child(1) .select-option:nth-child(2)");
+            await t.wait(400);
+            await t.shot("project-main", "#settings");
+            await t.note("calls-project", await callsWithArgs(t));
+            await t.click("#phase-qa .version-row:nth-child(2) .select-trigger");
+            await t.click("#phase-qa .version-row:nth-child(2) .select-option:nth-child(1)");
+            await t.wait(300);
+            await t.eval('document.querySelector("#group-allow").scrollIntoView({ block: "center" })');
+            await t.wait(300);
+            await t.shot("allow", "#settings");
+        }
+    },
+    {
+        // 좁은 창(레일이 아이콘 띠로 접힘): 항목 목록이 위로 올라가 한 줄로 이어진다.
+        name: "settings-narrow",
+        size: [760, 640],
+        init: { ...withProject, accounts: ACCOUNTS, models: MODELS },
+        run: async (t) => {
+            await openSettings(t, "build");
+            await t.shot("build", "", { skipDom: true });
+            await t.click("#settings-nav-general");
+            await t.wait(600);
+            await t.shot("general", "", { skipDom: true });
         }
     },
     {

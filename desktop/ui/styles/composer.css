@@ -136,9 +136,11 @@ body[data-view="run"] #policy-chip {
 }
 
 .composer-bar {
+    container: composer-bar / inline-size;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 5px;
+    gap: 6px 5px;
     padding: 10px 10px 10px 12px;
 }
 
@@ -255,6 +257,13 @@ body[data-view="run"] #policy-chip {
     color: var(--muted);
     font-size: var(--text-xs);
     font-weight: 400;
+}
+
+/* 알약은 한 줄을 지키려 남은 시간을 먼저 뺀다(줄 너비는 레일·창에 따라 달라진다). 그래도 모자라면 줄이 바뀌고 시작 버튼은 오른쪽 끝에 남는다 */
+@container composer-bar (max-width: 900px) {
+    .end-time-until {
+        display: none;
+    }
 }
 
 .mark {
@@ -533,7 +542,6 @@ body[data-view="run"] #policy-chip {
     gap: 2px;
     max-height: 100%;
     overflow-y: auto;
-    scrollbar-width: thin;
 }
 
 .model-group {
@@ -731,7 +739,9 @@ body[data-view="run"] #policy-chip {
     color: var(--ink-2);
     font-size: var(--text-sm);
     font-weight: 600;
-    transition: background-color 0.2s var(--ease-out);
+    transition:
+        background-color 0.2s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .time-quick button:hover {
@@ -760,7 +770,9 @@ body[data-view="run"] #policy-chip {
     border-radius: var(--r-sm);
     background: none;
     color: var(--ink);
-    transition: background-color 0.2s var(--ease-out);
+    transition:
+        background-color 0.2s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .time-days button:hover:not(:disabled, [aria-pressed="true"]) {
@@ -898,298 +910,4 @@ body[data-view="run"] #policy-chip {
 .spin-button:hover {
     background: var(--chip);
     color: var(--ink);
-}
-
-/* 신규 개발 허용: 항목마다 위험도(세 칸 막대와 이름), 가리킨 항목의 위험한 이유와 지키는 선, 풀 수 없는 규칙. 위험도 색은 낮음 초록·보통 주황·높음 빨강이다 */
-[data-risk="low"] {
-    --risk: var(--add);
-    --risk-fill: var(--add);
-    --risk-wash: var(--ok-wash);
-}
-
-[data-risk="mid"] {
-    --risk: var(--warn);
-    --risk-fill: var(--warn-fill);
-    --risk-wash: var(--warn-wash);
-}
-
-[data-risk="high"] {
-    --risk: var(--del);
-    --risk-fill: var(--del);
-    --risk-wash: color-mix(in srgb, var(--del) 9%, var(--bg));
-}
-
-#allow-chip {
-    anchor-name: --allow-chip;
-}
-
-#allow-chip small {
-    color: var(--muted);
-    font-weight: 500;
-}
-
-/* 고른 허용 중 가장 높은 위험도가 알약 끝에 점으로 보인다 */
-.allow-dot {
-    display: none;
-    flex: none;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--risk-fill);
-}
-
-#allow-chip[data-risk] .allow-dot {
-    display: block;
-}
-
-#allow-chip:disabled .allow-dot {
-    opacity: 0.45;
-}
-
-.allow-popover {
-    position-anchor: --allow-chip;
-    width: min(400px, calc(100vw - 32px));
-    max-height: calc(100vh - 190px);
-    padding: 6px 8px 8px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-}
-
-.allow-popover:popover-open {
-    display: grid;
-}
-
-.allow-head {
-    padding: 8px 8px 8px;
-}
-
-.allow-title {
-    font-size: var(--text-md);
-    font-weight: 600;
-}
-
-.allow-summary {
-    margin-top: 2px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    transition: color 0.25s var(--ease-out);
-}
-
-.allow-summary[data-risk] {
-    color: var(--risk);
-    font-weight: 600;
-}
-
-.allow-list {
-    display: grid;
-    gap: 2px;
-}
-
-.allow-option {
-    position: relative;
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr);
-    gap: 12px;
-    align-items: start;
-    padding: 9px 10px;
-    border-radius: var(--r-md);
-    cursor: pointer;
-    transition: background-color 0.25s var(--ease-out);
-}
-
-.allow-option:hover {
-    background: var(--surface);
-}
-
-.allow-option:has(input:checked) {
-    background: var(--risk-wash);
-}
-
-.allow-option:has(input:focus-visible) {
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
-}
-
-.allow-option input {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    opacity: 0;
-    cursor: inherit;
-}
-
-/* 고르면 위험도 색으로 채워지고 체크가 톡 맺힌다 */
-.allow-box {
-    display: grid;
-    place-items: center;
-    width: 20px;
-    height: 20px;
-    margin-top: 1px;
-    border-radius: 7px;
-    background: var(--bg);
-    box-shadow: inset 0 0 0 1.5px var(--hair-strong);
-    color: var(--bg);
-    transition:
-        background-color 0.2s var(--ease-out),
-        box-shadow 0.2s var(--ease-out);
-}
-
-.allow-box .icon {
-    width: 13px;
-    height: 13px;
-    stroke-width: 2.2;
-    opacity: 0;
-    scale: 0.4;
-    transition:
-        opacity 0.15s var(--ease-out),
-        scale 0.3s var(--ease-out);
-}
-
-.allow-option:has(input:checked) .allow-box {
-    background: var(--risk-fill);
-    box-shadow: none;
-}
-
-.allow-option:has(input:checked) .allow-box .icon {
-    opacity: 1;
-    scale: 1;
-}
-
-.allow-body {
-    display: grid;
-    min-width: 0;
-}
-
-.allow-line {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-.allow-line b {
-    color: var(--ink);
-    font-size: var(--text-md);
-    font-weight: 600;
-    line-height: 1.4;
-}
-
-.allow-desc {
-    display: block;
-    margin-top: 1px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-}
-
-.risk-meter {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 6px;
-    color: var(--risk);
-    font-size: var(--text-xs);
-    font-weight: 600;
-}
-
-.risk-bars {
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 2px;
-}
-
-.risk-bars i {
-    width: 4px;
-    height: 6px;
-    border-radius: 2px;
-    background: var(--hair-strong);
-    transition: background-color 0.25s var(--ease-out);
-}
-
-.risk-bars i:nth-child(2) {
-    height: 9px;
-}
-
-.risk-bars i:nth-child(3) {
-    height: 12px;
-}
-
-.risk-bars i[data-on] {
-    background: var(--risk-fill);
-}
-
-/* 가리킨 항목의 설명 칸. 높이를 고정해 가리키는 항목이 바뀌어도 팝오버가 흔들리지 않는다 */
-.allow-detail {
-    display: grid;
-    align-content: start;
-    gap: 7px;
-    min-height: 112px;
-    margin: 6px 2px 0;
-    padding: 12px;
-    border-radius: var(--r-md);
-    background: var(--surface);
-    color: var(--ink-2);
-    font-size: var(--text-xs);
-    line-height: 1.55;
-}
-
-.allow-detail p {
-    display: grid;
-    grid-template-columns: 4.9em minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
-}
-
-.allow-tag {
-    justify-self: start;
-    padding: 0 8px;
-    border-radius: 999px;
-    background: var(--chip);
-    color: var(--ink-2);
-    font-weight: 700;
-    line-height: 20px;
-    white-space: nowrap;
-}
-
-.allow-tag[data-kind="risk"] {
-    background: var(--risk-wash);
-    color: var(--risk);
-}
-
-.allow-foot {
-    margin: 8px 2px 0;
-    padding: 10px 10px 2px;
-    box-shadow: 0 -1px 0 var(--hair);
-}
-
-.allow-foot p {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-}
-
-.allow-foot .icon {
-    flex: none;
-    width: 12px;
-    height: 12px;
-}
-
-.allow-foot ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 8px 0 0;
-    padding: 0;
-    list-style: none;
-}
-
-.allow-foot li {
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--chip);
-    color: var(--ink-2);
-    font-size: var(--text-xs);
-    font-weight: 600;
 }

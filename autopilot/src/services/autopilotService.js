@@ -16,6 +16,7 @@ import {
     MODE_MAINTAIN,
     MODE_BUILD,
     BUILD_PHASES,
+    RESTORE_SCOPES,
     PHASE_DONE,
     PHASE_LABELS,
     DEFAULT_CODEX_EFFORT,
@@ -170,7 +171,9 @@ const getModeSettings = (options, progressFile, tasks) => {
         debateTurns: options.debateTurns ?? DEBATE_DEFAULT_TURNS,
         proposals: state.proposals,
         debateState: state.debate,
-        receivedProposal: state.receivedProposal
+        receivedProposal: state.receivedProposal,
+        phaseHeads: state.phaseHeads,
+        statePhase: state.phase
     };
 };
 
@@ -189,7 +192,8 @@ const getPhaseState = (runState) => {
         securityRetries: runState.securityRetries,
         proposals: null,
         debate: null,
-        receivedProposal: runState.receivedProposal
+        receivedProposal: runState.receivedProposal,
+        phaseHeads: runState.phaseHeads
     };
 };
 
@@ -275,9 +279,18 @@ const prepareRun = (options) => {
     fs.mkdirSync(progressDir, { recursive: true });
     progressUtil.ensureProgressRecord(progressFile);
 
+    // 취소할 때 되돌릴 자리를 위해 단계 상태에 적힌 단계의 시작점이 없으면 지금 HEAD로 기록한다(이어서 하는 단계는 처음 시작점을 유지한다).
+    const isHeadMissing = modeSettings.mode === MODE_BUILD && !modeSettings.phaseHeads[modeSettings.statePhase];
+
+    if (isHeadMissing) {
+        modeSettings.phaseHeads = { ...modeSettings.phaseHeads, [modeSettings.statePhase]: gitUtil.getHeadHash(runGitCommand) };
+    }
+
     // 돌려보낸 단계를 다시 시작했으면 확인 대기를 바로 지워 다음 실행이 같은 상태를 보게 한다.
     if (modeSettings.isRevision) {
         phaseUtil.writePhase(modeSettings.phaseFile, getPhaseState(modeSettings));
+    } else if (isHeadMissing) {
+        phaseUtil.writePhase(modeSettings.phaseFile, { ...phaseUtil.readPhase(modeSettings.phaseFile), phaseHeads: modeSettings.phaseHeads });
     }
 
     const runState = {
@@ -1059,7 +1072,12 @@ const applyPhaseDone = async (context, loopState) => {
     const debateResult = isSynthesis ? { phase: phase, disputes: disputes || [], resolved: null } : null;
     const candidates = !debateResult && readyProviders.length ? [main, ...readyProviders] : [];
     const reviewState = { ...runState };
-    const { state, event, skipped = [] } = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult, runState.skip);
+    const transition = phaseUtil.getPhaseTransition(getPhaseState(runState), result, runState.gates, maxRetries, candidates, debateResult, runState.skip);
+    const { event, skipped = [] } = transition;
+    // 새로 시작할 단계의 시작점은 이 전환 시점의 HEAD다(개발로 되돌려 다시 하는 경우도 되돌린 시점이 시작점이다).
+    const state = ["retry", "next", "await"].includes(event)
+        ? { ...transition.state, phaseHeads: { ...transition.state.phaseHeads, [transition.state.phase]: gitUtil.getHeadHash(runState.runGitCommand) } }
+        : transition.state;
 
     runState.debateStage = null;
     runState.isDisputesRetry = false;
@@ -1074,6 +1092,7 @@ const applyPhaseDone = async (context, loopState) => {
     runState.phase = state.phase;
     runState.qaRetries = state.qaRetries;
     runState.securityRetries = state.securityRetries;
+    runState.phaseHeads = state.phaseHeads;
     runState.isRevision = false;
 
     if (event === "failed") {
@@ -1397,6 +1416,22 @@ const getRunStatus = (options = {}) => {
     }
 };
 
+// 진행 기록을 보관하고 초기 상태로 되돌린다. 실패하면 이유를 던진다.
+const resetProgressRecord = (projectDir, workDir, options) => {
+    autopilotUtil.ensureWorkDir(workDir);
+
+    const runDate = dateUtil.getDateString(new Date());
+    const failureMessages = [];
+    const progressDir = path.join(workDir, PROGRESS_DIR_NAME, runDate);
+    const resetResult = progressUtil.resetProgressRecord(autopilotUtil.getProgressFile(projectDir, options.dataDir), progressDir, runDate, (message) => failureMessages.push(message));
+
+    if (!resetResult.isDone) {
+        throw new Error(failureMessages.at(-1) || "진행 기록을 초기화하지 못했습니다.");
+    }
+
+    return resetResult;
+};
+
 // 진행 기록을 지금 보관하고 초기화한다. 실행 중에는 세션이 문서를 쓰고 있으므로 거부한다.
 const requestProgressReset = (options = {}) => {
     try {
@@ -1406,21 +1441,59 @@ const requestProgressReset = (options = {}) => {
             throw new Error("실행 중인 AutoPilot이 있어 진행 기록을 초기화할 수 없습니다.");
         }
 
-        autopilotUtil.ensureWorkDir(workDir);
-
-        const runDate = dateUtil.getDateString(new Date());
-        const failureMessages = [];
-        const progressDir = path.join(workDir, PROGRESS_DIR_NAME, runDate);
-        const resetResult = progressUtil.resetProgressRecord(autopilotUtil.getProgressFile(projectDir, options.dataDir), progressDir, runDate, (message) => failureMessages.push(message));
-
-        if (!resetResult.isDone) {
-            throw new Error(failureMessages.at(-1) || "진행 기록을 초기화하지 못했습니다.");
-        }
+        const resetResult = resetProgressRecord(projectDir, workDir, options);
 
         // 신규 개발의 단계도 처음(기획)으로 돌린다.
         fileUtil.removeFiles([getPhaseFile(projectDir, options)]);
 
         return { status: STATUS_OK, data: { isReset: Boolean(resetResult.archivePath), archivePath: resetResult.archivePath } };
+    } catch (error) {
+        log.error(util.formatError(error));
+
+        return { status: STATUS_FAILED, error: { code: error.code || ERROR_CODE_AUTOPILOT_ERROR, msg: error.message || String(error) } };
+    }
+};
+
+// 신규 개발을 취소한다. scope가 state면 reset-progress와 같고, phase·all이면 저장소도 그 단계·신규 개발의 시작점으로 되돌린다(gitUtil.restoreToCommit).
+// 저장소를 되돌리지 못하면 상태·진행 기록은 건드리지 않는다. 실행 중에는 거부하고, 앱은 강제 종료한 뒤 부른다.
+const requestBuildCancel = (options = {}) => {
+    try {
+        const { projectDir, workDir } = getProjectPaths(options);
+        const phaseFile = getPhaseFile(projectDir, options);
+        const scope = options.scope || "state";
+
+        if (!RESTORE_SCOPES.includes(scope)) {
+            throw new Error(`복구 범위는 ${RESTORE_SCOPES.join(" | ")} 중 하나여야 합니다.`);
+        }
+
+        if (autopilotUtil.isRunLockActive(autopilotUtil.getLockFile(workDir))) {
+            throw new Error("실행 중인 AutoPilot이 있어 신규 개발을 취소할 수 없습니다.");
+        }
+
+        if (!fs.existsSync(phaseFile)) {
+            throw new Error("취소할 신규 개발이 없습니다.");
+        }
+
+        const plan = phaseUtil.getRestorePlan(phaseUtil.readPhase(phaseFile), scope);
+        let restored = null;
+
+        if (plan.target) {
+            const env = autopilotUtil.getRunEnv(options);
+            const runGitCommand = gitUtil.createGitRunner(processUtil.getExecutablePath("git", env), projectDir, env);
+
+            gitUtil.assertGitProject(runGitCommand, projectDir);
+            restored = gitUtil.restoreToCommit(runGitCommand, plan.target, new Date().toISOString().replace(/[:.]/g, ""));
+        }
+
+        const resetResult = resetProgressRecord(projectDir, workDir, options);
+
+        if (plan.state) {
+            phaseUtil.writePhase(phaseFile, plan.state);
+        } else {
+            fileUtil.removeFiles([phaseFile]);
+        }
+
+        return { status: STATUS_OK, data: { scope: scope, archivePath: resetResult.archivePath, backupRef: restored?.backupRef || null, isStashed: Boolean(restored?.isStashed) } };
     } catch (error) {
         log.error(util.formatError(error));
 
@@ -1494,4 +1567,4 @@ const requestPhaseApproval = (options = {}) => {
     }
 };
 
-export { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset, requestPhaseApproval };
+export { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset, requestBuildCancel, requestPhaseApproval };

@@ -4,15 +4,16 @@ import { create } from "zustand";
 const useModalStore = create(() => ({ open: false, request: null }));
 
 const modal = {
-    // options: { title, message, confirmLabel, cancelLabel, tone("danger"면 취소에 먼저 포커스) }. 확인이면 true, 취소·Esc·바깥 클릭이면 false로 풀린다.
+    // options: { title, message, confirmLabel, cancelLabel, tone("danger"면 취소에 먼저 포커스), choices }. 확인이면 true, 취소·Esc·바깥 클릭이면 false로 풀린다.
+    // choices([{ value, label, description }])가 있으면 본문에 라디오로 보이고(맨 앞이 처음 선택), 확인할 때 고른 value로 풀린다.
     confirm: (options) => {
         return new Promise((resolve) => {
             useModalStore.getState().request?.resolve(false);
             useModalStore.setState({ open: true, request: { ...options, resolve: resolve } });
         });
     },
-    answer: (isConfirmed) => {
-        useModalStore.getState().request?.resolve(isConfirmed);
+    answer: (isConfirmed, value) => {
+        useModalStore.getState().request?.resolve(isConfirmed && value !== undefined ? value : isConfirmed);
         useModalStore.setState({ open: false });
     }
 };

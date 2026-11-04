@@ -6,6 +6,7 @@ const { CODEX_MODEL_PATTERN, CODEX_EFFORT_LEVELS } = require("./engineArgs.cjs")
 
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 const COMMAND_TIMEOUT_MS = 20000;
+const RATE_LIMITS_TIMEOUT_MS = 15000;
 const ASK_TIMEOUT_MS = 120000;
 const ASK_STDERR_TAIL_LENGTH = 4000;
 const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
@@ -102,6 +103,78 @@ const getCodexLoginStatus = async (codexHome, options = {}) => {
     }
 
     return { installed: true, loggedIn: result.code === 0, identity: result.code === 0 ? readCodexIdentity(codexHome) : null };
+};
+
+// `codex app-server`에 account/rateLimits/read를 한 번 물어 지금 한도를 받는다(세션 기록이 없어도 읽힌다). 줄 단위 JSON-RPC이고 토큰은 CLI 안에서만 쓰인다.
+// 옛 CLI나 API 키 로그인처럼 못 읽으면 { error }로 알리고, 부른 쪽이 세션 기록으로 대신한다. 성공하면 { rateLimits }(RateLimitSnapshot)다.
+const readCodexRateLimits = (codexHome, options = {}) => {
+    return new Promise((resolve) => {
+        const launch = getLaunch(options);
+
+        if (!launch.command) {
+            resolve({ error: "Codex가 설치돼 있지 않아요" });
+
+            return;
+        }
+
+        let child;
+
+        try {
+            child = spawnClaudeProcess(launch, ["app-server"], { env: getCodexEnv(codexHome), windowsHide: true, stdio: ["pipe", "pipe", "ignore"] });
+        } catch (error) {
+            resolve({ error: error.message });
+
+            return;
+        }
+
+        let isDone = false;
+        let buffer = "";
+        let timer = null;
+
+        const finish = (result) => {
+            if (isDone) {
+                return;
+            }
+
+            isDone = true;
+            clearTimeout(timer);
+
+            if (child.exitCode === null) {
+                killProcessTree(child);
+            }
+
+            resolve(result);
+        };
+
+        const send = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
+
+        const handleMessage = (message) => {
+            if (message.id === 1 && !message.error) {
+                send({ method: "initialized" });
+                send({ id: 2, method: "account/rateLimits/read", params: { excludeResetCreditDetails: true } });
+            } else if (message.id === 1 || message.id === 2) {
+                finish(message.result?.rateLimits ? { rateLimits: message.result.rateLimits } : { error: message.error?.message || "한도 응답 형식이 달라요" });
+            }
+        };
+
+        timer = setTimeout(() => finish({ error: "한도 응답이 오지 않았어요" }), RATE_LIMITS_TIMEOUT_MS);
+        child.stdin.on("error", () => {});
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk) => {
+            const lines = (buffer + chunk).split("\n");
+
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                try {
+                    handleMessage(JSON.parse(line));
+                } catch {}
+            }
+        });
+        child.once("error", (error) => finish({ error: error.message }));
+        child.once("exit", () => finish({ error: "한도를 알려 주지 않고 끝났어요" }));
+        send({ id: 1, method: "initialize", params: { clientInfo: { name: "autopilot", version: "1.0.0" } } });
+    });
 };
 
 const isCodexLoginUrl = (text) => {
@@ -296,4 +369,4 @@ const logoutCodex = async (codexHome, options = {}) => {
     return status.loggedIn ? { ok: false, message: "로그아웃하지 못했어요. 잠시 뒤 다시 시도해 주세요." } : { ok: true };
 };
 
-module.exports = { getDefaultCodexHome, getCodexLoginStatus, readCodexIdentity, startCodexLogin, logoutCodex, askCodex, isCodexLoginUrl, getPlanName };
+module.exports = { getDefaultCodexHome, getCodexLoginStatus, readCodexRateLimits, readCodexIdentity, startCodexLogin, logoutCodex, askCodex, isCodexLoginUrl, getPlanName };

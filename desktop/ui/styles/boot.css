@@ -1,0 +1,118 @@
+/* 부팅 덮개(마크업은 index.html, 걷는 때는 hooks/useBodyFlags의 useRevealWhenReady): 앱은 이미 뒤에 그려져 있고, 불투명한 덮개(창 바탕과 같은 --page)가 가린 채 로고와 막대가 기다린다.
+   data-state="lifting"이 되면 로고가 떠오르며 사라지고(0.5초) 로고 자리에서 둥근 구멍이 열려 가장자리로 번지며 덮개가 걷힌다(0.15~1.1초) */
+.boot {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* 구멍의 반지름(가장 먼 모서리까지의 거리 대비). 음수에서 시작해 기다리는 동안에는 구멍이 없다 */
+@property --boot-r {
+    syntax: "<percentage>";
+    inherits: false;
+    initial-value: -4%;
+}
+
+/* 구멍의 중심은 로고 묶음(로고와 막대)의 정중앙보다 로고 쪽으로 조금 위다 */
+.boot-glass {
+    position: absolute;
+    inset: 0;
+    background: var(--page);
+    -webkit-mask-image: radial-gradient(circle at 50% 48%, transparent var(--boot-r), #000 calc(var(--boot-r) + 3%));
+    mask-image: radial-gradient(circle at 50% 48%, transparent var(--boot-r), #000 calc(var(--boot-r) + 3%));
+}
+
+/* 로고는 곱하기로 흰 바탕을 없앤다. 이 묶음에 투명도·변형을 걸면 스택 맥락이 생겨 덮개 바탕과 섞이지 않으니, 걷힘 애니메이션은 로고와 막대에 따로 건다 */
+.boot-core {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+}
+
+.boot-logo {
+    width: 240px;
+    max-width: 60vw;
+    height: auto;
+    mix-blend-mode: multiply;
+    animation: rise 0.5s var(--ease-out) backwards;
+}
+
+.boot-bar {
+    width: 120px;
+    height: 2px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--chip);
+}
+
+.boot-bar::after {
+    content: "";
+    display: block;
+    width: 40%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    animation: boot-slide 1.15s var(--ease-in-out) infinite;
+}
+
+/* 다크에서는 레일 로고처럼 색을 뒤집고 화면 합성으로 바꿔 글자는 밝게, 파랑은 파랑으로 둔다 */
+@media (prefers-color-scheme: dark) {
+    .boot-logo {
+        filter: invert(1) hue-rotate(180deg);
+        mix-blend-mode: screen;
+    }
+}
+
+.boot[data-state="lifting"] :is(.boot-logo, .boot-bar) {
+    animation: boot-out 0.5s var(--ease-in) forwards;
+}
+
+.boot[data-state="lifting"] .boot-glass {
+    animation: boot-iris 0.95s var(--ease-in-out) 0.15s forwards;
+}
+
+/* 움직임 줄이기: 구멍 없이 덮개 전체가 짧게 흐려진다(schedule.css의 전역 규칙이 안쪽 애니메이션을 끄고 .boot만 남긴다) */
+@media (prefers-reduced-motion: reduce) {
+    .boot[data-state="lifting"] {
+        animation: boot-fade 0.2s var(--ease-out) forwards;
+    }
+
+    .boot-bar::after {
+        width: 100%;
+        opacity: 0.4;
+    }
+}
+
+@keyframes boot-slide {
+    from {
+        translate: -100% 0;
+    }
+    to {
+        translate: 260% 0;
+    }
+}
+
+@keyframes boot-out {
+    to {
+        opacity: 0;
+        translate: 0 -12px;
+    }
+}
+
+@keyframes boot-iris {
+    to {
+        --boot-r: 105%;
+    }
+}
+
+@keyframes boot-fade {
+    to {
+        opacity: 0;
+    }
+}

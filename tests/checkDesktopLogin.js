@@ -46,6 +46,25 @@ if (command === "login status") {
     if (!process.env.AP_FAKE_LOGOUT_STUCK) {
         fs.rmSync(auth, { force: true });
     }
+} else if (command === "app-server" && process.env.AP_FAKE_RATE_LIMITS) {
+    let buffer = "";
+
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+        const lines = (buffer + chunk).split("\n");
+
+        buffer = lines.pop();
+
+        for (const line of lines) {
+            const message = JSON.parse(line);
+
+            if (message.method === "initialize") {
+                console.log(JSON.stringify({ id: message.id, result: { codexHome: process.env.CODEX_HOME } }));
+            } else if (message.method === "account/rateLimits/read") {
+                console.log(JSON.stringify({ id: message.id, result: { rateLimits: JSON.parse(process.env.AP_FAKE_RATE_LIMITS) } }));
+            }
+        }
+    });
 } else {
     process.exit(2);
 }
@@ -364,6 +383,41 @@ const checkReader = async (testDir) => {
 
     // 15초 안의 다시 읽기는 새로 읽지 않는다.
     assert.equal(await reader.refresh(), withUsage);
+
+    // CLI가 지금 한도를 알려 주면 세션 기록보다 우선한다. 리셋 시각이 없는 창은 쓴 양을 그대로 둔다.
+    process.env.AP_FAKE_RATE_LIMITS = JSON.stringify({
+        primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: Math.floor(NOW / 1000) + 600 },
+        secondary: { usedPercent: 80, windowDurationMins: 10080, resetsAt: null },
+        planType: "prolite"
+    });
+
+    try {
+        const live = await reader.refresh(true);
+
+        assert.equal(live.error, null);
+        assert.deepEqual(
+            live.limits.map((limit) => [limit.label, limit.percent, limit.resetsAt]),
+            [
+                ["5시간 한도", 30, (Math.floor(NOW / 1000) + 600) * 1000],
+                ["주간 한도", 80, 0]
+            ]
+        );
+        assert.equal(live.fetchedAt, NOW);
+
+        // 세션 기록이 전혀 없어도 읽힌다(처음 쓰는 계정).
+        const freshHome = path.join(testDir, "reader-fresh");
+
+        fs.mkdirSync(freshHome);
+        fs.writeFileSync(path.join(freshHome, "auth.json"), JSON.stringify({ tokens: { id_token: createIdToken({ email: "fresh@example.com" }) } }));
+
+        const fresh = await createCodexAccountReader({ codexHome: freshHome, launch: fake, now: () => NOW }).refresh(true);
+
+        assert.equal(fresh.error, null);
+        assert.equal(fresh.limits.length, 2);
+        assert.equal(fresh.profile.plan, "Pro 100", "요금제는 id_token에 없으면 한도 응답의 planType으로 채운다");
+    } finally {
+        delete process.env.AP_FAKE_RATE_LIMITS;
+    }
 };
 
 // 계정 제거는 로그아웃을 기다리는 동안 다른 곳이 저장한 설정을 옛 값으로 되돌리지 않는다.

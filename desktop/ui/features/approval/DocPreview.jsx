@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
+import { openPhaseDoc } from "../../actions/run.js";
 import { Icon } from "../../components/Icon.jsx";
 import { Blocks, Block, Inline, lexMarkdown } from "../../components/Markdown.jsx";
+import { Seg } from "../../components/Seg.jsx";
+import { usePhaseDoc } from "./usePhaseDoc.js";
 
 const HEADING_TAGS = { 1: "h3", 2: "h4", 3: "h5" };
 
@@ -94,6 +97,16 @@ const DocPreview = ({ doc, isLoading = false }) => {
 
     const isHtml = doc.kind === "file" && doc.path.endsWith(".html");
 
+    if (isHtml && doc.fileUrl) {
+        return (
+            <article className="doc-preview doc-frame" aria-label="산출물 미리보기">
+                <p className="doc-path">{doc.path}</p>
+                {/* sandbox가 스크립트·폼·같은 출처 접근을 모두 막는다. 화면 사이 이동은 열기로 본다 */}
+                <iframe title="화면 시안 미리보기" src={doc.fileUrl} sandbox="" />
+            </article>
+        );
+    }
+
     return (
         <article className="doc-preview" aria-label="산출물 미리보기">
             {doc.kind === "file" && !isHtml ? (
@@ -118,4 +131,37 @@ const DocPreview = ({ doc, isLoading = false }) => {
     );
 };
 
-export { DocPreview };
+// 디자인 산출물: design.md 설명과 HTML 화면 시안(design/index.html)이 함께 있으면 탭으로 나눠 보이고 시안은 바로 열 수 있다.
+const PhasePreview = ({ docKey, doc }) => {
+    const mockup = usePhaseDoc(docKey === "design" ? "design-mockup" : null);
+    const [tab, setTab] = useState("doc");
+
+    if (!mockup.data) {
+        return <DocPreview doc={doc.data} isLoading={doc.isLoading} />;
+    }
+
+    return (
+        <div className="phase-preview">
+            <div className="phase-preview-bar">
+                <Seg
+                    name={`phase-preview-${docKey}`}
+                    label="볼 내용"
+                    className="mode-seg"
+                    options={[
+                        { value: "doc", label: "설명" },
+                        { value: "mockup", label: "화면 시안" }
+                    ]}
+                    value={tab}
+                    onChange={setTab}
+                />
+                <button type="button" className="proposal-open" title="화면 시안을 기본 브라우저에서 열어요" onClick={() => openPhaseDoc("design-mockup")}>
+                    <Icon symbol="icon-out" />
+                    시안 열기
+                </button>
+            </div>
+            {tab === "mockup" ? <DocPreview doc={mockup.data} /> : <DocPreview doc={doc.data} isLoading={doc.isLoading} />}
+        </div>
+    );
+};
+
+export { DocPreview, PhasePreview };

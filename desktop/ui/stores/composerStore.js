@@ -1,9 +1,7 @@
 import { create } from "zustand";
 import { getEndTimeAfter, getModelFamily, shiftEndTime } from "../../viewFormat.js";
-import { getAssistant } from "../lib/phaseAgents.js";
+import { getAllowPatch, getBrainstormPatch, getMainPatch, getSecurityReviewPatch, toggleChoice } from "../lib/buildRules.js";
 import {
-    ALLOW_KEYS,
-    BRAINSTORM_PHASES,
     DEFAULT_ALLOW,
     DEFAULT_DEBATE_TURNS,
     DEFAULT_DESIGN_FORMAT,
@@ -14,7 +12,6 @@ import {
     DEFAULT_POLICY,
     DEFAULT_QA_ON_FAIL,
     DEFAULT_RUNNER,
-    CODEX_RUNNER,
     DEFAULT_CODEX_EFFORT,
     DEFAULT_CODEX_MODEL,
     DEFAULT_SECURITY_ON_FAIL,
@@ -56,26 +53,6 @@ const useComposerStore = create(() => ({
     codexModel: DEFAULT_CODEX_MODEL,
     codexEffort: DEFAULT_CODEX_EFFORT
 }));
-
-// 체크를 바꾼 목록. 순서는 고를 수 있는 값의 순서로 맞춰 저장 값이 흔들리지 않게 한다.
-const toggleChoice = (current, choices, value) => {
-    return choices.filter((choice) => (choice === value ? !current.includes(choice) : current.includes(choice)));
-};
-
-// 보내기를 허용하지 않으면 Codex가 보조인 단계(메인이 Claude)는 보조를 쓸 수 없다. 그 단계를 빼고, 협의·교차검토를 남은 단계에 맞춘다.
-// 보안검토의 독립 검토도 검토자가 Codex(보안검토의 메인이 Claude)면 같다.
-const dropBlockedAssistants = ({ allow, mains, brainstorm, debate, crossReview, securityReview }) => {
-    const isSendAllowed = allow.includes("send");
-    const next = isSendAllowed ? brainstorm : brainstorm.filter((phase) => getAssistant(mains, phase) === "claude");
-    const nextDebate = debate.filter((phase) => next.includes(phase));
-
-    return {
-        brainstorm: next,
-        debate: nextDebate,
-        crossReview: next.some((phase) => !nextDebate.includes(phase)) ? crossReview : false,
-        securityReview: isSendAllowed || getAssistant(mains, "security") === "claude" ? securityReview : DEFAULT_SECURITY_REVIEW
-    };
-};
 
 let isApplying = false;
 let isApplyQueued = false;
@@ -237,39 +214,10 @@ const composer = {
     // 하지 않기로 한 단계는 그 단계의 확인받기 · 보조 · 되돌림 설정을 쓰지 않으므로 화면이 숨긴다(엔진 인자에서도 빠진다). 다시 하기로 하면 설정이 그대로 돌아온다.
     toggleSkip: (phase) => useComposerStore.setState((current) => ({ skip: toggleChoice(current.skip, SKIPPABLE_PHASES, phase) })),
     toggleGate: (phase) => useComposerStore.setState((current) => ({ gates: toggleChoice(current.gates, GATE_PHASES, phase) })),
-    // Codex는 프로젝트 내용을 외부로 보내므로 보내기를 끄면 브레인스토밍도 Claude만으로 돌린다.
-    toggleAllow: (key) =>
-        useComposerStore.setState((current) => {
-            const allow = toggleChoice(current.allow, ALLOW_KEYS, key);
-
-            return { allow: allow, ...dropBlockedAssistants({ ...current, allow: allow }) };
-        }),
-    // 단계의 메인 AI. Codex가 보조가 되는 단계(메인이 Claude)는 프로젝트 내용을 보내야 하므로 보내기도 함께 켠다(단계 문장이 그 사실을 알린다).
-    setPhaseMain: (phase, provider) =>
-        useComposerStore.setState((current) => {
-            const mains = Object.fromEntries(Object.entries({ ...current.mains, [phase]: provider }).filter(([, value]) => value !== DEFAULT_RUNNER));
-            const hasAssistant = current.brainstorm.includes(phase) || (phase === "security" && current.securityReview !== DEFAULT_SECURITY_REVIEW);
-            const needsSend = hasAssistant && getAssistant(mains, phase) === CODEX_RUNNER && !current.allow.includes("send");
-
-            return { mains: mains, allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow };
-        }),
-    // 단계의 보조 방식(none: 보조 없이, compare: 나란히 비교, debate: 협의). 보조는 메인의 반대쪽 AI이고, Codex가 보조면 보내기도 함께 켠다.
-    // 나란히 비교하는 단계가 하나도 없으면 교차검토도 끈다(협의는 이미 서로 검토한다).
-    setBrainstormMode: (phase, brainstormMode) =>
-        useComposerStore.setState((current) => {
-            const isAssisted = brainstormMode !== "none";
-            const brainstorm = BRAINSTORM_PHASES.filter((item) => (item === phase ? isAssisted : current.brainstorm.includes(item)));
-            const debate = BRAINSTORM_PHASES.filter((item) => (item === phase ? brainstormMode === "debate" : current.debate.includes(item) && brainstorm.includes(item)));
-            const hasCompare = brainstorm.some((item) => !debate.includes(item));
-            const needsSend = isAssisted && getAssistant(current.mains, phase) === CODEX_RUNNER && !current.allow.includes("send");
-
-            return {
-                brainstorm: brainstorm,
-                debate: debate,
-                allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow,
-                crossReview: hasCompare ? current.crossReview : false
-            };
-        }),
+    // 신규 개발 값이 서로 기대는 규칙은 lib/buildRules가 갖고 설정 화면과 함께 쓴다.
+    toggleAllow: (key) => useComposerStore.setState((current) => getAllowPatch(current, key)),
+    setPhaseMain: (phase, provider) => useComposerStore.setState((current) => getMainPatch(current, phase, provider)),
+    setBrainstormMode: (phase, brainstormMode) => useComposerStore.setState((current) => getBrainstormPatch(current, phase, brainstormMode)),
     setCrossReview: (isOn) => useComposerStore.setState({ crossReview: isOn }),
     setDebateTurns: (debateTurns) => useComposerStore.setState({ debateTurns: debateTurns }),
     setCodexModel: (codexModel) => useComposerStore.setState({ codexModel: codexModel }),
@@ -277,13 +225,7 @@ const composer = {
     setDesignFormat: (designFormat) => useComposerStore.setState({ designFormat: designFormat }),
     setQaOnFail: (qaOnFail) => useComposerStore.setState({ qaOnFail: qaOnFail }),
     setSecurityOnFail: (securityOnFail) => useComposerStore.setState({ securityOnFail: securityOnFail }),
-    // 독립 검토자는 보안검토 메인의 반대쪽 AI다. Codex가 검토하면 프로젝트 내용을 보내야 하므로 보내기도 함께 켠다.
-    setSecurityReview: (securityReview) =>
-        useComposerStore.setState((current) => {
-            const needsSend = securityReview !== DEFAULT_SECURITY_REVIEW && getAssistant(current.mains, "security") === CODEX_RUNNER && !current.allow.includes("send");
-
-            return { securityReview: securityReview, allow: needsSend ? toggleChoice(current.allow, ALLOW_KEYS, "send") : current.allow };
-        }),
+    setSecurityReview: (securityReview) => useComposerStore.setState((current) => getSecurityReviewPatch(current, securityReview)),
     getModeOptions: getModeOptions,
     stepEndTime: (unit, step) => useComposerStore.setState((current) => ({ endTime: shiftEndTime(current.endTime, step * unit, Date.now()) })),
     setEndTimeAfter: (minutes) => useComposerStore.setState({ endTime: getEndTimeAfter(Date.now(), minutes) }),

@@ -26,12 +26,12 @@ const {
     startScheduleWatch
 } = require("./autopilotIpc.cjs");
 const { wasLaunchedHidden } = require("./launchAtLogin.cjs");
-const { createTray, showWindow, watchPower } = require("./systemIntegration.cjs");
+const { createTray, notifyHiddenToTray, showWindow, watchPower } = require("./systemIntegration.cjs");
 const { checkCardRender } = require("./shareCard.cjs");
 const { applyLoginShellPath } = require("./loginShellPath.cjs");
 
 // 왼쪽 레일과 본문이 나란히 놓이는 가로형 창. 960px보다 좁으면 레일이 아이콘 띠로 접힌다.
-const WINDOW_SIZE = { width: 1160, height: 800 };
+const WINDOW_SIZE = { width: 1280, height: 800 };
 const WINDOW_MIN_SIZE = { width: 760, height: 620 };
 const WINDOW_SCREEN_MARGIN = 40;
 const SMOKE_TEST_TIMEOUT_MS = 15000;
@@ -75,7 +75,7 @@ const SMOKE_SELECTORS = [
     "#archive",
     "#schedule",
     "#schedule-peek",
-    "#model-versions .select-trigger"
+    "#settings-body .select-trigger"
 ];
 const SMOKE_MOUNT_TIMEOUT_MS = 8000;
 const SMOKE_CHECK_SCRIPT = `(async () => {
@@ -188,6 +188,7 @@ const createWindow = () => {
         if (!isQuitting && (isOwnedEngineRunning() || isTrayResident())) {
             event.preventDefault();
             window.hide();
+            notifyHiddenToTray();
 
             return;
         }

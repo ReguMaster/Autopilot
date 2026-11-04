@@ -859,11 +859,11 @@ const getSwitchResult = async (session, extra = {}) => {
     return { status: STATUS_OK, data: { ...getSettingsView(), ...extra, tabs: broadcastTabs({ force: true }), state: session.runner.getState(), logs: session.runner.getLogs() } };
 };
 
-// 사용자가 방금 대화상자로 고른, .git이 없는 폴더와 그 폴더로 하려던 일(select·tab). 렌더러는 경로를 보내지 않고 이 폴더에만 새 저장소를 만들 수 있다.
+// 사용자가 방금 대화상자로 고른, .git이 없는 폴더. 렌더러는 경로를 보내지 않고 이 폴더에만 새 저장소를 만들 수 있다.
 let pendingGitInit = null;
 
 // 고른 폴더를 쓸 수 없으면 실패를 돌려준다. .git이 없는 폴더면 새 저장소를 만들지 화면이 묻도록 NOT_GIT_REPO로 알리고 그 폴더를 기억한다.
-const getSelectionFailure = (selectedDir, kind) => {
+const getSelectionFailure = (selectedDir) => {
     const projectError = getProjectError(selectedDir);
 
     if (!projectError) {
@@ -874,33 +874,12 @@ const getSelectionFailure = (selectedDir, kind) => {
         return createFailure("INVALID_PROJECT", projectError);
     }
 
-    pendingGitInit = { dir: selectedDir, kind: kind };
+    pendingGitInit = selectedDir;
 
     return { ...createFailure("NOT_GIT_REPO", "Git 저장소가 아니에요. 여기에 새 저장소를 만들 수 있어요."), data: { projectDir: selectedDir } };
 };
 
-// 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 가고, 아니면 지금 탭의 프로젝트를 바꾼다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
-const selectProjectDir = (selectedDir) => {
-    // 대화상자를 여는 동안 예약 실행이 시작됐을 수 있어 바꾸기 직전에 다시 확인한다.
-    if (isSessionBusy(sessionPool.get())) {
-        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
-    }
-
-    const settings = readSettings();
-    const opened = settingsStore.openTab(selectedDir, { replaceDir: settings.projectDir });
-
-    if (opened.error) {
-        return createFailure("TOO_MANY_TABS", opened.error);
-    }
-
-    // 바뀐 탭의 이전 프로젝트는 더 열려 있지 않으므로 세션을 버린다.
-    if (!opened.existing && settings.projectDir) {
-        sessionPool.close(settings.projectDir);
-    }
-
-    return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
-};
-
+// 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭으로 간다. 이벤트의 projectDir과 화면이 보는 projectDir은 탭에 저장된 같은 문자열이다.
 const openTabDir = (selectedDir) => {
     const opened = settingsStore.openTab(selectedDir);
 
@@ -909,27 +888,6 @@ const openTabDir = (selectedDir) => {
     }
 
     return getSwitchResult(sessionPool.open(opened.projectDir), { existing: opened.existing });
-};
-
-const handleSelectProject = async (event) => {
-    if (isSessionBusy(sessionPool.get())) {
-        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
-    }
-
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const selection = await dialog.showOpenDialog(window, {
-        title: "대상 프로젝트 폴더 선택",
-        defaultPath: readSettings().projectDir || undefined,
-        properties: ["openDirectory"]
-    });
-
-    pendingGitInit = null;
-
-    if (selection.canceled) {
-        return { status: STATUS_OK, data: getSettingsView() };
-    }
-
-    return getSelectionFailure(selection.filePaths[0], "select") || selectProjectDir(selection.filePaths[0]);
 };
 
 // 폴더를 골라 새 탭으로 연다. 이미 열린 프로젝트면 새 탭 없이 그 탭으로 간다.
@@ -947,30 +905,26 @@ const handleOpenTab = async (event) => {
         return { status: STATUS_OK, data: { ...getSettingsView(), canceled: true, tabs: getTabsPayload() } };
     }
 
-    return getSelectionFailure(selection.filePaths[0], "tab") || openTabDir(selection.filePaths[0]);
+    return getSelectionFailure(selection.filePaths[0]) || openTabDir(selection.filePaths[0]);
 };
 
-// 화면이 사용자 확인을 받은 뒤 방금 고른 폴더에 새 저장소를 만들고, 하려던 일(프로젝트 바꾸기·새 탭)을 이어간다.
+// 화면이 사용자 확인을 받은 뒤 방금 고른 폴더에 새 저장소를 만들고 새 탭으로 연다.
 const handleInitGitRepo = async () => {
-    const pending = pendingGitInit;
+    const pendingDir = pendingGitInit;
 
     pendingGitInit = null;
 
-    if (!pending || !canInitGitRepo(pending.dir)) {
+    if (!pendingDir || !canInitGitRepo(pendingDir)) {
         return createFailure("INVALID_PROJECT", "새 저장소를 만들 폴더를 다시 골라 주세요.");
     }
 
-    if (pending.kind === "select" && isSessionBusy(sessionPool.get())) {
-        return createFailure("RUNNING", "실행 중에는 프로젝트를 바꿀 수 없어요.");
-    }
-
-    const initError = await initGitRepo(pending.dir);
+    const initError = await initGitRepo(pendingDir);
 
     if (initError) {
         return createFailure("GIT_INIT_FAILED", `새 저장소를 만들지 못했어요: ${initError}`);
     }
 
-    return pending.kind === "select" ? selectProjectDir(pending.dir) : openTabDir(pending.dir);
+    return openTabDir(pendingDir);
 };
 
 // 새 프로젝트를 만들 상위 폴더. 이번 실행에서 대화상자로 고른 폴더, 없으면 마지막으로 만든 위치, 없으면 문서 폴더다. 렌더러는 경로를 보내지 않는다.
@@ -1416,6 +1370,69 @@ const handleResetProgress = async (event, requestedDir) => {
     });
 };
 
+// 신규 개발 취소의 복구 범위. 엔진 cancel-build --restore 값과 같다(state 상태만, phase 이번 단계, all 신규 개발 전체).
+const CANCEL_SCOPES = ["state", "phase", "all"];
+const CANCEL_EXIT_WAIT_MS = 15000;
+const CANCEL_EXIT_POLL_MS = 200;
+
+const waitForEngineExit = async (runner) => {
+    const deadline = Date.now() + CANCEL_EXIT_WAIT_MS;
+
+    while (runner.isRunning() && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, CANCEL_EXIT_POLL_MS));
+    }
+
+    return !runner.isRunning();
+};
+
+// 신규 개발을 취소한다. 실행 중이면 강제 종료한 뒤(현재 회차를 기다리지 않는다) 엔진 cancel-build로 단계 상태와 저장소를 scope만큼 되돌린다. 되돌릴 수 없는 일이라 확인은 화면의 모달이 먼저 받는다.
+const handleCancelBuild = async (event, requestedDir, scope) => {
+    if (!CANCEL_SCOPES.includes(scope)) {
+        return createFailure("INVALID_SCOPE", "고를 수 없는 복구 범위예요.");
+    }
+
+    const session = sessionPool.get(requestedDir);
+
+    if (!session) {
+        return createNoSessionFailure();
+    }
+
+    const { projectDir } = session;
+    const projectError = getProjectError(projectDir);
+
+    if (projectError) {
+        return createFailure("INVALID_PROJECT", projectError);
+    }
+
+    if (session.isLaunching) {
+        return createFailure("RUNNING", "시작하는 중이라 잠시 뒤에 취소할 수 있어요.");
+    }
+
+    if (session.runner.isRunning()) {
+        const killResult = session.runner.kill();
+
+        if (killResult.status !== STATUS_OK) {
+            return killResult;
+        }
+
+        if (!(await waitForEngineExit(session.runner))) {
+            return createFailure("RUNNING", "실행 중인 엔진이 아직 끝나지 않았어요. 잠시 뒤 다시 시도해 주세요.");
+        }
+    }
+
+    return new Promise((resolve) => {
+        execEngine({ ...getEngineLaunch(), projectDir: projectDir }, "cancel-build", ["--restore", scope], async (error, stdout, stderr) => {
+            if (error) {
+                resolve(createFailure("CANCEL_FAILED", (stderr || error.message).trim()));
+
+                return;
+            }
+
+            resolve({ status: STATUS_OK, data: { scope: scope, phase: await readBuildPhase(projectDir), hasBackup: stdout.includes("Previous HEAD saved"), isStashed: stdout.includes("git stash") } });
+        });
+    });
+};
+
 // 신규 개발의 단계 상태. 신규 개발을 한 적 없으면 phase가 null이다.
 const handleGetPhase = async (event, requestedDir) => {
     const session = sessionPool.get(requestedDir);
@@ -1770,7 +1787,6 @@ const registerIpc = () => {
     applyTheme();
 
     registerHandler("autopilot:get-state", handleGetState);
-    registerHandler("autopilot:select-project", handleSelectProject);
     registerHandler("autopilot:open-tab", handleOpenTab);
     registerHandler("autopilot:activate-tab", handleActivateTab);
     registerHandler("autopilot:close-tab", handleCloseTab);
@@ -1789,6 +1805,7 @@ const registerIpc = () => {
     registerHandler("autopilot:restore-defaults", handleRestoreDefaults);
     registerHandler("autopilot:kill", handleKill);
     registerHandler("autopilot:reset-progress", handleResetProgress);
+    registerHandler("autopilot:cancel-build", handleCancelBuild);
     registerHandler("autopilot:get-phase", handleGetPhase);
     registerHandler("autopilot:approve-phase", handleApprovePhase);
     registerHandler("autopilot:get-providers", handleGetProviders);

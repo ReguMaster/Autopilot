@@ -473,11 +473,10 @@ const createSettingsStore = ({ dir }) => {
         return { settings: settings, overridden: overridden, globals: Object.fromEntries(OVERRIDABLE_KEYS.map((key) => [key, globals[key]])) };
     };
 
-    // 탭을 열고 활성으로 한다. 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭을 활성으로 하며(existing), replaceDir이 열린 탭이면 그 자리에 연다. 탭 수가 상한이면 error를 돌려준다.
-    const openTab = (projectDir, { replaceDir = "" } = {}) => {
+    // 탭을 열고 활성으로 한다. 이미 열린 프로젝트면 새 탭을 만들지 않고 그 탭을 활성으로 하며(existing). 탭 수가 상한이면 error를 돌려준다.
+    const openTab = (projectDir) => {
         const { tabs } = read();
-        const keyOf = (dir) => getProjectKey(dir);
-        const existing = tabs.find((dir) => keyOf(dir) === keyOf(projectDir));
+        const existing = tabs.find((dir) => getProjectKey(dir) === getProjectKey(projectDir));
 
         if (existing) {
             update({ projectDir: existing });
@@ -485,13 +484,11 @@ const createSettingsStore = ({ dir }) => {
             return { projectDir: existing, existing: true };
         }
 
-        const replaceIndex = replaceDir ? tabs.findIndex((dir) => keyOf(dir) === keyOf(replaceDir)) : -1;
-
-        if (replaceIndex < 0 && tabs.length >= MAX_TABS) {
+        if (tabs.length >= MAX_TABS) {
             return { error: `탭은 ${MAX_TABS}개까지 열 수 있어요.` };
         }
 
-        update({ tabs: replaceIndex < 0 ? [...tabs, projectDir] : tabs.map((dir, index) => (index === replaceIndex ? projectDir : dir)), projectDir: projectDir });
+        update({ tabs: [...tabs, projectDir], projectDir: projectDir });
 
         return { projectDir: projectDir, existing: false };
     };

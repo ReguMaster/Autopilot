@@ -222,7 +222,7 @@ const checkProjectListMarkup = ({ renderProjectList, getTabTicks }) => {
 };
 
 // 신규 개발 단계 막대: 단계마다 막대와 라벨, 상태, 막대 아래의 설정 묶음
-const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBuildActionLabel }) => {
+const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBuildActionLabel, getPhaseSummary, getAssistSummary }) => {
     const fresh = getReadySteps(null);
 
     assert.deepEqual(
@@ -274,15 +274,88 @@ const checkStepCard = ({ renderStepCard, getReadySteps, getBuildGreeting, getBui
     );
     assert.match(html, /data-phase="design" data-state="waiting"/);
     assert.equal((html.match(/class="step-seg"/g) ?? []).length, 5, "단계마다 막대가 하나다");
-    // 설정은 막대 아래에 준 단계의 묶음으로만 붙는다.
-    assert.match(html, /<\/ol><div class="step-settings" role="group" aria-label="단계 설정"><div class="step-group" data-phase="design"><b class="step-group-name">디자인<\/b>설정<\/div><\/div>/);
-    assert.equal((html.match(/step-group"/g) ?? []).length, 1, "설정은 준 단계에만 둔다");
+    // 설정은 막대 아래에 준 단계의 줄로만 붙고, 맨 위 줄은 처음부터 펼쳐진다.
+    assert.match(html, /<\/ol><div class="step-settings" role="group" aria-label="단계 설정"><div class="step-group" data-phase="design" data-open="">/);
+    assert.match(html, /<button type="button" class="step-group-head" aria-expanded="true" aria-controls="steps-design-body">/);
+    assert.match(html, /<div class="collapse step-group-body" data-open="" id="steps-design-body"><div>설정<\/div><\/div>/);
+    assert.equal((html.match(/class="step-group"/g) ?? []).length, 1, "설정은 준 단계에만 둔다");
 
     const compact = renderStepCard({ cells: getReadySteps({ phase: "build", awaiting: null, qaRetries: 0 }) });
 
     assert.match(compact, /<div class="steps"><ol class="step-card"/);
     assert.doesNotMatch(compact, /step-settings/);
     assert.equal((compact.match(/data-state="done"/g) ?? []).length, 2);
+
+    // 접힌 줄은 요약만 보이고 설정은 그리지 않는다. 기본값에서 바꾼 줄에만 `바꿈` 표시가 붙고, 공통 줄(extra)도 같은 규칙이다.
+    const folded = renderStepCard({
+        id: "steps",
+        cells: getReadySteps(null),
+        settings: { plan: "기획 설정", design: "디자인 설정", build: "개발 설정" },
+        summaries: {
+            plan: { text: "기획 요약", isChanged: false },
+            design: { text: "디자인 요약", isChanged: true },
+            build: { text: "개발 요약", isChanged: false },
+            shared: { text: "공통 요약", isChanged: true }
+        },
+        extra: { name: "보조", after: "plan", node: "공통 설정" }
+    });
+
+    assert.equal((folded.match(/aria-expanded="true"/g) ?? []).length, 1, "맨 위 줄만 펼쳐진다");
+    assert.equal((folded.match(/aria-expanded="false"/g) ?? []).length, 3);
+    assert.match(folded, /기획 설정/);
+    assert.doesNotMatch(folded, /디자인 설정|개발 설정|공통 설정/, "접힌 줄의 설정은 그리지 않는다");
+    assert.match(folded, /<span class="step-group-summary" title="디자인 요약">디자인 요약<\/span><span class="step-group-changed" title="기본값에서 바꿨어요">바꿈<\/span>/);
+    assert.equal((folded.match(/step-group-changed"/g) ?? []).length, 2, "바꾼 줄(디자인·공통)에만 붙는다");
+
+    const getGroupIndex = (phase) => folded.indexOf(`class="step-group" data-phase="${phase}"`);
+
+    assert.ok(getGroupIndex("plan") < getGroupIndex("shared") && getGroupIndex("shared") < getGroupIndex("design"), "공통 줄은 after 단계 뒤에 놓인다");
+
+    const config = {
+        mains: {},
+        skip: [],
+        gates: ["plan", "design"],
+        allow: ["deps", "large"],
+        brainstorm: [],
+        debate: [],
+        designFormat: "html",
+        qaOnFail: "retry:3",
+        securityOnFail: "retry:3",
+        securityReview: "off",
+        debateTurns: 8,
+        crossReview: false
+    };
+
+    assert.deepEqual(getPhaseSummary("plan", config), { text: "Claude 메인 · 보조 없이 · 끝나면 멈추고 확인 받을게요", isChanged: false });
+    assert.deepEqual(getPhaseSummary("design", config), { text: "HTML 와이어프레임 · Claude 메인 · 보조 없이 · 끝나면 멈추고 확인 받을게요", isChanged: false });
+    assert.deepEqual(getPhaseSummary("build", config), { text: "Claude 메인", isChanged: false });
+    assert.deepEqual(getPhaseSummary("qa", config), { text: "Claude 메인 · 실패하면 개발로 최대 3번", isChanged: false });
+    assert.deepEqual(getPhaseSummary("security", config), { text: "Claude 메인 · 심각하면 개발로 최대 3번 · 독립 검토 없이", isChanged: false });
+
+    assert.deepEqual(getPhaseSummary("plan", { ...config, mains: { plan: "codex" }, brainstorm: ["plan"], debate: ["plan"] }), {
+        text: "Codex 메인 · Claude와 협의 · 끝나면 못 맞춘 쟁점만 고를게요",
+        isChanged: true
+    });
+    assert.deepEqual(getPhaseSummary("plan", { ...config, brainstorm: ["plan"] }).text, "Claude 메인 · Codex와 안 비교 · 끝나면 두 안 중에서 고를게요");
+    assert.deepEqual(getPhaseSummary("plan", { ...config, gates: ["design"] }), { text: "Claude 메인 · 보조 없이 · 끝나면 바로 다음 단계로 갈게요", isChanged: true });
+    assert.deepEqual(getPhaseSummary("design", { ...config, skip: ["design"] }), { text: "건너뛰어요", isChanged: true });
+    assert.deepEqual(getPhaseSummary("security", { ...config, skip: ["security"] }), { text: "건너뛰어요", isChanged: true });
+    assert.deepEqual(getPhaseSummary("build", { ...config, mains: { build: "codex" } }), { text: "Codex 메인", isChanged: true });
+
+    const figma = getPhaseSummary("design", { ...config, designFormat: "figma" });
+
+    assert.match(figma.text, /^HTML 와이어프레임\(보내기를 꺼서\) · /, "보내기를 허용하지 않으면 엔진이 HTML로 만든다");
+    assert.equal(figma.isChanged, true);
+    assert.match(getPhaseSummary("design", { ...config, designFormat: "figma", allow: ["send"] }).text, /^Figma · /);
+    assert.equal(getPhaseSummary("qa", { ...config, qaOnFail: "stop" }).text, "Claude 메인 · 실패하면 멈춰요");
+    assert.deepEqual(getPhaseSummary("security", { ...config, securityOnFail: "retry:1", securityReview: "strict" }), {
+        text: "Claude 메인 · 심각하면 개발로 최대 1번 · Codex가 다시 확인, 못 하면 멈춰요",
+        isChanged: true
+    });
+
+    assert.deepEqual(getAssistSummary(["debate"], config), { text: "협의 최대 8번", isChanged: false });
+    assert.deepEqual(getAssistSummary(["compare"], config), { text: "검토는 건너뛰어요", isChanged: false });
+    assert.deepEqual(getAssistSummary(["debate", "compare"], { debateTurns: 12, crossReview: true }), { text: "협의 최대 12번 · 서로 검토해요", isChanged: true });
 };
 
 // Codex 선택 상자: Codex가 알려 준 목록 그대로이고(Codex 설정을 따르는 기본 항목은 없다), 저장된 모델이 목록에 없어도 고른 값은 보인다.

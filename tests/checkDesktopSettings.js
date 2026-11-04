@@ -592,25 +592,13 @@ const checkTabs = () => {
         assert.deepEqual(store.read().tabs, [projectA, projectB]);
         assert.equal(store.read().projectDir, projectA, "원래 탭이 활성이 된다");
 
-        const replacement = createTempDir();
+        const filler = Array.from({ length: MAX_TABS - 2 }, (_, index) => path.join(dir, `f${index}`));
 
-        try {
-            assert.deepEqual(store.openTab(replacement, { replaceDir: link }), { projectDir: replacement, existing: false });
-            assert.deepEqual(store.read().tabs, [replacement, projectB], "지정한 탭 자리에서 프로젝트를 바꾼다(표기가 달라도)");
-            assert.equal(store.read().projectDir, replacement);
+        store.update({ tabs: [projectA, projectB, ...filler] });
 
-            const filler = Array.from({ length: MAX_TABS - 2 }, (_, index) => path.join(dir, `f${index}`));
-
-            store.update({ tabs: [replacement, projectB, ...filler] });
-
-            assert.equal(store.read().tabs.length, MAX_TABS);
-            assert.match(store.openTab(path.join(dir, "extra")).error, /탭은 \d+개까지/, "탭이 상한이면 새 탭을 열지 않는다");
-            assert.equal(store.read().tabs.length, MAX_TABS);
-            assert.equal(store.openTab(path.join(dir, "swap"), { replaceDir: projectB }).error, undefined, "상한이어도 열린 탭의 프로젝트를 바꾸는 것은 된다");
-            assert.equal(store.read().tabs.length, MAX_TABS);
-        } finally {
-            fs.rmSync(replacement, { recursive: true, force: true });
-        }
+        assert.equal(store.read().tabs.length, MAX_TABS);
+        assert.match(store.openTab(path.join(dir, "extra")).error, /탭은 \d+개까지/, "탭이 상한이면 새 탭을 열지 않는다");
+        assert.equal(store.read().tabs.length, MAX_TABS);
 
         const exported = store.exportData();
 

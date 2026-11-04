@@ -12,11 +12,11 @@
 }
 
 /* 스크림은 실행 줄 아래만 덮는다. 실행 줄에 덧씌우면 끌기 영역이 버튼 클릭을 가로채므로 배경색으로 맞춘다. 레일은 덮지 않아 메뉴를 바로 바꿀 수 있다 */
-body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .titlebar {
+body:is(.profile-open, .history-open, .archive-open, .schedule-open) .titlebar {
     background: var(--scrim);
 }
 
-body:is(.settings-open, .profile-open, .history-open, .archive-open, .schedule-open) .scrim {
+body:is(.profile-open, .history-open, .archive-open, .schedule-open) .scrim {
     opacity: 1;
     visibility: visible;
     transition-delay: 0s;
@@ -62,18 +62,6 @@ body.profile-open #profile {
 
 .panel-scroll::-webkit-scrollbar-track {
     margin: 14px 0;
-}
-
-.settings-panel {
-    top: calc(var(--dock-h) + 8px);
-    bottom: 12px;
-    left: calc(var(--rail-w) + 8px);
-    width: min(420px, calc(100vw - var(--rail-w) - 20px));
-    translate: -24px 0;
-}
-
-.settings-panel .panel-scroll {
-    padding: 18px 22px 14px;
 }
 
 .profile-panel {
@@ -325,7 +313,6 @@ body.profile-open #profile {
     overflow-wrap: anywhere;
 }
 
-.project[data-missing] .path,
 .claude-dir[data-missing] .path {
     color: var(--warn);
 }
@@ -430,10 +417,6 @@ body.profile-open #profile {
     border-top: 1px solid var(--hair);
     color: var(--muted);
     font-size: var(--text-sm);
-}
-
-.settings-panel .panel-foot {
-    margin-top: 22px;
 }
 
 .panel-foot-actions {
@@ -553,18 +536,20 @@ body.profile-open #profile {
 }
 
 .profile-col-sub {
+    grid-column: 2 / -1;
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 8px;
+    gap: 0 8px;
     min-width: 0;
     color: var(--muted);
     font-size: var(--text-xs);
 }
 
+/* 이메일은 말줄임 없이 다 보인다. 정말 길면 글자 단위로 줄을 바꾼다 */
 .profile-col-sub .profile-email {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .profile-clock {

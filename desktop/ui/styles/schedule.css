@@ -157,7 +157,8 @@
     transition:
         background-color 0.2s var(--ease-out),
         color 0.2s var(--ease-out),
-        box-shadow 0.2s var(--ease-out);
+        box-shadow 0.2s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .schedule-scope {
@@ -214,6 +215,11 @@
     font-size: var(--text-sm);
 }
 
+/* 시작 조건이나 하루 종일을 바꿔 숨겨 둔 칸이 나타날 때 떠오른다 */
+:is(.form-group[data-for], .schedule-range) {
+    animation: rise 0.3s var(--ease-out) backwards;
+}
+
 .form-actions {
     display: flex;
     flex: none;
@@ -236,7 +242,8 @@
     text-align: left;
     transition:
         background-color 0.25s var(--ease-out),
-        color 0.25s var(--ease-out);
+        color 0.25s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .peek:hover {
@@ -245,7 +252,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    *:not(.caret, .status-dot, .swap, .appear, .modal, .ring, .debate-chat, .debate-turn),
+    *:not(.caret, .status-dot, .swap, .appear, .modal, .ring, .debate-chat, .debate-turn, .boot),
     *::before,
     *::after {
         animation: none !important;

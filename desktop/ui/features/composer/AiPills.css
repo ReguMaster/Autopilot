@@ -19,7 +19,9 @@
 .ai-pill:not(:disabled) {
     background: var(--tint);
     box-shadow: none;
-    transition: background-color 0.3s var(--ease-out);
+    transition:
+        background-color 0.3s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .ai-pill:not(:disabled):hover,
@@ -127,7 +129,6 @@
     max-height: calc(100vh - 150px);
     padding: 8px;
     overflow-y: auto;
-    scrollbar-width: thin;
 }
 
 #ai-popover-claude {

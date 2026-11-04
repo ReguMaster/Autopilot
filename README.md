@@ -117,7 +117,7 @@
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/new-project.png" alt="새 프로젝트 화면. Claude가 쓴 초안을 칩으로 다듬기"><br><b>새 프로젝트</b> · 한두 줄을 적으면 Claude가 초안을 채우고, 칩으로 다듬어 바로 만듭니다.</td>
-    <td width="50%"><img src="docs/screenshots/settings.png" alt="설정 화면. 대상 프로젝트, 연결 저장소, 설정 범위와 실행 기본값"><br><b>설정</b> · 연결 저장소, 전역·프로젝트별 기본값, Git 규칙과 보관 기간을 정합니다.</td>
+    <td width="50%"><img src="docs/screenshots/settings.png" alt="설정 화면. 왼쪽 항목 목록과 오른쪽 내용"><br><b>설정</b> · 전역·프로젝트별 기본값, 신규 개발의 단계별 메인·보조 AI와 허용, Git 규칙과 보관 기간을 정합니다.</td>
   </tr>
 </table>
 

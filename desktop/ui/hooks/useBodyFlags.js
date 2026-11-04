@@ -20,16 +20,40 @@ const useBodyFlags = ({ view, status, isTasksOpen, isApproval, isCreating = fals
     }, [view, status, isTasksOpen, isApproval, isCreating, isHome, panel, history, archive, schedule]);
 };
 
+const BOOT_MIN_SHOW_MS = 1200;
+// styles/boot.css의 걷힘 애니메이션(가장 긴 것 1.1초)이 끝난 뒤에 덮개를 지운다
+const BOOT_LIFT_MS = 1400;
+
 // 서체와 첫 상태가 준비된 뒤에 화면을 차례로 드러낸다(그 전에는 CSS가 등장 애니메이션을 멈춰 둔다).
+// index.html의 부팅 덮개는 창이 열린 지 BOOT_MIN_SHOW_MS가 지나야 걷는다(움직임 줄이기는 바로).
 const useRevealWhenReady = () => {
     useEffect(() => {
         let frame = 0;
+        let lift = 0;
+        let remove = 0;
 
         document.fonts.ready.then(() => {
+            const isReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
             frame = requestAnimationFrame(() => document.body.classList.add("ready"));
+            lift = setTimeout(
+                () => {
+                    const cover = document.getElementById("boot");
+
+                    if (cover) {
+                        cover.dataset.state = "lifting";
+                        remove = setTimeout(() => cover.remove(), BOOT_LIFT_MS);
+                    }
+                },
+                isReduced ? 0 : Math.max(0, BOOT_MIN_SHOW_MS - performance.now())
+            );
         });
 
-        return () => cancelAnimationFrame(frame);
+        return () => {
+            cancelAnimationFrame(frame);
+            clearTimeout(lift);
+            clearTimeout(remove);
+        };
     }, []);
 };
 

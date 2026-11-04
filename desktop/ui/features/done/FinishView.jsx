@@ -14,6 +14,7 @@ import { useRunsStore } from "../../stores/runsStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 import { ApprovalView } from "../approval/ApprovalView.jsx";
 import { Course } from "../shell/Course.jsx";
+import { CancelBuildButton } from "../shell/CancelBuildButton.jsx";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { StepCard } from "../steps/StepCard.jsx";
 
@@ -108,9 +109,12 @@ const FinishBody = () => {
     return (
         <>
             <ProjectHead>
-                <HeadTag id="finish-tag" tone={tag.tone} icon={TAG_ICONS[tag.tone]}>
-                    {tag.label}
-                </HeadTag>
+                <div className="head-side">
+                    <HeadTag id="finish-tag" tone={tag.tone} icon={TAG_ICONS[tag.tone]}>
+                        {tag.label}
+                    </HeadTag>
+                    {isBuild ? <CancelBuildButton id="finish-cancel-build" /> : null}
+                </div>
             </ProjectHead>
             {isBuild ? <FinishSteps state={state} /> : null}
             <Course />

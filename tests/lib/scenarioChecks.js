@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { STATUS_OK, STATUS_FAILED, PROGRESS_MAX_LINES, PROGRESS_TARGET_LINES } from "../../autopilot/src/utils/config.js";
-import { runAutopilot, requestRoundOptions, requestProgressReset, requestPhaseApproval, getRunStatus } from "../../autopilot/src/services/autopilotService.js";
+import { runAutopilot, requestRoundOptions, requestProgressReset, requestBuildCancel, requestPhaseApproval, getRunStatus } from "../../autopilot/src/services/autopilotService.js";
 import phaseUtil from "../../autopilot/src/utils/phaseUtil.js";
 import progressUtil from "../../autopilot/src/utils/progressUtil.js";
 import processUtil from "../../autopilot/src/utils/processUtil.js";
@@ -15,6 +15,9 @@ import { FAKE_CODEX_SOURCE, getEndTime, waitForProcessStop, commitInitialProject
 
 const require = createRequire(import.meta.url);
 const { createInitialState, parseLine } = require("../../desktop/autopilotRunner.cjs");
+
+// 단계 시작점(phaseHeads)은 commit 해시라 따로 확인하고, 나머지 상태만 비교할 때 뺀다.
+const withoutHeads = ({ phaseHeads, ...rest }) => rest;
 
 const DEFAULT_TASKS = "예약 작업 하나\n- 둘째 줄 한글";
 const UNFINISHED_RECORD = "# 진행 기록\n\n## 다음 작업\n- 이어갈 일\n";
@@ -268,15 +271,29 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
     assert.deepEqual(getPhaseLines(firstRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 디자인 시작", "[단계] 디자인 완료", "[단계] 디자인 확인 대기"]);
     assert.match(readLog(firstRun), /^\[설정\] 외부 서비스로 보내기를 허용하지 않아 디자인 산출물을 HTML 와이어프레임으로 만듭니다\.$/m);
     assert.match(readLog(firstRun), /^Mode : 신규 개발 \(기획 단계부터\)$/m);
-    assert.deepEqual(JSON.parse(fs.readFileSync(phaseFile, "utf8")), { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
+    assert.deepEqual(withoutHeads(JSON.parse(fs.readFileSync(phaseFile, "utf8"))), {
+        phase: "build",
+        awaiting: "design",
+        qaRetries: 0,
+        securityRetries: 0,
+        proposals: null,
+        debate: null,
+        receivedProposal: null
+    });
+    assert.deepEqual(Object.keys(phaseUtil.readPhase(phaseFile).phaseHeads), ["plan", "design", "build"]);
     assert.match(readPrompt(), /지금 단계는 \[디자인\]/);
     assert.match(readPrompt(), /정적 HTML 와이어프레임/);
     assert.match(readPrompt(), /외부 도구\(Codex, MCP 서버/);
     assert.doesNotMatch(readPrompt(), /개선 정책은/);
-    assert.deepEqual(getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data, {
-        running: false,
-        phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null }
-    });
+    const statusData = getRunStatus({ projectDir: projectDir, dataDir: dataDir }).data;
+
+    assert.deepEqual(
+        { ...statusData, phase: withoutHeads(statusData.phase) },
+        {
+            running: false,
+            phase: { phase: "build", awaiting: "design", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null }
+        }
+    );
     checkDesktopLogContract(firstRun.data);
 
     // 승인 없이 다시 시작하면 돌려보낸 디자인을 수정 요청으로 다시 한다.
@@ -313,11 +330,104 @@ const checkBuildMode = async (scenarioRunner, context, fakeCliFile) => {
         "[단계] 보안검토 완료"
     ]);
     assert.match(readPrompt(), /지금 단계는 \[보안검토\][\s\S]*<PHASE>\n단계: 보안검토 \(5\/5\)/);
-    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null, debate: null, receivedProposal: null });
+    assert.deepEqual(withoutHeads(phaseUtil.readPhase(phaseFile)), { phase: "done", awaiting: null, qaRetries: 1, securityRetries: 1, proposals: null, debate: null, receivedProposal: null });
     assert.equal((await runBuild({})).status, STATUS_FAILED);
 
     // 진행 기록 초기화는 단계도 처음(기획)으로 돌린다.
     assert.equal(requestProgressReset({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
+    assert(!fs.existsSync(phaseFile));
+};
+
+// 신규 개발 취소: 복구 범위에 따라 저장소를 그 단계·신규 개발의 시작점으로 되돌리고, 되돌리기 전 HEAD와 commit 안 된 변경은 backup ref·stash에 남긴다.
+const checkBuildCancel = async (scenarioRunner, context, fakeCliFile) => {
+    const projectDir = path.join(context.testDir, "build cancel project");
+    const dataDir = scenarioRunner.dataDir;
+    const { git } = context;
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "initial\n");
+    commitInitialProject(context, projectDir);
+
+    const progressFile = autopilotUtil.getProgressFile(projectDir, dataDir);
+    const phaseFile = phaseUtil.getPhaseFile(progressFile);
+    const options = { projectDir: projectDir, dataDir: dataDir };
+    const getHead = () => git(projectDir, "rev-parse", "HEAD").trim();
+    const runBuild = (extraOptions) => {
+        return runAutopilot({
+            ...options,
+            command: process.execPath,
+            commandArgs: [fakeCliFile],
+            open: false,
+            endTime: getEndTime(),
+            mode: "build",
+            gates: ["design"],
+            tasks: "CLI 도구",
+            env: { ...context.testEnv, AP_MODE: "build", AP_EXPECTED_CWD: projectDir, AP_GIT: context.gitExecutable, AP_PROGRESS_FILE: progressFile },
+            limits: { minMinutes: 0, maxRounds: 10, maxRoundMinutes: 1, retryWaitMinutes: [0, 0, 0] },
+            ...extraOptions
+        });
+    };
+    const initialHead = getHead();
+
+    assert.equal(requestBuildCancel(options).status, STATUS_FAILED, "신규 개발을 한 적 없으면 취소할 것이 없다");
+
+    const firstRun = await runBuild({});
+
+    assert.equal(firstRun.data.reason, "디자인 확인 대기");
+
+    const { phaseHeads } = phaseUtil.readPhase(phaseFile);
+
+    assert.equal(phaseHeads.plan, initialHead);
+    assert.equal(phaseHeads.build, getHead());
+    assert.notEqual(phaseHeads.design, getHead());
+    fs.writeFileSync(path.join(projectDir, "scratch.txt"), "작업 중\n");
+    assert.equal(requestBuildCancel({ ...options, scope: "nope" }).status, STATUS_FAILED);
+
+    // 이번 단계만: 확인을 기다리던 디자인의 시작점으로 돌아가고, 그 뒤의 변경은 backup과 stash에 남으며, 이어서 하면 디자인부터 한다.
+    const phaseCancel = requestBuildCancel({ ...options, scope: "phase" });
+
+    assert.equal(phaseCancel.status, STATUS_OK, phaseCancel.error?.msg);
+    assert.equal(getHead(), phaseHeads.design);
+    assert.equal(git(projectDir, "rev-parse", phaseCancel.data.backupRef).trim(), phaseHeads.build);
+    assert(phaseCancel.data.isStashed);
+    assert(!fs.existsSync(path.join(projectDir, "scratch.txt")));
+    assert.match(git(projectDir, "stash", "list"), /autopilot cancel backup/);
+    assert.deepEqual(phaseUtil.readPhase(phaseFile), { ...phaseUtil.INITIAL_PHASE, phase: "design", phaseHeads: { plan: phaseHeads.plan, design: phaseHeads.design } });
+    assert.equal(fs.readFileSync(progressFile, "utf8"), progressUtil.PROGRESS_TEMPLATE);
+
+    const rerun = await runBuild({ tasks: "" });
+
+    assert.equal(rerun.data.reason, "디자인 확인 대기");
+    assert.equal(fs.readFileSync(rerun.data.logFile, "utf8").match(/^\[단계\] .+$/gm)[0], "[단계] 디자인 시작");
+
+    // 신규 개발 전체: 시작 전 HEAD로 돌아가고 단계 상태가 사라져 다음 실행이 기획부터 한다.
+    const allCancel = requestBuildCancel({ ...options, scope: "all" });
+
+    assert.equal(allCancel.status, STATUS_OK, allCancel.error?.msg);
+    assert.equal(getHead(), initialHead);
+    assert(allCancel.data.isStashed, "가짜 CLI가 남긴 prompt.txt 같은 commit 안 된 파일도 stash에 남는다");
+    assert(!fs.existsSync(phaseFile));
+    assert.equal(requestBuildCancel(options).status, STATUS_FAILED);
+
+    // 기록해 둔 시작점이 지금 브랜치의 기록에 없거나(브랜치·기록을 고침) 기록되지 않았으면 저장소를 건드리지 않고 거부한다. 상태만은 그래도 초기화할 수 있다.
+    const strayHead = git(projectDir, "commit-tree", "HEAD^{tree}", "-m", "stray").trim();
+
+    phaseUtil.writePhase(phaseFile, { ...phaseUtil.INITIAL_PHASE, phaseHeads: { plan: strayHead } });
+
+    const strayCancel = requestBuildCancel({ ...options, scope: "all" });
+
+    assert.equal(strayCancel.status, STATUS_FAILED);
+    assert.match(strayCancel.error.msg, /시작점이 지금 브랜치의 기록에 없습니다/);
+    assert.equal(getHead(), initialHead);
+    assert(fs.existsSync(phaseFile));
+
+    phaseUtil.writePhase(phaseFile, { ...phaseUtil.INITIAL_PHASE, phase: "qa" });
+
+    const noHeadCancel = requestBuildCancel({ ...options, scope: "phase" });
+
+    assert.equal(noHeadCancel.status, STATUS_FAILED);
+    assert.match(noHeadCancel.error.msg, /시작한 시점이 기록되지 않았습니다/);
+    assert.equal(requestBuildCancel({ ...options, scope: "state" }).status, STATUS_OK);
     assert(!fs.existsSync(phaseFile));
 };
 
@@ -358,7 +468,7 @@ const checkBuildSkip = async (scenarioRunner, context, fakeCliFile) => {
     assert.equal(gatedRun.data.reason, "기획 확인 대기");
     assert.match(readLog(gatedRun), /^Skip : 디자인, 보안검토$/m);
     assert.deepEqual(getPhaseLines(gatedRun), ["[단계] 기획 시작", "[단계] 기획 완료", "[단계] 기획 확인 대기"]);
-    assert.deepEqual(phaseUtil.readPhase(phaseFile), { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
+    assert.deepEqual(withoutHeads(phaseUtil.readPhase(phaseFile)), { phase: "design", awaiting: "plan", qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null });
     assert.equal(requestPhaseApproval({ projectDir: projectDir, dataDir: dataDir }).status, STATUS_OK);
 
     const finalRun = await runBuild({ skip: ["design", "security"], gates: ["plan"], tasks: "" });
@@ -1076,7 +1186,15 @@ const checkDebate = async (scenarioRunner, context, fakeCliFile) => {
         "[협의] Claude: 저는 결제를 넣지 않는 쪽이 맞다고 봐요. 줄바꿈도 한 줄로 펴져야 해요.",
         "[협의] 건너뜀: Codex 답을 받지 못했어요(중단 요청)"
     ]);
-    assert.deepEqual(phaseUtil.readPhase(getPhaseFile(stopDir)), { phase: "plan", awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: "plan" });
+    assert.deepEqual(withoutHeads(phaseUtil.readPhase(getPhaseFile(stopDir))), {
+        phase: "plan",
+        awaiting: null,
+        qaRetries: 0,
+        securityRetries: 0,
+        proposals: null,
+        debate: null,
+        receivedProposal: "plan"
+    });
 
     const resumeRun = await runDebate(stopDir, { env: { AP_DEBATE: "consensus" } });
 
@@ -2011,6 +2129,7 @@ export {
     checkCliRun,
     checkSessionRunner,
     checkBuildMode,
+    checkBuildCancel,
     checkBuildSkip,
     checkSecurityDoc,
     checkSecurityReview,

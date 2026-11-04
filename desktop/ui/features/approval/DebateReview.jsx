@@ -6,7 +6,7 @@ import { Icon } from "../../components/Icon.jsx";
 import { Seg } from "../../components/Seg.jsx";
 import { PHASE_LABELS, PROVIDER_LABELS } from "../../lib/constants.js";
 import { DebateTranscript } from "../debate/DebateChat.jsx";
-import { DocPreview } from "./DocPreview.jsx";
+import { PhasePreview } from "./DocPreview.jsx";
 import { usePhaseDoc } from "./usePhaseDoc.js";
 
 const SIDES = ["claude", "codex"];
@@ -51,7 +51,7 @@ const DebateReview = ({ phase, debate, nextPhase, doc, docName, isStarting, skip
                         onChange={setTab}
                     />
                 ) : null}
-                {tab === "log" && turns.length ? <DebateTranscript turns={turns} /> : <DocPreview doc={doc.data} isLoading={doc.isLoading} />}
+                {tab === "log" && turns.length ? <DebateTranscript turns={turns} /> : <PhasePreview docKey={phase} doc={doc} />}
             </div>
             <div className="approval-card">
                 <h2 id="dispute-title" className="dispute-title">

@@ -1,5 +1,19 @@
-import { BUILD_PHASES, GATE_PHASES, ON_FAIL_CHOICES, PHASE_LABELS, PROVIDER_LABELS, SKIPPABLE_PHASES } from "./constants.js";
-import { PROVIDER_LOGOS, getOtherProvider } from "./phaseAgents.js";
+import {
+    BUILD_PHASES,
+    DEFAULT_DEBATE_TURNS,
+    DEFAULT_DESIGN_FORMAT,
+    DEFAULT_GATES,
+    DEFAULT_QA_ON_FAIL,
+    DEFAULT_RUNNER,
+    DEFAULT_SECURITY_ON_FAIL,
+    DEFAULT_SECURITY_REVIEW,
+    GATE_PHASES,
+    ON_FAIL_CHOICES,
+    PHASE_LABELS,
+    PROVIDER_LABELS,
+    SKIPPABLE_PHASES
+} from "./constants.js";
+import { PROVIDER_LOGOS, getMain, getOtherProvider } from "./phaseAgents.js";
 
 // 신규 개발 단계 카드와 시작 전 안내에 쓰는 문구. DOM에 의존하지 않아 tests/checkDesktopUi.js가 그대로 부른다.
 const PHASE_DETAILS = { plan: "만들 것을 정리해요", design: "화면을 그려요", build: "코드를 짜고 커밋해요", qa: "확인하고 고쳐요", security: "약점을 찾아 고쳐요" };
@@ -125,7 +139,7 @@ const ALLOW_OPTIONS = [
     }
 ];
 // 풀 수 없는 규칙. 어떤 허용을 켜도 그대로 지킨다.
-const ALLOW_FIXED_RULES = ["비밀값", "운영 환경", "Git 보호", "파일 삭제"];
+const ALLOW_FIXED_NOTE = "비밀값 · 운영 환경 · Git 보호 · 파일 삭제는 어떤 허용을 켜도 그대로 지켜요.";
 
 // 고른 허용 중 가장 높은 위험도(low·mid·high). 고른 것이 없으면 빈 문자열이다.
 const getAllowRisk = (allow) => {
@@ -300,6 +314,88 @@ const toOnFailValue = (count) => {
     return count > 0 ? `retry:${count}` : "stop";
 };
 
+// 시작 전 단계 줄이 접혔을 때 보이는 요약. 펼치면 보이는 설정 문장을 "·"로 이어 줄인 말이고, isChanged는 기본값과 다른 설정이 있는지다. config는 컴포저 스토어의 값이다.
+const getAssistText = (main, mode) => {
+    const name = PROVIDER_LABELS[getOtherProvider(main)];
+
+    return { none: "보조 없이", compare: `${name}와 안 비교`, debate: `${name}와 협의` }[mode];
+};
+
+const getGateText = (phase, mode, gates) => {
+    if (mode !== "none") {
+        return `끝나면 ${BRAINSTORM_AFTER[mode]}`;
+    }
+
+    return `끝나면 ${GATE_OPTIONS.find((option) => option.value === (gates.includes(phase) ? "stop" : "go")).label}`;
+};
+
+const getOnFailText = (phase, value) => {
+    const retries = getMaxRetries(value);
+
+    return retries ? `${ON_FAIL_SUBJECTS[phase]} 개발로 최대 ${retries}번` : `${ON_FAIL_SUBJECTS[phase]} 멈춰요`;
+};
+
+const getReviewText = (main, mode) => {
+    const name = PROVIDER_LABELS[getOtherProvider(main)];
+
+    return { off: "독립 검토 없이", on: `${name}가 다시 확인`, strict: `${name}가 다시 확인, 못 하면 멈춰요` }[mode];
+};
+
+const getDesignFormatText = (designFormat, allow) => {
+    const isBlocked = ["figma", "image"].includes(designFormat) && !allow.includes("send");
+    const shown = isBlocked ? DEFAULT_DESIGN_FORMAT : designFormat;
+    const label = DESIGN_FORMAT_OPTIONS.find((option) => option.value === shown).label;
+
+    return isBlocked ? `${label}(보내기를 꺼서)` : label;
+};
+
+const getPhaseSummary = (phase, config) => {
+    const { mains, skip, gates, allow, designFormat, qaOnFail, securityOnFail, securityReview } = config;
+    const main = getMain(mains, phase);
+    const mode = getBrainstormMode(config, phase);
+    const mainText = `${PROVIDER_LABELS[main]} 메인`;
+    const isMainChanged = main !== DEFAULT_RUNNER;
+    const isGateChanged = gates.includes(phase) !== DEFAULT_GATES.includes(phase);
+
+    if (skip.includes(phase)) {
+        return { text: "건너뛰어요", isChanged: true };
+    }
+
+    if (phase === "plan") {
+        return { text: [mainText, getAssistText(main, mode), getGateText(phase, mode, gates)].join(" · "), isChanged: isMainChanged || mode !== "none" || isGateChanged };
+    }
+
+    if (phase === "design") {
+        return {
+            text: [getDesignFormatText(designFormat, allow), mainText, getAssistText(main, mode), getGateText(phase, mode, gates)].join(" · "),
+            isChanged: isMainChanged || mode !== "none" || isGateChanged || designFormat !== DEFAULT_DESIGN_FORMAT
+        };
+    }
+
+    if (phase === "qa") {
+        return { text: [mainText, getOnFailText(phase, qaOnFail)].join(" · "), isChanged: isMainChanged || qaOnFail !== DEFAULT_QA_ON_FAIL };
+    }
+
+    if (phase === "security") {
+        return {
+            text: [mainText, getOnFailText(phase, securityOnFail), getReviewText(main, securityReview)].join(" · "),
+            isChanged: isMainChanged || securityOnFail !== DEFAULT_SECURITY_ON_FAIL || securityReview !== DEFAULT_SECURITY_REVIEW
+        };
+    }
+
+    return { text: mainText, isChanged: isMainChanged };
+};
+
+// 보조를 쓰는 단계가 함께 쓰는 값(협의 횟수·교차검토)의 요약. modes는 설정을 보이고 있는 기획·디자인의 보조 방식이다.
+const getAssistSummary = (modes, { debateTurns, crossReview }) => {
+    const hasDebate = modes.includes("debate");
+    const hasCompare = modes.includes("compare");
+    const crossText = crossReview ? "서로 검토해요" : "검토는 건너뛰어요";
+    const text = [hasDebate ? `협의 최대 ${debateTurns}번` : "", hasCompare ? crossText : ""].filter(Boolean).join(" · ");
+
+    return { text: text, isChanged: (hasDebate && debateTurns !== DEFAULT_DEBATE_TURNS) || (hasCompare && crossReview) };
+};
+
 // 되돌아온 개발 칸의 설명. 테스트/QA와 보안검토가 되돌린 횟수를 따로 보여준다(예: 다시 개발 QA 1/3, 둘 다면 QA 1/3, 보안 1/3).
 const getRetryText = (step, qaOnFail, securityOnFail) => {
     const parts = [step?.qaRetries ? `QA ${step.qaRetries}/${getMaxRetries(qaOnFail)}` : "", step?.securityRetries ? `보안 ${step.securityRetries}/${getMaxRetries(securityOnFail)}` : ""].filter(
@@ -439,10 +535,12 @@ export {
     MAX_ON_FAIL_RETRIES,
     getMaxRetries,
     toOnFailValue,
+    getPhaseSummary,
+    getAssistSummary,
     ON_FAIL_WHEN,
     ALLOW_OPTIONS,
     ALLOW_RISKS,
-    ALLOW_FIXED_RULES,
+    ALLOW_FIXED_NOTE,
     getAllowRisk,
     getAllowUsage,
     getBuildStartPhase,

@@ -14,6 +14,7 @@ import { useRunsStore } from "../../stores/runsStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
 import { Course } from "../shell/Course.jsx";
 import { DebateChat } from "../debate/DebateChat.jsx";
+import { CancelBuildButton } from "../shell/CancelBuildButton.jsx";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { StepCard } from "../steps/StepCard.jsx";
 import { ApplyNote } from "./ApplyNote.jsx";
@@ -196,7 +197,10 @@ const RunView = () => {
     return (
         <section ref={sectionRef} className="story view-run" aria-label="지금 하는 일">
             <ProjectHead>
-                <RunTag />
+                <div className="head-side">
+                    <RunTag />
+                    <CancelBuildButton id="run-cancel-build" />
+                </div>
             </ProjectHead>
             <RunSteps />
 

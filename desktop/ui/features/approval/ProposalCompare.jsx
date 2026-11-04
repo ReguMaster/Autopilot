@@ -2,7 +2,7 @@ import { approveAndStart, openPhaseDoc } from "../../actions/run.js";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { PHASE_LABELS, PROVIDER_LABELS } from "../../lib/constants.js";
-import { DocPreview } from "./DocPreview.jsx";
+import { DocPreview, PhasePreview } from "./DocPreview.jsx";
 import { usePhaseDoc } from "./usePhaseDoc.js";
 
 // 안의 문서 키. 메인(후보의 맨 앞)의 안은 단계 산출물 그 자체이고 보조의 안은 proposals/<단계>-<제공자>.*다(메인 프로세스의 projectFiles.PHASE_DOCS).
@@ -33,7 +33,7 @@ const Proposal = ({ phase, provider, candidates, nextLabel, isStarting }) => {
                     {`이 안으로 ${nextLabel} 시작`}
                 </Button>
             </header>
-            <DocPreview doc={doc.data} isLoading={doc.isLoading} />
+            <PhasePreview docKey={docKey} doc={doc} />
             {review.data ? (
                 <details className="proposal-review">
                     <summary>{`${PROVIDER_LABELS[reviewer]}의 검토`}</summary>

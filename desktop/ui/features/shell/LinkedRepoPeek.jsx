@@ -12,7 +12,7 @@ const LinkedRepoPeek = () => {
     }
 
     return (
-        <button type="button" id="linked-repo-peek" className="peek" aria-controls="settings" onClick={() => ui.setPanel("settings")}>
+        <button type="button" id="linked-repo-peek" className="peek" aria-controls="settings" onClick={() => ui.openSettings("project")}>
             <Icon symbol="icon-plus" />
             <span>
                 연결 저장소 {linkedRepos.length}개 · {linkedRepos.map(getProjectName).join(", ")}

@@ -185,6 +185,10 @@ textarea.np-input {
     cursor: pointer;
 }
 
+.np-text:hover:not(:disabled) {
+    color: var(--ink);
+}
+
 .np-text:disabled {
     opacity: 0.5;
     cursor: default;
@@ -366,13 +370,11 @@ textarea.np-input {
     opacity: 0.65;
 }
 
-/* 받는 동안 칩이 들어올 자리 */
+/* 받는 동안 칩이 들어올 자리. 반짝이는 띠는 아래 자리 표시 공통 규칙이 그린다 */
 .np-chip-skel {
     display: inline-block;
     height: 30px;
     border-radius: 999px;
-    background: linear-gradient(90deg, var(--chip) 0%, var(--bg) 50%, var(--chip) 100%) 120% 0 / 220% 100%;
-    animation: np-shimmer 1.5s linear infinite;
 }
 
 .np-ex-group[aria-busy="true"] .np-chips button {
@@ -439,6 +441,10 @@ textarea.np-input {
     font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
+}
+
+.np-pick button:hover:not(:disabled, [aria-pressed="true"]) {
+    background: var(--hair);
 }
 
 .np-pick button[aria-pressed="true"] {
@@ -516,7 +522,6 @@ textarea.np-input {
     border-radius: var(--r-lg);
     background: var(--bg);
     box-shadow: var(--shadow-1);
-    scrollbar-width: thin;
 }
 
 .np-notice {
@@ -543,7 +548,9 @@ textarea.np-input {
     color: var(--ink);
     cursor: pointer;
     text-align: left;
-    transition: box-shadow 0.2s var(--ease-out);
+    transition:
+        box-shadow 0.2s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .np-folder:hover:not(:disabled) {
@@ -693,6 +700,14 @@ textarea.np-input {
 
 button.tag-chip {
     cursor: pointer;
+}
+
+button.tag-chip:hover:not(:disabled) {
+    background: var(--hair);
+}
+
+button.tag-chip[data-picked]:hover:not(:disabled) {
+    background: var(--surface);
 }
 
 .tag-chip .icon {
@@ -989,14 +1004,12 @@ button.tag-chip {
 .np-grid[data-mode] .np-fill::after {
     content: "";
     z-index: 1;
-    background: linear-gradient(90deg, var(--chip) 0%, var(--surface) 50%, var(--chip) 100%) 120% 0 / 220% 100%;
-    animation: np-shimmer 1.5s linear infinite;
 }
 
 .np-grid[data-mode="revealing"] .np-fill::after {
     animation:
-        np-shimmer 1.5s linear infinite,
-        np-skeleton-out 0.3s ease calc(var(--d) * 1s + 0.15s) forwards;
+        var(--np-shimmer),
+        np-skeleton-out 0.4s var(--ease-out) calc(var(--d) * 1s + 0.15s) forwards;
 }
 
 .np-grid[data-mode="revealing"] .np-fill::before {
@@ -1056,17 +1069,42 @@ button.tag-chip {
     display: block;
     height: 13px;
     border-radius: 7px;
-    background: linear-gradient(90deg, var(--chip) 0%, var(--surface) 50%, var(--chip) 100%) 120% 0 / 220% 100%;
-    animation: np-shimmer 1.5s linear infinite;
 }
 
 .np-skel:first-of-type {
     height: 20px;
 }
 
+/* 자리 표시 공통: 띠가 그림 폭의 세 배 위를 한 번 지나가고 쉰다. 처음과 끝이 모두 띠 없는 면이라 반복이 이어지고, 띠 경계는 부드럽게 번진다.
+   shimmer 애니메이션은 늘 목록의 첫째로 둬서 revealing으로 바뀔 때 끊기지 않고 이어진다 */
+.new-project {
+    --np-shine: light-dark(#fff, color-mix(in srgb, var(--chip) 88%, #fff));
+    --np-shimmer: np-shimmer 1.9s ease-in-out infinite;
+}
+
+.np-chip-skel,
+.np-skel,
+.np-grid[data-mode] .np-fill::after {
+    background: linear-gradient(100deg, var(--chip) 35%, var(--np-shine) 50%, var(--chip) 65%) 100% 0 / 300% 100% no-repeat;
+    animation:
+        var(--np-shimmer),
+        np-skel-in 0.45s var(--ease-out) backwards;
+}
+
 @keyframes np-shimmer {
-    to {
-        background-position: -120% 0;
+    0% {
+        background-position: 100% 0;
+    }
+
+    65%,
+    100% {
+        background-position: 0 0;
+    }
+}
+
+@keyframes np-skel-in {
+    from {
+        opacity: 0;
     }
 }
 
@@ -1149,7 +1187,6 @@ button.tag-chip {
 @media (max-width: 960px) {
     .new-project {
         overflow-y: auto;
-        scrollbar-width: thin;
     }
 
     .np-grid {

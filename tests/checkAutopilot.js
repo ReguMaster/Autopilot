@@ -46,6 +46,7 @@ import {
     checkCliRun,
     checkSessionRunner,
     checkBuildMode,
+    checkBuildCancel,
     checkBuildSkip,
     checkSecurityDoc,
     checkSecurityReview,
@@ -102,6 +103,7 @@ const checkAutopilot = async () => {
         await checkTasksRequired(context, fakeCliFile);
         await checkHugeWorkTree(context, fakeCliFile);
         await checkBuildMode(scenarioRunner, context, fakeCliFile);
+        await checkBuildCancel(scenarioRunner, context, fakeCliFile);
         await checkBuildSkip(scenarioRunner, context, fakeCliFile);
         await checkSecurityDoc(scenarioRunner, context, fakeCliFile);
         await checkSecurityReview(scenarioRunner, context, fakeCliFile);

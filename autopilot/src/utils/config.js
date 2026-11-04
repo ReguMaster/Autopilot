@@ -31,6 +31,8 @@ const MODES = [MODE_MAINTAIN, MODE_BUILD];
 const BUILD_PHASES = ["plan", "design", "build", "qa", "security"];
 const PHASE_DONE = "done";
 const PHASE_LABELS = { plan: "기획", design: "디자인", build: "개발", qa: "테스트/QA", security: "보안검토" };
+// 신규 개발 취소(cancel-build)의 복구 범위. state는 단계 상태·진행 기록만, phase는 이번 단계의 시작점으로, all은 신규 개발 시작 전으로 저장소를 되돌린다.
+const RESTORE_SCOPES = ["state", "phase", "all"];
 // 끝나면 멈추고 사용자 확인을 받을 수 있는 단계
 const GATE_PHASES = ["plan", "design"];
 // 이번 실행에서 하지 않기로 정할 수 있는 단계(--skip). 기획과 개발은 뼈대라 건너뛸 수 없다.
@@ -151,6 +153,7 @@ export {
     BUILD_PHASES,
     PHASE_DONE,
     PHASE_LABELS,
+    RESTORE_SCOPES,
     GATE_PHASES,
     SKIPPABLE_PHASES,
     ALLOW_KEYS,

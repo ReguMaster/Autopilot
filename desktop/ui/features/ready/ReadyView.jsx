@@ -14,6 +14,7 @@ import { useRunsStore } from "../../stores/runsStore.js";
 import { useScheduleStore } from "../../stores/scheduleStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
 import { LinkedRepoPeek } from "../shell/LinkedRepoPeek.jsx";
+import { CancelBuildButton } from "../shell/CancelBuildButton.jsx";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { BuildReady } from "./BuildReady.jsx";
 import { ApprovalView } from "../approval/ApprovalView.jsx";
@@ -114,6 +115,7 @@ const ReadyView = () => {
         <section className="greet view-ready" data-mode={showBuild ? "build" : "maintain"} aria-label="시작 전">
             <ProjectHead hideName>
                 <ModeSeg />
+                {showBuild ? <CancelBuildButton id="ready-cancel-build" /> : null}
             </ProjectHead>
             {showBuild ? <BuildReady /> : <Greeting />}
             <SchedulePeek />

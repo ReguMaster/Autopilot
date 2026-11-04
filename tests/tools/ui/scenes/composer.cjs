@@ -51,6 +51,48 @@ const SCENES = [
         }
     },
     {
+        // 알약 줄이 컴포저 안에 들어가는지: 가장 긴 조합(Opus Extra High·메인 표시, Codex, 정책, 종료 시각)을 앱 기본 너비(1280)와 좁은 너비에서 잰다.
+        name: "composer-bar-fit",
+        init: { settings: { projectDir: PROJECT, model: "opus", effort: "xhigh", endTime: "10:00" }, models: MODELS, model: { providers: CODEX_PROVIDERS } },
+        run: async (t) => {
+            const measure = () => {
+                return t.eval(`(() => {
+                    const bar = document.querySelector(".composer-bar");
+                    const card = document.querySelector(".composer").getBoundingClientRect();
+                    const last = document.querySelector("#main-action").getBoundingClientRect();
+
+                    return JSON.stringify({ viewport: innerWidth, card: Math.round(card.width), overflow: Math.round(last.right - card.right), scroll: bar.scrollWidth - bar.clientWidth, barHeight: Math.round(bar.getBoundingClientRect().height) });
+                })()`);
+            };
+
+            for (const width of [1280, 1160, 900, 760]) {
+                await t.resize(width, 800);
+                await t.note(`w${width}`, await measure());
+                await t.shot(`bar-${width}`, ".composer-bar");
+            }
+
+            // 알약 줄이 컨테이너가 돼도 팝오버는 알약에 붙어 위로 열려야 한다.
+            await t.click("#ai-pill-claude");
+            await t.wait(400);
+            await t.note("popover", JSON.stringify({ pill: await t.rect("#ai-pill-claude"), popover: await t.rect("#ai-popover-claude") }));
+        }
+    },
+    {
+        // 실행 중에는 알약 둘과 종료 버튼만 남아 최소 창에서도 한 줄이어야 한다.
+        name: "composer-bar-fit-running",
+        size: [760, 700],
+        init: { ...withProject, models: MODELS, model: { providers: CODEX_PROVIDERS }, state: runningState() },
+        run: async (t) => {
+            await t.note(
+                "running",
+                await t.eval(
+                    `(() => { const bar = document.querySelector(".composer-bar"); return JSON.stringify({ barHeight: Math.round(bar.getBoundingClientRect().height), scroll: bar.scrollWidth - bar.clientWidth }); })()`
+                )
+            );
+            await t.shot("bar", ".composer-bar", { tolerant: true });
+        }
+    },
+    {
         name: "composer-no-project",
         init: {},
         run: async (t) => {

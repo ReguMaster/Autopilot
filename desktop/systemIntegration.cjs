@@ -22,6 +22,7 @@ let tray = null;
 let readPreferences = () => ({});
 let sleepBlockerId = null;
 let isActiveSynced = false;
+let isTrayHintShown = false;
 let previousProgressKey = "";
 let overlayTimer = null;
 let overlayFrames = null;
@@ -255,6 +256,23 @@ const notify = (title, body, kind) => {
     notification.show();
 };
 
+// 창을 닫았는데 앱이 남아 있다는 안내라 알림 설정과 무관하게 보낸다. 앱을 켠 뒤 한 번만 알린다.
+const notifyHiddenToTray = () => {
+    if (isTrayHintShown || !Notification.isSupported()) {
+        return;
+    }
+
+    isTrayHintShown = true;
+
+    const notification = new Notification({
+        title: "AutoPilot이 트레이에서 계속 실행돼요",
+        body: "창만 닫혔어요. 작업표시줄 오른쪽 트레이(^)의 아이콘을 누르면 다시 열려요. 완전히 끌 때는 아이콘을 우클릭해 종료를 골라 주세요."
+    });
+
+    notification.on("click", showWindow);
+    notification.show();
+};
+
 // 알아야 하는 전환(종료·실패·사용량 한도 대기)의 알림 내용. 직접 강제 종료한 경우는 알리지 않는다. 없으면 null.
 const getTransitionNotice = (previous, state) => {
     if (isActiveStatus(previous.status) && !isActiveStatus(state.status) && state.reason !== KILLED_REASON) {
@@ -323,6 +341,7 @@ module.exports = {
     createTray,
     showWindow,
     notify,
+    notifyHiddenToTray,
     configure,
     shouldNotify,
     getTransitionNotice,

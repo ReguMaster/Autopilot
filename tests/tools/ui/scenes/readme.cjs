@@ -598,10 +598,21 @@ const SCENES = [
         }
     },
     {
+        // 신규 개발 항목: 단계마다 메인·보조 AI를 정하는 모습을 보인다.
         name: "readme-settings",
-        init: { settings: { projectDir: STORE }, accounts: ACCOUNTS, models: MODELS, runs: STORE_RUNS, tabs: getTabs(), model: { phaseByProject: phaseByProject(null), providers: PROVIDERS } },
+        init: {
+            settings: { ...BUILD_SETTINGS, projectDir: STORE },
+            globals: { mains: BUILD_SETTINGS.mains, brainstorm: BUILD_SETTINGS.brainstorm, debate: BUILD_SETTINGS.debate, designFormat: BUILD_SETTINGS.designFormat, allow: BUILD_SETTINGS.allow },
+            accounts: ACCOUNTS,
+            models: MODELS,
+            runs: STORE_RUNS,
+            tabs: getTabs(),
+            model: { phaseByProject: phaseByProject(null), providers: PROVIDERS }
+        },
         run: async (t) => {
             await t.click("#settings-toggle");
+            await t.wait(700);
+            await t.click("#settings-nav-build");
             await t.wait(700);
             await t.shot("settings", "", { skipDom: true });
             await t.shot("settings-panel", "#settings", { skipDom: true });

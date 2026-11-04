@@ -77,6 +77,8 @@ const SCENES = [
             await t.click(".proj:nth-child(1) .proj-main");
             await t.hover(".proj:nth-child(3)");
             await t.click(".proj:nth-child(3) .proj-close");
+            await t.shot("close-confirm");
+            await t.confirm();
             await t.note("calls", JSON.stringify((await t.calls()).map((call) => call.join(":"))));
             await t.shot("after-close", "#rail");
         }

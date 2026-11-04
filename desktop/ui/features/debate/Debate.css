@@ -173,6 +173,8 @@
 
 .debate-text {
     overflow: hidden;
+    max-height: max-content;
+    transition: max-height 0.3s var(--ease-out);
 }
 
 .debate-text:not([data-open]) {
@@ -362,7 +364,7 @@
     align-self: flex-start;
 }
 
-.debate-main > :is(.doc-preview, .debate-room) {
+.debate-main > :is(.doc-preview, .phase-preview, .debate-room) {
     flex: 1 1 0;
 }
 
@@ -380,8 +382,6 @@
     gap: 14px;
     max-height: none;
     padding: 16px 18px 20px;
-    /* thin이면 윈도우 기본 막대(위아래 화살표)로 돌아가므로 앱 공통 막대(base.css의 ::-webkit-scrollbar)를 쓴다 */
-    scrollbar-width: auto;
 }
 
 .debate-room .debate-turn[data-provider="codex"] .debate-bubble {

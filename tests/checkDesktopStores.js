@@ -14,6 +14,7 @@ const loadModules = async () => {
         export * as shareStructure from "./lib/shareStructure.js";
         export * as runStore from "./stores/runStore.js";
         export * as uiStore from "./stores/uiStore.js";
+        export * as buildRules from "./lib/buildRules.js";
         export * as modalStore from "./stores/modalStore.js";
         export * as composerStore from "./stores/composerStore.js";
         export * as accountStore from "./stores/accountStore.js";
@@ -170,10 +171,43 @@ const checkOverlays = ({ uiStore }) => {
     ui.closeAll();
     assert.deepEqual([get().panel, get().history, get().archive, get().schedule], [null, false, false, false]);
 
+    ui.setSchedule(true);
+    ui.openSettings("build");
+    assert.deepEqual([get().panel, get().settingsSection, get().schedule], ["settings", "build", false], "설정을 항목과 함께 열면 그 항목을 보고 예약 시트는 닫힌다");
+    ui.setPanel(null);
+    ui.openSettings();
+    assert.equal(get().settingsSection, "build", "항목을 주지 않으면 마지막으로 본 항목이 그대로다");
+    ui.closeAll();
+
     ui.showFailure({ status: "FAILED", error: { code: "X", msg: "실패했어요" } });
     assert.equal(get().notice.message, "실패했어요");
     ui.showFailure(OK());
     assert.equal(get().notice.message, "", "성공하면 안내가 지워진다");
+};
+
+// 컴포저와 설정 화면이 함께 쓰는 규칙(lib/buildRules). 설정 화면은 규칙이 돌려준 키 중 바뀐 것만 저장한다.
+const checkBuildRules = ({ buildRules }) => {
+    const { getAllowPatch, getBrainstormPatch, getMainPatch, getSecurityReviewPatch } = buildRules;
+    const base = { allow: ["deps"], mains: {}, brainstorm: [], debate: [], crossReview: false, securityReview: "off" };
+
+    assert.deepEqual(getBrainstormPatch(base, "design", "compare"), { brainstorm: ["design"], debate: [], allow: ["deps", "send"], crossReview: false }, "Codex가 보조가 되면 보내기가 함께 켜진다");
+    assert.deepEqual(
+        getBrainstormPatch({ ...base, mains: { design: "codex" } }, "design", "debate"),
+        { brainstorm: ["design"], debate: ["design"], allow: ["deps"], crossReview: false },
+        "메인이 Codex면 보조는 Claude라 보내기와 상관없다"
+    );
+    assert.deepEqual(getMainPatch(base, "plan", "codex").mains, { plan: "codex" });
+    assert.deepEqual(getMainPatch({ ...base, mains: { plan: "codex" } }, "plan", "claude").mains, {}, "기본(Claude)은 맵에서 뺀다");
+    assert.deepEqual(getSecurityReviewPatch(base, "strict"), { securityReview: "strict", allow: ["deps", "send"] });
+
+    const withAssist = { ...base, allow: ["deps", "send"], brainstorm: ["plan", "design"], debate: ["plan"], crossReview: true, securityReview: "on" };
+
+    assert.deepEqual(
+        getAllowPatch(withAssist, "send"),
+        { allow: ["deps"], brainstorm: [], debate: [], crossReview: false, securityReview: "off" },
+        "보내기를 끄면 Codex 보조와 독립 검토가 함께 꺼진다"
+    );
+    assert.deepEqual(getAllowPatch(base, "large").allow, ["deps", "large"], "허용 목록은 고를 수 있는 값의 순서로 저장한다");
 };
 
 const checkComposer = async ({ runStore, composerStore }) => {
@@ -396,6 +430,35 @@ const checkConfirmedActions = async ({ modalStore, run, runs, runsStore, account
     assert.deepEqual(calls, [], "초기화를 취소하면 보내지 않는다");
     await answer(run.resetProgress, true);
     assert.deepEqual(calls, [["resetProgress"]]);
+
+    // 신규 개발 취소: 모달에서 고른 복구 범위를 메인에 보내고, 취소하면 보내지 않으며, 끝나면 단계 상태를 비우고 안내를 남긴다.
+    calls.length = 0;
+    window.autopilot.cancelBuild = record("cancelBuild", OK({ scope: "phase", phase: null, hasBackup: true, isStashed: true }));
+    await answer(run.cancelBuild, false);
+    assert.deepEqual(calls, [], "신규 개발 취소를 취소하면 보내지 않는다");
+
+    const pendingCancel = run.cancelBuild();
+
+    assert.deepEqual(
+        useModalStore.getState().request.choices.map((choice) => choice.value),
+        ["state", "phase", "all"],
+        "복구 범위 세 가지를 보인다"
+    );
+    modal.answer(true, "phase");
+    await pendingCancel;
+    assert.deepEqual(calls, [["cancelBuild", undefined, "phase"]]);
+    assert.equal(runsStore.useRunsStore.getState().buildPhase, null);
+    assert.match(useUiStore.getState().notice.message, /지금 단계를 지웠어요[\s\S]*refs\/autopilot\/backup[\s\S]*git stash/);
+    assert.equal(useUiStore.getState().isCancelling, false);
+
+    calls.length = 0;
+    window.autopilot.cancelBuild = async () => ({ status: "FAILED", error: { code: "CANCEL_FAILED", msg: "시작점이 지금 브랜치의 기록에 없습니다." } });
+
+    const pendingFailure = run.cancelBuild();
+
+    modal.answer(true, "all");
+    await pendingFailure;
+    assert.equal(useUiStore.getState().notice.message, "시작점이 지금 브랜치의 기록에 없습니다.", "되돌리지 못하면 이유를 알린다");
 
     calls.length = 0;
     runsStore.useRunsStore.setState({ detail: { run: { id: "2026-10-10/autopilot_090000_aaaa0001.log" } } });
@@ -704,7 +767,7 @@ const checkSchedules = async ({ schedules, scheduleStore, composerStore }) => {
 };
 
 // 설정 범위: 패널에서 바꾼 값은 고른 범위로 보내고 컴포저는 바뀐 키만 따라가며, 프로젝트를 바꾸면 컴포저를 새 프로젝트의 값으로 채운다.
-const checkSettingsScope = async ({ appStore, settingsActions, composerStore, uiStore, run }) => {
+const checkSettingsScope = async ({ appStore, settingsActions, composerStore, uiStore, tabs }) => {
     const { settings } = settingsActions;
     const { composer, useComposerStore } = composerStore;
     const { ui, useUiStore } = uiStore;
@@ -731,7 +794,7 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
 
             return OK(getView({}));
         },
-        selectProject: async () => OK(getView({ projectDir: "/other", tasks: "다른 작업", effort: "low" }, [], "설정을 복구했어요.")),
+        openTab: async () => OK(getView({ projectDir: "/other", tasks: "다른 작업", effort: "low" }, [], "설정을 복구했어요.")),
         listRuns: async () => OK({ runs: [] }),
         getStreakDays: async () => OK({ days: [] }),
         getPhase: async () => OK({ phase: null })
@@ -770,7 +833,7 @@ const checkSettingsScope = async ({ appStore, settingsActions, composerStore, ui
 
     assert.equal(appStore.useAppStore.getState().settings.notifyFinish, false, "환경설정은 범위 없이 바로 반영된다");
 
-    await run.selectProject();
+    await tabs.openTab();
 
     assert.equal(useComposerStore.getState().tasks, "다른 작업", "프로젝트를 바꾸면 컴포저가 새 프로젝트의 값으로 채워진다");
     assert.equal(useComposerStore.getState().effort, 0);
@@ -930,10 +993,26 @@ const checkModal = async ({ modalStore }) => {
 
     modal.answer(false);
     assert.equal(useModalStore.getState().open, false, "이미 풀린 요청에 다시 답해도 오류 없이 닫힌 채다");
+
+    // 고르기: choices가 있으면 확인할 때 고른 value로 풀리고, 취소하면 고른 것과 상관없이 false다.
+    const choices = [
+        { value: "state", label: "상태만", description: "" },
+        { value: "all", label: "전체", description: "" }
+    ];
+    const chosen = modal.confirm({ title: "범위", choices: choices });
+
+    assert.equal(useModalStore.getState().request.choices.length, 2);
+    modal.answer(true, "all");
+    assert.equal(await chosen, "all", "확인하면 고른 value로 풀린다");
+
+    const declined = modal.confirm({ title: "범위", choices: choices });
+
+    modal.answer(false, "all");
+    assert.equal(await declined, false, "취소하면 고른 것이 있어도 false다");
 };
 
 // 메인이 projectDir을 단 이벤트: 지금 보는 프로젝트의 것만 반영하고, 프로젝트를 고르면 응답의 상태·로그로 바꾼다.
-const checkProjectEvents = async ({ events, runStore, runsStore, appStore, run }) => {
+const checkProjectEvents = async ({ events, runStore, runsStore, appStore, run, tabs }) => {
     const view = (projectDir) => ({
         settings: { projectDir: projectDir, tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high" },
         overridden: [],
@@ -975,13 +1054,13 @@ const checkProjectEvents = async ({ events, runStore, runsStore, appStore, run }
     );
 
     window.autopilot = {
-        selectProject: async () => OK({ ...view("/b"), state: createState({ status: "idle", round: 0 }), logs: [{ stream: "out", text: "B 기록" }] }),
+        openTab: async () => OK({ ...view("/b"), state: createState({ status: "idle", round: 0 }), logs: [{ stream: "out", text: "B 기록" }] }),
         listRuns: async () => OK({ runs: [] }),
         getStreakDays: async () => OK({ days: [] }),
         getPhase: async () => OK({ phase: null })
     };
 
-    await run.selectProject();
+    await tabs.openTab();
 
     assert.equal(appStore.useAppStore.getState().settings.projectDir, "/b");
     assert.equal(runStore.getRunState().round, 0, "고른 프로젝트의 상태로 바뀐다");
@@ -991,11 +1070,11 @@ const checkProjectEvents = async ({ events, runStore, runsStore, appStore, run }
 
     assert.equal(runStore.getRunState().round, 2, "프로젝트를 고른 뒤의 이벤트는 반영된다");
 
-    window.autopilot.selectProject = async () => OK(view("/c"));
+    window.autopilot.openTab = async () => OK(view("/c"));
 
-    await run.selectProject();
+    await tabs.openTab();
 
-    assert.equal(runStore.getRunState().round, 2, "상태가 없는 응답(파일 선택 취소 등)은 상태·로그를 건드리지 않는다");
+    assert.equal(runStore.getRunState().round, 2, "상태가 없는 응답은 상태·로그를 건드리지 않는다");
     assert.deepEqual(readLogs(), ["B 기록"]);
 
     // 승인하는 동안 다른 탭으로 옮기면 승인한 프로젝트의 단계로 기억하고, 옮긴 프로젝트를 대신 시작하지 않는다.
@@ -1109,7 +1188,7 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
 
     assert.equal(useComposerStore.getState().tasks, "B에 저장된 작업");
 
-    // 다른 탭을 닫아도 보던 화면(컴포저·로그)은 그대로다. 예약이 있는 탭은 먼저 확인한다.
+    // 다른 탭을 닫아도 보던 화면(컴포저·로그)은 그대로다. 닫기 전에는 늘 확인하고, 예약이 있으면 그 사실도 알린다.
     appStore.applySettingsView(view("/a"));
     tabsStore.applyTabs(list("/a"));
     runStore.applyRunState(createState({ status: "idle", round: 1 }));
@@ -1123,7 +1202,8 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
 
     let pending = tabs.closeTab("/b");
 
-    assert.equal(useModalStore.getState().open, true, "예약이 있는 탭은 닫기 전에 확인한다");
+    assert.equal(useModalStore.getState().open, true, "탭은 닫기 전에 확인한다");
+    assert.match(useModalStore.getState().request.message, /삭제되지 않아요/, "파일이 지워지지 않는다는 안내가 있다");
     assert.match(useModalStore.getState().request.message, /예약 1개/);
     modal.answer(false);
     await pending;
@@ -1144,9 +1224,14 @@ const checkTabs = async ({ tabs, tabsStore, appStore, runStore, composerStore, u
 
     scheduleStore.applySchedulePayload({ schedules: [], statuses: [], maxSchedules: 8, defaults: null });
     calls.length = 0;
-    await tabs.closeTab("/a");
+    pending = tabs.closeTab("/a");
 
-    assert.equal(useModalStore.getState().open, false, "예약이 없으면 바로 닫는다");
+    assert.equal(useModalStore.getState().open, true, "예약이 없어도 확인한다");
+    assert.match(useModalStore.getState().request.message, /삭제되지 않아요/);
+    assert.doesNotMatch(useModalStore.getState().request.message, /예약/, "예약이 없으면 예약 안내는 없다");
+    modal.answer(true);
+    await pending;
+
     assert.deepEqual(calls.at(-1), ["close", "/a"]);
 
     // 새 탭 열기: 열리면 그 프로젝트로 바뀌고, 이미 열려 있었으면 안내하며, 폴더 선택을 취소하면 아무것도 바꾸지 않는다.
@@ -1447,7 +1532,7 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
 };
 
 // 홈: 열고 닫는 규칙, 열린 탭마다 마지막 실행 읽기, 이동 동작.
-const checkHome = async ({ homeActions, tabs, tabsStore, appStore, uiStore, runStore, runsStore, newProjectActions }) => {
+const checkHome = async ({ homeActions, tabs, tabsStore, appStore, uiStore, runStore, runsStore, newProjectActions, modalStore }) => {
     const { useUiStore, ui } = uiStore;
     const view = (projectDir) => ({
         settings: { projectDir: projectDir, tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high" },
@@ -1583,12 +1668,20 @@ const checkHome = async ({ homeActions, tabs, tabsStore, appStore, uiStore, runS
     homeActions.openHome();
     appStore.applySettingsView(view("/a"));
     tabsStore.applyTabs(list("/a", ["/a", "/b"]));
-    await tabs.closeTab("/a");
+
+    const closeConfirmed = async (projectDir) => {
+        const pending = tabs.closeTab(projectDir);
+
+        modalStore.modal.answer(true);
+        await pending;
+    };
+
+    await closeConfirmed("/a");
 
     assert.equal(useUiStore.getState().home, true, "홈을 보다가 탭을 닫아도 홈이 그대로다");
 
     ui.set({ home: false });
-    await tabs.closeTab("/b");
+    await closeConfirmed("/b");
 
     assert.equal(useUiStore.getState().home, true, "마지막 탭을 닫으면 홈으로 돌아간다");
     ui.set({ home: false, newProject: false });
@@ -1602,6 +1695,7 @@ const checkStores = async () => {
     checkShareStructure(modules);
     await checkRunStore(modules);
     checkOverlays(modules);
+    checkBuildRules(modules);
     await checkComposer(modules);
     await checkRunActions(modules);
     await checkConfirmedActions(modules);

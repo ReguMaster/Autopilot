@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import { STATUS_OK, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED } from "../src/utils/config.js";
-import { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset, requestPhaseApproval } from "../src/services/autopilotService.js";
+import { runAutopilot, requestStop, requestRoundOptions, getRunStatus, requestProgressReset, requestBuildCancel, requestPhaseApproval } from "../src/services/autopilotService.js";
 
 import log from "../src/utils/logUtil.js";
 import cliUtil from "../src/utils/cliUtil.js";
@@ -61,6 +61,20 @@ const runCli = async (args = process.argv.slice(2)) => {
         const { isReset, archivePath } = requestProgressResetResult.data;
 
         log.info(isReset ? `Progress record reset. Original archived: ${archivePath}` : "Progress record is already initial.");
+
+        return EXIT_CODE_SUCCESS;
+    }
+
+    if (args[0] === "cancel-build") {
+        const requestBuildCancelResult = requestBuildCancel(cliUtil.parseCancelArgs(args.slice(1)));
+
+        if (requestBuildCancelResult.status !== STATUS_OK) {
+            return EXIT_CODE_FAILED;
+        }
+
+        const { scope, backupRef, isStashed } = requestBuildCancelResult.data;
+
+        log.info(`Build cancelled (restore: ${scope}).${backupRef ? ` Previous HEAD saved: ${backupRef}.` : ""}${isStashed ? " Uncommitted changes saved in git stash." : ""}`);
 
         return EXIT_CODE_SUCCESS;
     }

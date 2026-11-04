@@ -136,39 +136,129 @@
     color: var(--warn);
 }
 
-/* 시작 전 단계 설정: 단계마다 한 줄 문장이다("기획은 [Claude만 써서] 진행하고, 끝나면 [멈추고 확인 받을게요]."). 알약 모양 선택 상자가 문장 속에 끼고, 문장이 길면 줄을 바꾼다 */
+/* 시작 전 단계 설정: 단계마다 한 줄이고, 접히면 고른 값을 줄인 요약이고 펼치면 문장이다("기획은 [Claude만 써서] 진행하고, 끝나면 [멈추고 확인 받을게요]."). 알약 모양 선택 상자가 문장 속에 끼고, 문장이 길면 줄을 바꾼다.
+   접힌 줄은 높이가 같아(52px) 다섯 단계가 한 화면에 들어온다. 펼치면 이름 칸이 그대로 남고 그 옆에 문장이 선다 */
 .step-settings {
     display: grid;
-    margin-top: 16px;
-    padding: 6px 24px;
+    margin-top: 12px;
+    padding: 4px 24px;
     border-radius: var(--r-lg);
     background: var(--bg);
     box-shadow: var(--shadow-1);
 }
 
 .step-group {
+    --name-col: 92px;
+
     display: grid;
-    grid-template-columns: 4.6em minmax(0, 1fr);
-    column-gap: 20px;
+    grid-template-columns: var(--name-col) minmax(0, 1fr);
+    column-gap: 16px;
     align-items: start;
     min-width: 0;
-    padding: 18px 0;
+    padding: 10px 0;
 }
 
 .step-group + .step-group {
     box-shadow: 0 -1px 0 var(--hair);
 }
 
+/* 줄 전체가 누르는 곳이다. hover 면을 줄 밖으로 4px·10px 넓혀 글자에 붙지 않게 하고, 넓힌 만큼 음수 마진으로 되돌려 줄 높이는 그대로 둔다 */
+.step-group-head {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    grid-template-columns: var(--name-col) minmax(0, 1fr) auto;
+    column-gap: 16px;
+    align-items: center;
+    min-height: 40px;
+    margin: -4px -10px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background-color 0.18s var(--ease-out),
+        scale 0.5s var(--ease-spring);
+}
+
+.step-group-head:hover {
+    background: var(--surface);
+}
+
+.step-group-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .step-group-name {
-    padding-top: 3px;
     color: var(--muted);
     font-size: var(--text-xs);
     font-weight: 700;
-    line-height: 28px;
 }
 
-.step-group > :not(.step-group-name) {
+.step-group-head .chevron {
+    flex: none;
+    width: 11px;
+    height: 11px;
+    color: var(--faint);
+    transition: rotate 0.3s var(--ease-out);
+}
+
+.step-group[data-open] .chevron {
+    rotate: 180deg;
+}
+
+.step-group-summary {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 기본값과 다르게 정한 단계는 접어 둬도 알아보게 표시한다. 파랑은 쓰지 않는다 */
+.step-group-changed {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+/* 펼친 줄: 머리는 이름 칸만 남고(요약은 문장이 대신한다) 문장은 그 옆 칸에 선다 */
+.step-group[data-open] .step-group-head {
+    grid-column: 1;
+    grid-template-columns: var(--name-col);
+    min-height: 48px;
+    margin-right: 0;
+}
+
+.step-group[data-open] :is(.step-group-summary, .step-group-changed) {
+    display: none;
+}
+
+.step-group-body {
     grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+}
+
+/* 접히는 동안 머리의 요약이 바로 돌아와 아직 줄어드는 문장과 겹치지 않게, 글이 흐려진 뒤에 나타난다 */
+.step-group:not([data-open]) :is(.step-group-summary, .step-group-changed) {
+    animation: step-summary-in 0.25s var(--ease-out) 0.12s backwards;
+}
+
+@keyframes step-summary-in {
+    from {
+        opacity: 0;
+    }
 }
 
 /* 문장은 말 조각과 알약을 같은 간격(8px)으로 늘어놓는다. 조사(.j)는 앞 알약에 바짝 붙고, 줄이 넘치면 알약째로 줄을 바꾼다 */
@@ -195,27 +285,6 @@
     margin-inline: 0;
 }
 
-/* 모델·노력·추론은 문장이 아니라 입력창의 AI 알약이 맡는다는 안내 */
-.build-tip {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    margin: 16px 6px 0;
-    color: var(--muted);
-    font-size: var(--text-xs);
-}
-
-.build-tip .icon {
-    flex: none;
-    width: 12px;
-    height: 12px;
-}
-
-.build-tip b {
-    color: var(--ink);
-    font-weight: 650;
-}
-
 .step-note,
 .step-hint {
     margin-top: 4px;
@@ -233,6 +302,10 @@
     margin: 0 -14px;
     padding-inline: 14px;
     background: var(--surface);
+}
+
+.step-group[data-phase="shared"] .step-group-head:hover {
+    background: var(--chip);
 }
 
 /* 좁은 창에서는 마친 단계의 설명도 접어 막대와 이름만 남긴다 */

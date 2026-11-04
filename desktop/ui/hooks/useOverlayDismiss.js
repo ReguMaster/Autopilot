@@ -11,7 +11,16 @@ const useOverlayDismiss = () => {
         const handlePointerDown = (event) => {
             const { panel } = ui.get();
 
-            if (panel && !document.querySelector("dialog[open]") && !document.getElementById(panel)?.contains(event.target) && !document.getElementById(`${panel}-toggle`)?.contains(event.target)) {
+            // 설정은 본문 전체를 덮는 페이지라 실행 줄(끌기·창 버튼)을 눌러도 닫지 않는다. 레일을 누르면 닫히고 그 길로 이동한다.
+            const isDock = panel === "settings" && event.target.closest?.(".titlebar");
+
+            if (
+                panel &&
+                !isDock &&
+                !document.querySelector("dialog[open]") &&
+                !document.getElementById(panel)?.contains(event.target) &&
+                !document.getElementById(`${panel}-toggle`)?.contains(event.target)
+            ) {
                 ui.setPanel(null);
             }
         };

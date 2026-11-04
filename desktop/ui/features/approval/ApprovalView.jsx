@@ -12,10 +12,11 @@ import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
+import { CancelBuildButton } from "../shell/CancelBuildButton.jsx";
 import { ProjectHead } from "../shell/ProjectHead.jsx";
 import { StepCard } from "../steps/StepCard.jsx";
 import { DebateReview } from "./DebateReview.jsx";
-import { DocPreview } from "./DocPreview.jsx";
+import { PhasePreview } from "./DocPreview.jsx";
 import { ProposalCompare } from "./ProposalCompare.jsx";
 import { usePhaseDoc } from "./usePhaseDoc.js";
 
@@ -141,6 +142,7 @@ const ApprovalView = ({ phase, side = null }) => {
                     <HeadTag id="approval-tag" tone="warn" icon="icon-pause">
                         {`${label} 확인 기다림`}
                     </HeadTag>
+                    <CancelBuildButton id="approval-cancel-build" />
                     {side}
                 </div>
             </ProjectHead>
@@ -164,7 +166,7 @@ const ApprovalView = ({ phase, side = null }) => {
             ) : null}
             {!debate && !proposals ? (
                 <div className="approval-grid">
-                    <DocPreview doc={doc.data} isLoading={doc.isLoading} />
+                    <PhasePreview docKey={phase} doc={doc} />
                     <div className="approval-card">
                         {skipSuggest}
                         <Button id="approval-approve" variant="primary" size="" disabled={isStarting} onClick={() => approveAndStart()}>

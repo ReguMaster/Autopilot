@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { getCodexLoginStatus, getPlanName } = require("./codexCli.cjs");
+const { getCodexLoginStatus, readCodexRateLimits, getPlanName } = require("./codexCli.cjs");
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_REFRESH_GAP_MS = 15000;
@@ -8,7 +8,7 @@ const MAX_ROLLOUT_FILES = 6;
 const TAIL_BYTES = 1024 * 1024;
 const MINUTES_PER_HOUR = 60;
 const MINUTES_PER_DAY = 24 * 60;
-const NO_USAGE_MESSAGE = "아직 한도를 읽을 수 있는 Codex 사용 기록이 없어요. 이 계정으로 Codex를 한 번 쓰면 여기에 표시돼요.";
+const NO_USAGE_MESSAGE = "Codex 한도를 읽지 못했어요. ChatGPT 계정으로 로그인했는지 확인하고, 이 계정으로 Codex를 한 번 쓰면 여기에 표시돼요.";
 
 const createFailure = (code, msg) => {
     return { code: code, msg: msg };
@@ -29,8 +29,9 @@ const getWindowLabel = (minutes) => {
 
 // 창이 이미 리셋된 뒤의 기록이면(리셋 시각이 지남) 지금은 새 창이라 쓴 양을 0으로 본다.
 const toLimit = (window, nowMs) => {
-    const resetsAt = Number(window.resets_at) * 1000;
-    const isReset = !Number.isFinite(resetsAt) || resetsAt <= nowMs;
+    const hasReset = window.resets_at !== null;
+    const resetsAt = hasReset ? Number(window.resets_at) * 1000 : 0;
+    const isReset = hasReset && (!Number.isFinite(resetsAt) || resetsAt <= nowMs);
 
     return { label: getWindowLabel(Number(window.window_minutes)), percent: isReset ? 0 : Math.min(100, Math.max(0, Number(window.used_percent))), resetsAt: isReset ? 0 : resetsAt };
 };
@@ -54,6 +55,19 @@ const parseRateLimitLine = (line, nowMs) => {
     } catch {
         return null;
     }
+};
+
+// `codex app-server`가 돌려준 RateLimitSnapshot을 세션 기록 읽기와 같은 모양으로 바꾼다. 지금 읽은 값이라 fetchedAt은 지금이다.
+const parseLiveRateLimits = (snapshot, nowMs) => {
+    const windows = [snapshot?.primary, snapshot?.secondary]
+        .filter((window) => Boolean(window) && Number.isFinite(Number(window.usedPercent)) && Number(window.windowDurationMins) > 0)
+        .map((window) => ({ used_percent: window.usedPercent, window_minutes: window.windowDurationMins, resets_at: window.resetsAt ?? null }));
+
+    if (windows.length === 0) {
+        return null;
+    }
+
+    return { limits: windows.map((window) => toLimit(window, nowMs)), planType: String(snapshot.planType || ""), fetchedAt: nowMs };
 };
 
 const listDirectory = (dir) => {
@@ -148,7 +162,8 @@ const createCodexAccountReader = (options) => {
                     error: status.installed ? createFailure("NOT_LOGGED_IN", "이 계정은 Codex에 로그인되어 있지 않아요.") : createFailure("NOT_INSTALLED", "Codex가 설치돼 있지 않아요.")
                 };
             } else {
-                const usage = readCodexUsage(options.codexHome, now());
+                const live = await readCodexRateLimits(options.codexHome, options.launch);
+                const usage = (live.rateLimits ? parseLiveRateLimits(live.rateLimits, now()) : null) || readCodexUsage(options.codexHome, now());
                 const identity = status.identity;
                 const plan = identity?.plan || getPlanName(usage?.planType);
 
@@ -202,4 +217,4 @@ const createCodexAccountReader = (options) => {
     return { start: start, stop: stop, refresh: refresh, getAccount: () => account };
 };
 
-module.exports = { createCodexAccountReader, readCodexUsage, parseRateLimitLine, getWindowLabel };
+module.exports = { createCodexAccountReader, readCodexUsage, parseRateLimitLine, parseLiveRateLimits, getWindowLabel };

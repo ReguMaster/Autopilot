@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatClock, formatUsageReset, getUsageForecast, getUsageTone } from "../../../viewFormat.js";
+import { Collapse } from "../../components/Collapse.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { ProviderAvatar } from "../../components/ProviderAvatar.jsx";
 import { useClock } from "../../stores/clock.js";
@@ -130,9 +131,11 @@ const ProviderColumn = ({ provider, label, account, accountLabel, isLoading, nee
                     <span className="profile-clock">{hasProblem ? "" : status.text}</span>
                 </span>
             </header>
-            <div id={foldId} className="profile-fold" hidden={!isFoldOpen}>
-                {fold}
-            </div>
+            <Collapse isOpen={isFoldOpen} isKept>
+                <div id={foldId} className="profile-fold">
+                    {fold}
+                </div>
+            </Collapse>
             {alerts}
             <Usage limits={account.limits} isLoading={isLoading} />
             <p className="panel-note profile-status" aria-live="polite" hidden={!isNote} data-tone={status.tone || undefined}>

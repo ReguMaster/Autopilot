@@ -16,7 +16,8 @@ import {
 } from "./config.js";
 import debateUtil from "./debateUtil.js";
 
-const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null };
+const INITIAL_PHASE = { phase: BUILD_PHASES[0], awaiting: null, qaRetries: 0, securityRetries: 0, proposals: null, debate: null, receivedProposal: null, phaseHeads: {} };
+const HEAD_HASH_PATTERN = /^[0-9a-f]{7,64}$/;
 const RETRY_PATTERN = /^retry:(\d+)$/;
 // fail을 남기면 개발로 되돌리는 단계와 그 단계가 되돌린 횟수를 세는 키
 const RETRY_KEYS = { qa: "qaRetries", security: "securityRetries" };
@@ -47,9 +48,15 @@ const isProposals = (proposals) => {
     );
 };
 
+// 단계를 시작할 때의 HEAD. 취소할 때 저장소를 어디로 되돌릴지 알려 준다.
+const isPhaseHeads = (heads) => {
+    return heads !== null && typeof heads === "object" && !Array.isArray(heads) && Object.entries(heads).every(([phase, hash]) => BUILD_PHASES.includes(phase) && HEAD_HASH_PATTERN.test(hash));
+};
+
 const isPhaseState = (state) => {
     return (
         [...BUILD_PHASES, PHASE_DONE].includes(state?.phase) &&
+        isPhaseHeads(state.phaseHeads) &&
         (state.awaiting === null || GATE_PHASES.includes(state.awaiting)) &&
         isCount(state.qaRetries) &&
         isCount(state.securityRetries) &&
@@ -64,7 +71,7 @@ const isPhaseState = (state) => {
 // receivedProposal은 이 개발이 다른 AI의 안을 받아 둔 단계다. 저장소에 남은 안 파일이 앞선 개발의 것인지 가려 이어서 하는 단계만 그 안을 쓴다.
 const readPhase = (phaseFile) => {
     try {
-        const state = { securityRetries: 0, proposals: null, debate: null, receivedProposal: null, ...JSON.parse(fs.readFileSync(phaseFile, "utf8")) };
+        const state = { securityRetries: 0, proposals: null, debate: null, receivedProposal: null, phaseHeads: {}, ...JSON.parse(fs.readFileSync(phaseFile, "utf8")) };
 
         return isPhaseState(state)
             ? {
@@ -74,7 +81,8 @@ const readPhase = (phaseFile) => {
                   securityRetries: state.securityRetries,
                   proposals: state.proposals,
                   debate: state.debate,
-                  receivedProposal: state.receivedProposal
+                  receivedProposal: state.receivedProposal,
+                  phaseHeads: state.phaseHeads
               }
             : { ...INITIAL_PHASE };
     } catch {
@@ -97,6 +105,39 @@ const getStartPhase = (state) => {
     }
 
     return { state: { ...state, phase: state.awaiting, awaiting: null, proposals: null, debate: null, receivedProposal: null }, isRevision: true };
+};
+
+// 취소로 되돌릴 저장소 시점과 되돌린 뒤의 단계 상태. 상태만 초기화하거나 시작점이 기록되지 않았으면 target이 null이다.
+// phase는 확인을 기다리는 단계가 있으면 그 단계(사용자가 보는 이번 단계)를 처음부터 다시 하는 상태로, 그 뒤 단계의 시작점은 버린다.
+const getRestorePlan = (state, scope) => {
+    if (scope === "state") {
+        return { target: null, state: null };
+    }
+
+    const phase = scope === "all" ? BUILD_PHASES[0] : state.awaiting || state.phase;
+    const target = state.phaseHeads[phase];
+
+    if (!target) {
+        throw new Error(scope === "all" ? "신규 개발을 시작한 시점이 기록되지 않았습니다. 상태만 초기화할 수 있습니다." : "이 단계를 시작한 시점이 기록되지 않았습니다. 상태만 초기화할 수 있습니다.");
+    }
+
+    if (scope === "all") {
+        return { target: target, state: null };
+    }
+
+    const keptPhases = BUILD_PHASES.slice(0, BUILD_PHASES.indexOf(phase) + 1);
+    const isBeforeRetryPhases = BUILD_PHASES.indexOf(phase) <= BUILD_PHASES.indexOf("build");
+
+    return {
+        target: target,
+        state: {
+            ...INITIAL_PHASE,
+            phase: phase,
+            qaRetries: isBeforeRetryPhases ? 0 : state.qaRetries,
+            securityRetries: isBeforeRetryPhases ? 0 : state.securityRetries,
+            phaseHeads: Object.fromEntries(keptPhases.filter((kept) => state.phaseHeads[kept]).map((kept) => [kept, state.phaseHeads[kept]]))
+        }
+    };
 };
 
 const SECURITY_DOC_PATH = "docs/autopilot/security.md";
@@ -351,6 +392,7 @@ export default {
     readPhase,
     writePhase,
     getStartPhase,
+    getRestorePlan,
     skipForward,
     SECURITY_DOC_PATH,
     SECURITY_STATUSES,

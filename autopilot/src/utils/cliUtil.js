@@ -32,7 +32,8 @@ const HELP_TEXT = [
     "AutoPilot --project <dir> [--end-time HH:mm|'yyyy-MM-dd HH:mm'] [--policy auto|todo] [--tasks-file <file>] [--model opus|claude-opus-4-8] [--effort high] [--runner claude|codex] [--config-dir .claude] [--codex-home <dir>] [--extend-on-limit] [--max-extend-minutes N] [--commit-prefix <접두어>] [--branch <브랜치>] [--log-retention-days N] [--link-project <dir>]... [--mode maintain|build] [--gate plan,design] [--allow deps,large,external-api,send] [--skip design,qa,security] [--design-format md|html|figma|image] [--qa-on-fail stop|retry:N] [--security-on-fail stop|retry:N] [--main plan=claude|codex,design=...,build=...,qa=...,security=...] [--brainstorm plan[:compare|:debate],design[:compare|:debate]] [--codex-model gpt-6.1-sol] [--codex-effort high] [--debate-turns N] [--cross-review] [--security-review on|strict] [--no-open]",
     "AutoPilot set --project <dir> [--model opus] [--effort high] [--runner claude|codex] [--codex-model gpt-6.1-sol] [--codex-effort high]",
     "AutoPilot stop|status|reset-progress --project <dir>",
-    "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]"
+    "AutoPilot approve --project <dir> [--pick claude|codex] [--resolve d1=claude|codex,...]",
+    "AutoPilot cancel-build --project <dir> [--restore state|phase|all]"
 ].join("\n");
 
 const PROJECT_OPTION_KEYS = { "--project": "projectDir" };
@@ -61,6 +62,7 @@ const RUN_OPTION_KEYS = {
     "--debate-turns": "debateTurns"
 };
 const APPROVE_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--pick": "pick", "--resolve": "resolve" };
+const CANCEL_OPTION_KEYS = { ...PROJECT_OPTION_KEYS, "--restore": "scope" };
 // 신규 개발에서만 뜻이 있는 인자. Codex의 model·effort는 Codex가 회차를 돌릴 때(--runner codex)도 쓴다.
 const BUILD_OPTION_KEYS = ["gates", "skip", "allow", "designFormat", "qaOnFail", "securityOnFail", "mains", "brainstorm", "debateTurns", "crossReview", "securityReview"];
 // 실패하면 개발로 되돌리는 단계의 인자와, 해석한 되돌림 횟수를 담을 옵션 키
@@ -380,6 +382,11 @@ const parseApproveArgs = (args) => {
     return options;
 };
 
+// cancel-build의 복구 범위(--restore, 기본 state). 값 검사는 서비스가 한다.
+const parseCancelArgs = (args) => {
+    return parseOptions(args, CANCEL_OPTION_KEYS);
+};
+
 // 실행 중인 AutoPilot에 전달할 값이므로 프로젝트와 회차 실행 값(실행 에이전트, Claude·Codex의 model·effort)만 받는다.
 const parseSetArgs = (args) => {
     const options = parseOptions(args, SET_OPTION_KEYS);
@@ -391,4 +398,4 @@ const parseSetArgs = (args) => {
     return options;
 };
 
-export default { HELP_TEXT, parseRunArgs, parseProjectArgs, parseApproveArgs, parseSetArgs };
+export default { HELP_TEXT, parseRunArgs, parseProjectArgs, parseApproveArgs, parseCancelArgs, parseSetArgs };

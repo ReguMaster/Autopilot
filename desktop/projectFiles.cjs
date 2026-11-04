@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { execFile } = require("node:child_process");
 const { getProjectNameError, sanitizeBrief } = require("./projectDraft.cjs");
 
@@ -202,6 +203,8 @@ const PHASE_DOCS = {
         { path: "docs/autopilot/design.md", isDir: false },
         { path: "docs/autopilot/design", isDir: true }
     ],
+    // HTML 와이어프레임의 진입 파일. design.md가 있으면 design은 그 문서를 가리키므로 화면 시안은 따로 연다.
+    "design-mockup": [{ path: "docs/autopilot/design/index.html", isDir: false }],
     qa: [{ path: "docs/autopilot/qa.md", isDir: false }],
     security: [{ path: "docs/autopilot/security.md", isDir: false }],
     // 여러 AI 브레인스토밍의 보조 안(디자인은 HTML일 수 있다. 메인이 Codex이면 Claude 안)과 서로의 검토. 이름은 엔진 phaseUtil.getProposalPath·getReviewPath와 같다.
@@ -269,7 +272,10 @@ const readPhaseDoc = (projectDir, phase) => {
         // stream 디코딩은 256KB 경계에서 잘린 마지막 글자를 깨진 문자로 남기지 않고 버린다.
         const text = new TextDecoder("utf-8", { ignoreBOM: false }).decode(buffer.subarray(0, Math.min(size, MAX_PHASE_DOC_BYTES)), { stream: true });
 
-        return { kind: "file", path: doc.path, text: text, isPartial: size > MAX_PHASE_DOC_BYTES };
+        const result = { kind: "file", path: doc.path, text: text, isPartial: size > MAX_PHASE_DOC_BYTES };
+
+        // HTML은 글로 읽지 않고 화면이 격리된 프레임으로 그리도록 실제 경로의 file 주소를 준다(링크는 getPhaseDoc가 이미 풀었다).
+        return doc.path.endsWith(".html") ? { ...result, fileUrl: pathToFileURL(doc.realPath).href } : result;
     } finally {
         fs.closeSync(fd);
     }

@@ -10,6 +10,7 @@ import { AvatarRing } from "../../components/AvatarRing.jsx";
 import { Button } from "../../components/Button.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { getTabTicks } from "../../lib/buildSteps.js";
+import { getAvatarLetter } from "../profile/profileParts.jsx";
 import { PHASE_LABELS } from "../../lib/constants.js";
 import { getTabLabels } from "../../lib/projectName.js";
 import { EMPTY_ACCOUNT, useAccountStore } from "../../stores/accountStore.js";
@@ -174,7 +175,12 @@ const AccountCard = () => {
             onClick={() => ui.togglePanel("profile")}
         >
             <span className="rail-account-body">
-                <b className="rail-account-name rail-label">{name}</b>
+                <span className="rail-account-who">
+                    <span className="rail-account-photo" aria-hidden="true">
+                        {getAvatarLetter({ name: name, email: "" })}
+                    </span>
+                    <b className="rail-account-name rail-label">{name}</b>
+                </span>
                 <span className="rail-account-rings">
                     <AccountRing provider="claude" percent={getTopPercent(account.limits)} />
                     {codex.loggedIn ? <AccountRing provider="codex" percent={getTopPercent(codex.limits)} /> : null}

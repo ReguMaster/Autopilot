@@ -3,85 +3,48 @@ import { useShallow } from "zustand/react/shallow";
 import { Chip } from "../../components/Chip.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Popover } from "../../components/Popover.jsx";
-import { ALLOW_FIXED_RULES, ALLOW_OPTIONS, ALLOW_RISKS, getAllowRisk, getAllowUsage } from "../../lib/buildSteps.js";
+import { ALLOW_FIXED_NOTE, ALLOW_OPTIONS, ALLOW_RISKS, getAllowRisk, getAllowUsage } from "../../lib/buildSteps.js";
 import { composer, useComposerStore } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
+import "./AllowChip.css";
 
-const RISK_LEVELS = Object.keys(ALLOW_RISKS);
-
-// 위험도: 세 칸 중 몇 칸이 찼는지와 이름. 색은 낮음 초록·보통 주황·높음 빨강이다.
-const RiskMeter = ({ risk }) => {
-    const filled = RISK_LEVELS.indexOf(risk) + 1;
-
+const RiskTag = ({ risk }) => {
     return (
-        <span className="risk-meter" data-risk={risk}>
-            <span className="risk-bars" aria-hidden="true">
-                {RISK_LEVELS.map((level, index) => (
-                    <i key={level} data-on={index < filled ? "" : undefined}></i>
-                ))}
-            </span>
-            위험 {ALLOW_RISKS[risk]}
-        </span>
+        <small className="allow-risk-tag" data-risk={risk}>
+            <i aria-hidden="true"></i>위험 {ALLOW_RISKS[risk]}
+        </small>
     );
 };
 
-const AllowOption = ({ option, isChecked, onActivate }) => {
+// 항목은 이름·위험도·한 줄 설명과 스위치뿐이다. 위험한 이유와 지키는 선은 설정 페이지의 허용 묶음에서 읽는다. 켠 항목에 지금 설정이 기대는 곳이 있을 때만 그 사실을 한 줄 더한다.
+const AllowRow = ({ option, isChecked, usage }) => {
     return (
-        <label className="allow-option" data-risk={option.risk} onPointerEnter={onActivate} onFocus={onActivate}>
-            <input type="checkbox" data-allow={option.key} checked={isChecked} onChange={() => composer.toggleAllow(option.key)} />
-            <span className="allow-box" aria-hidden="true">
-                <Icon symbol="icon-check" />
-            </span>
-            <span className="allow-body">
-                <span className="allow-line">
+        <label className="allow-row" data-risk={option.risk}>
+            <span className="allow-main">
+                <span className="allow-name">
                     <b>{option.label}</b>
-                    <RiskMeter risk={option.risk} />
+                    <RiskTag risk={option.risk} />
                 </span>
                 <small className="allow-desc">{option.desc}</small>
+                {usage.map((line) => (
+                    <small key={line} className="allow-usage">
+                        {line}
+                    </small>
+                ))}
             </span>
+            <input type="checkbox" className="switch" data-allow={option.key} checked={isChecked} onChange={() => composer.toggleAllow(option.key)} />
         </label>
     );
 };
 
-// 가리키고 있는(또는 고르고 있는) 항목의 위험한 이유와 허용해도 지키는 선. 목록 아래 자리가 늘 같아서 가리키는 항목이 바뀌어도 팝오버 높이가 흔들리지 않는다.
-const AllowDetail = ({ option, usage }) => {
-    return (
-        <div className="allow-detail" data-risk={option.risk} aria-live="polite">
-            <p>
-                <b className="allow-tag" data-kind="risk">
-                    위험 {ALLOW_RISKS[option.risk]}
-                </b>
-                {option.riskNote}.
-            </p>
-            <p>
-                <b className="allow-tag" data-kind="keep">
-                    지켜요
-                </b>
-                {option.keeps}.
-            </p>
-            {usage.map((line) => (
-                <p key={line}>
-                    <b className="allow-tag" data-kind="use">
-                        지금 설정
-                    </b>
-                    {line}
-                </p>
-            ))}
-        </div>
-    );
-};
-
 // 신규 개발에서 이번 실행에 풀어 줄 정책. 고른 것만 엔진이 정책 끝에 허용으로 덧붙이고, 실행 중에는 바꿀 수 없다.
-// 항목마다 무엇을 하는지와 위험도를 보여 주고, 가리킨 항목의 위험한 이유·지키는 선은 아래 설명 칸에 보인다. 고른 것의 가장 높은 위험도는 알약 점과 머리 줄에 알린다.
+// 고른 것 중 가장 높은 위험도는 알약 점과 팝오버 머리에 알린다.
 const AllowChip = () => {
     const { allow, brainstorm, designFormat } = useComposerStore(useShallow((store) => ({ allow: store.allow, brainstorm: store.brainstorm, designFormat: store.designFormat })));
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const [isOpen, setIsOpen] = useState(false);
-    const [activeKey, setActiveKey] = useState("");
     const popoverRef = useRef(null);
     const risk = getAllowRisk(allow);
-    // 가리킨 항목이 없으면 고른 것 중 가장 위험한 항목(목록이 위험도 순이라 마지막), 그것도 없으면 첫 항목이다.
-    const active = ALLOW_OPTIONS.find((option) => option.key === activeKey) ?? ALLOW_OPTIONS.findLast((option) => allow.includes(option.key)) ?? ALLOW_OPTIONS[0];
 
     useEffect(() => {
         if (!isIdle) {
@@ -102,40 +65,27 @@ const AllowChip = () => {
                 <Icon symbol="icon-lock" className="lock" />
                 <Icon symbol="icon-chevron" className="chevron" />
             </Chip>
-            <Popover
-                id="allow-popover"
-                className="popover allow-popover"
-                role="group"
-                aria-label="이번 실행에서 허용할 것"
-                popoverRef={popoverRef}
-                onToggle={(open) => {
-                    setIsOpen(open);
-                    setActiveKey("");
-                }}
-            >
+            <Popover id="allow-popover" className="popover allow-popover" role="group" aria-label="이번 실행에서 허용할 것" popoverRef={popoverRef} onToggle={setIsOpen}>
                 <div className="allow-head">
                     <p className="allow-title">이번 실행에서 허용할 것</p>
                     <p className="allow-summary" data-risk={risk || undefined}>
-                        {risk ? `${allow.length}개 허용 · 가장 높은 위험도 ${ALLOW_RISKS[risk]}` : "아무것도 풀지 않고 기본 정책대로 해요"}
+                        {risk ? `${allow.length}개 · 가장 높은 위험 ${ALLOW_RISKS[risk]}` : "기본 정책대로"}
                     </p>
                 </div>
                 <div className="allow-list">
                     {ALLOW_OPTIONS.map((option) => (
-                        <AllowOption key={option.key} option={option} isChecked={allow.includes(option.key)} onActivate={() => setActiveKey(option.key)} />
+                        <AllowRow
+                            key={option.key}
+                            option={option}
+                            isChecked={allow.includes(option.key)}
+                            usage={allow.includes(option.key) ? getAllowUsage(option.key, { brainstorm: brainstorm, designFormat: designFormat }) : []}
+                        />
                     ))}
                 </div>
-                <AllowDetail option={active} usage={allow.includes(active.key) ? getAllowUsage(active.key, { brainstorm: brainstorm, designFormat: designFormat }) : []} />
-                <div className="allow-foot">
-                    <p>
-                        <Icon symbol="icon-lock" />
-                        어떤 허용을 켜도 아래 규칙은 풀 수 없어요
-                    </p>
-                    <ul>
-                        {ALLOW_FIXED_RULES.map((rule) => (
-                            <li key={rule}>{rule}</li>
-                        ))}
-                    </ul>
-                </div>
+                <p className="allow-foot">
+                    <Icon symbol="icon-lock" />
+                    {ALLOW_FIXED_NOTE}
+                </p>
             </Popover>
         </>
     );

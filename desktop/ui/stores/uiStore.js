@@ -5,6 +5,8 @@ import { STATUS_OK } from "../lib/constants.js";
 const useUiStore = create(() => ({
     panel: null,
     settingsScope: "global",
+    // 설정 페이지에서 보고 있는 항목(features/settings의 SECTIONS id)
+    settingsSection: "general",
     history: false,
     archive: false,
     schedule: false,
@@ -15,6 +17,7 @@ const useUiStore = create(() => ({
     home: false,
     stopArmed: false,
     isStarting: false,
+    isCancelling: false,
     finishDismissed: false,
     notice: { message: "", tone: "" },
     loginBanner: null,
@@ -29,6 +32,8 @@ const ui = {
     // 두 패널은 같은 자리에 뜨므로 하나를 열면 다른 하나는 닫고, 예약 시트도 닫는다.
     setPanel: (name) => useUiStore.setState(name ? { panel: name, schedule: false } : { panel: null }),
     togglePanel: (name) => ui.setPanel(useUiStore.getState().panel === name ? null : name),
+    // 설정을 열고 section을 주면 그 항목으로 바로 간다.
+    openSettings: (section) => useUiStore.setState((current) => ({ panel: "settings", schedule: false, settingsSection: section ?? current.settingsSection })),
     setHistory: (isOpen) => useUiStore.setState(isOpen ? { history: true, panel: null, archive: false, schedule: false } : { history: false }),
     setArchive: (isOpen) => useUiStore.setState(isOpen ? { archive: true, panel: null, history: false, schedule: false } : { archive: false }),
     setSchedule: (isOpen) => useUiStore.setState(isOpen ? { schedule: true, panel: null, history: false, archive: false } : { schedule: false }),

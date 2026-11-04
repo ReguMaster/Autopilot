@@ -82,6 +82,29 @@ const hasWorkChanges = (runGitCommand, previousHash) => {
     return previousTree !== headTree;
 };
 
+// 신규 개발 취소: 저장소를 targetHash로 되돌린다. 되돌리기 전 HEAD는 backup ref에, commit 안 된 변경(새 파일 포함)은 stash에 남겨 어느 쪽이든 되살릴 수 있다.
+// 어느 단계에서든 실패하면 reset 전이라 저장소는 그대로다. 연결 저장소는 건드리지 않는다.
+const restoreToCommit = (runGitCommand, targetHash, backupName) => {
+    try {
+        runGitCommand(["merge-base", "--is-ancestor", targetHash, "HEAD"]);
+    } catch {
+        throw new Error("기록해 둔 시작점이 지금 브랜치의 기록에 없습니다(브랜치를 바꾸거나 기록을 고친 것 같아요). 저장소는 그대로 두었습니다.");
+    }
+
+    const backupRef = `refs/autopilot/backup/${backupName}`;
+    const isDirty = Boolean(runGitCommand(["status", "--porcelain"]));
+
+    runGitCommand(["update-ref", backupRef, "HEAD"]);
+
+    if (isDirty) {
+        runGitCommand(["stash", "push", "--include-untracked", "-m", `autopilot cancel backup ${backupName}`]);
+    }
+
+    runGitCommand(["reset", "--hard", targetHash]);
+
+    return { backupRef: backupRef, isStashed: isDirty };
+};
+
 const getRecentLog = (runGitCommand) => {
     return runGitCommand(["--no-pager", "log", "--oneline", "-20"]);
 };
@@ -94,4 +117,17 @@ const getShortStatus = (runGitCommand) => {
     return runGitCommand(["status", "--short"]);
 };
 
-export default { createGitRunner, assertGitProject, getHeadHash, getBranchName, getCommitHashesSince, getLineCounts, collectNewCommits, hasWorkChanges, getRecentLog, getStatus, getShortStatus };
+export default {
+    createGitRunner,
+    assertGitProject,
+    getHeadHash,
+    getBranchName,
+    getCommitHashesSince,
+    getLineCounts,
+    collectNewCommits,
+    hasWorkChanges,
+    restoreToCommit,
+    getRecentLog,
+    getStatus,
+    getShortStatus
+};

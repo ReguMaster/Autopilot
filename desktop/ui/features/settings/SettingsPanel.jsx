@@ -1,375 +1,75 @@
-import { useShallow } from "zustand/react/shallow";
-import { accounts } from "../../actions/accounts.js";
-import { openArchiveList } from "../../actions/runs.js";
-import { changeSystemSettings, openReport, resetProgress, selectProject } from "../../actions/run.js";
-import { Button } from "../../components/Button.jsx";
-import { Icon } from "../../components/Icon.jsx";
+import { useEffect, useRef } from "react";
 import { Panel } from "../../components/Panel.jsx";
-import { NavRow, SelectRow, SettingsGroup, SwitchRow } from "../../components/SettingsGroup.jsx";
-import { settings } from "../../actions/settings.js";
-import { useAnyRunning } from "../../hooks/useAnyRunning.js";
-import { useAccountStore } from "../../stores/accountStore.js";
-import { useAppStore } from "../../stores/appStore.js";
-import { useRunStore } from "../../stores/runStore.js";
 import { ui, useUiStore } from "../../stores/uiStore.js";
-import { GitGroup } from "./GitGroup.jsx";
-import { ModelVersions } from "./ModelVersions.jsx";
-import { RunDefaults } from "./RunDefaults.jsx";
-import { StorageGroup } from "./StorageGroup.jsx";
-import { ScopeGroup, ScopeNote, useScopedValue } from "./ScopeControls.jsx";
+import { AiSection } from "./AiSection.jsx";
+import { BuildSection } from "./BuildSection.jsx";
+import { DataSection } from "./DataSection.jsx";
+import { GeneralSection } from "./GeneralSection.jsx";
+import { ProjectSection } from "./ProjectSection.jsx";
+import { RunSection } from "./RunSection.jsx";
+import { ScopeSwitch } from "./ScopeControls.jsx";
 
-const SLEEP_BLOCK_OPTIONS = [
-    { value: "always", label: "항상", hint: "실행하는 동안 PC가 잠들지 않아요" },
-    { value: "plugged", label: "전원 연결 때만", hint: "배터리로 돌 때는 PC가 잠들 수 있어요" },
-    { value: "never", label: "하지 않음", hint: "PC가 잠들면 회차가 멈춰요" }
-];
-const THEME_OPTIONS = [
-    { value: "system", label: "시스템 설정", hint: "운영체제의 밝게·어둡게를 따라가요" },
-    { value: "light", label: "밝게" },
-    { value: "dark", label: "어둡게" }
-];
-const POST_RUN_OPTIONS = [
-    { value: "none", label: "아무것도 안 함" },
-    { value: "sleep", label: "PC 절전", hint: "끝나고 1분 안에 취소할 수 있어요" },
-    { value: "shutdown", label: "PC 종료", hint: "끝나고 1분 안에 취소할 수 있어요" }
-];
-const CHECK_UPDATES_NOTE = "앱을 켤 때와 6시간마다 GitHub에서 새 버전이 있는지 확인해요. 끄면 이 확인을 위한 네트워크 요청을 하지 않아요.";
-const KEEP_IN_TRAY_NOTE = "창을 닫아도 앱이 트레이에 남아 실행과 예약 시작이 이어져요. 끄면 실행 중이 아닐 때 창을 닫으면 앱이 종료돼요.";
-const LAUNCH_AT_LOGIN_NOTE = "컴퓨터에 로그인하면 창 없이 트레이로 조용히 켜져요. 켜면 트레이 상주도 함께 켜져요.";
-const LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE = "설치한 앱에서만 켤 수 있어요. 개발 실행에서는 쓸 수 없어요.";
-
-const ProviderGroup = () => {
-    const claudeDir = useAccountStore((store) => store.claudeDir);
-    const login = useAccountStore((store) => store.login);
-    const isAnyRunning = useAnyRunning();
-    const isLocked = isAnyRunning || login?.phase === "waiting";
-
-    return (
-        <SettingsGroup id="group-provider" title="AI 제공자">
-            <div className="provider" role="radiogroup" aria-label="AI 제공자">
-                <button type="button" className="provider-option" role="radio" aria-checked="true">
-                    <svg className="icon provider-mark" viewBox="0 0 24 24" aria-hidden="true">
-                        <use href="#mark-claude" />
-                    </svg>
-                    <span className="provider-text">
-                        <b>Claude</b>
-                        <small>Anthropic · 현재 지원하는 제공자예요</small>
-                    </span>
-                    <Icon symbol="icon-check" className="icon tick" />
-                </button>
-            </div>
-            <div id="claude-dir" className="field claude-dir" data-missing={claudeDir && !claudeDir.exists ? "" : undefined}>
-                <div className="field-head">
-                    <h4 className="field-title">Claude 데이터 폴더</h4>
-                    <span id="claude-dir-auto" className="tag" hidden={!claudeDir?.isAuto}>
-                        자동 감지
-                    </span>
-                    <span id="claude-dir-missing" className="tag warn" hidden={!claudeDir || claudeDir.exists}>
-                        폴더를 찾지 못했어요
-                    </span>
-                </div>
-                <p id="claude-dir-path" className="path">
-                    {claudeDir?.path ?? ""}
-                </p>
-                <p className="field-desc">
-                    메모리·지침·스킬이 있는 .claude 폴더예요. 추가한 계정도 이 폴더의 데이터를 함께 써요. 자동 감지는 환경 변수 CLAUDE_CONFIG_DIR, 없으면 사용자 폴더의 .claude예요.
-                </p>
-                <div className="row-actions">
-                    <Button id="select-claude-dir" disabled={isLocked} onClick={() => accounts.changeClaudeDir(window.autopilot.selectClaudeDir)}>
-                        폴더 변경
-                    </Button>
-                    <Button id="reset-claude-dir" disabled={isLocked || !claudeDir || claudeDir.isAuto} onClick={() => accounts.changeClaudeDir(window.autopilot.resetClaudeDir)}>
-                        자동 감지
-                    </Button>
-                </div>
-            </div>
-        </SettingsGroup>
-    );
-};
-
-const MAX_LINKED_REPOS = 2;
-
-// 백엔드·프론트처럼 나뉜 저장소를 한 실행에서 함께 다룬다. 작업 프로젝트를 합쳐 3개까지이고, 저장소마다 따로 커밋·push한다.
-const LinkedRepos = ({ projectDir }) => {
-    const linkedRepos = useAppStore((store) => store.settings.linkedRepos);
-    const isIdle = useRunStore((store) => store.state.status === "idle");
-
-    return (
-        <div className="field linked-repos">
-            <div className="field-head">
-                <h4 className="field-title">연결 저장소</h4>
-                <span id="linked-repos-count" className="tag">
-                    {linkedRepos.length + 1} / {MAX_LINKED_REPOS + 1}개
-                </span>
-                <Button id="add-linked-repo" disabled={!isIdle || !projectDir || linkedRepos.length >= MAX_LINKED_REPOS} onClick={settings.addLinkedRepo}>
-                    저장소 추가
-                </Button>
-            </div>
-            <ul id="linked-repos" className="repo-list">
-                {linkedRepos.map((repoDir) => (
-                    <li key={repoDir} className="repo-item">
-                        <span className="path">{repoDir}</span>
-                        <Button disabled={!isIdle} aria-label={`${repoDir} 연결 해제`} onClick={() => settings.removeLinkedRepo(repoDir)}>
-                            해제
-                        </Button>
-                    </li>
-                ))}
-            </ul>
-            <p className="field-desc">
-                작업 프로젝트와 함께 최대 {MAX_LINKED_REPOS + 1}개까지 연결해요. 한 세션이 모두 보고 고치며, 변경한 저장소마다 따로 커밋하고 작업 브랜치로 push해요. 커밋 접두어와 작업 브랜치는 모두
-                같아요.
-            </p>
-        </div>
-    );
-};
-
-const ProjectGroup = () => {
-    const projectDir = useAppStore((store) => store.settings.projectDir);
-    const isIdle = useRunStore((store) => store.state.status === "idle");
-
-    return (
-        <SettingsGroup id="group-project" title="프로젝트">
-            <div className="field project" data-missing={projectDir ? undefined : ""}>
-                <div className="field-head">
-                    <h4 className="field-title">대상 프로젝트</h4>
-                    <Button id="select-project" disabled={!isIdle} onClick={selectProject}>
-                        {projectDir ? "폴더 변경" : "폴더 선택"}
-                    </Button>
-                </div>
-                <p id="project-path" className="path">
-                    {projectDir || "선택한 폴더가 없어요."}
-                </p>
-                <p className="field-desc">Git 저장소의 루트 폴더만 고를 수 있어요.</p>
-            </div>
-            <LinkedRepos projectDir={projectDir} />
-        </SettingsGroup>
-    );
-};
-
-// 로그인 자동 실행을 켜면 트레이 상주는 반드시 켜져 있어야 하므로 끌 수 없게 잠근다. 개발 실행처럼 등록할 수 없는 환경은 켜는 쪽을 막는다.
-const SystemGroup = () => {
-    const { keepInTray, launchAtLogin, checkUpdates, sleepBlock, postRunAction, theme } = useAppStore((store) => store.settings);
-    const canLaunchAtLogin = useAppStore((store) => store.canLaunchAtLogin);
-
-    return (
-        <SettingsGroup id="group-system" title="시스템">
-            <SelectRow
-                labelId="theme-label"
-                noteId="theme-note"
-                title="화면 테마"
-                note="어둡게는 밤에 눈이 덜 부셔요."
-                value={theme || "system"}
-                options={THEME_OPTIONS}
-                onChange={(next) => settings.setPreferences({ theme: next })}
-            />
-            <SwitchRow
-                id="keep-in-tray"
-                noteId="keep-in-tray-note"
-                title="닫아도 트레이에서 계속 켜 두기"
-                note={KEEP_IN_TRAY_NOTE}
-                checked={Boolean(keepInTray)}
-                disabled={Boolean(launchAtLogin)}
-                onChange={(isOn) => changeSystemSettings({ keepInTray: isOn })}
-            />
-            <SwitchRow
-                id="launch-at-login"
-                noteId="launch-at-login-note"
-                title="로그인하면 자동으로 켜기"
-                note={canLaunchAtLogin || launchAtLogin ? LAUNCH_AT_LOGIN_NOTE : LAUNCH_AT_LOGIN_UNSUPPORTED_NOTE}
-                checked={Boolean(launchAtLogin)}
-                disabled={!canLaunchAtLogin && !launchAtLogin}
-                onChange={(isOn) => changeSystemSettings({ launchAtLogin: isOn })}
-            />
-            <SelectRow
-                labelId="sleep-block-label"
-                noteId="sleep-block-note"
-                title="실행 중 절전 방지"
-                note="PC가 잠들면 회차가 멈춰요. 노트북은 배터리일 때만 풀 수 있어요."
-                value={sleepBlock}
-                options={SLEEP_BLOCK_OPTIONS}
-                onChange={(next) => settings.setPreferences({ sleepBlock: next })}
-            />
-            <SelectRow
-                labelId="post-run-label"
-                noteId="post-run-note"
-                title="실행이 끝난 뒤"
-                note="스스로 끝나면 알려 주고 1분 뒤에 해요. 종료 신호·강제 종료 뒤에는 하지 않아요."
-                value={postRunAction}
-                options={POST_RUN_OPTIONS}
-                onChange={settings.setPostRunAction}
-            />
-            <SwitchRow
-                id="check-updates"
-                noteId="check-updates-note"
-                title="새 버전 확인"
-                note={CHECK_UPDATES_NOTE}
-                checked={Boolean(checkUpdates)}
-                onChange={(isOn) => settings.setPreferences({ checkUpdates: isOn })}
-            />
-        </SettingsGroup>
-    );
-};
-
-const NOTIFICATION_ROWS = [
-    { key: "notifyFinish", title: "실행이 끝나면", note: "정상으로 끝나거나 종료 신호로 멈췄을 때 알려요." },
-    { key: "notifyFailure", title: "실패하거나 중단되면", note: "연속 실패로 중단되는 등 오류로 끝났을 때 알려요." },
-    { key: "notifyLimit", title: "사용량 한도로 기다리면", note: "한도에 걸려 리셋까지 기다리기 시작할 때 알려요." },
-    { key: "notifySchedule", title: "예약이 시작되면", note: "예약이 실행을 시작했거나 시작하지 못했을 때 알려요." },
-    { key: "notifyFocused", title: "창을 보고 있을 때도", note: "끄면 창이 가려져 있거나 트레이에 있을 때만 알려요." }
+// 항목마다 한 번에 하나만 그린다. isScoped는 전역과 이 프로젝트 중 어디에 저장할지 고르는 값이 있는 항목이라 범위 스위치를 보인다.
+const SECTIONS = [
+    { id: "general", label: "일반", hint: "화면 · 트레이 · 알림", lead: "화면과 알림처럼 앱 전체에 적용돼요.", isScoped: false, Content: GeneralSection },
+    { id: "project", label: "프로젝트", hint: "저장소 · Git · 기록 보관", lead: "작업할 저장소와 Git에 남는 이름, 지난 기록을 얼마나 둘지 정해요.", isScoped: true, Content: ProjectSection },
+    { id: "run", label: "실행", hint: "모드 · 한도 · PC", lead: "실행을 시작할 때의 기본값과 한도를 만났을 때, 끝난 뒤의 동작이에요.", isScoped: true, Content: RunSection },
+    {
+        id: "build",
+        label: "신규 개발",
+        hint: "단계 · 메인과 보조 · 허용",
+        lead: "기획부터 보안검토까지 다섯 단계를 누가, 어떻게 맡을지 정해요. 시작할 때 입력창에 미리 채워 둬요.",
+        isScoped: true,
+        Content: BuildSection
+    },
+    { id: "ai", label: "AI", hint: "Claude · Codex · 계정", lead: "두 AI의 모델과 노력, 계정과 한도를 정해요.", isScoped: true, Content: AiSection },
+    { id: "data", label: "데이터", hint: "기록 · 내보내기 · 초기화", lead: "지난 기록을 보고, 설정을 옮기거나 처음으로 되돌려요.", isScoped: false, Content: DataSection }
 ];
 
-const NotificationGroup = () => {
-    const preferences = useAppStore((store) => store.settings);
-
-    return (
-        <SettingsGroup id="group-notify" sectionId="notify-group" title="알림">
-            {NOTIFICATION_ROWS.map((row) => (
-                <SwitchRow
-                    key={row.key}
-                    id={`notify-${row.key}`}
-                    noteId={`notify-${row.key}-note`}
-                    title={row.title}
-                    note={row.note}
-                    checked={Boolean(preferences[row.key])}
-                    onChange={(isOn) => settings.setPreferences({ [row.key]: isOn })}
-                />
-            ))}
-        </SettingsGroup>
-    );
-};
-
-const EXTEND_LIMIT_OPTIONS = [
-    { value: 0, label: "제한 없음", hint: "한도를 기다린 시간을 모두 더해요" },
-    { value: 60, label: "최대 1시간" },
-    { value: 180, label: "최대 3시간" },
-    { value: 360, label: "최대 6시간" },
-    { value: 720, label: "최대 12시간" },
-    { value: 1440, label: "최대 24시간" }
-];
-
-const LimitGroup = () => {
-    const isIdle = useRunStore((store) => store.state.status === "idle");
-    const { value } = useScopedValue("extendOnLimit");
-    const limit = useScopedValue("extendLimitMinutes").value;
-
-    return (
-        <SettingsGroup id="group-limit" title="사용량 한도">
-            <SwitchRow
-                id="extend-on-limit"
-                title="대기한 시간만큼 종료 시각 연장"
-                note="한도에 걸려 리셋까지 기다리면 그 시간만큼 종료 시각을 늦춰요. 끄면 리셋이 종료 시각 뒤일 때 바로 끝나요."
-                extra={<ScopeNote settingKey="extendOnLimit" disabled={!isIdle} />}
-                checked={Boolean(value)}
-                disabled={!isIdle}
-                onChange={(isOn) => settings.update({ extendOnLimit: isOn })}
-            />
-            <SelectRow
-                labelId="extend-limit-label"
-                noteId="extend-limit-note"
-                title="연장 상한"
-                note="한 번의 실행에서 늘릴 수 있는 시간의 합이에요. 연장을 켰을 때만 적용돼요."
-                extra={<ScopeNote settingKey="extendLimitMinutes" disabled={!isIdle} />}
-                value={limit}
-                options={EXTEND_LIMIT_OPTIONS}
-                disabled={!isIdle}
-                disabledReason="실행 중에는 바꿀 수 없어요"
-                onChange={(next) => settings.update({ extendLimitMinutes: next })}
-            />
-        </SettingsGroup>
-    );
-};
-
-// 설정 파일을 내보내고 가져오고, 기본값으로 되돌린다. 덮어쓰는 일이라 실행 중에는 막는다.
-const ManageGroup = () => {
-    const isIdle = !useAnyRunning();
-
-    return (
-        <SettingsGroup id="group-manage" title="설정 관리">
-            <NavRow id="export-settings" onClick={settings.exportToFile}>
-                설정 내보내기
-            </NavRow>
-            <NavRow id="import-settings" disabled={!isIdle} onClick={settings.importFromFile}>
-                설정 가져오기
-            </NavRow>
-            <NavRow id="restore-defaults" danger disabled={!isIdle} onClick={settings.restoreDefaults}>
-                설정 기본값으로 되돌리기
-            </NavRow>
-        </SettingsGroup>
-    );
-};
-
-const HistoryGroup = () => {
-    const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
-    const isIdle = useRunStore((store) => store.state.status === "idle");
-    const reportFile = useRunStore((store) => store.state.reportFile);
-    const isHistoryOpen = useUiStore((store) => store.history);
-    const isArchiveOpen = useUiStore((store) => store.archive);
-
-    return (
-        <SettingsGroup id="group-history" title="기록">
-            <NavRow id="history-toggle" aria-expanded={isHistoryOpen} aria-controls="history" onClick={() => ui.setHistory(!isHistoryOpen)}>
-                {isHistoryOpen ? "전체 기록 닫기" : "전체 기록 보기"}
-            </NavRow>
-            <NavRow id="archive-toggle" aria-expanded={isArchiveOpen} aria-controls="archive" onClick={openArchiveList}>
-                지난 실행 보기
-            </NavRow>
-            <NavRow id="open-report" disabled={!reportFile} onClick={openReport}>
-                리포트 열기
-            </NavRow>
-            <NavRow id="reset-progress" danger disabled={!isIdle || !hasProject} onClick={resetProgress}>
-                진행 기록 초기화
-            </NavRow>
-        </SettingsGroup>
-    );
-};
-
+// 레일 오른쪽 본문 전체를 차지하는 설정 페이지. 왼쪽에 항목, 오른쪽에 선택한 항목의 내용을 둔다.
 const SettingsPanel = () => {
     const open = useUiStore((store) => store.panel === "settings");
-    const { version, isDev } = useAppStore(useShallow((store) => ({ version: store.version, isDev: store.isDev })));
+    const sectionId = useUiStore((store) => store.settingsSection);
+    const section = SECTIONS.find((item) => item.id === sectionId) ?? SECTIONS[0];
+    const bodyRef = useRef(null);
+    const { Content } = section;
+
+    useEffect(() => {
+        bodyRef.current?.scrollTo({ top: 0 });
+    }, [section.id]);
 
     return (
         <Panel id="settings" className="settings-panel" aria-labelledby="settings-title" open={open}>
-            <h2 id="settings-title" className="panel-title">
-                설정
-            </h2>
-
-            <ProjectGroup />
-            <ScopeGroup />
-            <RunDefaults />
-
-            <SettingsGroup id="group-model" title="모델 버전">
-                <div className="field">
-                    <p className="field-desc">기본은 각 모델의 최신 버전이에요. 버전을 고르면 그 모델을 쓸 때 고른 버전으로 실행해요. 실행 중에는 바꿀 수 없어요.</p>
-                    <ScopeNote settingKey="modelVersions" />
+            <div className="settings-page">
+                <h2 id="settings-title" className="settings-title">
+                    설정
+                </h2>
+                <nav className="settings-nav" aria-label="설정 항목">
+                    {SECTIONS.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            id={`settings-nav-${item.id}`}
+                            className="settings-nav-item"
+                            aria-current={item.id === section.id ? "page" : undefined}
+                            onClick={() => ui.set({ settingsSection: item.id })}
+                        >
+                            <b>{item.label}</b>
+                            <small>{item.hint}</small>
+                        </button>
+                    ))}
+                </nav>
+                <div id="settings-body" className="settings-body" ref={bodyRef}>
+                    <header className="settings-sechead">
+                        <h3 id="settings-section-title">{section.label}</h3>
+                        <p>{section.lead}</p>
+                    </header>
+                    {section.isScoped ? <ScopeSwitch /> : null}
+                    <Content />
                 </div>
-                <div id="model-versions">
-                    <ModelVersions />
-                </div>
-            </SettingsGroup>
-
-            <LimitGroup />
-            <GitGroup />
-            <ProviderGroup />
-            <SystemGroup />
-            <NotificationGroup />
-            <HistoryGroup />
-            <StorageGroup />
-            <ManageGroup />
-
-            <SettingsGroup id="group-dev" sectionId="dev-group" title="개발자" hidden={!isDev}>
-                <NavRow id="toggle-devtools" onClick={() => window.appWindow.toggleDevTools()}>
-                    개발자 도구 켜기/끄기
-                </NavRow>
-            </SettingsGroup>
-
-            <p className="panel-foot">
-                <span>앱 버전</span>
-                <span id="app-version" className="num">
-                    {version ? `v${version}` : ""}
-                </span>
-            </p>
+            </div>
         </Panel>
     );
 };
 
-export { SettingsPanel };
+export { SettingsPanel, SECTIONS };

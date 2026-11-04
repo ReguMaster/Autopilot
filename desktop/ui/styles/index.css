@@ -5,7 +5,9 @@
 @import "./controls.css";
 @import "./composer.css";
 @import "./panels.css";
+@import "./settings.css";
 @import "./sheets.css";
 @import "./responsive.css";
 @import "./motion.css";
 @import "./schedule.css";
+@import "./boot.css";

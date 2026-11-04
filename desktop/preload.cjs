@@ -12,7 +12,6 @@ const subscribe = (channel) => {
 
 contextBridge.exposeInMainWorld("autopilot", {
     getState: (projectDir) => ipcRenderer.invoke("autopilot:get-state", projectDir),
-    selectProject: () => ipcRenderer.invoke("autopilot:select-project"),
     openTab: () => ipcRenderer.invoke("autopilot:open-tab"),
     activateTab: (projectDir) => ipcRenderer.invoke("autopilot:activate-tab", projectDir),
     closeTab: (projectDir) => ipcRenderer.invoke("autopilot:close-tab", projectDir),
@@ -32,6 +31,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     getModels: (projectDir) => ipcRenderer.invoke("autopilot:get-models", projectDir),
     kill: (projectDir) => ipcRenderer.invoke("autopilot:kill", projectDir),
     resetProgress: (projectDir) => ipcRenderer.invoke("autopilot:reset-progress", projectDir),
+    cancelBuild: (projectDir, scope) => ipcRenderer.invoke("autopilot:cancel-build", projectDir, scope),
     getPhase: (projectDir) => ipcRenderer.invoke("autopilot:get-phase", projectDir),
     approvePhase: (projectDir, pick, resolutions) => ipcRenderer.invoke("autopilot:approve-phase", projectDir, pick, resolutions),
     getProviders: () => ipcRenderer.invoke("autopilot:get-providers"),

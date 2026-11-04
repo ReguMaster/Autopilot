@@ -1,9 +1,7 @@
 import { accounts } from "../../actions/accounts.js";
-import { selectProject } from "../../actions/run.js";
 import { settings } from "../../actions/settings.js";
 import { Button } from "../../components/Button.jsx";
 import { useLoginExpiry } from "../../hooks/useLoginExpiry.js";
-import { useAppStore } from "../../stores/appStore.js";
 import { useClock } from "../../stores/clock.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { useUiStore } from "../../stores/uiStore.js";
@@ -35,8 +33,6 @@ const PostActionBanner = () => {
 const Notices = () => {
     const notice = useUiStore((store) => store.notice);
     const loginBanner = useUiStore((store) => store.loginBanner);
-    const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
-    const isHome = useUiStore((store) => store.home);
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const expiry = useLoginExpiry();
 
@@ -56,12 +52,6 @@ const Notices = () => {
                 <span id="login-expiry-message">{expiry?.banner}</span>{" "}
                 <Button id="banner-relogin" disabled={!isIdle} onClick={accounts.reloginBeforeExpiry}>
                     다시 로그인
-                </Button>
-            </p>
-            <p id="project-banner" className="notice" data-tone="warn" hidden={hasProject || isHome}>
-                대상 프로젝트 폴더를 먼저 골라 주세요.{" "}
-                <Button id="banner-select-project" disabled={!isIdle} onClick={selectProject}>
-                    폴더 선택
                 </Button>
             </p>
         </div>

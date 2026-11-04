@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
@@ -1737,6 +1738,14 @@ const checkPhaseDocs = (testDir) => {
     assert.equal(readPhaseDoc(projectDir, "design-codex").path, "docs/autopilot/proposals/design-codex.html");
     assert.equal(readPhaseDoc(projectDir, "plan-review-claude").text, "- 빈자리\n");
     assert.equal(readPhaseDoc(projectDir, "plan-review-codex"), null);
+
+    // HTML은 file 주소를 함께 받아 화면이 격리된 프레임으로 그린다. 마크다운에는 주소가 없다.
+    const mockupDoc = readPhaseDoc(projectDir, "design-mockup");
+
+    assert.equal(mockupDoc.path, "docs/autopilot/design/index.html");
+    assert.equal(mockupDoc.fileUrl, pathToFileURL(fs.realpathSync.native(path.join(docsDir, "design", "index.html"))).href);
+    assert.equal(readPhaseDoc(projectDir, "design-codex").fileUrl.startsWith("file:///"), true);
+    assert.equal("fileUrl" in readPhaseDoc(projectDir, "plan-codex"), false);
 
     for (const phase of ["build", "../plan", "constructor", "__proto__", "", "plan-gemini", "proposals/plan-codex", "qa-codex"]) {
         assert.equal(readPhaseDoc(projectDir, phase), null, phase);

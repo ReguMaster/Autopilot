@@ -3,7 +3,9 @@
     --ease-spring: linear(0, 0.28 6.7%, 0.72 12.9%, 1.08 20%, 1.15 26%, 1.05 38%, 0.98 52%, 1.005 72%, 1);
 }
 
-:is(.window-control, .link, .spin-button, .nav-row, .finish-back, .account-option, .run-item, .choice-option, .button, .main-action) {
+/* 전용 transition이 없는 단추·탭도 같은 결로 반응한다. :where라 특이도가 0이어서 전용 규칙이 있으면 그쪽이 이긴다.
+   그런 단추가 누름에 스프링으로 돌아오게 하려면 그 규칙의 transition에 scale 0.5s var(--ease-spring)을 직접 더하고 아래 눌림 목록에 넣는다 */
+:where(button:not(:disabled), [role="button"], [role="tab"]) {
     transition:
         background-color 0.25s var(--ease-out),
         box-shadow 0.25s var(--ease-out),
@@ -11,14 +13,85 @@
         scale 0.5s var(--ease-spring);
 }
 
-:is(.window-control, .link, .spin-button, .button, .main-action):active:not(:disabled) {
+:where(button:not(:disabled), [role="button"], [role="tab"]):active {
+    scale: 0.97;
+    transition-duration: 0.12s;
+}
+
+:is(.window-control, .link, .spin-button, .nav-row, .finish-back, .account-option, .run-item, .choice-option, .button, .main-action, .chip, .update-chip, .settings-nav-item) {
+    transition:
+        background-color 0.25s var(--ease-out),
+        box-shadow 0.25s var(--ease-out),
+        color 0.25s var(--ease-out),
+        scale 0.5s var(--ease-spring);
+}
+
+:is(.window-control, .link, .spin-button, .button, .main-action, .chip, .update-chip, .modal-close, .proj-close, .select-trigger, .time-quick button, .time-days button):active:not(:disabled) {
     scale: 0.95;
     transition-duration: 0.12s;
 }
 
-:is(.run-item, .account-option, .choice-option, .nav-row, .finish-back):active:not(:disabled) {
+:is(
+        .run-item,
+        .account-option,
+        .choice-option,
+        .nav-row,
+        .finish-back,
+        .settings-nav-item,
+        .step-group-head,
+        .peek,
+        .proj-main,
+        .rail-home,
+        .rail-item,
+        .rail-account,
+        .ai-pill,
+        .home-start-card,
+        .np-folder
+    ):active:not(:disabled) {
     scale: 0.985;
     transition-duration: 0.12s;
+}
+
+/* 고르는 알약(세그먼트)은 입력이 위에 덮여 있어 입력을 누르는 동안 보이는 알약이 눌린다 */
+.seg-option:active input:not(:disabled) + span {
+    scale: 0.96;
+    transition-duration: 0.12s;
+}
+
+/* 접이식 머리(details)의 글자도 호버에 같은 결로 번진다 */
+summary {
+    transition: color 0.25s var(--ease-out);
+}
+
+details > summary:hover {
+    color: var(--ink);
+}
+
+/* 숨겨 뒀다 나타나거나 새로 생기는 안내·메시지·작은 단추·목록 줄은 떠오르며 나타난다(숨길 때는 [hidden]이 바로 감춘다). 특이도 0이라 전용 animation이 있으면 그쪽이 이긴다 */
+:where(
+    .profile-warn,
+    .panel-note,
+    .field-error,
+    .archive-note,
+    .archive-notes,
+    .schedule-empty,
+    .schedule-item,
+    .login-code,
+    .account-form,
+    .np-provider-note,
+    .np-notice,
+    .welcome-login,
+    .debate-room,
+    .scope-switch,
+    .settings-foot,
+    [id="archive-back"],
+    [id="schedule-add"],
+    [id$="-account-login"],
+    [id$="-account-logout"],
+    [id$="-account-remove"],
+    [id$="-login-open"]
+) {
+    animation: rise 0.35s var(--ease-out) backwards;
 }
 
 .switch::after {
@@ -43,10 +116,6 @@
     transition: background-color 0.25s var(--ease-out);
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: var(--faint) padding-box;
-}
-
 .panel-scroll,
 #archive-list-pane,
 #archive-chat,
@@ -65,4 +134,59 @@ body:not(.ready) :is(.recent-list, .archive-list, .finish-rounds, #finish-gains)
     animation-play-state: paused;
 }
 
+/* 접고 펴는 칸. 높이가 0fr↔1fr로 미끄러지고 접히는 동안 글이 먼저 흐려져 줄어드는 칸 밖으로 삐져나오지 않는다. 접힌 칸은 inert로 포커스와 읽기에서 뺀다(components/Collapse.jsx) */
+.collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition:
+        grid-template-rows 0.3s var(--ease-out),
+        visibility 0s linear 0.3s;
+}
+
+.collapse[data-open] {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition:
+        grid-template-rows 0.3s var(--ease-out),
+        visibility 0s;
+}
+
+.collapse > div {
+    min-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.15s var(--ease-out);
+}
+
+.collapse[data-open] > div {
+    opacity: 1;
+    transition: opacity 0.25s var(--ease-out) 0.06s;
+}
+
+/* 네이티브 접이식(details)도 같은 결로 높이가 늘고 줄어든다. 세 곳 모두 이 규칙을 쓴다 */
+:root {
+    interpolate-size: allow-keywords;
+}
+
+details::details-content {
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition:
+        block-size 0.3s var(--ease-out),
+        opacity 0.2s var(--ease-out),
+        content-visibility 0.3s allow-discrete;
+}
+
+details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+}
+
 /* 움직임을 줄이는 설정에서는 이동·확대 전환을 끈다. 위치가 바뀌지 않는 투명도 전환(캐럿 깜빡임, 상태 점, 문장 드러내기)은 일하는 중임을 알리는 표시라 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+    details::details-content {
+        transition: none;
+    }
+}

@@ -20,7 +20,9 @@
     font-size: var(--text-sm);
     text-align: left;
     cursor: pointer;
-    transition: box-shadow 0.2s var(--ease-out);
+    transition:
+        box-shadow 0.2s var(--ease-out),
+        scale 0.5s var(--ease-spring);
 }
 
 .select-trigger:hover:not(:disabled),

@@ -52,12 +52,10 @@ const forgetClosedDrafts = (tabs) => {
 
 // 보는 프로젝트가 바뀐 뒤(프로젝트 고르기·탭 열기·전환·닫기) 메인이 준 결과를 화면에 반영한다.
 // 보는 프로젝트가 그대로면(다른 탭을 닫았을 때 등) 탭 목록과 설정만 바꾸고, 쓰던 컴포저와 이야기는 건드리지 않는다.
-// dismissFinish가 참이면(프로젝트 고르기) 같은 프로젝트를 다시 골라도 처음부터 다시 채우고, 마친 화면은 닫은 채로 둔다(시작 전 화면으로 돌아간다).
-const applyProjectSwitch = (data, { dismissFinish = false } = {}) => {
+const applyProjectSwitch = (data) => {
     const previousDir = getSettings().projectDir;
     const nextDir = data.settings.projectDir;
     const isSwitched = nextDir !== previousDir;
-    const isRefill = isSwitched || dismissFinish;
 
     if (isSwitched && previousDir && getRunState()?.status === "idle") {
         rememberDraft(previousDir);
@@ -73,13 +71,13 @@ const applyProjectSwitch = (data, { dismissFinish = false } = {}) => {
         }
     }
 
-    settings.applyView(data, isRefill ? COMPOSER_KEYS : undefined);
+    settings.applyView(data, isSwitched ? COMPOSER_KEYS : undefined);
 
-    if (!isRefill) {
+    if (!isSwitched) {
         return;
     }
 
-    ui.set({ finishDismissed: dismissFinish });
+    ui.set({ finishDismissed: false });
     // 떠나기 전에 기억해 둔 단계 상태를 바로 보여 이전 프로젝트의 단계가 남지 않게 한다. loadRecentRuns가 새로 읽으면 바뀐다.
     // 지난 실행·연속 실행 날짜도 앞 프로젝트의 것이라, 새로 읽어 오기 전에는 비워 둔다.
     useRunsStore.setState((store) => ({ buildPhase: store.phases[nextDir] ?? null, recent: [], streakDays: [] }));
@@ -164,20 +162,23 @@ const getScheduleCount = (projectDir) => {
     return useScheduleStore.getState().payload.schedules.filter((schedule) => schedule.scope === "project" && schedule.projectDir === projectDir).length;
 };
 
-// 탭을 닫으면 그 프로젝트의 예약은 다시 열 때까지 실행되지 않으므로, 예약이 있으면 먼저 확인한다. 실행 중인 탭은 메인이 거부한다.
+// 닫아도 프로젝트 폴더는 그대로이니 그 점을 알리고, 그 프로젝트의 예약은 다시 열 때까지 실행되지 않으므로 예약이 있으면 함께 알린다. 실행 중인 탭은 메인이 거부한다.
 const closeTab = async (projectDir) => {
     const scheduleCount = getScheduleCount(projectDir);
+    const messages = ["프로젝트 폴더와 파일은 삭제되지 않아요. 열린 프로젝트 목록에서만 빠지고, 프로젝트 열기로 언제든 다시 열 수 있어요."];
 
     if (scheduleCount > 0) {
-        const isConfirmed = await modal.confirm({
-            title: "탭을 닫을까요?",
-            message: `이 프로젝트에 예약 ${scheduleCount}개가 있어요. 탭을 닫으면 다시 열 때까지 이 예약은 실행되지 않아요.`,
-            confirmLabel: "탭 닫기"
-        });
+        messages.push(`이 프로젝트에 예약 ${scheduleCount}개가 있어요. 다시 열 때까지 이 예약은 실행되지 않아요.`);
+    }
 
-        if (!isConfirmed) {
-            return;
-        }
+    const isConfirmed = await modal.confirm({
+        title: "프로젝트를 닫을까요?",
+        message: messages.join(" "),
+        confirmLabel: "닫기"
+    });
+
+    if (!isConfirmed) {
+        return;
     }
 
     await requestSwitch(() => window.autopilot.closeTab(projectDir));

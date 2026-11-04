@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { formatEndTimeShort } from "../../../viewFormat.js";
 import { loadProviders } from "../../actions/runs.js";
-import { Icon } from "../../components/Icon.jsx";
 import { Select } from "../../components/Select.jsx";
 import { Stepper } from "../../components/Stepper.jsx";
 import { BRAINSTORM_PHASES, DEBATE_TURNS_LIMIT, PHASE_LABELS } from "../../lib/constants.js";
@@ -19,7 +18,9 @@ import {
     getBrainstormMode,
     getBuildGreeting,
     getMainOptions,
+    getAssistSummary,
     getMaxRetries,
+    getPhaseSummary,
     getReadySteps,
     getSecurityReviewOptions,
     toOnFailValue
@@ -228,18 +229,40 @@ const AssistSettings = ({ phases }) => {
     );
 };
 
-// 신규 개발의 시작 전: 단계 막대(아래에 단계별 설정 문장)와 이어서 할 단계를 알리는 안내. 마친 단계의 설정은 펼치지 않는다.
+// 신규 개발의 시작 전: 단계 막대(아래에 단계별 설정 줄)와 이어서 할 단계를 알리는 안내. 단계 줄은 고른 값의 요약으로 접혀 있고 눌러서 펼친다. 마친 단계의 설정은 펼치지 않는다.
+// 모델과 노력·추론은 단계 줄이 아니라 아래 입력창의 AI 알약이 맡는다(단계를 바꿔도 알약은 그대로다).
 const BuildReady = () => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
-    const { endTime, gates, skip } = useComposerStore(useShallow((store) => ({ endTime: store.endTime, gates: store.gates, skip: store.skip })));
-    const endLabel = useClock((now) => formatEndTimeShort(endTime, now));
-    const greeting = getBuildGreeting({ buildPhase: buildPhase, endLabel: endLabel, gates: gates, skip: skip });
-    const cells = getReadySteps(buildPhase, skip);
+    const config = useComposerStore(
+        useShallow((store) => ({
+            endTime: store.endTime,
+            gates: store.gates,
+            skip: store.skip,
+            allow: store.allow,
+            mains: store.mains,
+            brainstorm: store.brainstorm,
+            debate: store.debate,
+            designFormat: store.designFormat,
+            qaOnFail: store.qaOnFail,
+            securityOnFail: store.securityOnFail,
+            securityReview: store.securityReview,
+            debateTurns: store.debateTurns,
+            crossReview: store.crossReview
+        }))
+    );
+    const endLabel = useClock((now) => formatEndTimeShort(config.endTime, now));
+    const greeting = getBuildGreeting({ buildPhase: buildPhase, endLabel: endLabel, gates: config.gates, skip: config.skip });
+    const cells = getReadySteps(buildPhase, config.skip);
     const settings = Object.fromEntries(cells.filter((cell) => cell.state !== "done").map((cell) => [cell.phase, SETTINGS[cell.phase]]));
-    const shownBrainstormPhases = BRAINSTORM_PHASES.filter((phase) => settings[phase] && !skip.includes(phase));
-    const hasAssist = useComposerStore((store) => shownBrainstormPhases.some((phase) => getBrainstormMode(store, phase) !== "none"));
+    const summaries = Object.fromEntries(Object.keys(settings).map((phase) => [phase, getPhaseSummary(phase, config)]));
+    const shownBrainstormPhases = BRAINSTORM_PHASES.filter((phase) => settings[phase] && !config.skip.includes(phase));
+    const brainstormModes = shownBrainstormPhases.map((phase) => getBrainstormMode(config, phase));
     // 협의·교차검토 줄은 설정을 보이고 있는 기획·디자인 줄 바로 뒤에 둔다.
-    const assistRow = hasAssist ? { name: "보조", after: shownBrainstormPhases.at(-1), node: <AssistSettings phases={shownBrainstormPhases} /> } : null;
+    const assistRow = brainstormModes.some((mode) => mode !== "none") ? { name: "보조", after: shownBrainstormPhases.at(-1), node: <AssistSettings phases={shownBrainstormPhases} /> } : null;
+
+    if (assistRow) {
+        summaries.shared = getAssistSummary(brainstormModes, config);
+    }
 
     useEffect(() => {
         loadProviders();
@@ -247,19 +270,13 @@ const BuildReady = () => {
 
     return (
         <>
-            <StepCard id="build-steps" cells={cells} settings={settings} extra={assistRow} />
-            <p className="build-tip">
-                <Icon symbol="icon-down" />
-                <span>
-                    <b>모델과 노력·추론</b>은 아래 입력창의 Claude·Codex 알약에서 정해요. 단계를 바꿔도 알약은 그대로예요.
-                </span>
-            </p>
             <div className="build-lead">
                 <h1 id="greet-title">{greeting.title}</h1>
                 <p id="greet-lead" className="lead">
                     {greeting.lead}
                 </p>
             </div>
+            <StepCard id="build-steps" cells={cells} settings={settings} summaries={summaries} extra={assistRow} />
         </>
     );
 };

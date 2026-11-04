@@ -1,3 +1,7 @@
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { PROJECT, RUNS, round, runningState, doneState } = require("./data.cjs");
 
 const SECOND = "E:/Workspaces/Demo/hanbit-booking";
@@ -6,6 +10,16 @@ const getTabs = () => [
     { projectDir: SECOND, name: "hanbit-booking", status: "idle" },
     { projectDir: PROJECT, name: "Kirikomodo", status: "idle" }
 ];
+
+// 시작 전 단계 줄은 요약 한 줄로 접혀 있고 맨 위 줄만 펼쳐 있다. 안의 선택 상자를 누르려면 그 줄을 먼저 펼친다(이미 펼쳐 있으면 그대로 둔다).
+const openGroup = async (t, phase) => {
+    const head = `.step-group[data-phase="${phase}"] .step-group-head`;
+
+    if ((await t.eval(`document.querySelector('${head}').getAttribute('aria-expanded')`)) === "false") {
+        await t.click(head);
+        await t.wait(350);
+    }
+};
 
 const BUILD = {
     settings: { projectDir: SECOND, mode: "build", tasks: "동네 미용실 예약 웹앱. 손님은 날짜와 디자이너를 골라 예약하고, 원장은 하루 예약표를 한눈에 본다." },
@@ -61,6 +75,13 @@ const NO_SCREEN_PLAN_DOC = {
         "2. 명령줄 인자와 미리보기"
     ].join("\n")
 };
+// 화면 시안 미리보기는 진짜 file 주소의 프레임이라 임시 HTML을 만들어 가리킨다.
+const MOCKUP_FILE = path.join(os.tmpdir(), "autopilot-scene-mockup.html");
+
+fs.writeFileSync(MOCKUP_FILE, "<!doctype html><meta charset=utf-8><style>body{font:16px sans-serif;padding:24px}h1{color:#2563eb}</style><h1>예약 화면 시안</h1><p>스타일이 적용되면 제목이 파랗게 보여요.</p>");
+
+const MOCKUP_URL = pathToFileURL(MOCKUP_FILE).href;
+
 const DESIGN_DOC = {
     kind: "folder",
     path: "docs/autopilot/design",
@@ -433,6 +454,40 @@ const BUILD_RUN_SCENES = [
         }
     },
     {
+        // 신규 개발 취소: 확인 기다림 화면의 단추가 복구 범위를 고르는 모달을 열고, 고른 범위를 cancelBuild로 보낸다. 취소하면 보내지 않는다.
+        name: "approval-cancel-build",
+        init: { ...BUILD, model: { buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0 }, phaseDocs: { plan: PLAN_DOC } } },
+        run: async (t) => {
+            await t.shot("approval");
+            await t.clearCalls();
+            await t.click("#approval-cancel-build");
+            await t.wait(500);
+            await t.shot("choices", ".modal");
+            await t.press("Escape");
+            await t.wait(400);
+            await t.note("after-esc", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'cancelBuild'))"));
+            await t.click("#approval-cancel-build");
+            await t.wait(500);
+            await t.click('dialog[open] input[value="all"]');
+            await t.shot("picked", ".modal");
+            await t.confirm();
+            await t.wait(300);
+            await t.note("cancel", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'cancelBuild'))"));
+        }
+    },
+    {
+        // 실행 중에도 같은 단추가 보이고, 모달은 실행 중인 회차가 바로 종료된다고 알린다.
+        name: "run-build-cancel",
+        init: RUN_BUILD,
+        run: async (t) => {
+            await t.log(BUILD_LINES);
+            await t.shot("run");
+            await t.click("#run-cancel-build");
+            await t.wait(500);
+            await t.shot("modal", ".modal");
+        }
+    },
+    {
         // 기획서가 화면 없음이라고 적었으면 디자인 건너뛰기를 제안하고, 누르면 다음 단계가 개발로 바뀐다. 시작할 때 skip도 함께 넘어간다.
         name: "approval-plan-no-screens",
         init: { ...BUILD, model: { buildPhase: { phase: "design", awaiting: "plan", qaRetries: 0 }, phaseDocs: { plan: NO_SCREEN_PLAN_DOC } } },
@@ -474,6 +529,34 @@ const BUILD_RUN_SCENES = [
         },
         run: async (t) => {
             await t.shot("approval");
+        }
+    },
+    {
+        name: "approval-design-mockup",
+        init: {
+            ...BUILD,
+            state: doneState({
+                project: SECOND,
+                mode: "build",
+                reason: "디자인 확인 대기",
+                exitCode: 0,
+                step: { phase: "design", status: "awaiting", qaRetries: 0 },
+                rounds: BUILD_ROUNDS.slice(0, 2),
+                gains: []
+            }),
+            model: {
+                buildPhase: { phase: "build", awaiting: "design", qaRetries: 0 },
+                phaseDocs: {
+                    design: { kind: "file", path: "docs/autopilot/design.md", text: "# 디자인\n\n## 공통 규칙\n- 파랑 하나\n\n## 화면\n- 예약\n", isPartial: false },
+                    "design-mockup": { kind: "file", path: "docs/autopilot/design/index.html", text: "", isPartial: false, fileUrl: MOCKUP_URL }
+                }
+            }
+        },
+        run: async (t) => {
+            await t.shot("doc");
+            await t.click(".phase-preview .seg-option:nth-child(2)");
+            await t.wait(300);
+            await t.shot("mockup");
         }
     },
     {
@@ -649,6 +732,15 @@ const SCENES = [
             await t.shot("ready");
             await t.shot("steps", "#build-steps");
             await t.shot("composer", ".composer");
+            // 기본 창에서 단계 줄이 스크롤 없이 한 화면에 들어온다(0 이하). 넘치면 본문이 스크롤한다.
+            await t.note("overflow", await t.eval("(() => { const greet = document.querySelector('.greet[data-mode=\"build\"]'); return greet.scrollHeight - greet.clientHeight; })()"));
+            await t.note("openRows", await t.eval("JSON.stringify([...document.querySelectorAll('.step-group-head')].map((head) => head.getAttribute('aria-expanded')))"));
+
+            for (const phase of ["design", "build", "qa", "security"]) {
+                await openGroup(t, phase);
+            }
+
+            await t.shot("steps-open", "#build-steps");
         }
     },
     {
@@ -659,6 +751,16 @@ const SCENES = [
             await t.shot("ready");
             await t.shot("steps", "#build-steps");
             await t.note("states", await t.eval("JSON.stringify([...document.querySelectorAll('#build-steps .step')].map((step) => step.dataset.state))"));
+            await t.note(
+                "summaries",
+                await t.eval("JSON.stringify([...document.querySelectorAll('#build-steps .step-group')].map((group) => group.dataset.phase + ':' + group.textContent.replace(/\\s+/g, ' ').trim()))")
+            );
+
+            for (const phase of ["design", "build", "qa", "security"]) {
+                await openGroup(t, phase);
+            }
+
+            await t.shot("steps-open", "#build-steps");
             await t.note(
                 "groups",
                 await t.eval("JSON.stringify([...document.querySelectorAll('#build-steps .step-group')].map((group) => group.dataset.phase + ':' + group.querySelectorAll('.step-sentence').length))")
@@ -672,9 +774,11 @@ const SCENES = [
         size: [1160, 1100],
         init: { ...BUILD, settings: { ...BUILD.settings, allow: ["deps", "large", "send"], securityReview: "strict" } },
         run: async (t) => {
-            const readSecurity = "document.querySelector('[data-phase=\"security\"]').textContent.replace(/\\s+/g, ' ')";
+            const readSecurity = "document.querySelector('.step-group[data-phase=\"security\"]').textContent.replace(/\\s+/g, ' ')";
 
             await t.shot("steps", "#build-steps");
+            await t.note("strictSummary", await t.eval(readSecurity));
+            await openGroup(t, "security");
             await t.note("strict", await t.eval(readSecurity));
             await t.click('[aria-label="보안검토의 독립 검토"]');
             await t.wait(300);
@@ -700,7 +804,10 @@ const SCENES = [
         init: BUILD,
         run: async (t) => {
             const qa = '[aria-label="테스트/QA 실패 처리"]';
-            const readQa = "document.querySelector('[data-phase=\"qa\"] .step-sentence').textContent.replace(/\s+/g, ' ')";
+            const readQa = "[...document.querySelectorAll('.step-group[data-phase=\"qa\"] .step-sentence')].at(-1).textContent.replace(/\\s+/g, ' ')";
+            const readQaSummary = "document.querySelector('.step-group[data-phase=\"qa\"] .step-group-summary').textContent";
+
+            await openGroup(t, "qa");
 
             for (let count = 0; count < 3; count += 1) {
                 await t.click(`${qa} [aria-label="줄이기"]`);
@@ -716,6 +823,13 @@ const SCENES = [
             await t.note("one", await t.eval(readQa));
             await t.press("Right");
             await t.note("afterKey", await t.eval(readQa));
+
+            // 접으면 고른 횟수가 요약에 그대로 남고, 기본값(3번)이 아니면 `바꿈` 표시가 붙는다.
+            await t.click('.step-group[data-phase="qa"] .step-group-head');
+            await t.wait(350);
+            await t.shot("collapsed", "#build-steps");
+            await t.note("collapsedSummary", await t.eval(readQaSummary));
+            await t.note("qaChanged", await t.eval("Boolean(document.querySelector('.step-group[data-phase=\"qa\"] .step-group-changed'))"));
         }
     },
     {
@@ -737,6 +851,7 @@ const SCENES = [
             await t.shot("ready");
             await t.shot("steps", "#build-steps");
             // 디자인에도 보조(Codex)를 붙이면 협의·교차검토는 한 줄을 두 단계가 함께 쓴다.
+            await openGroup(t, "design");
             await t.click('[aria-label="디자인의 보조"]');
             await t.wait(300);
             await t.shot("assist-list");
@@ -744,8 +859,9 @@ const SCENES = [
             await t.press("Return");
             await t.wait(300);
             await t.shot("steps-design", "#build-steps");
-            await t.note("crossReviews", await t.eval("document.querySelectorAll('[aria-label=\"교차검토\"]').length"));
             await t.note("assistRow", await t.eval("document.querySelector('[data-phase=\"shared\"]')?.textContent.replace(/\\s+/g, ' ') ?? ''"));
+            await openGroup(t, "shared");
+            await t.note("crossReviews", await t.eval("document.querySelectorAll('[aria-label=\"교차검토\"]').length"));
         }
     },
     {
@@ -805,6 +921,8 @@ const SCENES = [
             await t.wait(300);
             await t.shot("steps", "#build-steps");
             await t.note("afterAssist", await t.eval(plan));
+            await t.note("sharedSummary", await t.eval("document.querySelector('.step-group[data-phase=\"shared\"] .step-group-summary')?.textContent ?? ''"));
+            await openGroup(t, "shared");
             await t.note("turns", await t.eval("document.querySelectorAll('[aria-label=\"협의 최대 횟수\"]').length"));
         }
     },

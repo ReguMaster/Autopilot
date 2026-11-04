@@ -31,6 +31,9 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 화면 쪽 도우미: 정규화한 DOM 문자열, 끝나지 않은 애니메이션 수
 const PAGE_HELPERS = `(() => {
+    // 부팅 덮개는 장면을 가리고 baseline(덮개가 없던 화면)과의 비교를 흐리므로 걷는 시간을 기다리지 않고 지운다
+    document.getElementById("boot")?.remove();
+
     // 애니메이션을 다시 거는 클래스와 값이 빈 속성은 상태가 아니라 흔적이라 비교에서 뺀다. 숨은 요소의 안쪽도 보이지 않으므로 뺀다.
     const REPLAY_CLASSES = ["swap", "appear", "tick-up", "tick-down", "tick-up", "model-swap", "effort-swap"];
     const EMPTY_IGNORED = ["class", "data-tone", "data-length", "title"];

@@ -9,7 +9,6 @@ import { getRunState, useRunStore } from "../stores/runStore.js";
 import { ui, useUiStore } from "../stores/uiStore.js";
 import { settings } from "./settings.js";
 import { loadBuildPhase, setBuildPhase } from "./runs.js";
-import { applyProjectSwitch, confirmGitInit } from "./tabs.js";
 
 const STOP_CONFIRM_MS = 4000;
 
@@ -102,21 +101,6 @@ const saveShareCard = async () => {
     }
 };
 
-const selectProject = async () => {
-    const result = await confirmGitInit(await window.autopilot.selectProject());
-
-    if (!result) {
-        return;
-    }
-
-    ui.showFailure(result);
-
-    if (result.status === STATUS_OK) {
-        ui.set({ home: false });
-        applyProjectSwitch(result.data, { dismissFinish: true });
-    }
-};
-
 const resetProgress = async () => {
     const isConfirmed = await modal.confirm({
         title: "진행 기록을 초기화할까요?",
@@ -140,6 +124,67 @@ const resetProgress = async () => {
     ui.showNotice(result.data.isReset ? "진행 기록을 초기화했어요. 원본은 .autopilot/progress 폴더에 보관했어요." : "이미 초기 상태예요.", "ok");
     // 진행 기록 초기화는 신규 개발의 단계도 기획으로 돌린다.
     loadBuildPhase();
+};
+
+const CANCEL_CHOICES = [
+    { value: "state", label: "진행 상황만 지우기", description: "만든 문서와 코드는 그대로 두고, 진행 상황만 처음(기획)으로 돌려요." },
+    { value: "phase", label: "지금 단계만 다시 하기", description: "지금 단계에서 만든 것만 지워요. 앞 단계에서 만든 것은 그대로 남아요." },
+    { value: "all", label: "전부 지우고 처음으로", description: "신규 개발로 만든 문서와 코드를 모두 지우고, 시작하기 전 상태로 돌려요." }
+];
+
+const CANCEL_NOTICES = {
+    state: "신규 개발을 취소했어요. 기획부터 다시 시작할 수 있어요.",
+    phase: "지금 단계를 지웠어요. 이 단계부터 다시 시작할 수 있어요.",
+    all: "신규 개발로 만든 것을 모두 지웠어요. 기획부터 다시 시작할 수 있어요."
+};
+
+// 신규 개발을 취소한다. 실행 중이면 메인이 강제 종료한 뒤 고른 범위만큼 단계 상태와 저장소를 되돌린다.
+// 되돌리기 전 commit은 refs/autopilot/backup에, commit 안 된 변경은 git stash에 남는다. 취소하는 동안 다시 누르지 못하게 한다.
+const cancelBuild = async () => {
+    if (useUiStore.getState().isCancelling) {
+        return;
+    }
+
+    const isRunning = getRunState().status !== "idle";
+    const scope = await modal.confirm({
+        title: "신규 개발을 취소할까요?",
+        message: `${isRunning ? "실행 중인 회차가 바로 종료돼요. " : ""}지우기 전 상태는 git에 백업해 두니, 필요하면 되살릴 수 있어요.`,
+        choices: CANCEL_CHOICES,
+        confirmLabel: "취소하기",
+        cancelLabel: "계속 진행",
+        tone: "danger"
+    });
+
+    if (!scope) {
+        return;
+    }
+
+    const { projectDir } = getSettings();
+    let result = null;
+
+    ui.set({ isCancelling: true });
+
+    try {
+        result = await window.autopilot.cancelBuild(projectDir || undefined, scope);
+    } finally {
+        ui.set({ isCancelling: false });
+    }
+
+    if (result.status !== STATUS_OK) {
+        ui.showFailure(result);
+
+        return;
+    }
+
+    setStopArmed(false);
+    setBuildPhase(projectDir, result.data.phase);
+    // 강제 종료 직후 실행 종료 처리가 읽은 낡은 단계 상태가 뒤늦게 덮어쓰지 못하게 다시 읽어 순서를 확정한다.
+    loadBuildPhase(projectDir);
+    ui.set({ finishDismissed: true });
+    ui.showNotice(
+        `${CANCEL_NOTICES[scope]}${result.data.hasBackup ? " 지우기 전 상태는 git에 백업해 뒀어요(refs/autopilot/backup)." : ""}${result.data.isStashed ? " 저장하지 않은 작업은 git stash에 따로 보관했어요." : ""}`,
+        "ok"
+    );
 };
 
 // 확인을 기다리는 신규 개발 단계를 승인한다. 성공하면 다음 실행이 다음 단계부터 하고, 단계 상태를 메인이 돌려준 값으로 바꾼다.
@@ -217,8 +262,8 @@ export {
     handleMainAction,
     openReport,
     saveShareCard,
-    selectProject,
     resetProgress,
+    cancelBuild,
     approvePhase,
     approveAndStart,
     revisePhase,
