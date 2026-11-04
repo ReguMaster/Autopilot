@@ -203,6 +203,11 @@ const checkNormalize = () => {
     for (const bad of [63, 65, 199, 361, 250.5, "300", null]) {
         assert.equal(normalizeSettings({ railWidth: bad }).railWidth, 224, `${bad}는 레일 너비로 받지 않는다`);
     }
+
+    assert.equal(normalizeSettings({}).draftProvider, "claude");
+    assert.equal(normalizeSettings({ draftProvider: "codex" }).draftProvider, "codex");
+    assert.equal(normalizeSettings({ draftProvider: "gemini" }).draftProvider, "claude", "허용되지 않은 AI는 기본값");
+
     assert.equal(normalizeSettings({ notifyFinish: false }).notifyFinish, false);
     assert.equal(normalizeSettings({ notifyFocused: "yes" }).notifyFocused, false, "불리언이 아니면 기본값");
 
@@ -418,6 +423,7 @@ const checkPorting = () => {
             claudeDir: "/c",
             launchAtLogin: true,
             railWidth: 300,
+            draftProvider: "codex",
             postRunAction: "shutdown",
             keepInTray: true,
             model: "haiku",
@@ -431,7 +437,7 @@ const checkPorting = () => {
 
         assert.deepEqual([exported.app, exported.kind, exported.version], ["AutoPilot", "settings", 1]);
 
-        for (const key of ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin", "railWidth"]) {
+        for (const key of ["projectDir", "accounts", "accountId", "claudeDir", "launchAtLogin", "railWidth", "draftProvider"]) {
             assert.equal(Object.hasOwn(exported.global, key), false, `${key}는 내보내지 않는다`);
         }
 

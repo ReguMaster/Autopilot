@@ -11,6 +11,8 @@ const useUiStore = create(() => ({
     tasksOpen: false,
     // 새 프로젝트 화면이 본문을 차지하는지
     newProject: false,
+    // 홈이 본문을 차지하는지. 앱을 켜면 메인이 알려 준 대로 시작하고(boot), 프로젝트를 고르면 닫힌다.
+    home: false,
     stopArmed: false,
     isStarting: false,
     finishDismissed: false,

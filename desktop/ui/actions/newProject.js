@@ -1,7 +1,9 @@
 import { buildProjectBrief, DRAFT_PROVIDERS, getRecommendedSkip } from "../../projectDraft.cjs";
 import { STATUS_OK } from "../lib/constants.js";
+import { getSettings } from "../stores/appStore.js";
 import { createDraft, newProject } from "../stores/newProjectStore.js";
 import { ui } from "../stores/uiStore.js";
+import { settings } from "./settings.js";
 import { applyProjectSwitch } from "./tabs.js";
 
 // 예시 칩. 누르면 한두 줄과 실행 환경을 채운다.
@@ -65,9 +67,11 @@ const recheckDraftProviders = () => {
     }
 };
 
+// 직접 고른 AI는 이 PC에 저장해 다음에 열 때도 이어간다. 쓸 수 없어 알아서 옮긴 것은 저장하지 않는다.
 const pickProvider = (provider) => {
     newProject.set({ provider: provider, isProviderPicked: true, suggestError: "" });
     loadDraftProviders();
+    settings.setPreferences({ draftProvider: provider });
 };
 
 // 로그인은 한도 패널(왼쪽 Claude·오른쪽 Codex)에서 한다. 마치고 돌아오면 창에 포커스가 올 때 다시 확인한다.
@@ -75,9 +79,19 @@ const openProviderLogin = () => {
     ui.setPanel("profile");
 };
 
+// 이번에 직접 고르기 전에는 저장해 둔 AI로 시작한다(그 AI를 쓸 수 없으면 loadDraftProviders가 쓸 수 있는 쪽으로 옮긴다).
+const applySavedProvider = () => {
+    const saved = getSettings().draftProvider;
+
+    if (!newProject.get().isProviderPicked && DRAFT_PROVIDERS.some((item) => item.key === saved)) {
+        newProject.set({ provider: saved });
+    }
+};
+
 const openNewProject = () => {
-    ui.set({ newProject: true });
+    ui.set({ newProject: true, home: false });
     ui.closeAll();
+    applySavedProvider();
     loadCreateInfo();
     loadDraftProviders();
 };
@@ -194,7 +208,7 @@ const createProject = async () => {
     }
 
     newProject.clear();
-    ui.set({ newProject: false });
+    ui.set({ newProject: false, home: false });
     applyProjectSwitch(result.data);
     ui.showNotice(
         `${state.draft.name} 프로젝트를 만들었어요. ${getRecommendedSkip(state.platforms).length ? "화면이 없어서 디자인은 건너뛰도록 해 뒀어요. " : ""}단계 설정을 확인하고 기획을 시작해 주세요.`

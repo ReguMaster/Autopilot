@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { getUsageTone } from "../../../viewFormat.js";
+import { openHome } from "../../actions/home.js";
 import { openArchiveList } from "../../actions/runs.js";
 import { schedules } from "../../actions/schedules.js";
 import { activateTab, closeTab, openTab } from "../../actions/tabs.js";
@@ -191,7 +192,9 @@ const Rail = () => {
     const buildPhase = useRunsStore((store) => store.buildPhase);
     const phases = useRunsStore((store) => store.phases);
     const composerMode = useComposerStore((store) => store.mode);
-    const { panel, archive, schedule, isCreating } = useUiStore(useShallow((store) => ({ panel: store.panel, archive: store.archive, schedule: store.schedule, isCreating: store.newProject })));
+    const { panel, archive, schedule, isCreating, isHome } = useUiStore(
+        useShallow((store) => ({ panel: store.panel, archive: store.archive, schedule: store.schedule, isCreating: store.newProject, isHome: store.home }))
+    );
     const activeNote = getTabNote({ status: status, mode: mode, step: step, buildPhase: buildPhase, composerMode: composerMode });
     // 쉬는 중인 보는 프로젝트는 유지 보수로 둔 동안에는 눈금을 그리지 않는다.
     const activeTicks = status !== "idle" || buildPhase?.awaiting || composerMode === "build" ? getTabTicks({ status: status, mode: mode, step: step, buildPhase: buildPhase }) : null;
@@ -201,9 +204,14 @@ const Rail = () => {
             <div className="rail-brand">
                 <img src="../docs/logo.png" alt="Autopilot" />
             </div>
+            <button type="button" id="home-toggle" className="rail-home" aria-label="홈" title="홈" aria-current={isHome ? "page" : undefined} onClick={openHome}>
+                <i className="rail-home-bar" aria-hidden="true" />
+                <Icon symbol="icon-home" />
+                <span className="rail-label">홈</span>
+            </button>
             <h2 className="rail-section rail-label">프로젝트</h2>
             <nav id="tabbar" className="rail-projects" aria-label="열린 프로젝트">
-                <ProjectList tabs={tabs} active={isCreating ? "" : active} activeNote={activeNote} activeTicks={activeTicks} phases={phases} />
+                <ProjectList tabs={tabs} active={isCreating || isHome ? "" : active} activeNote={activeNote} activeTicks={activeTicks} phases={phases} />
                 <div className="rail-add-group">
                     <Button id="new-project-toggle" size="" className="rail-add" aria-label="새 프로젝트" title="새 프로젝트" aria-current={isCreating ? "page" : undefined} onClick={openNewProject}>
                         <Icon symbol="icon-plus" />

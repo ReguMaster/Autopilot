@@ -112,6 +112,7 @@ const selectProject = async () => {
     ui.showFailure(result);
 
     if (result.status === STATUS_OK) {
+        ui.set({ home: false });
         applyProjectSwitch(result.data, { dismissFinish: true });
     }
 };

@@ -66,6 +66,11 @@ const applyProjectSwitch = (data, { dismissFinish = false } = {}) => {
     if (data.tabs) {
         applyTabs(data.tabs);
         forgetClosedDrafts(data.tabs.tabs);
+
+        // 마지막 탭을 닫으면 고를 프로젝트가 없으므로 홈으로 돌아간다.
+        if (data.tabs.tabs.length === 0) {
+            ui.set({ home: true });
+        }
     }
 
     settings.applyView(data, isRefill ? COMPOSER_KEYS : undefined);
@@ -124,7 +129,7 @@ const openTab = async () => {
     ui.showFailure(result);
 
     if (result.status === STATUS_OK && !result.data.canceled) {
-        ui.set({ newProject: false });
+        ui.set({ newProject: false, home: false });
         applyProjectSwitch(result.data);
     }
 };
@@ -144,9 +149,9 @@ const requestSwitch = async (request) => {
     }
 };
 
-// 새 프로젝트 화면을 보고 있었으면 닫고 그 탭을 보인다.
+// 새 프로젝트 화면이나 홈을 보고 있었으면 닫고 그 탭을 보인다.
 const activateTab = async (projectDir) => {
-    ui.set({ newProject: false });
+    ui.set({ newProject: false, home: false });
 
     if (projectDir === useTabsStore.getState().active) {
         return;

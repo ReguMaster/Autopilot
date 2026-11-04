@@ -36,6 +36,7 @@ const Notices = () => {
     const notice = useUiStore((store) => store.notice);
     const loginBanner = useUiStore((store) => store.loginBanner);
     const hasProject = useAppStore((store) => Boolean(store.settings.projectDir));
+    const isHome = useUiStore((store) => store.home);
     const isIdle = useRunStore((store) => store.state.status === "idle");
     const expiry = useLoginExpiry();
 
@@ -57,7 +58,7 @@ const Notices = () => {
                     다시 로그인
                 </Button>
             </p>
-            <p id="project-banner" className="notice" data-tone="warn" hidden={hasProject}>
+            <p id="project-banner" className="notice" data-tone="warn" hidden={hasProject || isHome}>
                 대상 프로젝트 폴더를 먼저 골라 주세요.{" "}
                 <Button id="banner-select-project" disabled={!isIdle} onClick={selectProject}>
                     폴더 선택

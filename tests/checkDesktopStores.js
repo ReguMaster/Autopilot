@@ -31,6 +31,7 @@ const loadModules = async () => {
         export * as storyModel from "./features/run/storyModel.js";
         export * as newProjectStore from "./stores/newProjectStore.js";
         export * as newProjectActions from "./actions/newProject.js";
+        export * as homeActions from "./actions/home.js";
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -1240,7 +1241,7 @@ const checkStoryView = ({ storyModel }) => {
 };
 
 // 새 프로젝트: 한두 줄 → 초안 → 칩으로 다듬기 → 만들기. 초안이 실패해도 적은 내용을 잃지 않고, 그만둔 뒤 늦게 온 답은 버린다.
-const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, tabs, tabsStore }) => {
+const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, tabs, tabsStore, appStore }) => {
     const { newProject, useNewProjectStore } = newProjectStore;
     const { useUiStore } = uiStore;
     const read = () => useNewProjectStore.getState();
@@ -1262,9 +1263,16 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     let suggestResult = OK({ examples: [{ label: "클로드 추천", what: "클로드가 낸 예시예요.", platforms: ["web"] }] });
     let pendingDraft = null;
 
+    const savedPreferences = [];
+
     window.autopilot = {
         getCreateInfo: async () => OK({ parentDir: "D:\\work", author: { name: "한빛", email: "a@b.c" } }),
         getDraftProviders: async () => OK(providerStates),
+        setPreferences: async (patch) => {
+            savedPreferences.push(patch);
+
+            return OK({ settings: { ...appStore.getSettings(), ...patch }, overridden: [], globals: {}, notice: "" });
+        },
         suggestExamples: async (request) => {
             requests.push(["suggest", request]);
 
@@ -1297,10 +1305,17 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
         getPhase: async () => OK({ phase: null })
     };
 
+    // 저장해 둔 AI가 있으면 직접 고르기 전에는 그 AI로 시작한다.
+    appStore.applySettingsView({ settings: { ...appStore.getSettings(), draftProvider: "codex" }, overridden: [], globals: {} });
     newProjectActions.openNewProject();
     await wait(0);
     assert.equal(useUiStore.getState().newProject, true);
     assert.equal(read().info.parentDir, "D:\\work");
+    assert.equal(read().provider, "codex", "저장해 둔 AI로 시작한다");
+    assert.equal(read().isProviderPicked, false);
+    assert.deepEqual(savedPreferences, [], "저장해 둔 값을 읽기만 하고 다시 쓰지 않는다");
+    newProject.set({ provider: "claude" });
+    appStore.applySettingsView({ settings: { ...appStore.getSettings(), draftProvider: "claude" }, overridden: [], globals: {} });
 
     // 아직 몰라요는 다른 실행 환경과 함께 고르지 않는다.
     newProject.togglePlatform("web");
@@ -1322,6 +1337,7 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     suggestResult = OK({ examples: [{ label: "코덱스 추천", what: "코덱스가 낸 예시예요.", platforms: ["cli"] }] });
     newProjectActions.pickProvider("codex");
     await newProjectActions.suggestExamples();
+    assert.deepEqual(savedPreferences, [{ draftProvider: "codex" }], "직접 고른 AI는 저장한다");
     assert.equal(requests.at(-1)[1].provider, "codex");
     assert.equal(requests.at(-1)[1].exclude.includes("클로드 추천"), false, "다른 AI의 추천은 겹침 검사에 넣지 않는다");
     assert.deepEqual([read().suggestions.claude[0].label, read().suggestions.codex[0].label], ["클로드 추천", "코덱스 추천"]);
@@ -1331,8 +1347,10 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     providerStates = { claude: { ...readyState, state: "login", reason: "로그인 필요" }, codex: readyState };
     await newProjectActions.loadDraftProviders();
     assert.equal(read().provider, "codex");
+    assert.equal(savedPreferences.length, 1, "쓸 수 없어 알아서 옮긴 것은 저장하지 않는다");
     newProjectActions.pickProvider("claude");
     await wait(0);
+    assert.deepEqual(savedPreferences.at(-1), { draftProvider: "claude" });
     assert.equal(read().provider, "claude", "직접 고른 AI는 쓸 수 없어도 그대로 둔다");
     assert.equal(read().providerStates.claude.state, "login");
 
@@ -1428,6 +1446,154 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     assert.equal(useUiStore.getState().newProject, false, "같은 탭을 눌러도 새 프로젝트 화면은 닫힌다");
 };
 
+// 홈: 열고 닫는 규칙, 열린 탭마다 마지막 실행 읽기, 이동 동작.
+const checkHome = async ({ homeActions, tabs, tabsStore, appStore, uiStore, runStore, runsStore, newProjectActions }) => {
+    const { useUiStore, ui } = uiStore;
+    const view = (projectDir) => ({
+        settings: { projectDir: projectDir, tasks: "", endTime: "", policy: "auto", extendOnLimit: false, model: "opus", modelVersions: {}, effort: "high" },
+        overridden: [],
+        globals: {},
+        notice: ""
+    });
+    const tab = (projectDir) => ({ projectDir: projectDir, name: projectDir.slice(1), status: "idle" });
+    const list = (active, dirs) => ({ active: active, tabs: dirs.map(tab) });
+    const run = (id, overrides = {}) => ({ id: id, startedAt: 1, endedAt: 2, roundCount: 2, commitCount: 1, isActive: false, isUnreadable: false, isEmpty: false, ...overrides });
+    const calls = [];
+
+    window.autopilot = {
+        activateTab: async (dir) => {
+            calls.push(["activate", dir]);
+
+            return OK({ ...view(dir), tabs: list(dir, ["/a", "/b"]), state: createState({}), logs: [] });
+        },
+        closeTab: async (dir) => {
+            calls.push(["close", dir]);
+
+            const rest = dir === "/a" ? ["/b"] : [];
+
+            return OK({ ...view(rest[0] ?? ""), tabs: list(rest[0] ?? "", rest), state: createState({}), logs: [] });
+        },
+        openTab: async () => OK({ ...view("/b"), canceled: false, existing: false, tabs: list("/b", ["/a", "/b"]), state: createState({}), logs: [] }),
+        listRuns: async (limit, projectDir) => OK({ runs: { "/a": [run("a-active", { isActive: true }), run("a-done")], "/b": [] }[projectDir] ?? [] }),
+        readRun: async (id) => {
+            calls.push(["readRun", id]);
+
+            return OK({ run: run(id), lines: [] });
+        },
+        openRunFile: async (...args) => {
+            calls.push(["openRunFile", ...args]);
+
+            return OK({});
+        },
+        getStreakDays: async () => OK({ days: [] }),
+        getPhase: async () => OK({ phase: null })
+    };
+
+    appStore.applySettingsView(view("/a"));
+    tabsStore.applyTabs(list("/a", ["/a", "/b"]));
+    runStore.applyRunState(createState({}));
+
+    // 열면 새 프로젝트 화면과 패널이 닫힌다. 같은 프로젝트를 눌러도(메인에 묻지 않는 경로) 홈은 닫힌다.
+    ui.set({ newProject: true });
+    ui.setSchedule(true);
+    homeActions.openHome();
+
+    assert.equal(useUiStore.getState().home, true);
+    assert.equal(useUiStore.getState().newProject, false);
+    assert.equal(useUiStore.getState().schedule, false);
+
+    await tabs.activateTab("/a");
+
+    assert.equal(useUiStore.getState().home, false, "보던 프로젝트를 눌러도 홈이 닫힌다");
+    assert.equal(calls.length, 0);
+
+    // 이어가기: 그 프로젝트로 가고, 마지막 실행의 대화는 간 뒤에 읽고, 리포트는 그 프로젝트의 것을 연다.
+    homeActions.openHome();
+    await homeActions.continueProject("/b");
+
+    assert.deepEqual(calls.at(-1), ["activate", "/b"]);
+    assert.equal(useUiStore.getState().home, false);
+
+    calls.length = 0;
+    homeActions.openHome();
+    await homeActions.openLastRun({ projectDir: "/a", runId: "run-1" });
+    await wait(0);
+
+    assert.deepEqual(calls, [
+        ["activate", "/a"],
+        ["readRun", "run-1"]
+    ]);
+    assert.equal(useUiStore.getState().home, false);
+    assert.equal(useUiStore.getState().archive, true, "대화 보기는 지난 실행 시트를 연다");
+
+    calls.length = 0;
+    await homeActions.openLastReport({ projectDir: "/b", runId: "run-2" });
+
+    assert.deepEqual(calls, [["openRunFile", "run-2", "report", "/b"]]);
+
+    window.autopilot.openRunFile = async () => ({ status: "FAILED", error: { code: "NO_REPORT", msg: "열 수 있는 리포트가 없어요." } });
+    await homeActions.openLastReport({ projectDir: "/b", runId: "run-3" });
+
+    assert.equal(useUiStore.getState().notice.message, "열 수 있는 리포트가 없어요.");
+
+    // 마지막 실행: 열린 탭마다 읽고 진행 중인 기록은 건너뛴다. 늦게 온 앞 요청의 응답은 버린다.
+    await homeActions.loadLatestRuns(["/a", "/b"]);
+
+    assert.deepEqual(Object.keys(runsStore.useRunsStore.getState().latestRuns), ["/a", "/b"]);
+    assert.equal(runsStore.useRunsStore.getState().latestRuns["/a"].id, "a-done", "진행 중인 기록을 건너뛴 가장 최근 실행");
+    assert.equal(runsStore.useRunsStore.getState().latestRuns["/b"], null, "지난 실행이 없으면 null");
+
+    let releaseSlow = () => {};
+    const slow = new Promise((resolve) => {
+        releaseSlow = resolve;
+    });
+
+    window.autopilot.listRuns = (limit, projectDir) => (projectDir === "/slow" ? slow : Promise.resolve(OK({ runs: [run("fresh")] })));
+
+    const stale = homeActions.loadLatestRuns(["/slow"]);
+
+    await homeActions.loadLatestRuns(["/a"]);
+    releaseSlow(OK({ runs: [run("stale")] }));
+    await stale;
+
+    assert.deepEqual(Object.keys(runsStore.useRunsStore.getState().latestRuns), ["/a"], "마지막 요청의 응답만 반영한다");
+
+    window.autopilot.listRuns = async () => ({ status: "FAILED", error: { code: "INVALID_PROJECT", msg: "열려 있는 프로젝트가 아니에요." } });
+    await homeActions.loadLatestRuns(["/a"]);
+
+    assert.equal(runsStore.useRunsStore.getState().latestRuns["/a"], null, "읽지 못한 프로젝트는 없는 것으로 둔다");
+
+    // 탭 열기·새 프로젝트: 성공하면 홈이 닫히고 취소하면 그대로다. 마지막 탭을 닫으면 홈으로 돌아가고, 다른 탭을 닫을 때는 보던 화면을 지킨다.
+    homeActions.openHome();
+    window.autopilot.openTab = async () => OK({ ...view("/b"), canceled: true, tabs: list("/b", ["/a", "/b"]) });
+    await tabs.openTab();
+
+    assert.equal(useUiStore.getState().home, true, "폴더 선택을 취소하면 홈에 남는다");
+
+    window.autopilot.openTab = async () => OK({ ...view("/b"), canceled: false, existing: false, tabs: list("/b", ["/a", "/b"]), state: createState({}), logs: [] });
+    await tabs.openTab();
+
+    assert.equal(useUiStore.getState().home, false);
+
+    homeActions.openHome();
+    newProjectActions.openNewProject();
+
+    assert.equal(useUiStore.getState().home, false, "새 프로젝트 화면을 열면 홈이 닫힌다");
+
+    homeActions.openHome();
+    appStore.applySettingsView(view("/a"));
+    tabsStore.applyTabs(list("/a", ["/a", "/b"]));
+    await tabs.closeTab("/a");
+
+    assert.equal(useUiStore.getState().home, true, "홈을 보다가 탭을 닫아도 홈이 그대로다");
+
+    ui.set({ home: false });
+    await tabs.closeTab("/b");
+
+    assert.equal(useUiStore.getState().home, true, "마지막 탭을 닫으면 홈으로 돌아간다");
+    ui.set({ home: false, newProject: false });
+};
+
 const checkStores = async () => {
     const modules = await loadModules();
 
@@ -1447,6 +1613,7 @@ const checkStores = async () => {
     await checkProjectEvents(modules);
     await checkTabs(modules);
     await checkNewProject(modules);
+    await checkHome(modules);
     checkStoryView(modules);
 
     console.log("Desktop store checks passed.");

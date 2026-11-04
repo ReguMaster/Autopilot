@@ -791,8 +791,8 @@ const handleSetPreferences = (event, patch) => {
 
     updateSettings(patch);
 
-    // 레일 너비는 화면에만 닿는다. 끌 때마다 새 버전 확인(네트워크)을 다시 하지 않는다.
-    if (keys.some((key) => key !== "railWidth")) {
+    // 레일 너비와 초안 AI는 화면에만 닿는다. 바뀔 때마다 새 버전 확인(네트워크)을 다시 하지 않는다.
+    if (keys.some((key) => key !== "railWidth" && key !== "draftProvider")) {
         applyPreferenceChanges();
     }
 
@@ -1270,6 +1270,8 @@ const handleGetState = async (event, requestedDir) => {
         ...getSettingsView(session.projectDir),
         tabs: getTabsPayload(),
         postAction: postAction.getPending(),
+        // 앱을 켜면 홈에서 시작한다. 화면(boot)이 이 값을 읽는다.
+        startAtHome: true,
         state: session.runner.getState(),
         logs: session.runner.getLogs()
     };

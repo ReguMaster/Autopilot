@@ -64,6 +64,7 @@ let isQuitting = false;
 const SMOKE_BRIDGE_APIS = ["start", "loginAccount", "getAccounts", "listRuns", "openUpdate", "getSchedules"];
 const SMOKE_SELECTORS = [
     "#titlebar",
+    "#home",
     "#update-chip",
     "#login-banner",
     "#login-expiry-banner",

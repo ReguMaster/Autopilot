@@ -79,6 +79,22 @@ const Symbols = () => {
                 <circle cx="8" cy="8" r="5.6" />
                 <path d="M8 4.8V8l2.1 1.4" />
             </symbol>
+            <symbol id="icon-home" viewBox="0 0 16 16">
+                <path d="M2.6 7.6 8 3l5.4 4.6" />
+                <path d="M4 6.8V13h8V6.8" />
+                <path d="M6.9 13v-3.2h2.2V13" />
+            </symbol>
+            <symbol id="icon-doc" viewBox="0 0 16 16">
+                <path d="M4.5 2.5h5l2.5 2.5v8a1 1 0 0 1-1 1h-6.5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1z" />
+                <path d="M9.5 2.5V5H12" />
+            </symbol>
+            <symbol id="icon-eye" viewBox="0 0 16 16">
+                <path d="M1.8 8S4 4 8 4s6.2 4 6.2 4-2.2 4-6.2 4S1.8 8 1.8 8z" />
+                <circle cx="8" cy="8" r="1.8" />
+            </symbol>
+            <symbol id="icon-play" viewBox="0 0 16 16">
+                <path d="M5.6 3.8v8.4L12.4 8z" />
+            </symbol>
         </svg>
     );
 };

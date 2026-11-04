@@ -134,6 +134,8 @@ const model = {
     codexAccounts: { ...DEFAULT_CODEX_ACCOUNTS, ...init.codexAccounts },
     schedules: { ...DEFAULT_SCHEDULES, ...init.schedules },
     runs: init.runs || [],
+    // 프로젝트마다 다른 지난 실행(홈이 열린 모든 탭의 마지막 실행을 읽는다). 없는 프로젝트는 runs를 쓴다.
+    runsByProject: init.runsByProject || {},
     streakDays: init.streakDays || [],
     runDetails: init.runDetails || {},
     models: init.models || [],
@@ -190,6 +192,8 @@ const api = {
         canLaunchAtLogin: model.canLaunchAtLogin,
         update: model.update,
         ...getSettingsView(),
+        // 장면이 시작 화면을 홈으로 정했을 때만 홈에서 시작한다(주지 않은 장면은 홈이 없던 옛 화면과 같다).
+        startAtHome: Boolean(init.startAtHome),
         state: model.state,
         tabs: getTabsPayload(),
         logs: model.logs
@@ -326,7 +330,7 @@ const api = {
     ),
     createProject: respond("createProject", async () => ok({ ...getSettingsView(), tabs: { active: model.settings.projectDir, tabs: model.tabs } })),
     openReport: respond("openReport", async () => ok({})),
-    listRuns: respond("listRuns", async (limit) => ok({ runs: model.runs.slice(0, limit) })),
+    listRuns: respond("listRuns", async (limit, projectDir) => ok({ runs: ((projectDir && model.runsByProject[projectDir]) || model.runs).slice(0, limit) })),
     readRun: respond("readRun", async (id) => (model.runDetails[id] ? ok(model.runDetails[id]) : fail("READ_RUN_FAILED", "기록을 읽지 못했어요."))),
     openRunFile: respond("openRunFile", async () => ok({})),
     deleteRun: respond("deleteRun", async () => ok({})),

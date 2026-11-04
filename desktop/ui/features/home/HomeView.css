@@ -1,0 +1,476 @@
+/* 홈: 앱을 켜면 처음 보이는 화면. 보는 프로젝트가 없는 동안 본문을 차지하고(body[data-home]), 시작 전·실행·마친 화면과 컴포저는 그대로 마운트된 채 숨는다 */
+body[data-home] .stage,
+body[data-home] .composer {
+    display: none !important;
+}
+
+.home {
+    flex: 1;
+    min-height: 0;
+    padding: 28px var(--gutter) 14px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.home > *,
+.home-grid > * {
+    animation: rise 0.55s var(--ease-out) backwards;
+}
+
+.home-grid > :nth-child(2) {
+    animation-delay: 0.06s;
+}
+
+.home-grid > :nth-child(3) {
+    animation-delay: 0.12s;
+}
+
+.home-date {
+    margin-bottom: 8px;
+    color: var(--faint);
+    font-size: var(--text-sm);
+    font-weight: 500;
+}
+
+.home h1 {
+    max-width: 15em;
+    color: var(--muted);
+    font-size: var(--title-xl);
+    font-weight: 600;
+    line-height: 1.32;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+}
+
+.home h1 b {
+    color: var(--ink);
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 22px 44px;
+    margin-top: 26px;
+}
+
+.home-grid .home-resume-sec {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+    .home-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.home-sec-head {
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+    margin-bottom: 6px;
+    color: var(--muted);
+}
+
+.home-sec-head h2 {
+    color: var(--ink);
+    font-size: var(--text-md);
+    font-weight: 650;
+}
+
+.home-sec-sub {
+    margin-left: 8px;
+    color: var(--faint);
+    font-size: var(--text-xs);
+    font-weight: 500;
+}
+
+.home-tile {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--chip);
+    color: var(--muted);
+    font-size: var(--text-lg);
+    font-weight: 700;
+}
+
+.home-tile[data-tone="warn"] {
+    background: var(--warn-wash);
+    color: var(--warn);
+}
+
+.home-tile[data-tone="run"] {
+    background: var(--accent-wash);
+    color: var(--accent-ink);
+}
+
+/* 이어하기: 첫 항목만 카드로 크게, 나머지는 한 줄 */
+.home-resume {
+    container-type: inline-size;
+    padding: 18px 20px 20px;
+    border-radius: var(--r-lg);
+    background: var(--bg);
+    box-shadow: var(--shadow-1);
+}
+
+.home-resume-top {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 16px;
+}
+
+.home-resume-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+}
+
+.home-resume-name b {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--text-lg);
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.home-resume-name .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.home-resume-body {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: -8px;
+}
+
+.home-resume-say {
+    color: var(--ink);
+    font-size: var(--text-lg);
+    line-height: 1.6;
+    text-wrap: pretty;
+}
+
+.home-resume-facts {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.home-resume-act {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+}
+
+@container (max-width: 600px) {
+    .home-resume-top {
+        grid-template-columns: 40px minmax(0, 1fr);
+    }
+
+    .home-resume-act {
+        grid-column: 2;
+        grid-row: 3;
+        justify-self: start;
+        margin-top: 14px;
+    }
+}
+
+.home-steps {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+    margin: 18px 0 0 56px;
+}
+
+.home-step {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: var(--faint);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+.home-step i {
+    position: relative;
+    height: 4px;
+    border-radius: 4px;
+    background: none;
+    box-shadow: inset 0 0 0 1px var(--hair-strong);
+    overflow: hidden;
+}
+
+.home-step span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.home-step[data-s="done"] i {
+    background: var(--add);
+    box-shadow: none;
+}
+
+.home-step[data-s="active"] {
+    color: var(--accent-ink);
+}
+
+.home-step[data-s="active"] i {
+    background: var(--accent-line);
+    box-shadow: none;
+}
+
+.home-step[data-s="active"] i::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 45%;
+    border-radius: 4px;
+    background: var(--accent);
+    animation: proj-sweep 1.6s var(--ease-in-out) infinite;
+}
+
+.home-step[data-s="hold"] {
+    color: var(--warn);
+}
+
+.home-step[data-s="hold"] i {
+    background: var(--warn-fill);
+    box-shadow: none;
+    animation: breathe 2.2s ease-in-out infinite;
+}
+
+.home-step[data-s="stop"] i {
+    background: var(--faint);
+    box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-step[data-s="active"] i::after {
+        width: 100%;
+    }
+}
+
+.home-rows {
+    margin-top: 10px;
+}
+
+.home-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 8px;
+    border-radius: 10px;
+}
+
+.home-row:hover {
+    background: var(--chip);
+}
+
+.home-row .home-tile {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    font-size: var(--text-xs);
+}
+
+.home-row-text {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--text-md);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.home-row-text b {
+    margin-right: 8px;
+    font-weight: 600;
+}
+
+.home-row-text span {
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+/* 오늘 예정·마지막 한 일은 같은 모양이다: 언제 → 어느 프로젝트 → 무엇을 → 자세히 */
+.home-entry {
+    padding-left: 14px;
+    border-left: 2px solid var(--hair-strong);
+}
+
+.home-entry + .home-entry {
+    margin-top: 14px;
+}
+
+.home-entry-when {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+.home-entry-who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: var(--text-md);
+}
+
+.home-entry-who b {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.home-entry-who .home-tile {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    font-size: 11px;
+}
+
+.home-entry-say {
+    margin-top: 4px;
+    color: var(--ink);
+    font-size: var(--text-lg);
+    line-height: 1.5;
+    text-wrap: pretty;
+}
+
+.home-entry-say.big {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+}
+
+.home-entry-fact {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+}
+
+.home-entry-act {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.home-empty {
+    padding-left: 14px;
+    border-left: 2px solid var(--hair-strong);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+}
+
+.home-more {
+    margin: 8px 0 0 -8px;
+}
+
+/* 프로젝트가 없을 때 */
+.home-start {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 34px;
+}
+
+.home-start-card {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-content: start;
+    gap: 4px 16px;
+    padding: 20px;
+    border: 0;
+    border-radius: var(--r-lg);
+    background: var(--bg);
+    box-shadow: var(--shadow-1);
+    text-align: left;
+    transition:
+        box-shadow 0.28s var(--ease-out),
+        translate 0.28s var(--ease-out);
+}
+
+.home-start-card:hover {
+    box-shadow: var(--shadow-2);
+    translate: 0 -2px;
+}
+
+.home-start-card .home-tile {
+    grid-row: span 2;
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+}
+
+.home-start-card .home-tile[data-tone="run"] {
+    background: var(--accent);
+    color: #fff;
+}
+
+.home-start-card .icon {
+    width: 18px;
+    height: 18px;
+}
+
+.home-start-card b {
+    align-self: end;
+    font-size: var(--text-lg);
+    font-weight: 650;
+}
+
+.home-start-card span:not(.home-tile) {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    text-wrap: pretty;
+}
+
+.home-how {
+    margin-top: 34px;
+}
+
+.home-how li {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 10px;
+    padding: 7px 0;
+    color: var(--ink-2);
+    font-size: var(--text-md);
+    line-height: 1.5;
+}
+
+.home-how .icon {
+    width: 15px;
+    height: 15px;
+    margin-top: 3px;
+    color: var(--muted);
+}
+
+.home-how b {
+    font-weight: 650;
+}
+
+@media (max-width: 900px) {
+    .home-start {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

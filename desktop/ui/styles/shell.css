@@ -198,17 +198,21 @@
 
 /* docs/logo.png(아이콘과 글자, 흰 바탕의 RGB)를 그대로 쓴다. 접힌 레일은 오른쪽을 잘라 아이콘만 남기고(마크 가운데가 접힌 띠의 가운데), 곱하기로 흰 바탕을 없앤다 */
 .rail-brand {
+    --brand-h: 34px;
+    --brand-w: calc(var(--brand-h) * 1762 / 477);
     display: flex;
     flex: none;
     align-items: center;
-    padding-left: 3px;
     height: 44px;
     margin-bottom: 14px;
 }
 
+/* 레일 너비의 가운데에 둔다. 접힌 띠는 로고가 더 넓어 음수가 되므로 3px로 내려가 마크(정사각)가 띠의 가운데에 온다. 너비 전환 중에도 이어서 움직인다 */
 .rail-brand img {
     flex: none;
-    height: 34px;
+    width: var(--brand-w);
+    height: var(--brand-h);
+    margin-left: max(3px, calc((100% - var(--brand-w)) / 2));
     mix-blend-mode: multiply;
 }
 
@@ -218,6 +222,90 @@
         filter: invert(1) hue-rotate(180deg);
         mix-blend-mode: screen;
     }
+}
+
+/* 홈: 보는 프로젝트와 같은 다리 모양으로 본문과 이어진다. 프로젝트를 고르면 평범한 줄로 돌아온다 */
+.rail-home {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    margin-bottom: 8px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--ink-2);
+    font-size: var(--text-md);
+    font-weight: 600;
+    text-align: left;
+    transition:
+        background-color 0.28s var(--ease-out),
+        padding-left 0.35s var(--ease-out);
+}
+
+.rail-home .icon {
+    width: 15px;
+    height: 15px;
+    color: var(--muted);
+}
+
+.rail-home:hover {
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    color: var(--ink);
+}
+
+.rail-home-bar {
+    display: none;
+}
+
+.rail-home[aria-current="page"] {
+    z-index: 1;
+    margin-right: calc(var(--rail-pad) * -1);
+    padding-right: var(--rail-pad);
+    border-radius: var(--r-md) 0 0 var(--r-md);
+    background: var(--page);
+    color: var(--ink);
+    font-weight: 650;
+    animation: bridge-in 0.45s var(--ease-out);
+}
+
+.rail-home[aria-current="page"] .icon {
+    color: var(--accent-ink);
+}
+
+.rail-home[aria-current="page"]::before,
+.rail-home[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    width: var(--bridge-r);
+    height: var(--bridge-r);
+    pointer-events: none;
+}
+
+.rail-home[aria-current="page"]::before {
+    bottom: 100%;
+    background: radial-gradient(circle at 0 0, transparent calc(var(--bridge-r) - 0.5px), var(--page) var(--bridge-r));
+}
+
+.rail-home[aria-current="page"]::after {
+    top: 100%;
+    background: radial-gradient(circle at 0 100%, transparent calc(var(--bridge-r) - 0.5px), var(--page) var(--bridge-r));
+}
+
+.rail-home[aria-current="page"] .rail-home-bar {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: block;
+    width: 3px;
+    height: 20px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent);
+    translate: 0 -50%;
 }
 
 .rail-section {
@@ -703,6 +791,8 @@
 
 .rail-account-name {
     overflow: hidden;
+    color: var(--ink);
+    font-weight: 650;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -755,7 +845,7 @@
 }
 
 :root[data-rail-collapsed] .rail-brand img {
-    clip-path: inset(0 calc(100% - 34px) 0 0);
+    clip-path: inset(0 calc(100% - var(--brand-h)) 0 0);
 }
 
 :root[data-rail-collapsed] .proj-close {
@@ -777,7 +867,8 @@
     gap: 1.5px;
 }
 
-:root[data-rail-collapsed] .rail-item {
+:root[data-rail-collapsed] .rail-item,
+:root[data-rail-collapsed] .rail-home {
     padding-left: 12px;
 }
 

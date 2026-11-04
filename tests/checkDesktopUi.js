@@ -22,8 +22,10 @@ const loadUi = async () => {
         import { DocPreview } from "./features/approval/DocPreview.jsx";
         import { TagChips } from "./features/create/TagChips.jsx";
         import { DetailPane } from "./features/archive/ArchiveSheet.jsx";
+        import { StartSection } from "./features/home/HomeView.jsx";
         export * from "./selectKeys.js";
         export * from "./lib/buildSteps.js";
+        export * from "./lib/homeModel.js";
         export { ALLOW_KEYS, ON_FAIL_CHOICES, PHASE_LABELS } from "./lib/constants.js";
         export * from "./lib/phaseAgents.js";
         export * from "./lib/effortLevels.js";
@@ -37,6 +39,7 @@ const loadUi = async () => {
         export const renderDocPreview = (props) => renderToStaticMarkup(createElement(DocPreview, props));
         export const renderTagChips = (props) => renderToStaticMarkup(createElement(TagChips, props));
         export const renderDetailPane = (props) => renderToStaticMarkup(createElement(DetailPane, props));
+        export const renderHomeStart = () => renderToStaticMarkup(createElement(StartSection));
     `;
     const result = await build({
         stdin: { contents: entry, resolveDir: UI_DIR, loader: "js" },
@@ -652,6 +655,165 @@ const checkArchiveDetailButtons = ({ renderDetailPane }) => {
     assert.deepEqual(getDisabled(renderDetailPane({ detail: { run: { id: "r1", hasReport: true, isUnreadable: true, isActive: true } }, view: null, hidden: false })), [false, true, true]);
 };
 
+const checkHome = ({ getLatestRun, getResumeItems, getTodayEntries, getLastDone, getHomeGreeting, formatHomeDate, getHomeModel, renderHomeStart }) => {
+    const HOUR = 3600000;
+    const NOW = new Date(2026, 8, 1, 10, 0, 0).getTime();
+    const run = (overrides = {}) => ({
+        id: "2026-08-31/autopilot_230000_x.log",
+        startedAt: NOW - 11 * HOUR,
+        endedAt: NOW - 3 * HOUR,
+        roundCount: 7,
+        commitCount: 9,
+        insertions: 420,
+        deletions: 130,
+        reason: "예정 시각 도달",
+        headline: "테스트 통과 38 → 50",
+        isActive: false,
+        isUnreadable: false,
+        isEmpty: false,
+        ...overrides
+    });
+    const tab = (name, status = "idle", extra = {}) => ({ projectDir: `E:/Demo/${name}`, name: name, status: status, mode: "", step: "", ...extra });
+    const dirOf = (name) => `E:/Demo/${name}`;
+
+    // 가장 최근에 끝난 실행: 진행 중·읽을 수 없는·비어 있는·회차 없는 기록은 건너뛴다.
+    assert.equal(getLatestRun([]), null);
+    assert.equal(getLatestRun([run({ isActive: true }), run({ isUnreadable: true }), run({ isEmpty: true }), run({ roundCount: 0 })]), null);
+    assert.equal(getLatestRun([run({ isActive: true }), run({ id: "second" }), run({ id: "third" })]).id, "second");
+
+    // 이어하기: 실행 중 → 확인 대기 → 한도·오류로 멈춤 순서이고, 정상 종료·직접 멈춘 실행·오래된 실행은 넣지 않는다.
+    const awaiting = { phase: "plan", awaiting: "plan", proposals: null, debate: null };
+    const tabs = [tab("done"), tab("limit"), tab("plan", "idle", { mode: "build" }), tab("busy", "running", { mode: "build", step: "design" }), tab("stopped"), tab("old"), tab("error")];
+    const latestRuns = {
+        [dirOf("done")]: run(),
+        [dirOf("limit")]: run({ reason: "사용량 한도로 종료", endedAt: NOW - 4 * HOUR - 40 * 60000 }),
+        [dirOf("plan")]: run({ reason: "기획 확인 대기", commitCount: 4, roundCount: 3, endedAt: NOW - 8 * HOUR - 20 * 60000 }),
+        [dirOf("stopped")]: run({ reason: "중단 요청" }),
+        [dirOf("old")]: run({ reason: "사용량 한도로 종료", endedAt: NOW - 80 * HOUR }),
+        [dirOf("error")]: run({ reason: "연속 4회 실패", endedAt: NOW - HOUR })
+    };
+    const items = getResumeItems({ tabs: tabs, phases: { [dirOf("plan")]: awaiting }, latestRuns: latestRuns, nowMs: NOW });
+
+    assert.deepEqual(
+        items.map((item) => [item.name, item.kind]),
+        [
+            ["busy", "running"],
+            ["plan", "awaiting"],
+            ["limit", "stopped"],
+            ["error", "stopped"]
+        ]
+    );
+    assert.equal(items[0].say, "신규 개발, 디자인 단계를 하고 있어요.");
+    assert.equal(items[0].actionLabel, "지켜보기");
+    assert.equal(items[1].say, "기획 단계를 마쳤어요. 확인하고 승인하면 다음 단계를 시작해요.");
+    assert.equal(items[1].facts, "01:40에 멈췄고, 3회차 동안 커밋 4개를 남겼어요.");
+    assert.equal(items[1].ticks[0], "hold", "확인 대기 단계는 눈금에서 주황으로 멈춘다");
+    assert.equal(items[2].say, "한도에 걸려 05:20에 멈췄어요.");
+    assert.equal(items[3].say, "오류로 09:00에 멈췄어요.");
+    assert.equal(getResumeItems({ tabs: [tab("busy", "stopping")], phases: {}, latestRuns: {}, nowMs: NOW })[0].say, "종료 신호를 받아 마무리하고 있어요.");
+    assert.equal(getResumeItems({ tabs: [tab("busy", "running")], phases: {}, latestRuns: {}, nowMs: NOW })[0].say, "유지 보수를 하고 있어요.");
+
+    const picks = { phase: "plan", awaiting: "plan", proposals: { candidates: ["claude", "codex"], picked: null }, debate: null };
+    const disputes = { phase: "design", awaiting: "design", proposals: null, debate: { disputes: [{ id: "d1" }, { id: "d2" }], resolved: null } };
+
+    assert.equal(getResumeItems({ tabs: [tab("p")], phases: { [dirOf("p")]: picks }, latestRuns: {}, nowMs: NOW })[0].say, "기획 안이 둘 준비됐어요. 하나를 골라 주세요.");
+    assert.equal(getResumeItems({ tabs: [tab("p")], phases: { [dirOf("p")]: disputes }, latestRuns: {}, nowMs: NOW })[0].say, "디자인 협의에서 못 맞춘 쟁점이 2개 있어요. 골라 주세요.");
+
+    // 오늘 예정: 오늘 시작하는 예약만 시각 순으로 보이고, 오늘이 아니면 다음 예약 시각만 알린다. 꺼진 예약은 건너뛴다.
+    const schedule = (id, overrides = {}) => ({
+        id: id,
+        enabled: true,
+        kind: "time",
+        time: "23:00",
+        window: "session",
+        from: "",
+        to: "",
+        days: [0, 1, 2, 3, 4, 5, 6],
+        minRemaining: 40,
+        duration: 420,
+        scope: "project",
+        projectDir: dirOf("limit"),
+        ...overrides
+    });
+    const at = (hour, minute = 0, day = 1) => new Date(2026, 8, day, hour, minute, 0).getTime();
+    const today = getTodayEntries({
+        schedules: [
+            schedule("late"),
+            schedule("reset", { kind: "reset", window: "session", from: "22:00", to: "07:00", scope: "global", projectDir: "" }),
+            schedule("off", { enabled: false }),
+            schedule("tomorrow")
+        ],
+        statuses: [
+            { id: "late", code: "next-time", at: at(23) },
+            { id: "reset", code: "waiting-reset", resetsAt: at(12, 30) },
+            { id: "off", code: "next-time", at: at(15) },
+            { id: "tomorrow", code: "next-time", at: at(7, 0, 2) }
+        ],
+        tabs: tabs,
+        active: dirOf("done"),
+        nowMs: NOW
+    });
+
+    assert.deepEqual(
+        today.entries.map((entry) => [entry.when, entry.name, entry.say]),
+        [
+            ["오늘 12:30 한도 리셋 뒤", "done", "한도가 리셋되면 시작해요."],
+            ["오늘 23:00", "limit", "실행을 시작해요."]
+        ],
+        "전역 예약은 보는 프로젝트의 이름으로 보인다"
+    );
+    assert.equal(today.laterText, "내일 07:00");
+    assert.deepEqual(getTodayEntries({ schedules: [schedule("tomorrow")], statuses: [{ id: "tomorrow", code: "next-time", at: at(7, 0, 2) }], tabs: tabs, active: "", nowMs: NOW }).entries, []);
+    assert.equal(getTodayEntries({ schedules: [], statuses: [], tabs: tabs, active: "", nowMs: NOW }).laterText, "");
+
+    // 마지막 한 일: 열린 프로젝트 중 가장 최근에 끝난 실행 하나.
+    const last = getLastDone({ tabs: tabs, latestRuns: latestRuns, nowMs: NOW });
+
+    assert.equal(last.name, "error", "끝난 시각이 가장 늦은 실행");
+    assert.equal(getLastDone({ tabs: [tab("done")], latestRuns: {}, nowMs: NOW }), null);
+
+    const done = getLastDone({ tabs: [tab("done")], latestRuns: { [dirOf("done")]: run() }, nowMs: NOW });
+
+    assert.equal(done.when, "어제 23:00부터 07:00까지");
+    assert.equal(done.say, "테스트 통과 38 → 50");
+    assert.equal(done.facts, "7회차, 커밋 9개, 변경 +420 −130줄");
+    assert.equal(done.status.tone, "ok");
+    assert.equal(getLastDone({ tabs: [tab("done")], latestRuns: { [dirOf("done")]: run({ headline: "", commitCount: 0 }) }, nowMs: NOW }).facts, "7회차, 커밋은 남기지 않았어요");
+
+    // 인사
+    const greet = (list, runs = {}, phases = {}, now = NOW) =>
+        getHomeGreeting({ tabs: list, items: getResumeItems({ tabs: list, phases: phases, latestRuns: runs, nowMs: now }), latestRuns: runs, nowMs: now });
+    const text = (greeting) => `${greeting.before}${greeting.strong}${greeting.after}`;
+
+    assert.equal(text(greet([])), "안녕하세요. 첫 프로젝트를 시작해 볼까요?");
+    assert.equal(text(greet([tab("busy", "running")])), "지금 busy에서 일하고 있어요.");
+    assert.equal(text(greet([tab("a", "running"), tab("b", "running")])), "지금 프로젝트 2곳에서 일하고 있어요.");
+    assert.equal(text(greet([tab("done")], { [dirOf("done")]: run() })), "어젯밤 프로젝트 1곳에서 일했어요.");
+    assert.equal(text(greet([tab("done")], { [dirOf("done")]: run() }, {}, NOW + 6 * HOUR)), "오늘은 무엇을 맡겨 볼까요?", "낮에는 어젯밤 인사를 하지 않는다");
+    assert.equal(text(greet([tab("limit")], { [dirOf("limit")]: run({ reason: "사용량 한도로 종료" }) }, {}, NOW + 6 * HOUR)), "이어서 할 일이 1개 있어요.");
+    assert.equal(
+        greet([tab("plan", "idle", { mode: "build" }), tab("limit")], { [dirOf("limit")]: run({ reason: "사용량 한도로 종료" }) }, { [dirOf("plan")]: awaiting }).lead,
+        "확인해 주실 일이 1개 있어요. 멈춘 곳이 1곳 있어요."
+    );
+
+    assert.equal(formatHomeDate(NOW), "9월 1일 화요일, 오전 10:00");
+    assert.equal(formatHomeDate(at(0, 5)), "9월 1일 화요일, 오전 12:05");
+    assert.equal(formatHomeDate(at(12, 30)), "9월 1일 화요일, 오후 12:30");
+    assert.equal(formatHomeDate(at(21, 7)), "9월 1일 화요일, 오후 9:07");
+
+    const model = getHomeModel({ tabs: tabs, active: dirOf("done"), phases: { [dirOf("plan")]: awaiting }, latestRuns: latestRuns, schedules: [], statuses: [], nowMs: NOW });
+
+    assert.equal(model.scheduleCount, 0);
+    assert.equal(model.items.length, 4);
+
+    // 프로젝트가 없을 때의 첫 화면: 시작하는 두 길
+    const html = renderHomeStart();
+
+    assert.match(html, /id="home-new-project"/);
+    assert.match(html, /id="home-open-project"/);
+    assert.match(html, /유지 보수/);
+};
+
 const checkUi = async () => {
     const ui = await loadUi();
 
@@ -669,6 +831,7 @@ const checkUi = async () => {
     checkSkippedSteps(ui);
     checkTagChips(ui);
     checkArchiveDetailButtons(ui);
+    checkHome(ui);
     checkModalClosingLayout();
 
     console.log("Desktop UI checks passed.");

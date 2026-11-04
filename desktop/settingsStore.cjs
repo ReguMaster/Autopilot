@@ -4,6 +4,7 @@ const path = require("node:path");
 const { MODEL_CHOICES, MODEL_ID_PATTERN, EFFORT_CHOICES } = require("./autopilotRunner.cjs");
 const { normalizeSchedules } = require("./scheduleRules.cjs");
 const { readJsonFile, writeJsonFile, recoverJsonFile, BACKUP_SUFFIX } = require("./jsonFile.cjs");
+const { DRAFT_PROVIDER_KEYS } = require("./projectDraft.cjs");
 const { POST_RUN_ACTIONS } = require("./postAction.cjs");
 const {
     isValidCommitPrefix,
@@ -102,9 +103,22 @@ const LINKED_REPOS_KEY = "linkedRepos";
 const LOCAL_PROJECT_KEYS = [ACCOUNT_KEY, CODEX_ACCOUNT_KEY, LINKED_REPOS_KEY];
 const MAX_TABS = 8;
 // 실행과 무관하게 언제든 바꾸는 전역 환경설정(알림 등). autopilot:set-preferences가 이 키만 받는다.
-const PREFERENCE_KEYS = ["notifyFinish", "notifyFailure", "notifyLimit", "notifySchedule", "notifyFocused", "checkUpdates", "sleepBlock", "postRunAction", "theme", "railWidth", "onboarded"];
+const PREFERENCE_KEYS = [
+    "notifyFinish",
+    "notifyFailure",
+    "notifyLimit",
+    "notifySchedule",
+    "notifyFocused",
+    "checkUpdates",
+    "sleepBlock",
+    "postRunAction",
+    "theme",
+    "railWidth",
+    "onboarded",
+    "draftProvider"
+];
 // 이 PC에서만 뜻이 있는 값. 내보내지도 가져오지도 않고, 기본값으로 되돌릴 때도 그대로 둔다.
-const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "codexAccounts", "codexAccountId", "onboarded", "claudeDir", "launchAtLogin", "createParentDir", "railWidth"];
+const MACHINE_KEYS = ["projectDir", "tabs", "accounts", "accountId", "codexAccounts", "codexAccountId", "onboarded", "claudeDir", "launchAtLogin", "createParentDir", "railWidth", "draftProvider"];
 // PC를 끄거나 재우는 동작은 내보낸 파일로 몰래 켜지지 않도록 오가지 않는다(되돌릴 때는 기본값 none으로 돌아간다).
 const NON_PORTABLE_KEYS = [...MACHINE_KEYS, "postRunAction"];
 const EXPORT_APP = "AutoPilot";
@@ -158,6 +172,8 @@ const DEFAULT_SETTINGS = {
     claudeDir: "",
     // 새 프로젝트를 마지막으로 만든 상위 폴더. 비면 문서 폴더다.
     createParentDir: "",
+    // 새 프로젝트의 초안·추천을 써 줄 AI로 마지막에 직접 고른 것. 로그인 상태에 달린 값이라 이 PC에만 남긴다.
+    draftProvider: DRAFT_PROVIDER_KEYS[0],
     keepInTray: false,
     launchAtLogin: false,
     schedules: [],
@@ -222,6 +238,7 @@ const SETTING_VALIDATORS = {
     onboarded: (value) => typeof value === "boolean",
     claudeDir: (value) => typeof value === "string",
     createParentDir: (value) => typeof value === "string",
+    draftProvider: (value) => DRAFT_PROVIDER_KEYS.includes(value),
     keepInTray: (value) => typeof value === "boolean",
     launchAtLogin: (value) => typeof value === "boolean",
     schedules: (value) => Array.isArray(value),

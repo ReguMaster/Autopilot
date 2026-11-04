@@ -50,7 +50,7 @@ const boot = async () => {
     const snapshot = await window.autopilot.getState();
     const settings = snapshot.settings;
 
-    ui.set({ postAction: snapshot.postAction });
+    ui.set({ postAction: snapshot.postAction, home: Boolean(snapshot.startAtHome) });
 
     useAppStore.setState({
         version: snapshot.version,
