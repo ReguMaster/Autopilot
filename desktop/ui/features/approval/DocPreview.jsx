@@ -101,8 +101,8 @@ const DocPreview = ({ doc, isLoading = false }) => {
         return (
             <article className="doc-preview doc-frame" aria-label="산출물 미리보기">
                 <p className="doc-path">{doc.path}</p>
-                {/* sandbox가 스크립트·폼·같은 출처 접근을 모두 막는다. 화면 사이 이동은 열기로 본다 */}
-                <iframe title="화면 시안 미리보기" src={doc.fileUrl} sandbox="" />
+                {/* 스크립트·폼은 막는다. allow-same-origin이 없으면 불투명 출처라 상대 경로 CSS(file:)를 못 읽어 스타일이 깨진다 */}
+                <iframe title="화면 시안 미리보기" src={doc.fileUrl} sandbox="allow-same-origin" />
             </article>
         );
     }
