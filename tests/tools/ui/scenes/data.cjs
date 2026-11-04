@@ -117,14 +117,14 @@ const ACCOUNTS = {
 const CODEX_ACCOUNTS = {
     accounts: [
         { id: "default", label: "기본 계정", isDefault: true },
-        { id: "cx-1a2b3c4d", label: "회사 ChatGPT", isDefault: false }
+        { id: "cx-1a2b3c4d", label: "회사 Codex", isDefault: false }
     ],
     activeId: "default",
     snapshots: {
         default: {
             installed: true,
             loggedIn: true,
-            profile: { name: "서영호", email: "yh@example.com", plan: "Pro Lite", organization: "" },
+            profile: { name: "서영호", email: "yh@example.com", plan: "Pro 100", organization: "" },
             limits: [{ label: "주간 한도", percent: 50, resetsAt: NOW + 3 * DAY }],
             fetchedAt: NOW - 20 * MINUTE,
             error: null

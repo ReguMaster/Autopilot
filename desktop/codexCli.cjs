@@ -12,7 +12,7 @@ const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
 const LOGIN_URL_HOSTS = ["openai.com", "chatgpt.com"];
 const LOGIN_OUTPUT_TAIL_LENGTH = 4000;
 const AUTH_CLAIM = "https://api.openai.com/auth";
-const PLAN_NAMES = { free: "Free", go: "Go", plus: "Plus", pro: "Pro", prolite: "Pro Lite", team: "Team", business: "Business", enterprise: "Enterprise", edu: "Edu" };
+const PLAN_NAMES = { free: "Free", go: "Go", plus: "Plus", pro: "Pro", prolite: "Pro 100", team: "Team", business: "Business", enterprise: "Enterprise", edu: "Edu" };
 
 // 기본 계정은 환경 변수 CODEX_HOME, 없으면 사용자 폴더의 .codex다(Codex CLI의 규칙과 같다).
 const getDefaultCodexHome = (processEnv = process.env) => {

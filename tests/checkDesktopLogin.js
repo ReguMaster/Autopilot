@@ -85,7 +85,7 @@ const checkIdentity = (testDir) => {
         path.join(home, "auth.json"),
         JSON.stringify({ auth_mode: "chatgpt", tokens: { id_token: createIdToken({ email: "dev@example.com", name: "개발자", "https://api.openai.com/auth": { chatgpt_plan_type: "prolite" } }) } })
     );
-    assert.deepEqual(readCodexIdentity(home), { name: "개발자", email: "dev@example.com", plan: "Pro Lite" });
+    assert.deepEqual(readCodexIdentity(home), { name: "개발자", email: "dev@example.com", plan: "Pro 100" });
 
     fs.writeFileSync(path.join(home, "auth.json"), JSON.stringify({ OPENAI_API_KEY: "sk-test" }));
     assert.deepEqual(readCodexIdentity(home), { name: "", email: "", plan: "API 키" });

@@ -89,7 +89,7 @@ const codexAccounts = {
     remove: async (id = useCodexAccountStore.getState().activeId) => {
         const isConfirmed = await modal.confirm({
             title: `'${getLabel(id)}' 계정을 제거할까요?`,
-            message: "앱에 저장된 이 계정의 로그인 정보와 설정 폴더를 지워요. Codex(ChatGPT) 계정 자체에는 영향이 없고, 다시 추가하면 새로 로그인해야 해요.",
+            message: "앱에 저장된 이 계정의 로그인 정보와 설정 폴더를 지워요. Codex 계정 자체에는 영향이 없고, 다시 추가하면 새로 로그인해야 해요.",
             confirmLabel: "제거",
             tone: "danger"
         });
