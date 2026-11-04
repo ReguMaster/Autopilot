@@ -78,7 +78,10 @@ const NO_SCREEN_PLAN_DOC = {
 // 화면 시안 미리보기는 진짜 file 주소의 프레임이라 임시 HTML을 만들어 가리킨다.
 const MOCKUP_FILE = path.join(os.tmpdir(), "autopilot-scene-mockup.html");
 
-fs.writeFileSync(MOCKUP_FILE, "<!doctype html><meta charset=utf-8><style>body{font:16px sans-serif;padding:24px}h1{color:#2563eb}</style><h1>예약 화면 시안</h1><p>스타일이 적용되면 제목이 파랗게 보여요.</p>");
+fs.writeFileSync(
+    MOCKUP_FILE,
+    "<!doctype html><meta charset=utf-8><style>body{font:16px sans-serif;padding:24px}h1{color:#2563eb}</style><h1>예약 화면 시안</h1><p>스타일이 적용되면 제목이 파랗게 보여요.</p>"
+);
 
 const MOCKUP_URL = pathToFileURL(MOCKUP_FILE).href;
 
