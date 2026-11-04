@@ -10,6 +10,12 @@ const PLATFORMS = [
     { key: "unknown", label: "아직 몰라요" }
 ];
 const PLATFORM_KEYS = PLATFORMS.map((platform) => platform.key);
+// 초안과 추천 예시를 써 주는 AI. 첫 항목이 기본이다.
+const DRAFT_PROVIDERS = [
+    { key: "claude", label: "Claude" },
+    { key: "codex", label: "Codex" }
+];
+const DRAFT_PROVIDER_KEYS = DRAFT_PROVIDERS.map((provider) => provider.key);
 // 화면이 없는 실행 환경. 이것만 골랐으면 신규 개발의 디자인 단계는 건너뛰기를 추천한다(모르거나 화면이 있는 환경이 섞이면 추천하지 않는다).
 const NO_SCREEN_PLATFORMS = ["server", "cli"];
 const MAX_PROJECT_NAME_LENGTH = 64;
@@ -21,6 +27,20 @@ const RESERVED_NAME_PATTERN = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 const INVALID_NAME_PATTERN = /[<>:"/\\|?*\u0000-\u001f]/;
 // 줄바꿈·탭 말고 제어 문자는 지운다.
 const CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+
+// 한도 목록({ label, percent, resetsAt })에서 지금 막힌 것. 다 썼고(100%) 아직 리셋 전인 한도 중 가장 늦게 풀리는 것이다(리셋 시각을 모르면 막힌 것으로 본다). 없으면 null이다.
+const getBlockingLimit = (limits, now) => {
+    return (Array.isArray(limits) ? limits : [])
+        .filter((limit) => limit.percent >= 100 && (!limit.resetsAt || limit.resetsAt > now))
+        .reduce((latest, limit) => (!latest || (limit.resetsAt || 0) > (latest.resetsAt || 0) ? limit : latest), null);
+};
+
+// 호출이 한도 때문에 실패했는지. 사용량 표시가 낡았어도 실제 오류 문구로 알아챈다(Claude·Codex 모두 문구가 조금씩 달라 넓게 본다).
+const LIMIT_MESSAGE_PATTERN = /usage limit|hit your limit|limit reached|rate.?limit|too many requests/i;
+
+const isLimitMessage = (text) => {
+    return LIMIT_MESSAGE_PATTERN.test(String(text || ""));
+};
 
 const getRecommendedSkip = (platforms) => {
     return Array.isArray(platforms) && platforms.length > 0 && platforms.every((key) => NO_SCREEN_PLATFORMS.includes(key)) ? ["design"] : [];
@@ -243,6 +263,10 @@ const sanitizeBrief = (text) => {
 module.exports = {
     PLATFORMS,
     PLATFORM_KEYS,
+    DRAFT_PROVIDERS,
+    DRAFT_PROVIDER_KEYS,
+    getBlockingLimit,
+    isLimitMessage,
     getRecommendedSkip,
     DRAFT_LIMITS,
     MAX_PROJECT_NAME_LENGTH,

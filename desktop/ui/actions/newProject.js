@@ -1,4 +1,4 @@
-import { buildProjectBrief, getRecommendedSkip } from "../../projectDraft.cjs";
+import { buildProjectBrief, DRAFT_PROVIDERS, getRecommendedSkip } from "../../projectDraft.cjs";
 import { STATUS_OK } from "../lib/constants.js";
 import { createDraft, newProject } from "../stores/newProjectStore.js";
 import { ui } from "../stores/uiStore.js";
@@ -37,10 +37,50 @@ const loadCreateInfo = async () => {
     }
 };
 
+// 초안·추천을 써 줄 AI를 지금 쓸 수 있는지(로그인·설치·한도) 메인에 묻는다. 직접 고르기 전이고 지금 AI를 쓸 수 없는데 다른 AI는 쓸 수 있으면 그쪽으로 옮긴다(받는 중에는 옮기지 않는다).
+// 읽지 못하면 아는 상태를 그대로 두고, 모르면 쓸 수 있다고 보고 메인이 부를 때 다시 확인한다. 마지막 요청의 응답만 받는다.
+let providerSeq = 0;
+
+const loadDraftProviders = async () => {
+    const seq = ++providerSeq;
+    const result = await window.autopilot.getDraftProviders();
+
+    if (seq !== providerSeq || result.status !== STATUS_OK) {
+        return;
+    }
+
+    const { provider, isProviderPicked, isDrafting, isSuggesting } = newProject.get();
+    const isReady = (key) => result.data[key]?.state === "ready";
+    const fallback = !isProviderPicked && !isDrafting && !isSuggesting && !isReady(provider) ? DRAFT_PROVIDERS.find((item) => isReady(item.key)) : undefined;
+
+    newProject.set({ providerStates: result.data, provider: fallback?.key ?? provider });
+};
+
+// 로그인하러 나갔다 창에 돌아왔을 때를 위해, 지금 AI를 쓸 수 없던 때만 다시 묻는다(포커스마다 계정을 읽지 않도록).
+const recheckDraftProviders = () => {
+    const { provider, providerStates } = newProject.get();
+
+    if (providerStates?.[provider]?.state !== "ready") {
+        loadDraftProviders();
+    }
+};
+
+const pickProvider = (provider) => {
+    newProject.set({ provider: provider, isProviderPicked: true, suggestError: "" });
+    loadDraftProviders();
+};
+
+// 로그인은 프로필 패널(Claude·Codex 탭)에서 한다. 마치고 돌아오면 창에 포커스가 올 때 다시 확인한다.
+const openProviderLogin = (provider) => {
+    ui.set({ profileProvider: provider });
+    ui.setPanel("profile");
+};
+
 const openNewProject = () => {
     ui.set({ newProject: true });
     ui.closeAll();
     loadCreateInfo();
+    loadDraftProviders();
 };
 
 const pickParentDir = async () => {
@@ -57,15 +97,23 @@ const applyExample = (example) => {
     newProject.set({ what: example.what, platforms: example.platforms });
 };
 
-// 추천 예시만 Claude(haiku)에게 새로 받는다. 기본 예시는 그대로 두고, 이미 보인 이름과 겹치지 않게 부탁한다. 실패해도 쓰던 예시는 남는다.
+// 추천 예시만 고른 AI(Claude haiku·Codex)에게 새로 받는다. 기본 예시는 그대로 두고, 그 AI가 이미 보인 이름과 겹치지 않게 부탁한다.
+// 받는 동안 AI를 바꿀 수 없으므로 결과는 요청한 AI의 목록으로 간다. 실패해도 쓰던 예시는 남고, 로그인·한도 탓일 수 있어 상태를 다시 묻는다.
 const suggestExamples = async () => {
-    const { suggestions } = newProject.get();
+    const { provider, suggestions } = newProject.get();
 
     newProject.set({ isSuggesting: true, suggestError: "" });
 
-    const result = await window.autopilot.suggestExamples({ exclude: [...EXAMPLES, ...suggestions].map((example) => example.label) });
+    const result = await window.autopilot.suggestExamples({ provider: provider, exclude: [...EXAMPLES, ...suggestions[provider]].map((example) => example.label) });
 
-    newProject.set(result.status === STATUS_OK ? { isSuggesting: false, suggestions: result.data.examples } : { isSuggesting: false, suggestError: result.error.msg });
+    if (result.status === STATUS_OK) {
+        newProject.set({ isSuggesting: false, suggestions: { ...newProject.get().suggestions, [provider]: result.data.examples } });
+
+        return;
+    }
+
+    newProject.set({ isSuggesting: false, suggestError: result.error.msg });
+    loadDraftProviders();
 };
 
 // 초안 없이 다듬기로 간다. 적은 한두 줄이 한 줄 요약이 된다.
@@ -78,14 +126,14 @@ const writeManually = (notice = "") => {
 // 그만두고 바로 다시 요청하면 앞 요청의 CANCELED가 늦게 와 새 요청을 끝내므로 마지막 요청의 응답만 받는다.
 let draftSeq = 0;
 
-// Claude 초안을 받아 다듬기로 간다. 고른 실행 환경이 없으면 초안이 고른 것을 쓴다. 실패하면 적은 내용을 그대로 두고 직접 채우게 한다.
+// 고른 AI(Claude·Codex)의 초안을 받아 다듬기로 간다. 고른 실행 환경이 없으면 초안이 고른 것을 쓴다. 실패하면 적은 내용을 그대로 두고 직접 채우게 하고, 로그인·한도 탓일 수 있어 상태를 다시 묻는다.
 const requestDraft = async () => {
-    const { what, platforms } = newProject.get();
+    const { what, platforms, provider } = newProject.get();
     const seq = ++draftSeq;
 
     newProject.set({ isDrafting: true, notice: "" });
 
-    const result = await window.autopilot.draftProject({ what: what, platforms: platforms });
+    const result = await window.autopilot.draftProject({ what: what, platforms: platforms, provider: provider });
 
     if (seq !== draftSeq || !newProject.get().isDrafting) {
         return;
@@ -96,6 +144,7 @@ const requestDraft = async () => {
             newProject.set({ isDrafting: false });
         } else {
             writeManually(`${result.error.msg} 적어 주신 내용으로 직접 채워 주세요.`);
+            loadDraftProviders();
         }
 
         return;
@@ -153,4 +202,19 @@ const createProject = async () => {
     );
 };
 
-export { EXAMPLES, openNewProject, pickParentDir, applyExample, suggestExamples, writeManually, requestDraft, cancelDraft, getBrief, createProject };
+export {
+    EXAMPLES,
+    openNewProject,
+    pickParentDir,
+    pickProvider,
+    loadDraftProviders,
+    recheckDraftProviders,
+    openProviderLogin,
+    applyExample,
+    suggestExamples,
+    writeManually,
+    requestDraft,
+    cancelDraft,
+    getBrief,
+    createProject
+};

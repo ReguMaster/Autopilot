@@ -32,7 +32,19 @@ const {
 } = require("./settingsStore.cjs");
 const { createSessionPool } = require("./sessionPool.cjs");
 const { askClaude, getCodexStatus } = require("./claudeCli.cjs");
-const { getDraftPrompt, parseDraft, getExamplesPrompt, parseExamples, getRecommendedSkip, PLATFORM_KEYS, MAX_WHAT_LENGTH } = require("./projectDraft.cjs");
+const { askCodex } = require("./codexCli.cjs");
+const {
+    getDraftPrompt,
+    parseDraft,
+    getExamplesPrompt,
+    parseExamples,
+    getRecommendedSkip,
+    getBlockingLimit,
+    isLimitMessage,
+    PLATFORM_KEYS,
+    DRAFT_PROVIDERS,
+    MAX_WHAT_LENGTH
+} = require("./projectDraft.cjs");
 
 const ENGINE_HELP_TIMEOUT_MS = 10000;
 // 절전에서 깨면 네트워크가 올라올 때까지 잠시 기다린 뒤 판단한다.
@@ -988,20 +1000,121 @@ const handlePickCreateDir = async (event) => {
     return { status: STATUS_OK, data: { parentDir: getCreateParentDir(), canceled: selection.canceled } };
 };
 
-// 진행 중인 초안 요청. 한 번에 하나만 두고 새 요청이나 취소가 오면 앞의 것을 끝낸다.
+// 진행 중인 초안 요청. 한 번에 하나만 두고 새 요청이나 취소가 오면 앞의 것을 끝낸다. 계정·로그인을 확인하는 동안(요청이 아직 없을 때)의 취소는 draftSeq로 알아챈다.
 let draftRequest = null;
+let draftSeq = 0;
 
 const handleCancelDraft = () => {
+    draftSeq += 1;
     draftRequest?.cancel();
     draftRequest = null;
 
     return { status: STATUS_OK };
 };
 
-// 한두 줄 설명으로 Claude에게 초안(이름·요약·사용자·기능·하지 않을 것·기술 스택)을 받는다. 답은 parseDraft가 다듬은 값만 돌려준다.
+const getDraftProvider = (request) => {
+    return DRAFT_PROVIDERS.find((provider) => provider.key === request.provider) ?? DRAFT_PROVIDERS[0];
+};
+
+const DRAFT_STATE_CODES = { login: "LOGIN_REQUIRED", missing: "NOT_INSTALLED", limit: "LIMIT_REACHED", error: "PROVIDER_UNAVAILABLE" };
+
+const getDraftState = (state, extra = {}) => {
+    return { state: state, reason: "", resetsAt: 0, limitLabel: "", ...extra };
+};
+
+const formatResetClock = (resetsAt) => {
+    return resetsAt ? new Date(resetsAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+};
+
+// 초안·추천 예시를 써 줄 AI를 지금 부를 수 있는지. Claude는 새 탭의 기본 계정, Codex는 새 탭의 기본 Codex 계정으로 본다.
+// state는 ready · login(로그인 필요) · missing(설치 안 됨) · limit(한도를 다 씀, limitLabel·resetsAt) · error(확인하지 못함)이고 reason은 그 이유 문장이다. ready이면 launch에 부를 계정이 있다.
+const checkDraftProvider = async (provider) => {
+    let launch;
+    let limits;
+
+    if (provider.key === "codex") {
+        const home = codexAccounts.getDraftHome();
+        const { codex } = await getProviderStatus(home);
+
+        if (!codex.available) {
+            const state = { NOT_INSTALLED: "missing", LOGIN_REQUIRED: "login" }[codex.code] ?? "error";
+            const hint = { missing: " Codex CLI를 먼저 설치해 주세요.", login: " 프로필의 Codex 탭에서 로그인한 뒤 다시 해 주세요." }[state] ?? "";
+
+            return getDraftState(state, { reason: `${codex.reason}.${hint}` });
+        }
+
+        launch = { home: home };
+        limits = codexAccounts.getDraftLimits();
+    } else {
+        const account = await accounts.getDraftAccount();
+
+        if (account.status !== STATUS_OK) {
+            return getDraftState(account.error.code === "LOGIN_REQUIRED" ? "login" : "error", { reason: account.error.msg });
+        }
+
+        launch = { configDir: account.data.configDir };
+        limits = accounts.getDraftLimits();
+    }
+
+    const blocking = getBlockingLimit(limits, Date.now());
+
+    if (!blocking) {
+        return getDraftState("ready", { launch: launch });
+    }
+
+    const clock = formatResetClock(blocking.resetsAt);
+
+    return getDraftState("limit", {
+        reason: `${provider.label} ${blocking.label}을 다 썼어요.${clock ? ` ${clock}에 리셋돼요.` : ""} 한도가 풀린 뒤에 다시 하거나 다른 AI로 바꿔 보세요.`,
+        resetsAt: blocking.resetsAt || 0,
+        limitLabel: blocking.label
+    });
+};
+
+// 새 프로젝트 화면이 AI마다 쓸 수 있는지 보여 준다. 계정·한도를 읽는 값이라 부르는 쪽에서 launch는 뺀다.
+const handleGetDraftProviders = async () => {
+    const data = {};
+
+    await Promise.all(
+        DRAFT_PROVIDERS.map(async (provider) => {
+            const { launch, ...state } = await checkDraftProvider(provider);
+
+            data[provider.key] = state;
+        })
+    );
+
+    return { status: STATUS_OK, data: data };
+};
+
+// 초안·추천 예시를 써 줄 AI에게 질문을 보낸다. 쓸 수 없으면(로그인·설치·한도) { failure }, 보냈으면 { ask }다. 둘 다 도구 없는 최소 호출이고 options.claude·options.codex는 AI마다 다른 모델·시한이다.
+const startDraftAsk = async (provider, prompt, options) => {
+    const checked = await checkDraftProvider(provider);
+
+    if (checked.state !== "ready") {
+        return { failure: createFailure(DRAFT_STATE_CODES[checked.state], checked.reason) };
+    }
+
+    if (provider.key === "codex") {
+        return { ask: askCodex(checked.launch.home, prompt, { model: readSettings().codexModel, effort: "low", ...options.codex }) };
+    }
+
+    return { ask: askClaude(checked.launch.configDir, prompt, options.claude) };
+};
+
+// 호출이 실패한 이유. 한도 오류는 사용량 표시가 낡아 미리 알지 못했을 때도 한도로 알린다.
+const getAskFailure = (provider, code, doing, error) => {
+    if (isLimitMessage(error)) {
+        return createFailure("LIMIT_REACHED", `${provider.label} 사용량 한도에 걸렸어요. 한도가 풀린 뒤에 다시 하거나 다른 AI로 바꿔 보세요.`);
+    }
+
+    return createFailure(code, `${provider.label}가 ${doing} 못했어요. ${error}`);
+};
+
+// 한두 줄 설명으로 Claude나 Codex에게 초안(이름·요약·사용자·기능·하지 않을 것·기술 스택)을 받는다. 답은 parseDraft가 다듬은 값만 돌려준다.
 const handleDraftProject = async (event, request = {}) => {
     const what = typeof request.what === "string" ? request.what.slice(0, MAX_WHAT_LENGTH) : "";
     const platforms = Array.isArray(request.platforms) ? request.platforms.filter((key) => PLATFORM_KEYS.includes(key)) : [];
+    const provider = getDraftProvider(request);
 
     if (!what.trim()) {
         return createFailure("INVALID_DRAFT", "무엇을 만들고 싶은지 적어 주세요.");
@@ -1009,13 +1122,20 @@ const handleDraftProject = async (event, request = {}) => {
 
     handleCancelDraft();
 
-    const account = await accounts.getDraftAccount();
+    const seq = draftSeq;
+    const started = await startDraftAsk(provider, getDraftPrompt({ what: what, platforms: platforms }), { claude: {}, codex: {} });
 
-    if (account.status !== STATUS_OK) {
-        return account;
+    if (started.failure) {
+        return started.failure;
     }
 
-    const ask = askClaude(account.data.configDir, getDraftPrompt({ what: what, platforms: platforms }));
+    const { ask } = started;
+
+    if (seq !== draftSeq) {
+        ask.cancel();
+
+        return createFailure("CANCELED", "초안 만들기를 그만뒀어요.");
+    }
 
     draftRequest = ask;
 
@@ -1030,43 +1150,47 @@ const handleDraftProject = async (event, request = {}) => {
     }
 
     if (result.error) {
-        return createFailure("DRAFT_FAILED", `Claude가 초안을 쓰지 못했어요. ${result.error}`);
+        return getAskFailure(provider, "DRAFT_FAILED", "초안을 쓰지", result.error);
     }
 
     const draft = parseDraft(result.text);
 
-    return draft ? { status: STATUS_OK, data: { draft: draft } } : createFailure("DRAFT_INVALID", "Claude의 초안을 읽지 못했어요.");
+    return draft ? { status: STATUS_OK, data: { draft: draft } } : createFailure("DRAFT_INVALID", `${provider.label}의 초안을 읽지 못했어요.`);
 };
 
-// 새 프로젝트 화면의 추천 예시. 기본 예시는 화면이 갖고 있고, 여기서는 haiku로 새 추천만 받는다(도구 없는 최소 호출, 한 번에 하나). 읽지 못하면 빈 목록 대신 실패로 알린다.
-let examplesRequest = null;
+// 새 프로젝트 화면의 추천 예시. 기본 예시는 화면이 갖고 있고, 여기서는 Claude(haiku)나 Codex(low)로 새 추천만 받는다(도구 없는 최소 호출, 한 번에 하나). 읽지 못하면 빈 목록 대신 실패로 알린다.
+let isSuggestingExamples = false;
 
 const handleSuggestExamples = async (event, request = {}) => {
-    if (examplesRequest) {
+    if (isSuggestingExamples) {
         return createFailure("BUSY", "추천 예시를 받는 중이에요.");
     }
 
-    const account = await accounts.getDraftAccount();
+    const provider = getDraftProvider(request);
+    let result;
 
-    if (account.status !== STATUS_OK) {
-        return account;
+    // 계정·로그인을 확인하는 동안 온 요청도 막도록 먼저 잠근다.
+    isSuggestingExamples = true;
+
+    try {
+        const started = await startDraftAsk(provider, getExamplesPrompt({ exclude: request.exclude }), { claude: { model: "haiku", timeoutMs: 45000 }, codex: { timeoutMs: 90000 } });
+
+        if (started.failure) {
+            return started.failure;
+        }
+
+        result = await started.ask.promise;
+    } finally {
+        isSuggestingExamples = false;
     }
 
-    const ask = askClaude(account.data.configDir, getExamplesPrompt({ exclude: request.exclude }), { model: "haiku", timeoutMs: 45000 });
-
-    examplesRequest = ask;
-
-    const result = await ask.promise;
-
-    examplesRequest = null;
-
     if (result.error) {
-        return createFailure("EXAMPLES_FAILED", `Claude가 예시를 만들지 못했어요. ${result.error}`);
+        return getAskFailure(provider, "EXAMPLES_FAILED", "예시를 만들지", result.error);
     }
 
     const examples = parseExamples(result.text);
 
-    return examples.length ? { status: STATUS_OK, data: { examples: examples } } : createFailure("EXAMPLES_INVALID", "Claude의 예시를 읽지 못했어요.");
+    return examples.length ? { status: STATUS_OK, data: { examples: examples } } : createFailure("EXAMPLES_INVALID", `${provider.label}의 예시를 읽지 못했어요.`);
 };
 
 // 새 프로젝트를 만들고 새 탭으로 연다. 신규 개발 모드에 brief.md 내용을 만들 것으로 채워 시작 전 화면에서 바로 기획을 시작할 수 있게 한다.
@@ -1369,15 +1493,17 @@ const handleApprovePhase = async (event, requestedDir, pick, resolutions) => {
 const PROVIDER_STATUS_TTL_MS = 60000;
 let providerStatus = { at: 0, home: "", data: null };
 
-// 지금 보는 프로젝트가 고른 Codex 계정으로 쓸 수 있는지 묻는다(계정이 바뀌면 기억한 값을 쓰지 않는다).
-const handleGetProviders = async () => {
-    const home = codexAccounts.getActiveHome();
-
+// 그 CODEX_HOME의 Codex로 쓸 수 있는지 묻는다(계정이 바뀌면 기억한 값을 쓰지 않는다).
+const getProviderStatus = async (home) => {
     if (!providerStatus.data || providerStatus.home !== home || Date.now() - providerStatus.at > PROVIDER_STATUS_TTL_MS) {
         providerStatus = { at: Date.now(), home: home, data: { codex: await getCodexStatus(null, { ...process.env, CODEX_HOME: home }) } };
     }
 
-    return { status: STATUS_OK, data: providerStatus.data };
+    return providerStatus.data;
+};
+
+const handleGetProviders = async () => {
+    return { status: STATUS_OK, data: await getProviderStatus(codexAccounts.getActiveHome()) };
 };
 
 // 확인을 기다리는 단계의 산출물 미리보기. 렌더러는 단계 이름만 보내고 경로는 projectFiles가 정해진 위치로만 정한다.
@@ -1670,6 +1796,7 @@ const registerIpc = () => {
     registerHandler("autopilot:draft-project", handleDraftProject);
     registerHandler("autopilot:cancel-draft", handleCancelDraft);
     registerHandler("autopilot:suggest-examples", handleSuggestExamples);
+    registerHandler("autopilot:get-draft-providers", handleGetDraftProviders);
     registerHandler("autopilot:create-project", handleCreateProject);
     registerHandler("autopilot:read-phase-doc", handleReadPhaseDoc);
     registerHandler("autopilot:open-phase-doc", handleOpenPhaseDoc);

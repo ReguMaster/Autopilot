@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld("autopilot", {
     draftProject: (request) => ipcRenderer.invoke("autopilot:draft-project", request),
     cancelDraft: () => ipcRenderer.invoke("autopilot:cancel-draft"),
     suggestExamples: (request) => ipcRenderer.invoke("autopilot:suggest-examples", request),
+    getDraftProviders: () => ipcRenderer.invoke("autopilot:get-draft-providers"),
     createProject: (request) => ipcRenderer.invoke("autopilot:create-project", request),
     selectClaudeDir: () => ipcRenderer.invoke("autopilot:select-claude-dir"),
     resetClaudeDir: () => ipcRenderer.invoke("autopilot:reset-claude-dir"),

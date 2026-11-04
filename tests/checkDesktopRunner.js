@@ -101,6 +101,8 @@ const {
     buildProjectBrief,
     sanitizeBrief,
     getRecommendedSkip,
+    getBlockingLimit,
+    isLimitMessage,
     DRAFT_LIMITS
 } = require("../desktop/projectDraft.cjs");
 const { DEFAULT_SETTINGS, COLLAPSED_RAIL_WIDTH, MIN_RAIL_WIDTH, MAX_RAIL_WIDTH, DEFAULT_RAIL_WIDTH } = require("../desktop/settingsStore.cjs");
@@ -1494,6 +1496,34 @@ const checkProjectDraftRules = () => {
     assert.deepEqual(getRecommendedSkip(["unknown"]), []);
     assert.deepEqual(getRecommendedSkip([]), []);
     assert.deepEqual(getRecommendedSkip(undefined), []);
+
+    // 한도는 다 썼고(100%) 아직 리셋 전인 것만 막는다. 리셋이 지난 한도는 막지 않고, 막힌 것이 여럿이면 가장 늦게 풀리는 것을 알린다. 리셋 시각을 모르면 막힌 것으로 본다.
+    const now = 1_000_000;
+
+    assert.equal(getBlockingLimit([{ label: "5시간 한도", percent: 99, resetsAt: now + 1 }], now), null);
+    assert.equal(getBlockingLimit([{ label: "5시간 한도", percent: 100, resetsAt: now - 1 }], now), null);
+    assert.equal(getBlockingLimit([], now), null);
+    assert.equal(getBlockingLimit(undefined, now), null);
+    assert.equal(
+        getBlockingLimit(
+            [
+                { label: "5시간 한도", percent: 100, resetsAt: now + 10 },
+                { label: "주간 한도", percent: 100, resetsAt: now + 99 },
+                { label: "다른 한도", percent: 40, resetsAt: now + 500 }
+            ],
+            now
+        ).label,
+        "주간 한도"
+    );
+    assert.equal(getBlockingLimit([{ label: "모름", percent: 100, resetsAt: 0 }], now).label, "모름");
+
+    for (const message of ["You've hit your limit · resets 5pm", "Claude AI usage limit reached|1700000000", "You've hit your usage limit. Try again later.", "429 Too Many Requests"]) {
+        assert.equal(isLimitMessage(message), true, message);
+    }
+
+    for (const message of ["Not logged in", "", undefined]) {
+        assert.equal(isLimitMessage(message), false, String(message));
+    }
 
     assert.equal(toFolderName("Hanbit Booking!!"), "hanbit-booking");
     assert.equal(toFolderName("미용실"), "", "영문이 없으면 이름을 비워 사용자가 정하게 한다");

@@ -380,11 +380,24 @@ const createCodexAccountIpc = ({
         return store.getHome(getActiveId(readSettings(), projectDir));
     };
 
+    // 새 프로젝트 초안·추천 예시를 받을 계정(새 탭의 기본 계정, Claude의 getDraftAccount와 같은 기준).
+    const getDraftId = () => {
+        const { codexAccountId } = readSettings();
+
+        return hasAccount(codexAccountId) ? codexAccountId : DEFAULT_CODEX_ACCOUNT_ID;
+    };
+
+    const getDraftHome = () => store.getHome(getDraftId());
+
+    const getDraftLimits = () => getReader(getDraftId()).getAccount().limits;
+
     return {
         register: register,
         startWatch: startWatch,
         getRunHome: getRunHome,
         getActiveHome: getActiveHome,
+        getDraftHome: getDraftHome,
+        getDraftLimits: getDraftLimits,
         cancelLogin: handleCancelLogin,
         broadcastPayload: broadcastPayload
     };

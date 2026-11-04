@@ -320,6 +320,10 @@ const api = {
                 setTimeout(() => resolve(model.examplesError ? fail(model.examplesError.code, model.examplesError.msg) : ok({ examples: model.examples ?? [] })), model.examplesDelay ?? 300)
             )
     ),
+    // 초안·추천을 써 줄 AI의 상태. model.draftProviders가 없으면 둘 다 쓸 수 있다(state: ready·login·missing·limit·error).
+    getDraftProviders: respond("getDraftProviders", async () =>
+        ok(model.draftProviders ?? { claude: { state: "ready", reason: "", resetsAt: 0, limitLabel: "" }, codex: { state: "ready", reason: "", resetsAt: 0, limitLabel: "" } })
+    ),
     createProject: respond("createProject", async () => ok({ ...getSettingsView(), tabs: { active: model.settings.projectDir, tabs: model.tabs } })),
     openReport: respond("openReport", async () => ok({})),
     listRuns: respond("listRuns", async (limit) => ok({ runs: model.runs.slice(0, limit) })),

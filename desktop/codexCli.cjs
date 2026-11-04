@@ -2,9 +2,12 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { findExecutable, spawnClaudeProcess, killProcessTree } = require("./claudeCli.cjs");
+const { CODEX_MODEL_PATTERN, CODEX_EFFORT_LEVELS } = require("./engineArgs.cjs");
 
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 const COMMAND_TIMEOUT_MS = 20000;
+const ASK_TIMEOUT_MS = 120000;
+const ASK_STDERR_TAIL_LENGTH = 4000;
 const LOGIN_URL_PATTERN = /https:\/\/[^\s"'<>]+(?=\s)/;
 const LOGIN_URL_HOSTS = ["openai.com", "chatgpt.com"];
 const LOGIN_OUTPUT_TAIL_LENGTH = 4000;
@@ -195,6 +198,91 @@ const startCodexLogin = (codexHome, handlers, options = {}) => {
     };
 };
 
+// 도구를 쓰지 않는 질문 하나를 읽기 전용으로 보내고 최종 답변(stdout)을 받는다(새 프로젝트 초안·추천 예시). claudeCli.askClaude처럼 { promise, cancel }을 돌려주고,
+// promise는 { text } 또는 { error } 또는 { cancelled: true }로 풀린다. 질문은 사용자 글이 섞여 있어 stdin으로 넘기고, 저장소가 아닌 빈 임시 폴더에서 세션을 남기지 않고(--ephemeral) 돌린다.
+// model·effort는 CMD 래퍼 명령줄에 들어가므로 허용 형식을 통과한 것만 넘긴다.
+const askCodex = (codexHome, prompt, options = {}) => {
+    const launch = getLaunch(options);
+
+    if (!launch.command) {
+        return { promise: Promise.resolve({ error: "Codex가 설치돼 있지 않아요" }), cancel: () => {} };
+    }
+
+    const settingArgs = [
+        ...(CODEX_MODEL_PATTERN.test(options.model ?? "") ? ["-m", options.model] : []),
+        ...(CODEX_EFFORT_LEVELS.includes(options.effort) ? ["-c", `model_reasoning_effort=${options.effort}`] : [])
+    ];
+    const args = ["exec", "-s", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", ...settingArgs, "-"];
+    let child = null;
+    let isCancelled = false;
+    let workDir = "";
+
+    const promise = new Promise((resolve) => {
+        try {
+            workDir = fs.mkdtempSync(path.join(os.tmpdir(), "autopilot-ask-"));
+            child = spawnClaudeProcess(launch, args, { env: getCodexEnv(codexHome), cwd: workDir, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+        } catch (error) {
+            resolve({ error: error.message });
+
+            return;
+        }
+
+        const timer = setTimeout(() => killProcessTree(child), options.timeoutMs || ASK_TIMEOUT_MS);
+        let stdout = "";
+        let stderr = "";
+
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+            stderr = (stderr + chunk).slice(-ASK_STDERR_TAIL_LENGTH);
+        });
+        child.stdin.on("error", () => {});
+        child.stdin.end(prompt, "utf8");
+        child.on("error", (error) => {
+            clearTimeout(timer);
+            resolve({ error: error.message });
+        });
+        child.on("close", (code) => {
+            clearTimeout(timer);
+
+            const text = stdout.trim();
+
+            if (isCancelled) {
+                resolve({ cancelled: true });
+            } else if (code === 0 && text) {
+                resolve({ text: text });
+            } else {
+                const reason =
+                    stderr
+                        .split(/\r?\n/)
+                        .map((line) => line.trim())
+                        .filter(Boolean)
+                        .at(-1) ?? "";
+
+                resolve({ error: (reason || `Codex가 답하지 못했어요 (종료 코드 ${code}, 시간이 너무 걸렸을 수 있어요).`).slice(0, 300) });
+            }
+        });
+    }).finally(() => {
+        if (workDir) {
+            fs.rmSync(workDir, { recursive: true, force: true });
+        }
+    });
+
+    return {
+        promise: promise,
+        cancel: () => {
+            isCancelled = true;
+
+            if (child) {
+                killProcessTree(child);
+            }
+        }
+    };
+};
+
 // `codex logout`으로 그 CODEX_HOME의 로그인 정보를 지우고, 정말 로그아웃됐는지 다시 확인한다.
 const logoutCodex = async (codexHome, options = {}) => {
     const result = await runCodex(["logout"], codexHome, options);
@@ -208,4 +296,4 @@ const logoutCodex = async (codexHome, options = {}) => {
     return status.loggedIn ? { ok: false, message: "로그아웃하지 못했어요. 잠시 뒤 다시 시도해 주세요." } : { ok: true };
 };
 
-module.exports = { getDefaultCodexHome, getCodexLoginStatus, readCodexIdentity, startCodexLogin, logoutCodex, isCodexLoginUrl, getPlanName };
+module.exports = { getDefaultCodexHome, getCodexLoginStatus, readCodexIdentity, startCodexLogin, logoutCodex, askCodex, isCodexLoginUrl, getPlanName };

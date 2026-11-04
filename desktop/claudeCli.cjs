@@ -427,11 +427,12 @@ const readCodexModels = (processEnv) => {
 };
 
 // 회차 실행·여러 AI 브레인스토밍에 쓸 Codex가 설치 · 로그인돼 있는지(`codex login status`의 종료 코드). 쓸 수 있으면 고를 수 있는 모델도 함께 준다. launch는 검증용 가짜 실행 파일이다.
+// 쓸 수 없으면 code가 NOT_INSTALLED(설치 안 됨) · LOGIN_REQUIRED(로그인 필요) · FAILED(확인하지 못함)로 이유를 가른다.
 const getCodexStatus = (launch = null, processEnv = process.env) => {
     const command = launch?.command || findExecutable("codex", processEnv);
 
     if (!command) {
-        return Promise.resolve({ available: false, reason: "Codex가 설치돼 있지 않아요" });
+        return Promise.resolve({ available: false, code: "NOT_INSTALLED", reason: "Codex가 설치돼 있지 않아요" });
     }
 
     return new Promise((resolve) => {
@@ -440,23 +441,23 @@ const getCodexStatus = (launch = null, processEnv = process.env) => {
         try {
             child = spawnClaudeProcess({ command: command, prefixArgs: launch?.prefixArgs || [] }, ["login", "status"], { env: processEnv, windowsHide: true, stdio: "ignore" });
         } catch {
-            resolve({ available: false, reason: "Codex를 실행하지 못했어요" });
+            resolve({ available: false, code: "FAILED", reason: "Codex를 실행하지 못했어요" });
 
             return;
         }
 
         const timer = setTimeout(() => {
             child.kill();
-            resolve({ available: false, reason: "Codex 로그인을 확인하지 못했어요" });
+            resolve({ available: false, code: "FAILED", reason: "Codex 로그인을 확인하지 못했어요" });
         }, PROVIDER_STATUS_TIMEOUT_MS);
 
         child.once("error", () => {
             clearTimeout(timer);
-            resolve({ available: false, reason: "Codex를 실행하지 못했어요" });
+            resolve({ available: false, code: "FAILED", reason: "Codex를 실행하지 못했어요" });
         });
         child.once("exit", (code) => {
             clearTimeout(timer);
-            resolve(code === 0 ? { available: true, reason: "", models: readCodexModels(processEnv) } : { available: false, reason: "Codex 로그인이 필요해요" });
+            resolve(code === 0 ? { available: true, reason: "", models: readCodexModels(processEnv) } : { available: false, code: "LOGIN_REQUIRED", reason: "Codex 로그인이 필요해요" });
         });
     });
 };

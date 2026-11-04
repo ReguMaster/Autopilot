@@ -401,11 +401,18 @@ const createAccountIpc = ({
         return runAccount;
     };
 
+    const getDraftId = () => {
+        const settings = readSettings();
+
+        return listAccounts(settings).some((account) => account.id === settings.accountId) ? settings.accountId : DEFAULT_ACCOUNT_ID;
+    };
+
+    // 새 프로젝트 초안을 쓸 계정(새 탭의 기본 계정)의 사용량 한도. 아직 읽지 못했으면 빈 목록이다.
+    const getDraftLimits = () => getReader(getDraftId()).getAccount().limits;
+
     // 새 프로젝트 초안을 쓸 계정(새 탭의 기본 계정)의 설정 폴더. 로그인돼 있어야 한다.
     const getDraftAccount = async () => {
-        const settings = readSettings();
-        const accountId = listAccounts(settings).some((account) => account.id === settings.accountId) ? settings.accountId : DEFAULT_ACCOUNT_ID;
-        const configDir = store.getConfigDir(accountId);
+        const configDir = store.getConfigDir(getDraftId());
 
         if (login) {
             return createFailure("LOGIN_IN_PROGRESS", "로그인이 진행 중이에요. 마치거나 취소한 뒤 다시 해 주세요.");
@@ -519,6 +526,7 @@ const createAccountIpc = ({
         startWatch: startWatch,
         getRunAccount: getRunAccount,
         getDraftAccount: getDraftAccount,
+        getDraftLimits: getDraftLimits,
         cancelLogin: handleCancelLogin,
         getActiveUsage: getActiveUsage,
         refreshActiveUsage: refreshActiveUsage,

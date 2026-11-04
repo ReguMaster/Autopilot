@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { getAuthStatus, logoutClaude } = require("../desktop/claudeCli.cjs");
-const { getCodexLoginStatus, readCodexIdentity, startCodexLogin, logoutCodex, isCodexLoginUrl, getPlanName } = require("../desktop/codexCli.cjs");
+const { getCodexLoginStatus, readCodexIdentity, startCodexLogin, logoutCodex, askCodex, isCodexLoginUrl, getPlanName } = require("../desktop/codexCli.cjs");
 const { createCodexAccountReader, readCodexUsage, parseRateLimitLine, getWindowLabel } = require("../desktop/codexAccount.cjs");
 const { createCodexAccountStore, normalizeCodexAccounts, DEFAULT_CODEX_ACCOUNT_ID } = require("../desktop/codexAccountStore.cjs");
 const { createCodexAccountIpc } = require("../desktop/codexAccountIpc.cjs");
@@ -228,6 +228,60 @@ const checkCodexCli = async (testDir) => {
     }
 };
 
+// 새 프로젝트 초안·추천 예시의 Codex 호출: 질문은 stdin으로만 가고, 읽기 전용·저장 없음·빈 임시 폴더에서 돌며, 최종 답변(stdout)을 받는다.
+// 쓰던 폴더는 끝나면 지우고, 그만두거나 시간이 넘으면 끝낸다. 허용 형식이 아닌 model·effort는 명령줄에 넣지 않는다.
+const ASK_CODEX_SOURCE = String.raw`
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+    input += chunk;
+});
+process.stdin.on("end", () => {
+    if (input.includes("멈춤")) {
+        setInterval(() => {}, 1000);
+        return;
+    }
+    if (input.includes("실패")) {
+        console.error("Reading prompt from stdin...\nYou've hit your usage limit.");
+        process.exit(1);
+    }
+    console.error("progress noise");
+    console.log(JSON.stringify({ args: process.argv.slice(2), input: input, cwd: process.cwd(), home: process.env.CODEX_HOME }));
+});
+`;
+
+const checkAskCodex = async (testDir) => {
+    const fakeFile = path.join(testDir, "fakeAskCodex.cjs");
+    const fake = { command: process.execPath, prefixArgs: [fakeFile] };
+
+    fs.writeFileSync(fakeFile, ASK_CODEX_SOURCE);
+
+    const answer = await askCodex(testDir, "미용실 & 예약", { ...fake, model: "gpt-6.1-sol", effort: "low" }).promise;
+    const echo = JSON.parse(answer.text);
+
+    assert.equal(echo.input, "미용실 & 예약");
+    assert.equal(echo.home, testDir);
+    assert.deepEqual(echo.args, ["exec", "-s", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-"]);
+    assert(!echo.args.some((arg) => arg.includes("미용실")), "질문은 명령줄에 넣지 않는다");
+    assert.notEqual(path.resolve(echo.cwd), path.resolve(testDir), "저장소나 작업 폴더가 아닌 임시 폴더에서 돌린다");
+    assert.equal(fs.existsSync(echo.cwd), false, "쓴 임시 폴더는 지운다");
+
+    const unsafe = JSON.parse((await askCodex(testDir, "x", { ...fake, model: "bad model; rm -rf", effort: "turbo" }).promise).text);
+
+    assert.deepEqual(unsafe.args, ["exec", "-s", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", "-"], "허용 형식이 아닌 model·effort는 넘기지 않는다");
+
+    const failed = await askCodex(testDir, "실패", fake).promise;
+
+    assert.equal(failed.error, "You've hit your usage limit.", "stderr의 마지막 줄을 이유로 알린다");
+
+    const pending = askCodex(testDir, "멈춤", fake);
+
+    setTimeout(pending.cancel, 300);
+    assert.deepEqual(await pending.promise, { cancelled: true });
+    assert((await askCodex(testDir, "멈춤", { ...fake, timeoutMs: 400 }).promise).error, "시간이 넘으면 끝내고 실패로 알린다");
+    assert.match((await askCodex(testDir, "x", { command: path.join(testDir, "missing-codex") }).promise).error, /./);
+};
+
 const checkClaudeLogout = async (testDir) => {
     const fakeFile = path.join(testDir, "fakeClaudeLogout.cjs");
     const fake = { command: process.execPath, prefixArgs: [fakeFile] };
@@ -380,6 +434,7 @@ const runChecks = async () => {
         checkCodexStore(testDir);
 
         await checkCodexCli(testDir);
+        await checkAskCodex(testDir);
         await checkClaudeLogout(testDir);
         await checkReader(testDir);
         await checkCodexRemove(testDir);

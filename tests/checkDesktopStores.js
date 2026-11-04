@@ -1257,10 +1257,19 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
         stack: { items: ["Next.js"], reason: "작아서" }
     };
     const requests = [];
+    const readyState = { state: "ready", reason: "", resetsAt: 0, limitLabel: "" };
+    let providerStates = { claude: readyState, codex: readyState };
+    let suggestResult = OK({ examples: [{ label: "클로드 추천", what: "클로드가 낸 예시예요.", platforms: ["web"] }] });
     let pendingDraft = null;
 
     window.autopilot = {
         getCreateInfo: async () => OK({ parentDir: "D:\\work", author: { name: "한빛", email: "a@b.c" } }),
+        getDraftProviders: async () => OK(providerStates),
+        suggestExamples: async (request) => {
+            requests.push(["suggest", request]);
+
+            return suggestResult;
+        },
         draftProject: (request) => {
             requests.push(["draft", request]);
 
@@ -1301,6 +1310,46 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     assert.deepEqual(read().platforms, ["cli"]);
     newProject.togglePlatform("cli");
 
+    // 열 때 AI별 상태를 읽고, 추천 예시는 고른 AI(기본 Claude)로 받아 그 AI 몫에만 둔다. 요청에는 AI와 이미 보인 예시 이름이 실린다.
+    assert.equal(read().provider, "claude");
+    assert.equal(read().providerStates.codex.state, "ready");
+    await newProjectActions.suggestExamples();
+    assert.equal(requests.at(-1)[1].provider, "claude");
+    assert.equal(requests.at(-1)[1].exclude.includes(newProjectActions.EXAMPLES[0].label), true, "기본 예시와 겹치지 않게 부탁한다");
+    assert.equal(read().suggestions.claude.length, 1);
+    assert.equal(read().suggestions.codex.length, 0);
+
+    suggestResult = OK({ examples: [{ label: "코덱스 추천", what: "코덱스가 낸 예시예요.", platforms: ["cli"] }] });
+    newProjectActions.pickProvider("codex");
+    await newProjectActions.suggestExamples();
+    assert.equal(requests.at(-1)[1].provider, "codex");
+    assert.equal(requests.at(-1)[1].exclude.includes("클로드 추천"), false, "다른 AI의 추천은 겹침 검사에 넣지 않는다");
+    assert.deepEqual([read().suggestions.claude[0].label, read().suggestions.codex[0].label], ["클로드 추천", "코덱스 추천"]);
+
+    // 직접 고르기 전에는 지금 AI를 쓸 수 없고 다른 AI는 쓸 수 있을 때 그쪽으로 옮겨 가고, 직접 고른 뒤에는 옮기지 않는다.
+    newProject.set({ provider: "claude", isProviderPicked: false });
+    providerStates = { claude: { ...readyState, state: "login", reason: "로그인 필요" }, codex: readyState };
+    await newProjectActions.loadDraftProviders();
+    assert.equal(read().provider, "codex");
+    newProjectActions.pickProvider("claude");
+    await wait(0);
+    assert.equal(read().provider, "claude", "직접 고른 AI는 쓸 수 없어도 그대로 둔다");
+    assert.equal(read().providerStates.claude.state, "login");
+
+    // 한도·로그인 탓에 추천이 실패하면 쓰던 추천은 남기고 이유를 알리며 상태를 다시 읽는다.
+    providerStates = { claude: { state: "limit", reason: "", resetsAt: Date.now() + 3600000, limitLabel: "5시간 한도" }, codex: readyState };
+    suggestResult = { status: "FAILED", error: { code: "LIMIT_REACHED", msg: "Claude 사용량 한도에 걸렸어요." } };
+    await newProjectActions.suggestExamples();
+    await wait(0);
+    assert.equal(read().suggestError, "Claude 사용량 한도에 걸렸어요.");
+    assert.equal(read().suggestions.claude.length, 1);
+    assert.equal(read().providerStates.claude.state, "limit");
+    assert.equal(read().isSuggesting, false);
+
+    providerStates = { claude: readyState, codex: readyState };
+    newProject.set({ provider: "claude", isProviderPicked: false, suggestError: "" });
+    await newProjectActions.loadDraftProviders();
+
     // 그만둔 뒤 늦게 온 초안은 버린다.
     newProject.set({ what: "미용실 예약" });
     const canceled = newProjectActions.requestDraft();
@@ -1325,7 +1374,7 @@ const checkNewProject = async ({ newProjectStore, newProjectActions, uiStore, ta
     assert.equal(read().isDrafting, true);
     pendingDraft(OK({ draft: draft }));
     await drafted;
-    assert.deepEqual(requests.at(-1), ["draft", { what: "미용실 예약", platforms: [] }]);
+    assert.deepEqual(requests.at(-1), ["draft", { what: "미용실 예약", platforms: [], provider: "claude" }]);
     assert.equal(read().step, "refine");
     assert.deepEqual(read().platforms, ["web"]);
     assert.equal(read().draft.stack.choice, "recommended");

@@ -228,7 +228,7 @@ const checkCodexStatus = async (testDir) => {
 
     const fake = { command: process.execPath, prefixArgs: [fakeFile] };
 
-    assert.deepEqual(await getCodexStatus(null, { PATH: path.join(testDir, "no-codex-here") }), { available: false, reason: "Codex가 설치돼 있지 않아요" });
+    assert.deepEqual(await getCodexStatus(null, { PATH: path.join(testDir, "no-codex-here") }), { available: false, code: "NOT_INSTALLED", reason: "Codex가 설치돼 있지 않아요" });
     // 고를 수 있는 모델은 Codex가 캐시한 목록(visibility list)에서 읽고, 못 읽으면 빈 목록이다.
     const codexHome = path.join(testDir, "codex-home");
     const cacheModels = [
@@ -251,7 +251,7 @@ const checkCodexStatus = async (testDir) => {
     });
     fs.writeFileSync(path.join(codexHome, "models_cache.json"), "not json");
     assert.deepEqual((await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome })).models, []);
-    assert.deepEqual(await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome, AP_CODEX_LOGIN: "0" }), { available: false, reason: "Codex 로그인이 필요해요" });
+    assert.deepEqual(await getCodexStatus(fake, { ...process.env, CODEX_HOME: codexHome, AP_CODEX_LOGIN: "0" }), { available: false, code: "LOGIN_REQUIRED", reason: "Codex 로그인이 필요해요" });
 };
 
 const checkClaudeCli = async (testDir) => {
