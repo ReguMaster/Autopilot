@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한도 메뉴 시안</title>
+<link rel="stylesheet" href="../../../desktop/fonts/pretendard.css">
+<link rel="stylesheet" href="../refresh/mock.css">
+<style>
+/* ───── 공용: 앱의 패널·한도 줄 값을 그대로 옮겼다 ───── */
+.row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 28px; }
+.fig { display: grid; gap: 10px; }
+#frames { display: grid; gap: 28px; }
+#frames .fig figcaption { max-width: 60em; }
+.fig figcaption { max-width: 364px; color: var(--muted); font-size: var(--text-sm); line-height: 1.55; }
+.fig figcaption b { color: var(--ink); font-weight: 650; }
+.fig img { display: block; border-radius: var(--r-xl); box-shadow: var(--shadow); }
+.pins { position: relative; width: max-content; }
+.pin { position: absolute; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--del); box-shadow: 0 0 0 2px var(--bg); color: #fff; font-size: 11px; font-weight: 700; }
+.issues { display: grid; gap: 12px; max-width: 34em; margin: 0; padding: 0; list-style: none; counter-reset: n; }
+.issues li { position: relative; padding-left: 32px; color: var(--ink-2); line-height: 1.6; counter-increment: n; }
+.issues li::before { content: counter(n); position: absolute; top: 2px; left: 0; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--del); color: #fff; font-size: 11px; font-weight: 700; }
+.issues b { color: var(--ink); font-weight: 650; }
+
+.av { --size: 28px; display: grid; flex: none; place-items: center; width: var(--size); height: var(--size); border-radius: 50%; background: var(--av-bg); color: #fff; }
+.av svg { width: 58%; height: 58%; fill: currentColor; }
+.av[data-p="claude"] { --av-bg: #d97757; }
+.av[data-p="codex"] { --av-bg: #172033; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14); }
+.av .prompt { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.av.xs { --size: 16px; }
+.av.sm { --size: 20px; }
+
+/* 한도 줄 */
+.u { padding: 10px 0 8px; }
+.u + .u { border-top: 1px solid var(--hair); }
+.u-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.u-top h4 { margin: 0; font-size: var(--text-md); font-weight: 500; }
+.u-num { font-size: var(--title-sm); font-weight: 650; letter-spacing: -0.02em; }
+.u-num small { margin-left: 3px; color: var(--muted); font-size: var(--text-xs); font-weight: 500; letter-spacing: 0; }
+.u[data-tone="warn"] .u-num { color: var(--warn); }
+.u[data-tone="danger"] .u-num { color: var(--del); }
+.meter { position: relative; height: 6px; margin: 8px 0 6px; border-radius: 3px; background: var(--chip); }
+.meter i { display: block; width: calc(var(--v) * 1%); height: 100%; border-radius: inherit; background: var(--ink); }
+.u[data-tone="warn"] .meter i { background: var(--warn-fill); }
+.u[data-tone="danger"] .meter i { background: var(--del); }
+.u-foot { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 10px; color: var(--muted); font-size: var(--text-xs); }
+.u-foot em { color: var(--warn); font-style: normal; font-weight: 600; }
+
+/* 한 문장: 세로 선 없이, 지금 속도로 어떻게 되는지 말로 */
+.proj { margin-top: 3px; color: var(--muted); font-size: var(--text-sm); font-weight: 500; }
+.proj[data-tone="warn"] { color: var(--warn); font-weight: 600; }
+.proj[data-tone="danger"] { color: var(--del); font-weight: 600; }
+
+/* 패널 틀: 두 AI를 좌우로 나누고 가운데에 구분선 */
+.pn { container: pn / inline-size; width: var(--pn-w, 680px); max-width: 100%; padding: 8px; border-radius: var(--r-xl); background: var(--bg); box-shadow: var(--shadow); }
+.pn-body { display: grid; grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr); margin: 0 4px; }
+.pn-div { margin: 14px 0 8px; background: var(--hair-strong); }
+.pn-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 6px 10px; }
+.pn-head h3 { font-size: var(--title-sm); font-weight: 650; letter-spacing: -0.02em; }
+.ib { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px 0 8px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+.ib:hover { background: var(--chip); color: var(--ink); }
+.ib .icon { width: 13px; height: 13px; }
+.ai { min-width: 0; padding: 12px 16px 6px; }
+.ai-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 10px; }
+.ai-head .av { grid-row: span 2; }
+.ai-name { display: flex; align-items: center; gap: 7px; font-size: var(--text-md); font-weight: 650; }
+.plan { padding: 0 8px; border-radius: 999px; background: var(--chip); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
+.ai-sub { display: flex; justify-content: space-between; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--text-xs); }
+.ai-sub span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-sub span:last-child { flex: none; color: var(--faint); }
+.acct-toggle { display: inline-flex; align-items: center; gap: 3px; grid-row: span 2; height: 26px; padding: 0 6px 0 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+.acct-toggle:hover, .acct-toggle[aria-expanded="true"] { background: var(--chip); color: var(--ink); }
+@container pn (max-width: 560px) {
+    .acct-name { display: none; }
+    .acct-toggle { padding: 0 8px; }
+}
+.acct-toggle .icon { width: 11px; height: 11px; transition: rotate 0.2s var(--ease-out); }
+.acct-toggle[aria-expanded="true"] .icon { rotate: 180deg; }
+.acct { display: grid; gap: 10px; margin: 10px 0 2px; padding: 10px; border-radius: var(--r-md); background: var(--surface); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 4px; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--hair-strong); font-size: var(--text-sm); font-weight: 500; }
+.chip i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--chip); font-size: var(--text-xs); font-style: normal; font-weight: 700; }
+.chip.on { background: var(--chip); font-weight: 650; }
+.chip.on i { background: var(--ink); color: var(--bg); }
+.chip.add { padding: 0 12px 0 10px; border: 1.5px dashed var(--hair-strong); background: none; box-shadow: none; color: var(--muted); }
+.acct-act { display: flex; gap: 6px; }
+.ghost { height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--hair-strong); color: var(--ink-2); font-size: var(--text-xs); font-weight: 600; }
+.need { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 8px 8px 12px; border-radius: var(--r-md); background: var(--warn-wash); box-shadow: inset 0 0 0 1px var(--warn-line); color: var(--warn); font-size: var(--text-sm); }
+.need span { flex: 1; }
+
+/* 레일 카드 */
+.rails { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 22px; }
+.rcell { display: grid; gap: 10px; padding: 16px; border-radius: var(--r-lg); background: var(--bg); box-shadow: var(--shadow-1); }
+.rcell h3 { font-size: var(--text-md); font-weight: 650; }
+.rcell p { color: var(--muted); font-size: var(--text-sm); line-height: 1.55; }
+.pairs { display: flex; align-items: flex-end; gap: 14px; }
+.mini { display: flex; flex-direction: column; gap: 2px; width: 224px; padding: 12px; border-radius: var(--r-lg); background: var(--rail-bg); box-shadow: inset 0 0 0 1px var(--hair); }
+.mini.strip { width: 64px; padding: 12px 8px; }
+.mini-item { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; color: var(--muted); font-size: var(--text-md); font-weight: 600; }
+.mini-item .icon { width: 14px; height: 14px; }
+.strip .rail-label { display: none; }
+.strip .mini-item { justify-content: center; padding: 0; }
+.card { position: relative; display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 9px 10px; border: 0; border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-1); text-align: left; }
+.strip .card { justify-content: center; padding: 8px 0; }
+.card-body { display: grid; flex: 1; min-width: 0; line-height: 1.35; }
+.card-name { overflow: hidden; color: var(--ink); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.card-use { color: var(--muted); font-size: var(--text-xs); }
+.card-use[data-tone="warn"] { color: var(--warn); }
+.card-use[data-tone="danger"] { color: var(--del); }
+.chev { width: 12px; height: 12px; color: var(--faint); rotate: -90deg; }
+
+.rg { --size: 26px; position: relative; display: grid; flex: none; place-items: center; width: calc(var(--size) + 10px); height: calc(var(--size) + 10px); border-radius: 50%; background: conic-gradient(var(--rc, var(--ink)) calc(var(--value) * 1%), var(--chip) 0); animation: none; border: 0; }
+.rg::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg); }
+.rg[data-tone="warn"] { --rc: var(--warn-fill); }
+.rg[data-tone="danger"] { --rc: var(--del); }
+.rg .letter { position: relative; display: grid; place-items: center; width: var(--size); height: var(--size); border-radius: 50%; background: var(--ink); color: var(--bg); font-size: var(--text-xs); font-weight: 700; }
+
+.rg .av { position: relative; --size: calc(100% - 8px); }
+.rg.sm { --size: 18px; }
+.rg.sm::before { inset: 2.5px; }
+.stack { display: grid; gap: 6px; }
+
+/* 레일: 이름을 두고 아래에 AI 로고 링 둘 */
+.r-pair { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
+.r-pair .one { display: inline-flex; align-items: center; gap: 5px; }
+.r-pair .one b { font-size: var(--text-sm); font-weight: 650; }
+.r-pair .one[data-tone="warn"] b { color: var(--warn); }
+.r-pair .one[data-tone="danger"] b { color: var(--del); }
+
+.note-list { display: grid; gap: 8px; max-width: 52em; margin: 0; padding-left: 1.2em; color: var(--ink-2); line-height: 1.65; }
+.note-list b { color: var(--ink); font-weight: 650; }
+.pick { display: grid; gap: 14px; padding: 18px 20px; border-radius: var(--r-lg); background: var(--bg); box-shadow: var(--shadow-1); }
+.pick h3 { font-size: var(--text-lg); font-weight: 650; }
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true">
+    <symbol id="mark-claude" viewBox="0 0 24 24"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.3399-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" /></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.6v2.9h-2.9" /></symbol>
+    <symbol id="icon-gear" viewBox="0 0 12 12"><path d="M10.93 5.18L10.93 6.82L9.78 6.94L9.34 8.01L10.07 8.91L8.91 10.07L8.01 9.34L6.94 9.78L6.82 10.93L5.18 10.93L5.06 9.78L3.99 9.34L3.09 10.07L1.93 8.91L2.66 8.01L2.22 6.94L1.07 6.82L1.07 5.18L2.22 5.06L2.66 3.99L1.93 3.09L3.09 1.93L3.99 2.66L5.06 2.22L5.18 1.07L6.82 1.07L6.94 2.22L8.01 2.66L8.91 1.93L10.07 3.09L9.34 3.99L9.78 5.06Z" /><circle cx="6" cy="6" r="1.6" /></symbol>
+</svg>
+
+<header class="m-top">
+    <h1>한도 메뉴 시안</h1>
+    <nav class="m-nav" aria-label="시안 바로가기">
+        <a href="#cur">지금</a>
+        <a href="#panel">패널</a>
+        <a href="#rail">레일 카드</a>
+        <a href="#pick">추천</a>
+    </nav>
+    <div class="m-tools"><button type="button" id="m-theme" class="m-btn">화면 테마: 시스템</button></div>
+</header>
+
+<main class="m-main">
+    <p class="m-intro">레일 하단 계정 카드를 누르면 열리는 패널을 "한도를 보는 곳"으로 고친 시안이에요. 풀려는 문제는 셋이에요. ① 패널이 Claude·Codex 탭 뒤에 숨어 한 번에 하나만 보인다. ② 막대 위 세로 선이 뭔지 알 수 없다. ③ 레일 카드가 Claude 한도 하나만 보여 준다. 고른 방향은 "한도 줄은 한 문장으로 말하기(다)", "패널은 Claude·Codex를 좌우로 나누고 가운데에 구분선", "레일 카드는 이름을 두고 AI 로고 링 둘로 보여 주기"예요.</p>
+
+    <section class="m-sec" id="cur">
+        <div class="m-head"><h2>지금은 이래요</h2><p class="m-desc">실제 앱 화면을 offscreen으로 찍은 거예요(가짜 계정 데이터).</p></div>
+        <div class="row">
+            <div class="fig">
+                <div class="pins">
+                    <img src="now-claude.png" width="364" alt="현재 Claude 탭">
+                    <span class="pin" style="left:-6px;top:-6px">1</span>
+                    <span class="pin" style="left:222px;top:174px">2</span>
+                    <span class="pin" style="left:346px;top:150px">3</span>
+                    <span class="pin" style="left:-6px;top:396px">4</span>
+                </div>
+                <figcaption>Claude 탭</figcaption>
+            </div>
+            <div class="fig">
+                <img src="now-codex.png" width="364" alt="현재 Codex 탭">
+                <figcaption>Codex 탭. Claude로 돌아가야 Claude 한도가 보여요.</figcaption>
+            </div>
+            <div class="fig">
+                <ol class="issues">
+                    <li><b>탭부터 시작해요.</b> 이 패널이 한도를 보는 곳인지 이름이 어디에도 없고, Claude·Codex를 오가야 해서 둘을 비교할 수 없어요.</li>
+                    <li><b>세로 선이 뭔지 몰라요.</b> 선 하나가 "목표선"인지 "지금"인지 "한도"인지 짐작해야 해요.</li>
+                    <li><b>38%가 쓴 양인지 남은 양인지 안 적혀 있어요.</b> 예약 조건은 "남은 한도"라고 부르는데 여기는 쓴 비율이에요.</li>
+                    <li><b>설명은 맨 아래 흐린 글씨 한 줄이에요.</b> "막대 위 세로 선은 한도 기간이 지난 만큼이에요."를 읽고 위로 돌아가야 이해돼요.</li>
+                    <li><b>레일 카드는 Claude 한도 하나만 보여요.</b> 아래 "레일 카드" 절의 "현재"를 보세요.</li>
+                </ol>
+            </div>
+        </div>
+    </section>
+
+    <section class="m-sec" id="panel">
+        <div class="m-head">
+            <h2>패널: 탭을 없애고 두 AI를 좌우로</h2>
+            <p class="m-desc">맨 위에 "한도"라는 제목을 두고, Claude는 왼쪽 Codex는 오른쪽에 나란히 놓은 뒤 가운데 구분선으로 나눠요. 계정 고르기·추가·로그아웃은 AI 이름 줄의 계정 단추 뒤로 접었고, "기준 시각"은 AI마다 따로 적어요(Codex는 마지막으로 쓴 때의 기록이라 Claude와 시각이 달라요). 한도 줄은 막대 아래에 "지금 속도면 …" 한 문장으로 결론을 말해요. 계정 단추를 눌러 보세요.</p>
+        </div>
+        <div id="frames"></div>
+    </section>
+
+    <section class="m-sec" id="rail">
+        <div class="m-head">
+            <h2>레일 카드: 두 AI를 같이</h2>
+            <p class="m-desc">펼친 레일(224px)과 접힌 레일(64px)을 함께 보여요. 퍼센트는 AI마다 가장 많이 쓴 한도예요(지금과 같은 기준).</p>
+        </div>
+        <div class="rails" id="rails"></div>
+    </section>
+
+    <section class="m-sec" id="pick">
+        <div class="pick">
+            <h3>고른 안: 패널 다(좌우) + 레일 이름 유지·링 둘</h3>
+            <ul class="note-list">
+                <li><b>한 문장(다)</b>은 가장 직설적이지만 "지금 속도로 몇 시간 뒤에 가득 차요"를 새로 계산해요. 기간 초반에는 값이 크게 흔들려서 5% 미만 경과는 "가늠하기 일러요"로 가렸어요. 세로 선과 맨 아래 범례 문장은 없어져요.</li>
+                <li><b>좌우 배치</b>는 패널이 364px에서 680px로 넓어져요. 창이 960px 이하면 레일이 접혀서 패널 가용 폭은 676px 이상이고, 961px 창에서 레일을 최대(360px)로 늘려도 581px예요. 아래 세 번째 프레임은 그보다 좁은 516px을 가정한 최악의 모양이에요. 600px 이하에서는 계정 단추의 이름을 빼고 화살표만 둬서(CSS 컨테이너 쿼리) 줄이 안 깨져요.</li>
+                <li><b>한도 줄 수가 달라요.</b> Claude는 한도 3개, Codex는 1개라 오른쪽 아래가 비어요. 구분선은 두 열 높이를 따라 끝까지 이어져요.</li>
+                <li><b>레일 카드</b>는 이름(서영호)을 두고, 글자 링 하나를 AI 로고 링 둘(퍼센트 포함)로 바꿔요. 접힌 레일에서도 링 둘이 세로로 서서 Claude만 말하던 문제가 사라져요. 대신 카드 높이가 조금 커지고, 이름은 Claude 계정 것이라 Codex 계정이 다르면 헷갈릴 수 있어요.</li>
+            </ul>
+            <h3>구현하게 되면 건드리는 곳</h3>
+            <ul class="note-list">
+                <li>ProfilePanel의 Seg 탭과 ClaudeProfile·CodexProfile 분기를 없애고 두 AI 구역을 한 번에 그려요. 지금은 "두 몸통은 한 번에 하나만 그려 id가 겹치지 않는다"는 전제라 <b>#account-select·#usage-refresh·#login-box 같은 id를 AI별로 나눠야 해요.</b></li>
+                <li>panels.css의 .profile-panel 너비(min(364px, …))를 넓히고 두 열 격자와 구분선을 더해요.</li>
+                <li>Rail의 AccountCard가 accountStore만 읽고 getTopLimit이 한 계정의 한도만 고르는 것을 두 스토어로 넓혀요(codexAccountStore는 이미 있어요).</li>
+                <li>tests/tools/ui의 profile-panel-codex 장면이 Codex 라디오를 누르는 것, desktop/CLAUDE.md "Codex 계정·한도·로그인과 Welcome"의 화면 문단, README 화면 설명도 같이 고쳐야 해요.</li>
+                <li>막대 위 세로 선(.usage-pace)과 범례가 사라지므로 viewFormat의 getUsagePace는 "지금 속도" 문장 계산(getUsageForecast)으로 바꿨어요.</li>
+            </ul>
+        </div>
+    </section>
+</main>
+
+<script src="../refresh/mock.js"></script>
+<script>
+/* ───── 가짜 데이터(스크린샷 더미와 같은 값) ───── */
+const AIS = {
+    claude: {
+        id: "claude", name: "Claude", plan: "Max 5x", email: "yh@example.com", at: "09:59 기준",
+        accounts: [["기", "기본 계정"], ["작", "작업용"]],
+        limits: [
+            { label: "5시간 한도", short: "5시간", percent: 38, elapsed: 60, windowMin: 300, reset: "12:00 리셋 · 2시간 0분 후" },
+            { label: "주간 한도", short: "주간", percent: 78, elapsed: 57, windowMin: 10080, reset: "9월 4일 10:00 리셋 · 3일 0시간 후" },
+            { label: "주간 한도 · Sonnet", short: "주간 · Sonnet", percent: 96, elapsed: 57, windowMin: 10080, reset: "9월 4일 10:00 리셋 · 3일 0시간 후" }
+        ]
+    },
+    codex: {
+        id: "codex", name: "Codex", plan: "Pro 100", email: "yh@example.com", at: "09:40 기준",
+        accounts: [["기", "기본 계정"], ["회", "회사 Codex"]],
+        limits: [{ label: "주간 한도", short: "주간", percent: 50, elapsed: 57, windowMin: 10080, reset: "9월 4일 10:00 리셋 · 3일 0시간 후" }]
+    }
+};
+
+const getTone = (percent) => {
+    if (percent >= 90) {
+        return "danger";
+    }
+
+    return percent >= 70 ? "warn" : "ok";
+};
+
+const formatSpan = (minutes) => {
+    if (minutes >= 1440) {
+        return `${Math.floor(minutes / 1440)}일 ${Math.round((minutes % 1440) / 60)}시간`;
+    }
+
+    return minutes >= 60 ? `${Math.round(minutes / 60)}시간` : `${Math.max(1, Math.round(minutes))}분`;
+};
+
+// 지금까지 쓴 속도가 그대로면 리셋 전에 가득 차는지. 기간이 5%도 안 지났으면 값이 너무 흔들려 말하지 않는다.
+const getProjection = (limit) => {
+    if (limit.elapsed < 5 || limit.percent <= 0) {
+        return { text: "아직 기간이 막 시작돼서 가늠하기 일러요", tone: "ok" };
+    }
+
+    const fullAt = (100 * limit.elapsed) / limit.percent;
+
+    if (fullAt >= 100) {
+        return { text: `지금 속도면 리셋 때 약 ${Math.round((limit.percent * 100) / limit.elapsed)}%예요`, tone: "ok" };
+    }
+
+    const left = ((fullAt - limit.elapsed) / 100) * limit.windowMin;
+
+    return { text: `지금 속도면 약 ${formatSpan(left)} 뒤에 가득 차요`, tone: limit.percent >= 90 ? "danger" : "warn" };
+};
+
+const getTightest = (ai) => ai.limits.reduce((top, limit) => (limit.percent > top.percent ? limit : top));
+
+/* ───── 마크 ───── */
+const mark = (provider, className = "") => {
+    const body = provider === "claude" ? '<use href="#mark-claude"/>' : '<path class="prompt" d="m5.5 7.5 4.5 4.5-4.5 4.5M12.5 16.5H18.5"/>';
+
+    return `<span class="av ${className}" data-p="${provider}" aria-hidden="true"><svg viewBox="0 0 24 24">${body}</svg></span>`;
+};
+
+/* ───── 한도 줄 ───── */
+const renderRow = (limit) => {
+    const tone = getTone(limit.percent);
+    const projection = getProjection(limit);
+
+    return `<section class="u" data-tone="${tone}">
+        <div class="u-top"><h4>${limit.label}</h4><b class="u-num">${limit.percent}%<small>사용</small></b></div>
+        <div class="meter"><i style="--v:${limit.percent}"></i></div>
+        <div class="u-foot"><span>${limit.reset}</span></div>
+        <p class="proj" data-tone="${projection.tone}">${projection.text}</p>
+    </section>`;
+};
+
+/* ───── 패널 ───── */
+const renderAccount = (ai, { open = false, activeIndex = 0 } = {}) => {
+    const chips = ai.accounts.map(([initial, label], index) => `<span class="chip${index === activeIndex ? " on" : ""}"><i>${initial}</i>${label}</span>`).join("");
+
+    return `<div class="acct" ${open ? "" : "hidden"}>
+        <div class="chips">${chips}<span class="chip add">+ 계정 추가</span></div>
+        <div class="acct-act"><button type="button" class="ghost">로그아웃</button></div>
+    </div>`;
+};
+
+const renderSection = (ai, { open = false, loggedOut = false } = {}) => {
+    const rows = loggedOut
+        ? `<div class="need"><span>이 계정은 ${ai.name}에 로그인되어 있지 않아요.</span><button type="button" class="ghost">로그인</button></div>`
+        : ai.limits.map(renderRow).join("");
+    const account = loggedOut ? ai.accounts[1][1] : ai.accounts[0][1];
+
+    return `<section class="ai" data-provider="${ai.id}">
+        <div class="ai-head">
+            ${mark(ai.id)}
+            <div class="ai-name">${ai.name}${loggedOut ? "" : `<span class="plan">${ai.plan}</span>`}</div>
+            <button type="button" class="acct-toggle" aria-expanded="${open}" title="계정 고르기·추가·로그아웃" aria-label="계정: ${account}"><span class="acct-name">${account}</span><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg></button>
+            <div class="ai-sub"><span>${loggedOut ? "로그인 필요" : ai.email}</span><span>${loggedOut ? "" : ai.at}</span></div>
+        </div>
+        ${renderAccount(ai, { open: open, activeIndex: loggedOut ? 1 : 0 })}
+        ${rows}
+    </section>`;
+};
+
+const renderPanel = ({ caption, width = 680, state = {} }) => {
+    return `<figure class="fig">
+        <div class="pn" style="--pn-w:${width}px">
+            <header class="pn-head"><h3>한도</h3><button type="button" class="ib" title="두 AI의 한도를 다시 읽어요"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg>모두 새로 고침</button></header>
+            <div class="pn-body">
+                ${renderSection(AIS.claude, { open: state.claudeOpen })}
+                <div class="pn-div" aria-hidden="true"></div>
+                ${renderSection(AIS.codex, { loggedOut: state.codexLoggedOut })}
+            </div>
+        </div>
+        <figcaption>${caption}</figcaption>
+    </figure>`;
+};
+
+document.getElementById("frames").innerHTML = [
+    renderPanel({ caption: "<b>기본.</b> 왼쪽 Claude, 오른쪽 Codex예요. 막대 아래 한 문장이 결론이에요. 예: 주간 Sonnet은 \"지금 속도면 약 4시간 뒤에 가득 차요\"." }),
+    renderPanel({ caption: "<b>다른 상태.</b> Claude의 계정 단추를 펼친 모습과, Codex 계정이 로그인 안 된 모습이에요. 한쪽이 로그인 안 돼도 다른 쪽 한도는 그대로 보여요.", state: { claudeOpen: true, codexLoggedOut: true } }),
+    renderPanel({ width: 516, caption: "<b>가장 좁을 때.</b> 패널 폭이 516px인 경우예요(실제로는 960px 이하 창에서 레일이 접혀 이보다 넓어요). 열이 좁아서 계정 단추는 이름 없이 화살표만 두고(계정은 이메일 줄로 알 수 있어요), 이메일이 길면 말줄임표로 줄어요." })
+].join("");
+
+document.getElementById("frames").addEventListener("click", (event) => {
+    const toggle = event.target.closest(".acct-toggle");
+
+    if (!toggle) {
+        return;
+    }
+
+    const panel = toggle.closest(".ai").querySelector(".acct");
+    const isOpen = toggle.getAttribute("aria-expanded") === "true";
+
+    toggle.setAttribute("aria-expanded", String(!isOpen));
+    panel.hidden = isOpen;
+});
+
+/* ───── 레일 카드 ───── */
+const ring = (ai) => {
+    const percent = getTightest(ai).percent;
+
+    return `<span class="rg sm" data-tone="${getTone(percent)}" style="--value:${percent}">${mark(ai.id)}</span>`;
+};
+
+const CHEVRON = '<svg class="icon chev rail-label" aria-hidden="true"><use href="#icon-chevron"/></svg>';
+
+const RAIL_CARDS = {
+    now: {
+        title: "현재",
+        text: "Claude 계정의 가장 많이 쓴 한도 하나만 보여요. Codex는 어디에도 없어요.",
+        expanded: () => {
+            const limit = getTightest(AIS.claude);
+
+            return `<div class="card"><span class="rg" data-tone="${getTone(limit.percent)}" style="--value:${limit.percent}"><span class="letter">서</span></span><span class="card-body rail-label"><b class="card-name">서영호</b><span class="card-use" data-tone="${getTone(limit.percent)}">${limit.short} ${limit.percent}%</span></span>${CHEVRON}</div>`;
+        },
+        collapsed: () => {
+            const limit = getTightest(AIS.claude);
+
+            return `<div class="card"><span class="rg" data-tone="${getTone(limit.percent)}" style="--value:${limit.percent}"><span class="letter">서</span></span></div>`;
+        }
+    },
+    c: {
+        title: "고른 안. 이름 유지 + 링 둘",
+        text: "이름(서영호)은 그대로 두고, 글자 링 대신 Claude·Codex 로고가 든 링 둘과 퍼센트를 아래에 둬요. 링마다 그 AI의 가장 많이 쓴 한도예요. 접힌 레일에서도 링 둘이 세로로 서요. 이름은 Claude 계정 것이라 Codex 계정이 다르면 헷갈릴 수 있어요.",
+        expanded: () => {
+            const items = Object.values(AIS)
+                .map((ai) => {
+                    const percent = getTightest(ai).percent;
+
+                    return `<span class="one" data-tone="${getTone(percent)}">${ring(ai)}<b>${percent}%</b></span>`;
+                })
+                .join("");
+
+            return `<div class="card"><span class="card-body"><b class="card-name">서영호</b><span class="r-pair">${items}</span></span>${CHEVRON}</div>`;
+        },
+        collapsed: () => `<div class="card"><div class="stack">${ring(AIS.claude)}${ring(AIS.codex)}</div></div>`
+    }
+};
+
+const SETTINGS_ITEM = (label) => `<div class="mini-item"><svg class="icon" viewBox="0 0 12 12" aria-hidden="true"><use href="#icon-gear"/></svg><span class="rail-label">${label}</span></div>`;
+
+document.getElementById("rails").innerHTML = Object.values(RAIL_CARDS)
+    .map(
+        (card) => `<article class="rcell">
+            <h3>${card.title}</h3>
+            <div class="pairs"><div class="mini">${SETTINGS_ITEM("설정")}${card.expanded()}</div><div class="mini strip">${SETTINGS_ITEM("설정")}${card.collapsed()}</div></div>
+            <p>${card.text}</p>
+        </article>`
+    )
+    .join("");
+</script>
+</body>
+</html>
