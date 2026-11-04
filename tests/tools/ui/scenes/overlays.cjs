@@ -222,23 +222,26 @@ const SCENES = [
             await t.wait(700);
             await t.shot("panel", "#profile");
             await t.clearCalls();
-            await t.click(".account-option:nth-child(2)");
+            await t.click("#claude-column .profile-acct-toggle");
+            await t.wait(300);
+            await t.shot("accounts-open", "#profile");
+            await t.click("#claude-account-select .account-option:nth-child(2)");
             await t.wait(500);
             await t.shot("second-account", "#profile");
             await t.note("calls", await callNames(t));
         }
     },
     {
-        // 프로필 패널의 AI 탭: Codex는 세션 기록에서 읽은 한도와 계정(로그인 안 된 계정은 로그인 안내)을 보인다.
+        // 한도 패널: 왼쪽 Claude·오른쪽 Codex를 한 화면에 보인다. Codex는 세션 기록에서 읽은 한도와 계정(로그인 안 된 계정은 로그인 안내)을 보인다.
         name: "profile-panel-codex",
         init: { ...withProject, accounts: ACCOUNTS, codexAccounts: CODEX_ACCOUNTS },
         run: async (t) => {
             await t.click("#profile-toggle");
             await t.wait(700);
-            await t.click("input[name='profile-provider'][value='codex']");
-            await t.wait(400);
-            await t.shot("codex", "#profile");
-            await t.click(".account-option:nth-child(2)");
+            await t.shot("both", "#profile");
+            await t.click("#codex-column .profile-acct-toggle");
+            await t.wait(300);
+            await t.click("#codex-account-select .account-option:nth-child(2)");
             await t.wait(400);
             await t.shot("codex-logged-out", "#profile");
             await t.drive("codexLogin", { accountId: "cx-1a2b3c4d", phase: "waiting", url: "https://auth.openai.com/oauth/authorize?x", message: "열린 브라우저에서 로그인을 마쳐 주세요." });
@@ -254,7 +257,7 @@ const SCENES = [
             await t.shot("loading", "#profile");
             await t.drive("account", "default", { profile: null, limits: [], fetchedAt: 0, error: { code: "TOKEN_EXPIRED", msg: "로그인이 만료됐어요." } });
             await t.shot("expired", "#profile");
-            await t.click("#account-login");
+            await t.click("#claude-account-login");
             await t.note("login", await t.eval("JSON.stringify(window.__calls.filter((call) => call[0] === 'loginAccount').map((call) => typeof call[1]))"));
             await t.drive("account", "default", { ...ACCOUNTS.snapshots.default, fetchedAt: NOW - 3 * HOUR, error: { code: "NETWORK", msg: "네트워크에 연결할 수 없어요." } });
             await t.shot("stale-error", "#profile");
@@ -266,12 +269,13 @@ const SCENES = [
         run: async (t) => {
             await t.click("#profile-toggle");
             await t.wait(700);
-            await t.click("#account-add");
+            await t.click("#claude-column .profile-acct-toggle");
+            await t.click("#claude-account-add");
             await t.wait(300);
             await t.type("work");
             await t.shot("form", "#profile");
             await t.note("focus", await t.eval("document.activeElement.id"));
-            await t.click("#account-form-cancel");
+            await t.click("#claude-account-form-cancel");
             await t.shot("form-cancelled", "#profile");
         }
     },

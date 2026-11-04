@@ -4,8 +4,6 @@ import { STATUS_OK } from "../lib/constants.js";
 // 화면 자체의 상태. 패널·시트는 한 번에 하나씩 뜨도록 서로 닫는다(옛 renderer.js의 규칙 그대로).
 const useUiStore = create(() => ({
     panel: null,
-    // 프로필 패널이 보여 주는 AI(claude·codex)
-    profileProvider: "claude",
     settingsScope: "global",
     history: false,
     archive: false,

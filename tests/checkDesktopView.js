@@ -185,7 +185,7 @@ const checkLoginExpiry = ({ describeLoginExpiry }) => {
     }
 };
 
-const checkUsageFormat = ({ formatUsageReset, getUsageTone, getUsagePace }) => {
+const checkUsageFormat = ({ formatUsageReset, getUsageTone, getUsageForecast }) => {
     const now = new Date(2026, 9, 13, 10, 0).getTime();
     const minutes = (count) => count * 60000;
 
@@ -208,18 +208,24 @@ const checkUsageFormat = ({ formatUsageReset, getUsageTone, getUsagePace }) => {
         assert.equal(getUsageTone(percent), tone, String(percent));
     }
 
-    // 한도 기간이 지난 만큼: 5시간 한도가 2시간 뒤 리셋이면 60%, 주간 한도가 3일 반 뒤 리셋이면 50%가 지났다.
+    // 지금 속도 문장: 5시간 한도가 2시간 뒤 리셋이면 60%, 주간 한도가 3일 반 뒤 리셋이면 50%가 지났다.
     const hours = (count) => count * 3600000;
     const session = { label: "5시간 한도", percent: 38, resetsAt: now + hours(2) };
+    const weekly = { label: "주간 한도", percent: 78, resetsAt: now + hours(84) };
 
-    assert.deepEqual(getUsagePace(session, now), { elapsed: 60, isFast: false });
-    assert.deepEqual(getUsagePace({ label: "주간 한도 (Sonnet)", percent: 66, resetsAt: now + hours(84) }, now), { elapsed: 50, isFast: true });
-    assert.equal(getUsagePace({ ...session, percent: 74 }, now).isFast, false, "15%p 차이는 아직 빠르다고 하지 않는다");
-    assert.equal(getUsagePace({ ...session, percent: 75 }, now).isFast, true, "15%p 이상 앞서면 빠르다");
-    assert.equal(getUsagePace({ ...session, resetsAt: now - hours(1) }, now).elapsed, 100, "지난 리셋 시각은 100으로 막는다");
-    assert.equal(getUsagePace({ ...session, resetsAt: now + hours(9) }, now).elapsed, 0, "기간보다 먼 리셋은 0으로 막는다");
-    assert.equal(getUsagePace({ ...session, resetsAt: 0 }, now), null, "리셋 시각을 모르면 표시하지 않는다");
-    assert.equal(getUsagePace({ label: "Opus 한도", percent: 10, resetsAt: now + hours(2) }, now), null, "기간을 모르는 한도는 표시하지 않는다");
+    assert.deepEqual(getUsageForecast(session, now), { text: "지금 속도면 리셋 때 약 63%예요", tone: "ok" });
+    assert.deepEqual(getUsageForecast(weekly, now), { text: "지금 속도면 약 1일 뒤에 가득 차요", tone: "warn" });
+    assert.deepEqual(getUsageForecast({ label: "주간 한도 (Sonnet)", percent: 96, resetsAt: now + hours(84) }, now), { text: "지금 속도면 약 4시간 뒤에 가득 차요", tone: "danger" });
+    assert.deepEqual(getUsageForecast({ ...session, percent: 90, resetsAt: now + hours(1) }, now), { text: "지금 속도면 약 27분 뒤에 가득 차요", tone: "danger" });
+    assert.equal(getUsageForecast({ ...weekly, percent: 50, resetsAt: now + hours(116) }, now).text, "지금 속도면 약 2일 4시간 뒤에 가득 차요", "하루 넘으면 일과 시간으로 말한다");
+    assert.equal(getUsageForecast({ ...weekly, percent: 50, resetsAt: now + hours(120) }, now).text, "지금 속도면 약 2일 뒤에 가득 차요", "시간이 0이면 일만 말한다");
+    assert.equal(getUsageForecast({ ...session, percent: 100 }, now).text, "한도를 다 썼어요");
+    assert.equal(getUsageForecast({ ...session, percent: 0 }, now).text, "아직 쓰지 않았어요");
+    assert.equal(getUsageForecast({ ...session, resetsAt: now + hours(4.9) }, now).text, "기간이 막 시작돼서 가늠하기 일러요", "5%도 안 지났으면 가늠하지 않는다");
+    assert.equal(getUsageForecast({ ...session, resetsAt: now - hours(1) }, now).text, "리셋 시각이 지나 지금 값과 다를 수 있어요", "지난 리셋 시각은 예측하지 않는다");
+    assert.equal(getUsageForecast({ ...session, resetsAt: now + hours(9) }, now).text, "기간이 막 시작돼서 가늠하기 일러요", "기간보다 먼 리셋은 막 시작한 것으로 본다");
+    assert.equal(getUsageForecast({ ...session, resetsAt: 0 }, now), null, "리셋 시각을 모르면 표시하지 않는다");
+    assert.equal(getUsageForecast({ label: "Opus 한도", percent: 10, resetsAt: now + hours(2) }, now), null, "기간을 모르는 한도는 표시하지 않는다");
 };
 
 const createRound = (round, startedAt, endedAt, commits = [], timesKnown = true) => {

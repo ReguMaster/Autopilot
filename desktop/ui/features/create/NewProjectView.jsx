@@ -154,7 +154,7 @@ const ProviderNote = ({ provider, providerStates }) => {
             <span>{getProviderNote(provider, status, minute * 60000)}</span>
             <span className="np-provider-actions">
                 {status.state === "login" ? (
-                    <button type="button" id="new-project-provider-login" onClick={() => openProviderLogin(provider)}>
+                    <button type="button" id="new-project-provider-login" onClick={openProviderLogin}>
                         로그인하기
                     </button>
                 ) : null}

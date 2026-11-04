@@ -686,7 +686,7 @@
     text-align: left;
     transition:
         box-shadow 0.28s var(--ease-out),
-        padding-left 0.35s var(--ease-out);
+        padding-inline 0.35s var(--ease-out);
 }
 
 .rail-account:hover,
@@ -701,28 +701,33 @@
     line-height: 1.35;
 }
 
-.rail-account-name,
-.rail-account-use {
+.rail-account-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.rail-account-name {
-    color: var(--ink);
+/* AI마다 로고 링과 퍼센트 하나씩 */
+.rail-account-rings {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 3px;
+}
+
+.rail-account-one {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--text-sm);
     font-weight: 650;
 }
 
-.rail-account-use {
-    color: var(--muted);
-    font-size: var(--text-xs);
-}
-
-.rail-account-use[data-tone="warn"] {
+.rail-account-one[data-tone="warn"] {
     color: var(--warn);
 }
 
-.rail-account-use[data-tone="danger"] {
+.rail-account-one[data-tone="danger"] {
     color: var(--del);
 }
 
@@ -777,7 +782,19 @@
 }
 
 :root[data-rail-collapsed] .rail-account {
-    padding-left: 2px;
+    padding-inline: 6px;
+}
+
+/* 접히면 이름을 감추고 링 둘을 세로로 세워 두 AI가 다 보이게 한다 */
+:root[data-rail-collapsed] .rail-account-name {
+    display: none;
+}
+
+:root[data-rail-collapsed] .rail-account-rings {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 0;
 }
 
 .content {

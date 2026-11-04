@@ -1,4 +1,4 @@
-const { ACCOUNTS, PROJECT, runningState } = require("./data.cjs");
+const { ACCOUNTS, CODEX_ACCOUNTS, PROJECT, runningState } = require("./data.cjs");
 
 const SECOND = "E:/Workspaces/Demo/autopilot-landing";
 const THIRD = "E:/Workspaces/Demo/a-project-with-a-rather-long-folder-name";
@@ -23,7 +23,7 @@ const SCENES = [
     },
     {
         name: "rail-resize",
-        init: { settings: { projectDir: PROJECT }, tabs: THREE_TABS, accounts: ACCOUNTS },
+        init: { settings: { projectDir: PROJECT }, tabs: THREE_TABS, accounts: ACCOUNTS, codexAccounts: CODEX_ACCOUNTS },
         run: async (t) => {
             const readWidth = () => t.eval(`getComputedStyle(document.getElementById("rail")).width`);
 
@@ -54,6 +54,7 @@ const SCENES = [
             await t.press("Home");
             await t.wait(600);
             await t.note("home", await readWidth());
+            await t.shot("collapsed-home", "#rail");
             await t.press("Right");
             await t.wait(600);
             await t.note("right", await readWidth());

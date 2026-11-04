@@ -6,7 +6,7 @@ import { Icon } from "../../components/Icon.jsx";
 import { useAnyRunning } from "../../hooks/useAnyRunning.js";
 import { EMPTY_CODEX_ACCOUNT, useCodexAccountStore } from "../../stores/codexAccountStore.js";
 import { useRunStore } from "../../stores/runStore.js";
-import { getAccountStatus, getAvatarLetter, ProfileCard, Usage } from "./profileParts.jsx";
+import { getAvatarLetter, ProviderColumn } from "./profileParts.jsx";
 
 const MAX_ACCOUNT_COUNT = 9;
 const DEFAULT_ACCOUNT_ID = "default";
@@ -15,7 +15,7 @@ const CodexAccountList = ({ isLocked, isIdle }) => {
     const { accounts: list, activeId } = useCodexAccountStore(useShallow((store) => ({ accounts: store.accounts, activeId: store.activeId })));
 
     return (
-        <div id="account-select" className="account-list" role="radiogroup" aria-label="사용할 Codex 계정">
+        <div id="codex-account-select" className="account-list" role="radiogroup" aria-label="사용할 Codex 계정">
             {list.map((account) => (
                 <button
                     key={account.id}
@@ -49,7 +49,7 @@ const CodexAccountForm = () => {
 
     return (
         <form
-            id="account-form"
+            id="codex-account-form"
             className="account-form"
             hidden={!isOpen}
             onSubmit={async (event) => {
@@ -61,7 +61,7 @@ const CodexAccountForm = () => {
             }}
         >
             <input
-                id="account-label"
+                id="codex-account-label"
                 ref={inputRef}
                 className="account-input"
                 type="text"
@@ -79,7 +79,7 @@ const CodexAccountForm = () => {
                     로그인 시작
                 </Button>
                 <Button
-                    id="account-form-cancel"
+                    id="codex-account-form-cancel"
                     onClick={() => {
                         codexAccounts.closeForm();
                         setLabel("");
@@ -98,14 +98,14 @@ const CodexLoginBox = () => {
     const isWaiting = login?.phase === "waiting";
 
     return (
-        <section id="login-box" className="login-box" aria-live="polite" hidden={!login} data-phase={login?.phase}>
-            <p id="login-message" className="panel-note" data-tone={login?.phase === "failed" ? "warn" : undefined}>
+        <section id="codex-login-box" className="login-box" aria-live="polite" hidden={!login} data-phase={login?.phase}>
+            <p id="codex-login-message" className="panel-note" data-tone={login?.phase === "failed" ? "warn" : undefined}>
                 {login?.message}
             </p>
-            <Button id="login-open" hidden={!isWaiting || !login?.url} onClick={codexAccounts.openLoginUrl}>
+            <Button id="codex-login-open" hidden={!isWaiting || !login?.url} onClick={codexAccounts.openLoginUrl}>
                 브라우저에서 열기
             </Button>
-            <Button id="login-cancel" onClick={codexAccounts.cancelLogin}>
+            <Button id="codex-login-cancel" onClick={codexAccounts.cancelLogin}>
                 {isWaiting ? "취소" : "닫기"}
             </Button>
         </section>
@@ -119,10 +119,10 @@ const CodexProfile = () => {
         accounts: list,
         message,
         login,
-        isRefreshing,
+        isFormOpen,
         snapshots
     } = useCodexAccountStore(
-        useShallow((store) => ({ activeId: store.activeId, accounts: store.accounts, message: store.message, login: store.login, isRefreshing: store.isRefreshing, snapshots: store.snapshots }))
+        useShallow((store) => ({ activeId: store.activeId, accounts: store.accounts, message: store.message, login: store.login, isFormOpen: store.isFormOpen, snapshots: store.snapshots }))
     );
     const account = snapshots[activeId] || EMPTY_CODEX_ACCOUNT;
     const isLoading = !account.fetchedAt && !account.error && !account.loggedIn;
@@ -130,53 +130,59 @@ const CodexProfile = () => {
     const isLocked = !isIdle || login?.phase === "waiting";
     const isManageLocked = isAnyRunning || login?.phase === "waiting";
     const manageTitle = isAnyRunning && isIdle ? "다른 프로젝트가 실행 중이에요." : undefined;
-    const status = getAccountStatus(account, isLoading);
     const needsLogin = !isLoading && !account.loggedIn;
-    const topPercent = account.limits.length > 0 ? Math.max(...account.limits.map((limit) => limit.percent)) : null;
 
     return (
-        <>
-            <ProfileCard profile={account.profile} isLoading={isLoading} percent={topPercent} />
-            <div id="login-expiry" className="profile-warn" hidden={!needsLogin} data-tone="warn">
-                <span>{account.installed ? "이 계정은 Codex에 로그인되어 있지 않아요." : "Codex가 설치돼 있지 않아요. Codex CLI를 설치한 뒤 다시 확인해 주세요."}</span>
-                <Button id="account-login" hidden={!account.installed} disabled={isManageLocked} title={manageTitle} onClick={() => codexAccounts.login()}>
-                    로그인
-                </Button>
-            </div>
-            <Usage limits={account.limits} isLoading={isLoading} />
-            <section className="profile-accounts" aria-label="Codex 계정">
-                <h3 className="profile-section">계정</h3>
-                <div className="account-chips">
-                    <CodexAccountList isLocked={isLocked} isIdle={isIdle} />
-                    <Button id="account-add" className="account-add" disabled={isManageLocked || list.length >= MAX_ACCOUNT_COUNT} title={manageTitle} onClick={codexAccounts.openForm}>
-                        <Icon symbol="icon-plus" />
-                        계정 추가
-                    </Button>
-                </div>
-                <p id="account-message" className="panel-note" aria-live="polite" hidden={!message} data-tone={message ? "warn" : undefined}>
-                    {message}
-                </p>
-                <CodexAccountForm />
-                <CodexLoginBox />
-            </section>
-            <div className="panel-foot">
-                <p id="usage-status" className="panel-note" aria-live="polite" data-tone={status.tone || undefined}>
-                    {status.text}
-                </p>
-                <div className="panel-foot-actions">
-                    <Button id="account-logout" hidden={!account.loggedIn} disabled={isManageLocked} title={manageTitle} onClick={() => codexAccounts.logout()}>
-                        로그아웃
-                    </Button>
-                    <Button id="account-remove" variant="danger" hidden={activeId === DEFAULT_ACCOUNT_ID} disabled={isManageLocked} title={manageTitle} onClick={() => codexAccounts.remove()}>
-                        이 계정 제거
-                    </Button>
-                    <Button id="usage-refresh" disabled={isRefreshing} onClick={codexAccounts.refresh}>
-                        <Icon symbol="icon-refresh" />
-                        새로 고침
-                    </Button>
-                </div>
-            </div>
-        </>
+        <ProviderColumn
+            provider="codex"
+            label="Codex"
+            account={account}
+            accountLabel={list.find((item) => item.id === activeId)?.label ?? ""}
+            isLoading={isLoading}
+            needsLogin={needsLogin}
+            isFormOpen={isFormOpen}
+            fold={
+                <>
+                    <div className="account-chips">
+                        <CodexAccountList isLocked={isLocked} isIdle={isIdle} />
+                        <Button id="codex-account-add" className="account-add" disabled={isManageLocked || list.length >= MAX_ACCOUNT_COUNT} title={manageTitle} onClick={codexAccounts.openForm}>
+                            <Icon symbol="icon-plus" />
+                            계정 추가
+                        </Button>
+                    </div>
+                    <CodexAccountForm />
+                    <div className="profile-fold-actions">
+                        <Button id="codex-account-logout" hidden={!account.loggedIn} disabled={isManageLocked} title={manageTitle} onClick={() => codexAccounts.logout()}>
+                            로그아웃
+                        </Button>
+                        <Button
+                            id="codex-account-remove"
+                            variant="danger"
+                            hidden={activeId === DEFAULT_ACCOUNT_ID}
+                            disabled={isManageLocked}
+                            title={manageTitle}
+                            onClick={() => codexAccounts.remove()}
+                        >
+                            이 계정 제거
+                        </Button>
+                    </div>
+                </>
+            }
+            alerts={
+                <>
+                    <div id="codex-login-expiry" className="profile-warn" hidden={!needsLogin} data-tone="warn">
+                        <span>{account.installed ? "이 계정은 Codex에 로그인되어 있지 않아요." : "Codex가 설치돼 있지 않아요. Codex CLI를 설치한 뒤 다시 확인해 주세요."}</span>
+                        <Button id="codex-account-login" hidden={!account.installed} disabled={isManageLocked} title={manageTitle} onClick={() => codexAccounts.login()}>
+                            로그인
+                        </Button>
+                    </div>
+                    <CodexLoginBox />
+                    <p className="panel-note profile-message" aria-live="polite" hidden={!message} data-tone={message ? "warn" : undefined}>
+                        {message}
+                    </p>
+                </>
+            }
+        />
     );
 };
 

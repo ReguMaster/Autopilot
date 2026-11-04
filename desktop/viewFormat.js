@@ -286,19 +286,62 @@ const USAGE_WINDOWS = [
     { prefix: "5시간", ms: 5 * 60 * 60 * 1000 },
     { prefix: "주간", ms: 7 * 24 * 60 * 60 * 1000 }
 ];
-const USAGE_FAST_GAP = 15;
+const FORECAST_MIN_ELAPSED = 5;
 
-// 한도 기간이 지난 만큼(0~100)과, 쓴 비율이 그보다 USAGE_FAST_GAP%p 넘게 앞서는지(isFast). 리셋 시각이나 기간을 모르면 null이다.
-const getUsagePace = (limit, now) => {
-    const window = USAGE_WINDOWS.find(({ prefix }) => limit.label.startsWith(prefix));
+// 가득 차기까지 남은 시간을 시간 단위로 둥글게 말한다. 1시간 미만은 분이다.
+const formatForecastSpan = (ms) => {
+    const minutes = Math.round(ms / 60000);
 
-    if (!window || !limit.resetsAt) {
+    if (minutes < 60) {
+        return `${Math.max(1, minutes)}분`;
+    }
+
+    const hours = Math.round(minutes / 60);
+
+    if (hours < 24) {
+        return `${hours}시간`;
+    }
+
+    return hours % 24 === 0 ? `${hours / 24}일` : `${Math.floor(hours / 24)}일 ${hours % 24}시간`;
+};
+
+// 지금까지 쓴 속도가 리셋까지 이어지면 어떻게 되는지를 한 문장(text)과 색(tone)으로 돌려준다. 리셋 시각이나 기간을 모르면 null이다.
+// 기간이 FORECAST_MIN_ELAPSED%도 안 지났으면 값이 크게 흔들려 말하지 않는다.
+const getUsageForecast = (limit, now) => {
+    const usageWindow = USAGE_WINDOWS.find(({ prefix }) => limit.label.startsWith(prefix));
+
+    if (!usageWindow || !limit.resetsAt) {
         return null;
     }
 
-    const elapsed = Math.min(100, Math.max(0, (1 - (limit.resetsAt - now) / window.ms) * 100));
+    if (limit.resetsAt <= now) {
+        return { text: "리셋 시각이 지나 지금 값과 다를 수 있어요", tone: "ok" };
+    }
 
-    return { elapsed: elapsed, isFast: limit.percent - elapsed >= USAGE_FAST_GAP };
+    if (limit.percent >= 100) {
+        return { text: "한도를 다 썼어요", tone: "danger" };
+    }
+
+    if (limit.percent <= 0) {
+        return { text: "아직 쓰지 않았어요", tone: "ok" };
+    }
+
+    const elapsed = Math.min(100, Math.max(0, (1 - (limit.resetsAt - now) / usageWindow.ms) * 100));
+
+    if (elapsed < FORECAST_MIN_ELAPSED) {
+        return { text: "기간이 막 시작돼서 가늠하기 일러요", tone: "ok" };
+    }
+
+    const fullAt = (100 * elapsed) / limit.percent;
+
+    if (fullAt >= 100) {
+        return { text: `지금 속도면 리셋 때 약 ${Math.round((limit.percent * 100) / elapsed)}%예요`, tone: "ok" };
+    }
+
+    return {
+        text: `지금 속도면 약 ${formatForecastSpan(((fullAt - elapsed) / 100) * usageWindow.ms)} 뒤에 가득 차요`,
+        tone: getUsageTone(limit.percent) === "danger" ? "danger" : "warn"
+    };
 };
 
 const getLineKind = ({ stream, text }) => {
@@ -1487,7 +1530,7 @@ export {
     formatUsageReset,
     describeLoginExpiry,
     getUsageTone,
-    getUsagePace,
+    getUsageForecast,
     getLineKind,
     getRunPhase,
     formatRoundTime,

@@ -1,5 +1,5 @@
 .avatar-ring {
-    --size: 26px;
+    --size: 18px;
     position: relative;
     display: grid;
     flex: none;
@@ -8,10 +8,6 @@
     height: calc(var(--size) + 10px);
     border-radius: 50%;
     background: conic-gradient(var(--ring, var(--ink)) calc(var(--value) * 1%), var(--chip) 0);
-}
-
-.avatar-ring.lg {
-    --size: 40px;
 }
 
 .avatar-ring::before {
@@ -30,20 +26,6 @@
     --ring: var(--del);
 }
 
-.avatar-letter {
+.avatar-ring .avatar {
     position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--size);
-    height: var(--size);
-    border-radius: 50%;
-    background: var(--ink);
-    color: var(--bg);
-    font-size: var(--text-xs);
-    font-weight: 700;
-}
-
-.avatar-ring.lg .avatar-letter {
-    font-size: var(--text-xl);
-    font-weight: 650;
 }

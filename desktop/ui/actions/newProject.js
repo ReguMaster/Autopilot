@@ -70,9 +70,8 @@ const pickProvider = (provider) => {
     loadDraftProviders();
 };
 
-// 로그인은 프로필 패널(Claude·Codex 탭)에서 한다. 마치고 돌아오면 창에 포커스가 올 때 다시 확인한다.
-const openProviderLogin = (provider) => {
-    ui.set({ profileProvider: provider });
+// 로그인은 한도 패널(왼쪽 Claude·오른쪽 Codex)에서 한다. 마치고 돌아오면 창에 포커스가 올 때 다시 확인한다.
+const openProviderLogin = () => {
     ui.setPanel("profile");
 };
 

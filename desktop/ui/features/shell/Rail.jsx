@@ -12,6 +12,7 @@ import { getTabTicks } from "../../lib/buildSteps.js";
 import { PHASE_LABELS } from "../../lib/constants.js";
 import { getTabLabels } from "../../lib/projectName.js";
 import { EMPTY_ACCOUNT, useAccountStore } from "../../stores/accountStore.js";
+import { EMPTY_CODEX_ACCOUNT, useCodexAccountStore } from "../../stores/codexAccountStore.js";
 import { useComposerStore } from "../../stores/composerStore.js";
 import { useRunStore } from "../../stores/runStore.js";
 import { useRunsStore } from "../../stores/runsStore.js";
@@ -134,14 +135,21 @@ const ProjectList = ({ tabs, active, activeNote = null, activeTicks = null, phas
     );
 };
 
-// 가장 많이 쓴 한도를 보인다.
-const getTopLimit = (limits) => {
-    return limits.reduce((top, limit) => (!top || limit.percent > top.percent ? limit : top), null);
+// AI마다 가장 많이 쓴 한도의 퍼센트. 한도를 읽지 못했으면 null이다.
+const getTopPercent = (limits) => {
+    return limits.length > 0 ? Math.round(Math.max(...limits.map((limit) => limit.percent))) : null;
 };
 
-// "5시간 한도"는 "5시간", "주간 한도 (전체)"는 "주간"으로 줄인다.
-const getShortLimitName = (label) => label.replace(" 한도", "").replace(" (전체)", "");
+const AccountRing = ({ provider, percent }) => {
+    return (
+        <span className="rail-account-one" data-tone={percent === null ? undefined : getUsageTone(percent)}>
+            <AvatarRing provider={provider} percent={percent} aria-hidden="true" />
+            <span className="rail-label">{percent === null ? "-" : `${percent}%`}</span>
+        </span>
+    );
+};
 
+// 이름은 Claude 계정의 것이고, 링은 AI마다 하나씩이다. Codex는 로그인했을 때만 보인다.
 const AccountCard = () => {
     const isOpen = useUiStore((store) => store.panel === "profile");
     const { account, label } = useAccountStore(
@@ -150,20 +158,26 @@ const AccountCard = () => {
             label: store.accounts.find((item) => item.id === store.activeId)?.label ?? ""
         }))
     );
+    const codex = useCodexAccountStore((store) => store.snapshots[store.activeId] ?? EMPTY_CODEX_ACCOUNT);
     const name = account.profile?.name || account.profile?.email || label || "Claude 계정";
-    const limit = getTopLimit(account.limits);
-    const percent = limit ? Math.round(limit.percent) : null;
 
     return (
-        <button type="button" id="profile-toggle" className="rail-account" aria-label="프로필" title={name} aria-expanded={isOpen} aria-controls="profile" onClick={() => ui.togglePanel("profile")}>
-            <AvatarRing letter={Array.from(name)[0]?.toUpperCase()} percent={percent} aria-hidden="true" />
-            <span className="rail-account-body rail-label">
-                <b className="rail-account-name">{name}</b>
-                {limit ? (
-                    <span className="rail-account-use" data-tone={getUsageTone(percent)}>
-                        {`${getShortLimitName(limit.label)} ${percent}%`}
-                    </span>
-                ) : null}
+        <button
+            type="button"
+            id="profile-toggle"
+            className="rail-account"
+            aria-label="한도와 계정"
+            title={name}
+            aria-expanded={isOpen}
+            aria-controls="profile"
+            onClick={() => ui.togglePanel("profile")}
+        >
+            <span className="rail-account-body">
+                <b className="rail-account-name rail-label">{name}</b>
+                <span className="rail-account-rings">
+                    <AccountRing provider="claude" percent={getTopPercent(account.limits)} />
+                    {codex.loggedIn ? <AccountRing provider="codex" percent={getTopPercent(codex.limits)} /> : null}
+                </span>
             </span>
             <Icon symbol="icon-chevron" className="icon rail-chevron rail-label" />
         </button>
